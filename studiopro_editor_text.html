@@ -10989,41 +10989,92 @@ const isVis = !clip.hidden;
                 return list;
             };
 
+            const recreateVideoEl = async (clip) => {
+                if (!clip.fileUrl) return null;
+                const oldVideo = clip.videoEl;
+                const wasMuted = oldVideo ? oldVideo.muted : true;
+                const volume = oldVideo ? oldVideo.volume : 1;
+                
+                const newVideo = document.createElement('video');
+                newVideo.src = clip.fileUrl;
+                newVideo.crossOrigin = "anonymous";
+                newVideo.muted = wasMuted;
+                newVideo.volume = volume;
+                
+                const loadPromise = new Promise((resolve) => {
+                    newVideo.onloadedmetadata = () => resolve();
+                    newVideo.onerror = () => resolve();
+                });
+                newVideo.load();
+                await loadPromise;
+                
+                clip.videoEl = newVideo;
+                return newVideo;
+            };
+
             // Helper to wait for all active video clips to seek
             const waitForSeeking = async (t) => {
                 const activeVideos = getActiveVideoClips(State.activeSceneId, t);
                 if (activeVideos.length === 0) return;
 
-                const seekPromises = activeVideos.map(({ clip, timeInClip }) => {
-                    const el = clip.videoEl;
-                    if (!el) return Promise.resolve();
+                const seekPromises = activeVideos.map(async ({ clip, timeInClip }) => {
+                    let el = clip.videoEl;
+                    if (!el) return;
+
+                    if (el.error) {
+                        console.warn("Video element in error state before seek, recreating...", clip.title);
+                        el = await recreateVideoEl(clip);
+                        if (!el) return;
+                    }
                     
                     const targetTime = clip.sourceOffset + timeInClip;
                     if (Math.abs(el.currentTime - targetTime) < 0.01) {
-                        return Promise.resolve();
+                        return;
                     }
                     
-                    return new Promise(resolve => {
-                        let resolved = false;
-                        const onSeeked = () => {
-                            if (resolved) return;
-                            resolved = true;
-                            el.removeEventListener('seeked', onSeeked);
-                            el.removeEventListener('error', onError);
-                            resolve();
-                        };
-                        const onError = (err) => {
-                            if (resolved) return;
-                            resolved = true;
-                            el.removeEventListener('seeked', onSeeked);
-                            el.removeEventListener('error', onError);
-                            console.warn("Video seek error:", err);
-                            resolve(); // Resolve to not hang the export
-                        };
-                        el.addEventListener('seeked', onSeeked);
-                        el.addEventListener('error', onError);
-                        el.currentTime = targetTime;
-                    });
+                    const performSeek = (videoEl) => {
+                        return new Promise(resolve => {
+                            let resolved = false;
+                            const timeoutId = setTimeout(() => {
+                                if (resolved) return;
+                                resolved = true;
+                                videoEl.removeEventListener('seeked', onSeeked);
+                                videoEl.removeEventListener('error', onError);
+                                console.warn("Video seek timeout, forcing resolve:", targetTime);
+                                resolve(false);
+                            }, 2000);
+
+                            const onSeeked = () => {
+                                if (resolved) return;
+                                resolved = true;
+                                clearTimeout(timeoutId);
+                                videoEl.removeEventListener('seeked', onSeeked);
+                                videoEl.removeEventListener('error', onError);
+                                resolve(true);
+                            };
+                            const onError = (err) => {
+                                if (resolved) return;
+                                resolved = true;
+                                clearTimeout(timeoutId);
+                                videoEl.removeEventListener('seeked', onSeeked);
+                                videoEl.removeEventListener('error', onError);
+                                console.warn("Video seek error during performSeek:", err);
+                                resolve(false);
+                            };
+                            videoEl.addEventListener('seeked', onSeeked);
+                            videoEl.addEventListener('error', onError);
+                            videoEl.currentTime = targetTime;
+                        });
+                    };
+
+                    let success = await performSeek(el);
+                    if (!success) {
+                        console.warn("Seeking failed or timed out. Recreating video element and retrying...", clip.title);
+                        el = await recreateVideoEl(clip);
+                        if (el) {
+                            await performSeek(el);
+                        }
+                    }
                 });
 
                 await Promise.all(seekPromises);
