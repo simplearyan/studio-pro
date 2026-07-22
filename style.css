@@ -1,0 +1,349 @@
+@import "tailwindcss";
+@config "./tailwind.config.js";
+
+:root {
+    --surface-50: 250 250 250;
+    --surface-100: 245 245 245;
+    --surface-200: 229 229 229;
+    --surface-300: 212 212 212;
+    --surface-400: 163 163 163;
+    --surface-500: 115 115 115;
+    --surface-600: 82 82 82;
+    --surface-700: 38 38 38;
+    --surface-800: 26 26 26;
+    --surface-900: 17 17 17;
+    --surface-950: 10 10 10;
+}
+:root.vscode-dark {
+    --surface-50: 248 248 248;
+    --surface-100: 245 245 245;
+    --surface-200: 204 204 204;
+    --surface-300: 163 163 163;
+    --surface-400: 128 128 128;
+    --surface-500: 102 102 102;
+    --surface-600: 77 77 77;
+    --surface-700: 51 51 51;
+    --surface-800: 37 37 38;
+    --surface-900: 30 30 30;
+    --surface-950: 17 17 17;
+}
+
+/* Sleek Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #d4d4d4; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #a3a3a3; }
+.dark ::-webkit-scrollbar-thumb { background: #262626; }
+.dark ::-webkit-scrollbar-thumb:hover { background: #525252; }
+
+/* Hide scrollbar for clean toolbars */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Professional Soft Background for Timeline */
+.timeline-container {
+    background-color: #f5f5f5;
+    background-image: 
+        linear-gradient(to right, rgba(0,0,0,0.03) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(0,0,0,0.03) 1px, transparent 1px);
+    background-size: 50px 50px;
+}
+.dark .timeline-container {
+    background-color: rgb(var(--surface-900));
+    background-image: 
+        linear-gradient(to right, rgba(255,255,255,0.02) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255,255,255,0.02) 1px, transparent 1px);
+}
+
+/* Clean static design */
+* { transition: none !important; }
+
+/* Icon Weight Override for better legibility */
+.lucide { stroke-width: 2.25; }
+
+.clip {
+    touch-action: none;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+}
+.dark .clip { box-shadow: 0 2px 5px rgba(0,0,0,0.5); }
+
+.track-drag-over {
+    background-color: #e2e8f0 !important;
+}
+.dark .track-drag-over {
+    background-color: #374151 !important;
+}
+.clip.dragging {
+    opacity: 0.95;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+    z-index: 50 !important;
+    cursor: grabbing !important;
+}
+.dark .clip.dragging { box-shadow: 0 8px 24px rgba(0,0,0,0.7); }
+
+/* Selected State */
+.clip.selected {
+    box-shadow: 0 0 0 2px #6366f1 !important;
+    z-index: 45;
+}
+
+.clip.multi-selected {
+    box-shadow: 0 0 0 2px #8b5cf6 !important;
+    z-index: 44;
+}
+
+#marqueeSelection {
+    position: absolute;
+    background-color: rgba(99, 102, 241, 0.2);
+    border: 1px solid rgba(99, 102, 241, 0.8);
+    z-index: 100;
+    pointer-events: none;
+    display: none;
+}
+
+.track-lane.drag-hover {
+    background-color: rgba(99, 102, 241, 0.1);
+    outline: 2px dashed rgba(99, 102, 241, 0.6);
+    outline-offset: -2px;
+    z-index: 20;
+}
+
+/* Overlap Warning Pattern */
+.clip.overlapping {
+    background-image: repeating-linear-gradient(
+        -45deg,
+        rgba(239, 68, 68, 0.1),
+        rgba(239, 68, 68, 0.1) 10px,
+        rgba(239, 68, 68, 0.03) 10px,
+        rgba(239, 68, 68, 0.03) 20px
+    ) !important;
+    border: 2px solid #ef4444 !important;
+    z-index: 40;
+}
+.dark .clip.overlapping {
+    background-image: repeating-linear-gradient(-45deg, rgba(239, 68, 68, 0.25), rgba(239, 68, 68, 0.25) 10px, transparent 10px, transparent 20px) !important;
+}
+
+.trim-handle {
+    position: absolute;
+    top: 0; bottom: 0; width: 8px;
+    background: rgba(0,0,0,0.05);
+    cursor: col-resize;
+    z-index: 30;
+}
+body.ctrl-held .trim-handle {
+    cursor: grab !important;
+}
+body.ctrl-held .trim-handle:active {
+    cursor: grabbing !important;
+}
+.dark .trim-handle { background: rgba(255,255,255,0.05); }
+.trim-handle:hover { background: rgba(0,0,0,0.2); }
+.dark .trim-handle:hover { background: rgba(255,255,255,0.2); }
+.trim-handle.left { left: 0; border-right: 1px solid rgba(0,0,0,0.15); }
+.dark .trim-handle.left { border-right: 1px solid rgba(255,255,255,0.15); }
+.trim-handle.right { right: 0; border-left: 1px solid rgba(0,0,0,0.15); }
+.dark .trim-handle.right { border-left: 1px solid rgba(255,255,255,0.15); }
+
+/* Unified Fixed Playhead */
+#rulerPlayhead {
+    position: absolute; top: 0; bottom: 0; width: 1px;
+    background-color: #6366f1;
+    z-index: 100; pointer-events: none;
+}
+#playhead {
+    position: absolute; top: 0; bottom: 0; width: 1px;
+    background-color: #6366f1;
+    z-index: 60; pointer-events: none;
+    box-shadow: 0 0 4px rgba(99, 102, 241, 0.5);
+}
+
+.track-separator { border-bottom: 1px solid #e5e5e5; }
+.dark .track-separator { border-bottom: 1px solid #262626; }
+
+.waveform-canvas { pointer-events: none; display: block; }
+
+/* High Contrast Sliders */
+input[type=range].custom-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    height: 14px; width: 14px;
+    border-radius: 50%;
+    background: #ffffff;
+    cursor: pointer;
+    border: 3px solid #111111;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    margin-top: -5px;
+}
+.dark input[type=range].custom-slider::-webkit-slider-thumb { 
+    border-color: #ffffff;
+    background: #111111;
+}
+input[type=range].custom-slider::-webkit-slider-runnable-track {
+    height: 4px; border-radius: 2px;
+}
+
+/* Sidebar Styling */
+.sidebar-select {
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 0.5rem center;
+    background-size: 1em;
+}
+
+/* Canvas cursor states */
+#renderCanvas { cursor: default; }
+#renderCanvas.drag-mode { cursor: grab; }
+#renderCanvas.dragging { cursor: grabbing; }
+
+/* Custom Properties Panel Scrollbar & Stable Gutter */
+.properties-scroll-container {
+    scrollbar-gutter: stable;
+}
+.properties-scroll-container::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+.properties-scroll-container::-webkit-scrollbar-track {
+    background: transparent;
+}
+.properties-scroll-container::-webkit-scrollbar-thumb {
+    background: rgba(156, 163, 175, 0.4); /* Gray 400 */
+    border-radius: 9999px;
+}
+.dark .properties-scroll-container::-webkit-scrollbar-thumb {
+    background: rgba(75, 85, 99, 0.4); /* Gray 600 */
+}
+.properties-scroll-container::-webkit-scrollbar-thumb:hover {
+    background: rgba(107, 114, 128, 0.6); /* Gray 500 */
+}
+.dark .properties-scroll-container::-webkit-scrollbar-thumb:hover {
+    background: rgba(156, 163, 175, 0.6); /* Gray 400 */
+}
+
+/* --- Hover Animations for Preset Previews --- */
+@keyframes preview-fade-in {
+    0% { opacity: 0; }
+    100% { opacity: 1; }
+}
+@keyframes preview-slide-up {
+    0% { transform: translateY(8px); opacity: 0; }
+    100% { transform: translateY(0); opacity: 1; }
+}
+@keyframes preview-slide-down {
+    0% { transform: translateY(-8px); opacity: 0; }
+    100% { transform: translateY(0); opacity: 1; }
+}
+@keyframes preview-slide-left {
+    0% { transform: translateX(8px); opacity: 0; }
+    100% { transform: translateX(0); opacity: 1; }
+}
+@keyframes preview-slide-right {
+    0% { transform: translateX(-8px); opacity: 0; }
+    100% { transform: translateX(0); opacity: 1; }
+}
+@keyframes preview-zoom-in {
+    0% { transform: scale(0.3); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+}
+@keyframes preview-pop {
+    0% { transform: scale(0.3); opacity: 0; }
+    70% { transform: scale(1.2); opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
+}
+@keyframes preview-spin-in {
+    0% { transform: scale(0.3) rotate(-180deg); opacity: 0; }
+    100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+@keyframes preview-mosaic {
+    0% { filter: blur(3px); opacity: 0.3; }
+    100% { filter: blur(0px); opacity: 1; }
+}
+@keyframes preview-fade-out {
+    0% { opacity: 1; }
+    100% { opacity: 0; }
+}
+@keyframes preview-slide-up-exit {
+    0% { transform: translateY(0); opacity: 1; }
+    100% { transform: translateY(-8px); opacity: 0; }
+}
+@keyframes preview-slide-down-exit {
+    0% { transform: translateY(0); opacity: 1; }
+    100% { transform: translateY(8px); opacity: 0; }
+}
+@keyframes preview-slide-left-exit {
+    0% { transform: translateX(0); opacity: 1; }
+    100% { transform: translateX(-8px); opacity: 0; }
+}
+@keyframes preview-slide-right-exit {
+    0% { transform: translateX(0); opacity: 1; }
+    100% { transform: translateX(8px); opacity: 0; }
+}
+@keyframes preview-zoom-out {
+    0% { transform: scale(1); opacity: 1; }
+    100% { transform: scale(0.3); opacity: 0; }
+}
+@keyframes preview-shrink-spin {
+    0% { transform: scale(1) rotate(0deg); opacity: 1; }
+    100% { transform: scale(0.3) rotate(180deg); opacity: 0; }
+}
+@keyframes preview-pulse {
+    0% { transform: scale(1); }
+    100% { transform: scale(1.25); }
+}
+@keyframes preview-float {
+    0% { transform: translateY(-3px); }
+    100% { transform: translateY(3px); }
+}
+@keyframes preview-shake {
+    0% { transform: translate(0, 0); }
+    25% { transform: translate(-1.5px, 1px); }
+    50% { transform: translate(1.5px, -1px); }
+    75% { transform: translate(-1px, -1px); }
+    100% { transform: translate(1px, 1px); }
+}
+@keyframes preview-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+@keyframes preview-typewriter {
+    0% { width: 0ch; opacity: 0; }
+    100% { width: 2.2ch; opacity: 1; }
+}
+@keyframes preview-jiggle {
+    0% { transform: rotate(-8deg); }
+    100% { transform: rotate(8deg); }
+}
+@keyframes preview-wave {
+    0% { transform: translateY(0); }
+    50% { transform: translateY(-4px); }
+    100% { transform: translateY(0); }
+}
+
+/* Hover animation trigger classes */
+.group:hover .preview-fade-in { animation: preview-fade-in 1s infinite alternate ease-in-out; }
+.group:hover .preview-slide-up { animation: preview-slide-up 1s infinite alternate ease-in-out; }
+.group:hover .preview-slide-down { animation: preview-slide-down 1s infinite alternate ease-in-out; }
+.group:hover .preview-slide-left { animation: preview-slide-left 1s infinite alternate ease-in-out; }
+.group:hover .preview-slide-right { animation: preview-slide-right 1s infinite alternate ease-in-out; }
+.group:hover .preview-zoom-in { animation: preview-zoom-in 1s infinite alternate ease-in-out; }
+.group:hover .preview-pop { animation: preview-pop 1s infinite alternate ease-in-out; }
+.group:hover .preview-spin-in { animation: preview-spin-in 1s infinite alternate ease-in-out; }
+.group:hover .preview-mosaic { animation: preview-mosaic 1s infinite alternate ease-in-out; }
+
+.group:hover .preview-fade-out { animation: preview-fade-out 1s infinite alternate ease-in-out; }
+.group:hover .preview-slide-up-exit { animation: preview-slide-up-exit 1s infinite alternate ease-in-out; }
+.group:hover .preview-slide-down-exit { animation: preview-slide-down-exit 1s infinite alternate ease-in-out; }
+.group:hover .preview-slide-left-exit { animation: preview-slide-left-exit 1s infinite alternate ease-in-out; }
+.group:hover .preview-slide-right-exit { animation: preview-slide-right-exit 1s infinite alternate ease-in-out; }
+.group:hover .preview-zoom-out { animation: preview-zoom-out 1s infinite alternate ease-in-out; }
+.group:hover .preview-shrink-spin { animation: preview-shrink-spin 1s infinite alternate ease-in-out; }
+
+.group:hover .preview-pulse { animation: preview-pulse 0.8s infinite alternate ease-in-out; }
+.group:hover .preview-float { animation: preview-float 1s infinite alternate ease-in-out; }
+.group:hover .preview-shake { animation: preview-shake 0.3s infinite ease-in-out; }
+.group:hover .preview-spin { animation: preview-spin 2s infinite linear; }
+
+.group:hover .preview-typewriter { animation: preview-typewriter 1s infinite steps(2); overflow: hidden; display: inline-block; white-space: nowrap; }
+.group:hover .preview-jiggle { animation: preview-jiggle 0.4s infinite alternate ease-in-out; }
+.group:hover .preview-wave { animation: preview-wave 1s infinite ease-in-out; }
