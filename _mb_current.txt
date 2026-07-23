@@ -1,0 +1,430 @@
+window.startMediaBunnyExport = async function(exportW, exportH, fps, startTime, endTime, format = 'webm') {
+            mbExportFormat = format;
+            const timeStep = 1 / fps;
+            const totalFrames = Math.ceil((endTime - startTime) / timeStep);
+            let currentFrame = 0;
+            
+            State.currentTime = startTime;
+            
+            // Use OffscreenCanvas for main export canvas
+            const exportCanvas = createOffscreenCanvas(exportW, exportH);
+            const exportCtx = exportCanvas.getContext('2d');
+            
+            // --- Audio setup: Pre-render audio using OfflineAudioContext ---
+            let audioCaptureBuffer = null;
+            const audioSampleRate = 48000;
+            const audioChunkDuration = 0.1; // 100ms per audio chunk
+            
+            // Save speaker gain before muting
+            const prevSpeakerGain = State.speakerNode ? State.speakerNode.gain.value : 1;
+            
+            try {
+                // Find audio clips that overlap with the export range and have decoded buffers
+                const audioClips = State.clips.filter(c => {
+                    if (c.hidden) return false;
+                    if (!c.buffer) return false;
+                    const track = State.tracks.find(t => t.id === c.trackId);
+                    if (track && track.hidden) return false;
+                    const clipStart = Math.max(c.start, startTime);
+                    const clipEnd = Math.min(c.start + c.duration, endTime);
+                    return clipEnd > clipStart;
+                });
+                
+                if (audioClips.length > 0) {
+                    const totalDuration = endTime - startTime;
+                    const totalSamples = Math.ceil(totalDuration * audioSampleRate);
+                    const offlineCtx = new OfflineAudioContext(2, totalSamples, audioSampleRate);
+                    
+                    const masterGain = offlineCtx.createGain();
+                    masterGain.gain.value = 1;
+                    masterGain.connect(offlineCtx.destination);
+                    
+                    audioClips.forEach(c => {
+                        const track = State.tracks.find(t => t.id === c.trackId);
+                        const clipStart = Math.max(c.start, startTime);
+                        const clipEnd = Math.min(c.start + c.duration, endTime);
+                        const sourceOffset = c.sourceOffset + (clipStart - c.start);
+                        const duration = clipEnd - clipStart;
+                        
+                        const source = offlineCtx.createBufferSource();
+                        source.buffer = c.buffer;
+                        
+                        const gainNode = offlineCtx.createGain();
+                        const vol = (track && track.volume !== undefined) ? track.volume : (c.volume || 1);
+                        gainNode.gain.value = vol;
+                        
+                        source.connect(gainNode);
+                        gainNode.connect(masterGain);
+                        
+                        const startTimeInOffline = clipStart - startTime;
+                        source.start(startTimeInOffline, sourceOffset, duration);
+                    });
+                    
+                    console.log('Rendering audio offline (' + totalDuration.toFixed(1) + 's)...');
+                    const renderedBuffer = await offlineCtx.startRendering();
+                    audioCaptureBuffer = renderedBuffer;
+                    console.log('Audio pre-rendered OK:', audioCaptureBuffer.duration.toFixed(2), 'seconds');
+                }
+            } catch (e) {
+                console.warn('Audio pre-render failed, continuing without audio:', e);
+            }
+            
+            // Mute speakers during export (but keep audio flowing if capturing)
+            if (State.speakerNode) State.speakerNode.gain.value = 0;
+            
+            // Create fresh video elements attached to the DOM so drawImage works.
+            // Seeking is unreliable (every seek errors), so we use real-time playback.
+            const exportVideoContainer = document.createElement('div');
+            exportVideoContainer.id = '_mb_export_videos';
+            exportVideoContainer.style.display = 'none';
+            document.body.appendChild(exportVideoContainer);
+            
+            // Map of clip.id -> { el: HTMLVideoElement, oldEl: original videoEl }
+            const exportVideoEls = new Map();
+            
+            // Find all active video clips that overlap the export range
+            for (const clip of State.clips) {
+                if (clip.type !== 'video' || clip.hidden) continue;
+                const track = State.tracks.find(t => t.id === clip.trackId);
+                if (track && track.hidden) continue;
+                if (!(clip.start < endTime && (clip.start + clip.duration) > startTime)) continue;
+                if (!clip.fileUrl) continue;
+                
+                // Create fresh video element and add to DOM
+                const el = document.createElement('video');
+                el.src = clip.fileUrl;
+                el.crossOrigin = 'anonymous';
+                el.muted = true;
+                el.preload = 'auto';
+                el.playsInline = true;
+                exportVideoContainer.appendChild(el);
+                
+                // Save old element reference and swap in the fresh one
+                exportVideoEls.set(clip.id, { el, oldEl: clip.videoEl });
+                clip.videoEl = el;
+                
+                // Load metadata
+                await new Promise(resolve => {
+                    el.onloadedmetadata = resolve;
+                    el.onerror = resolve;
+                    el.load();
+                    setTimeout(resolve, 10000);
+                });
+                
+                // Seek to the clip's starting position within the export range
+                const clipStartInExport = Math.max(startTime, clip.start);
+                const sourceOffset = clip.sourceOffset + (clipStartInExport - clip.start);
+                el.currentTime = sourceOffset;
+            }
+            
+            // Wait for all initial seeks to complete
+            const seekWaits = [];
+            for (const { el } of exportVideoEls.values()) {
+                if (el.seeking) {
+                    seekWaits.push(new Promise(resolve => {
+                        el.onseeked = resolve;
+                        el.onerror = resolve;
+                        setTimeout(resolve, 5000);
+                    }));
+                }
+            }
+            await Promise.all(seekWaits);
+            
+            // Now play all videos — they'll run at real-time speed
+            for (const { el } of exportVideoEls.values()) {
+                try { el.play(); } catch (_) {}
+            }
+
+            // Configure worker
+            worker.postMessage({
+                type: 'start',
+                config: {
+                    width: exportW,
+                    height: exportH,
+                    fps: fps,
+                    bitrate: format === 'mp4' ? 8e6 : 5e6,
+                    format: format,
+                    hasAudio: audioCaptureBuffer !== null
+                }
+            });
+            
+            // Wait for worker to be ready
+            await new Promise((resolve, reject) => {
+                const readyHandler = (e) => {
+                    if (e.data.type === 'ready') {
+                        worker.removeEventListener('message', readyHandler);
+                        resolve();
+                    } else if (e.data.type === 'error') {
+                        worker.removeEventListener('message', readyHandler);
+                        reject(new Error(e.data.error));
+                    }
+                };
+                worker.addEventListener('message', readyHandler);
+                setTimeout(() => {
+                    worker.removeEventListener('message', readyHandler);
+                    resolve(); // Continue even if ready not received
+                }, 5000);
+            });
+            console.log('Worker ready, starting export...');
+            
+            // Global error listener for worker during export
+            let workerError = null;
+            const workerMsgHandler = (e) => {
+                if (e.data.type === 'error') {
+                    workerError = e.data.error;
+                }
+            };
+            worker.addEventListener('message', workerMsgHandler);
+            
+            // Audio chunk tracking
+            let audioChunkIndex = 0;
+            let audioSentUpTo = 0;
+            let exportFinished = false;
+            let lastCapturedFrame = -1;
+            
+            // Real-time export loop using requestAnimationFrame
+            const exportDuration = endTime - startTime;
+            const exportStartWallTime = performance.now();
+            
+            const realtimeExportLoop = (now) => {
+                if (exportFinished || State.cancelExport || workerError) {
+                    exportFinished = true;
+                    return;
+                }
+                
+                const elapsed = (now - exportStartWallTime) / 1000;
+                State.currentTime = startTime + elapsed;
+                
+                // Draw canvas every frame for smooth video playback
+                drawCanvas(exportCtx, exportW, exportH);
+                
+                // Capture frame at desired FPS intervals
+                const targetFrame = Math.floor(elapsed / timeStep);
+                if (targetFrame > lastCapturedFrame && targetFrame < totalFrames) {
+                    lastCapturedFrame = targetFrame;
+                    
+                    // Capture bitmap synchronously (OffscreenCanvas.transferToImageBitmap)
+                    let bitmap;
+                    try {
+                        bitmap = exportCanvas.transferToImageBitmap();
+                    } catch (_) {
+                        // Fallback for regular canvas
+                        createImageBitmap(exportCanvas).then(b => {
+                            sendFrameToWorker(b, targetFrame);
+                        });
+                        requestAnimationFrame(realtimeExportLoop);
+                        return;
+                    }
+                    
+                    sendFrameToWorker(bitmap, targetFrame);
+                }
+                
+                // Send audio chunks up to current elapsed time
+                sendAudioChunksUpTo(elapsed);
+                
+                // Update progress bar
+                const progress = Math.min(100, Math.round((elapsed / exportDuration) * 100));
+                document.getElementById('exportProgressBar').style.width = `${progress}%`;
+                document.getElementById('exportProgressText').textContent = `${progress}%`;
+                
+                if (elapsed >= exportDuration) {
+                    exportFinished = true;
+                    console.log('Export duration reached, finalizing...');
+                    // Flush remaining audio and finalize
+                    flushAudioChunks();
+                    worker.postMessage({ type: 'finalize' });
+                } else {
+                    requestAnimationFrame(realtimeExportLoop);
+                }
+            };
+            
+            // Helper to send a frame to the worker (fire-and-forget, no await)
+            const sendFrameToWorker = (bitmap, frameIndex) => {
+                try {
+                    worker.postMessage({
+                        type: 'frame',
+                        bitmap: bitmap,
+                        timestamp: frameIndex * timeStep,
+                        duration: timeStep,
+                        index: frameIndex
+                    }, [bitmap]);
+                } catch (err) {
+                    console.error('Frame send failed:', err);
+                    workerError = err.message || String(err);
+                }
+            };
+            
+            // Helper to send audio chunks up to a given time position
+            const sendAudioChunksUpTo = (currentTime) => {
+                if (!audioCaptureBuffer) return;
+                
+                while (audioSentUpTo < currentTime && audioSentUpTo < audioCaptureBuffer.duration) {
+                    const startSample = Math.floor(audioSentUpTo * audioSampleRate);
+                    const frameCount = Math.min(
+                        Math.floor(audioChunkDuration * audioSampleRate),
+                        audioCaptureBuffer.length - startSample
+                    );
+                    if (frameCount <= 0) break;
+                    
+                    const left = audioCaptureBuffer.getChannelData(0);
+                    const right = audioCaptureBuffer.getChannelData(1);
+                    const interleaved = new Float32Array(frameCount * 2);
+                    for (let i = 0; i < frameCount; i++) {
+                        interleaved[i * 2] = left[startSample + i];
+                        interleaved[i * 2 + 1] = right[startSample + i];
+                    }
+                    
+                    try {
+                        const audioData = new AudioData({
+                            format: 'f32',
+                            sampleRate: audioSampleRate,
+                            numberOfChannels: 2,
+                            numberOfFrames: frameCount,
+                            timestamp: audioSentUpTo * 1e6,
+                            data: interleaved
+                        });
+                        
+                        worker.postMessage({
+                            type: 'audio-data',
+                            audioData: audioData,
+                            timestamp: audioSentUpTo,
+                            index: audioChunkIndex++
+                        }, [audioData]);
+                        
+                        audioSentUpTo += frameCount / audioSampleRate;
+                    } catch (audioErr) {
+                        console.warn('Audio chunk send failed, stopping audio:', audioErr);
+                        audioCaptureBuffer = null;
+                        break;
+                    }
+                }
+            };
+            
+            // Start the real-time export loop
+            requestAnimationFrame(realtimeExportLoop);
+            
+            // Wait for export to finish (by polling exportFinished)
+            while (!exportFinished && !State.cancelExport && !workerError) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            
+            // Helper to flush remaining audio chunks
+            const flushAudioChunks = () => {
+                if (audioCaptureBuffer && audioSentUpTo < audioCaptureBuffer.duration) {
+                    while (audioSentUpTo < audioCaptureBuffer.duration) {
+                        const startSample = Math.floor(audioSentUpTo * audioSampleRate);
+                        const frameCount = Math.min(
+                            Math.floor(audioChunkDuration * audioSampleRate),
+                            audioCaptureBuffer.length - startSample
+                        );
+                        if (frameCount <= 0) break;
+                        
+                        const left = audioCaptureBuffer.getChannelData(0);
+                        const right = audioCaptureBuffer.getChannelData(1);
+                        const interleaved = new Float32Array(frameCount * 2);
+                        for (let i = 0; i < frameCount; i++) {
+                            interleaved[i * 2] = left[startSample + i];
+                            interleaved[i * 2 + 1] = right[startSample + i];
+                        }
+                        
+                        try {
+                            const audioData = new AudioData({
+                                format: 'f32',
+                                sampleRate: audioSampleRate,
+                                numberOfChannels: 2,
+                                numberOfFrames: frameCount,
+                                timestamp: audioSentUpTo * 1e6,
+                                data: interleaved
+                            });
+                            
+                            worker.postMessage({
+                                type: 'audio-data',
+                                audioData: audioData,
+                                timestamp: audioSentUpTo,
+                                index: audioChunkIndex++
+                            }, [audioData]);
+                            
+                            audioSentUpTo += frameCount / audioSampleRate;
+                        } catch (audioErr) {
+                            console.warn('Audio flush failed, stopping audio:', audioErr);
+                            break;
+                        }
+                    }
+                }
+            };
+            
+            const restoreSpeaker = () => {
+                if (State.speakerNode) {
+                    State.speakerNode.gain.value = prevSpeakerGain;
+                }
+            };
+            
+            const cleanupExport = () => {
+                worker.removeEventListener('message', workerMsgHandler);
+                State.isExporting = false;
+                restoreSpeaker();
+                closeExportModal();
+                stopMedia();
+            };
+
+            if (workerError) {
+                flushAudioChunks();
+                alert(`Export failed: ${workerError}`);
+                cleanupExport();
+            } else if (State.cancelExport) {
+                flushAudioChunks();
+                cleanupExport();
+            } else {
+                // Flush remaining audio chunks
+                flushAudioChunks();
+                
+                // Post finalize message to trigger worker to encode remaining frames and build output
+                worker.postMessage({ type: 'finalize' });
+                
+                // Wait for done/error with timeout
+                try {
+                    const doneResult = await new Promise((resolve, reject) => {
+                        const finalizeDoneHandler = (e) => {
+                            if (e.data.type === 'done') {
+                                worker.removeEventListener('message', finalizeDoneHandler);
+                                worker.removeEventListener('message', finalizeErrorHandler);
+                                resolve(e.data);
+                            }
+                        };
+                        const finalizeErrorHandler = (e) => {
+                            if (e.data.type === 'error') {
+                                worker.removeEventListener('message', finalizeDoneHandler);
+                                worker.removeEventListener('message', finalizeErrorHandler);
+                                reject(new Error(e.data.error));
+                            }
+                        };
+                        worker.addEventListener('message', finalizeDoneHandler);
+                        worker.addEventListener('message', finalizeErrorHandler);
+                        
+                        // Timeout after 2 minutes
+                        const timeoutId = setTimeout(() => {
+                            worker.removeEventListener('message', finalizeDoneHandler);
+                            worker.removeEventListener('message', finalizeErrorHandler);
+                            console.error('Finalize timed out after 120 seconds');
+                            reject(new Error('Finalize timed out after 120 seconds'));
+                        }, 120000);
+                    });
+                    
+                    // Done received - download blob
+                    const mimeType = format === 'mp4' ? 'video/mp4' : 'video/webm';
+                    const ext = format === 'mp4' ? 'mp4' : 'webm';
+                    const blob = new Blob([doneResult.buffer], { type: mimeType });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `StudioPro_Export_MediaBunny.${ext}`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    
+                    cleanupExport();
+                } catch (err) {
+                    alert(`Export failed: ${err.message}`);
+                    cleanupExport();
+                }
+            }
+        }

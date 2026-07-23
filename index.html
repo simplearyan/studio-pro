@@ -10998,8 +10998,6 @@ const isVis = !clip.hidden;
             mbExportFormat = format;
             const timeStep = 1 / fps;
             const totalFrames = Math.ceil((endTime - startTime) / timeStep);
-            let currentFrame = 0;
-            
             State.currentTime = startTime;
             
             // Use OffscreenCanvas for main export canvas
@@ -11068,144 +11066,68 @@ const isVis = !clip.hidden;
             // Mute speakers during export (but keep audio flowing if capturing)
             if (State.speakerNode) State.speakerNode.gain.value = 0;
             
-            // Helper to recursively collect active video clips
-            const getActiveVideoClips = (sceneId, time) => {
-                let list = [];
-                State.clips.forEach(c => {
-                    const track = State.tracks.find(tr => tr.id === c.trackId);
-                    if (c.hidden || (track && track.hidden)) return;
-                    
-                    const matchesScene = (sceneId === null) ? (!c.sceneId) : (c.sceneId === sceneId);
-                    if (!matchesScene) return;
-                    
-                    if (time >= c.start && time < c.start + c.duration) {
-                        if (c.type === 'video') {
-                            list.push({ clip: c, timeInClip: time - c.start });
-                        } else if (c.type === 'scene') {
-                            // Recursively find video clips inside the nested scene
-                            const subSceneClips = getActiveVideoClips(c.id, time - c.start);
-                            list = list.concat(subSceneClips);
-                        }
-                    }
-                });
-                return list;
-            };
-
-            const recreateVideoEl = async (clip) => {
-                if (!clip.fileUrl) return null;
-                const oldVideo = clip.videoEl;
-                const wasMuted = oldVideo ? oldVideo.muted : true;
-                const volume = oldVideo ? oldVideo.volume : 1;
+            // Create fresh video elements attached to the DOM so drawImage works.
+            // Seeking is unreliable (every seek errors), so we use real-time playback.
+            const exportVideoContainer = document.createElement('div');
+            exportVideoContainer.id = '_mb_export_videos';
+            exportVideoContainer.style.display = 'none';
+            document.body.appendChild(exportVideoContainer);
+            
+            // Map of clip.id -> { el: HTMLVideoElement, oldEl: original videoEl }
+            const exportVideoEls = new Map();
+            
+            // Find all active video clips that overlap the export range
+            for (const clip of State.clips) {
+                if (clip.type !== 'video' || clip.hidden) continue;
+                const track = State.tracks.find(t => t.id === clip.trackId);
+                if (track && track.hidden) continue;
+                if (!(clip.start < endTime && (clip.start + clip.duration) > startTime)) continue;
+                if (!clip.fileUrl) continue;
                 
-                const newVideo = document.createElement('video');
-                newVideo.src = clip.fileUrl;
-                newVideo.crossOrigin = "anonymous";
-                newVideo.muted = wasMuted;
-                newVideo.volume = volume;
+                // Create fresh video element and add to DOM
+                const el = document.createElement('video');
+                el.src = clip.fileUrl;
+                el.crossOrigin = 'anonymous';
+                el.muted = true;
+                el.preload = 'auto';
+                el.playsInline = true;
+                exportVideoContainer.appendChild(el);
                 
-                const loadPromise = new Promise((resolve) => {
-                    newVideo.onloadedmetadata = () => {
-                        // Ensure we have enough data to seek
-                        if (newVideo.readyState >= 2) resolve();
-                        else {
-                            newVideo.addEventListener('canplay', () => resolve(), { once: true });
-                        }
-                    };
-                    newVideo.onerror = () => resolve();
-                });
-                newVideo.load();
-                await loadPromise;
+                // Save old element reference and swap in the fresh one
+                exportVideoEls.set(clip.id, { el, oldEl: clip.videoEl });
+                clip.videoEl = el;
                 
-                clip.videoEl = newVideo;
-                return newVideo;
-            };
-
-            // Improved helper to wait for all active video clips to seek
-            const waitForSeeking = async (t) => {
-                const activeVideos = getActiveVideoClips(State.activeSceneId, t);
-                if (activeVideos.length === 0) return;
-
-                const seekPromises = activeVideos.map(async ({ clip, timeInClip }) => {
-                    let el = clip.videoEl;
-                    if (!el) return;
-
-                    // Check for error state
-                    if (el.error) {
-                        console.warn("Video element in error state before seek, recreating...", clip.title);
-                        el = await recreateVideoEl(clip);
-                        if (!el) return;
-                    }
-                    
-                    const targetTime = clip.sourceOffset + timeInClip;
-                    
-                    // Skip if already at target
-                    if (Math.abs(el.currentTime - targetTime) < 0.01 && el.readyState >= 2) {
-                        return;
-                    }
-                    
-                    // Ensure video element has loaded enough data before seeking
-                    if (el.readyState < 2) {
-                        const ready = await ensureVideoReady(el);
-                        if (!ready) {
-                            console.warn("Could not prepare video for seek, recreating...", clip.title);
-                            el = await recreateVideoEl(clip);
-                            if (!el) return;
-                        }
-                    }
-                    
-                    const performSeek = (videoEl) => {
-                        return new Promise(resolve => {
-                            let resolved = false;
-                            const seekTimeout = 5000;
-                            const timeoutId = setTimeout(() => {
-                                if (resolved) return;
-                                resolved = true;
-                                videoEl.removeEventListener('seeked', onSeeked);
-                                videoEl.removeEventListener('error', onError);
-                                console.warn("Video seek timeout, forcing resolve:", targetTime);
-                                resolve(false);
-                            }, seekTimeout);
-
-                            const onSeeked = () => {
-                                if (resolved) return;
-                                resolved = true;
-                                clearTimeout(timeoutId);
-                                videoEl.removeEventListener('seeked', onSeeked);
-                                videoEl.removeEventListener('error', onError);
-                                resolve(true);
-                            };
-                            const onError = () => {
-                                if (resolved) return;
-                                resolved = true;
-                                clearTimeout(timeoutId);
-                                videoEl.removeEventListener('seeked', onSeeked);
-                                videoEl.removeEventListener('error', onError);
-                                console.warn("Video seek error during performSeek (target:", targetTime, ")");
-                                resolve(false);
-                            };
-                            videoEl.addEventListener('seeked', onSeeked);
-                            videoEl.addEventListener('error', onError);
-                            videoEl.currentTime = targetTime;
-                        });
-                    };
-
-                    let success = await performSeek(el);
-                    if (!success) {
-                        console.warn("Seeking failed or timed out. Recreating video element and retrying...", clip.title);
-                        el = await recreateVideoEl(clip);
-                        if (el) {
-                            await performSeek(el);
-                        }
-                    }
+                // Load metadata
+                await new Promise(resolve => {
+                    el.onloadedmetadata = resolve;
+                    el.onerror = resolve;
+                    el.load();
+                    setTimeout(resolve, 10000);
                 });
-
-                await Promise.all(seekPromises);
-            };
-
-            // Pre-seek video elements to the start time before the frame loop.
-            // This ensures video frames are decoded and ready so the first 3-4
-            // exported frames don't come out empty while video elements load.
-            await waitForSeeking(startTime);
+                
+                // Seek to the clip's starting position within the export range
+                const clipStartInExport = Math.max(startTime, clip.start);
+                const sourceOffset = clip.sourceOffset + (clipStartInExport - clip.start);
+                el.currentTime = sourceOffset;
+            }
+            
+            // Wait for all initial seeks to complete
+            const seekWaits = [];
+            for (const { el } of exportVideoEls.values()) {
+                if (el.seeking) {
+                    seekWaits.push(new Promise(resolve => {
+                        el.onseeked = resolve;
+                        el.onerror = resolve;
+                        setTimeout(resolve, 5000);
+                    }));
+                }
+            }
+            await Promise.all(seekWaits);
+            
+            // Now play all videos — they'll run at real-time speed
+            for (const { el } of exportVideoEls.values()) {
+                try { el.play(); } catch (_) {}
+            }
 
             // Configure worker
             worker.postMessage({
@@ -11251,112 +11173,65 @@ const isVis = !clip.hidden;
             // Audio chunk tracking
             let audioChunkIndex = 0;
             let audioSentUpTo = 0;
+            let exportFinished = false;
+            let lastCapturedFrame = -1;
             
-            for (let t = startTime; t < endTime; t += timeStep) {
-                if (State.cancelExport || workerError) {
-                    worker.postMessage({ type: 'cancel' });
-                    break;
+            // Real-time export loop using requestAnimationFrame
+            const exportDuration = endTime - startTime;
+            const exportStartWallTime = performance.now();
+            let framesInFlight = 0;
+            const MAX_IN_FLIGHT = 5;
+            
+            // Define helpers FIRST so they're hoisted and available to the rAF callback
+            const sendFrameToWorker = (bitmap, frameIndex) => {
+                try {
+                    worker.postMessage({
+                        type: 'frame',
+                        bitmap: bitmap,
+                        timestamp: frameIndex * timeStep,
+                        duration: timeStep,
+                        index: frameIndex
+                    }, [bitmap]);
+                } catch (err) {
+                    console.error('Frame send failed:', err);
+                    workerError = err.message || String(err);
                 }
-                
-                State.currentTime = t;
-                
-                // Wait for video seeking to complete
-                await waitForSeeking(t);
-                
-                // Draw canvas at this timestamp
-                drawCanvas(exportCtx, exportW, exportH);
-                
-                // Extract bitmap
-                const bitmap = await createImageBitmap(exportCanvas);
-                
-                // Send audio chunks up to current video position
-                if (audioCaptureBuffer) {
-                    const currentAudioTime = t - startTime;
-                    while (audioSentUpTo < currentAudioTime && audioSentUpTo < audioCaptureBuffer.duration) {
-                        const startSample = Math.floor(audioSentUpTo * audioSampleRate);
-                        const frameCount = Math.min(
-                            Math.floor(audioChunkDuration * audioSampleRate),
-                            audioCaptureBuffer.length - startSample
-                        );
-                        if (frameCount <= 0) break;
-                        
-                        const left = audioCaptureBuffer.getChannelData(0);
-                        const right = audioCaptureBuffer.getChannelData(1);
-                        const interleaved = new Float32Array(frameCount * 2);
-                        for (let i = 0; i < frameCount; i++) {
-                            interleaved[i * 2] = left[startSample + i];
-                            interleaved[i * 2 + 1] = right[startSample + i];
-                        }
-                        
-                        try {
-                            const audioData = new AudioData({
-                                format: 'f32',
-                                sampleRate: audioSampleRate,
-                                numberOfChannels: 2,
-                                numberOfFrames: frameCount,
-                                timestamp: audioSentUpTo * 1e6,
-                                data: interleaved
-                            });
-                            
-                            worker.postMessage({
-                                type: 'audio-data',
-                                audioData: audioData,
-                                timestamp: audioSentUpTo,
-                                index: audioChunkIndex++
-                            }, [audioData]);
-                            
-                            audioSentUpTo += frameCount / audioSampleRate;
-                        } catch (audioErr) {
-                            console.warn('Audio chunk send failed, stopping audio:', audioErr);
-                            audioCaptureBuffer = null;
-                            break;
-                        }
+            };
+            
+            const sendAudioChunksUpTo = (currentTime) => {
+                if (!audioCaptureBuffer) return;
+                while (audioSentUpTo < currentTime && audioSentUpTo < audioCaptureBuffer.duration) {
+                    const startSample = Math.floor(audioSentUpTo * audioSampleRate);
+                    const frameCount = Math.min(
+                        Math.floor(audioChunkDuration * audioSampleRate),
+                        audioCaptureBuffer.length - startSample
+                    );
+                    if (frameCount <= 0) break;
+                    const left = audioCaptureBuffer.getChannelData(0);
+                    const right = audioCaptureBuffer.getChannelData(1);
+                    const interleaved = new Float32Array(frameCount * 2);
+                    for (let i = 0; i < frameCount; i++) {
+                        interleaved[i * 2] = left[startSample + i];
+                        interleaved[i * 2 + 1] = right[startSample + i];
+                    }
+                    try {
+                        const audioData = new AudioData({
+                            format: 'f32', sampleRate: audioSampleRate,
+                            numberOfChannels: 2, numberOfFrames: frameCount,
+                            timestamp: audioSentUpTo * 1e6, data: interleaved
+                        });
+                        worker.postMessage({
+                            type: 'audio-data', audioData: audioData,
+                            timestamp: audioSentUpTo, index: audioChunkIndex++
+                        }, [audioData]);
+                        audioSentUpTo += frameCount / audioSampleRate;
+                    } catch (audioErr) {
+                        console.warn('Audio chunk send failed, stopping audio:', audioErr);
+                        audioCaptureBuffer = null; break;
                     }
                 }
-                
-                // Wait for worker acknowledgement before generating next frame
-                const frameProcessedPromise = new Promise((resolve, reject) => {
-                    const handleMessage = (e) => {
-                        if (e.data.type === 'frame-processed' && e.data.index === currentFrame) {
-                            worker.removeEventListener('message', handleMessage);
-                            resolve();
-                        } else if (e.data.type === 'error') {
-                            worker.removeEventListener('message', handleMessage);
-                            reject(new Error(e.data.error));
-                        }
-                    };
-                    worker.addEventListener('message', handleMessage);
-                });
-
-                // Send frame to worker
-                worker.postMessage({
-                    type: 'frame',
-                    bitmap: bitmap,
-                    timestamp: (t - startTime),
-                    duration: timeStep,
-                    index: currentFrame
-                }, [bitmap]);
-                
-                try {
-                    await frameProcessedPromise;
-                } catch (err) {
-                    workerError = err.message;
-                    worker.postMessage({ type: 'cancel' });
-                    break;
-                }
-
-                currentFrame++;
-                
-                // Update progress bar
-                const progress = Math.min(100, Math.round((currentFrame / totalFrames) * 100));
-                document.getElementById('exportProgressBar').style.width = `${progress}%`;
-                document.getElementById('exportProgressText').textContent = `${progress}%`;
-                
-                // Yield thread to keep UI smooth and check cancellation
-                await new Promise(resolve => setTimeout(resolve, 0));
-            }
+            };
             
-            // Helper to flush remaining audio chunks
             const flushAudioChunks = () => {
                 if (audioCaptureBuffer && audioSentUpTo < audioCaptureBuffer.duration) {
                     while (audioSentUpTo < audioCaptureBuffer.duration) {
@@ -11366,7 +11241,6 @@ const isVis = !clip.hidden;
                             audioCaptureBuffer.length - startSample
                         );
                         if (frameCount <= 0) break;
-                        
                         const left = audioCaptureBuffer.getChannelData(0);
                         const right = audioCaptureBuffer.getChannelData(1);
                         const interleaved = new Float32Array(frameCount * 2);
@@ -11374,24 +11248,16 @@ const isVis = !clip.hidden;
                             interleaved[i * 2] = left[startSample + i];
                             interleaved[i * 2 + 1] = right[startSample + i];
                         }
-                        
                         try {
                             const audioData = new AudioData({
-                                format: 'f32',
-                                sampleRate: audioSampleRate,
-                                numberOfChannels: 2,
-                                numberOfFrames: frameCount,
-                                timestamp: audioSentUpTo * 1e6,
-                                data: interleaved
+                                format: 'f32', sampleRate: audioSampleRate,
+                                numberOfChannels: 2, numberOfFrames: frameCount,
+                                timestamp: audioSentUpTo * 1e6, data: interleaved
                             });
-                            
                             worker.postMessage({
-                                type: 'audio-data',
-                                audioData: audioData,
-                                timestamp: audioSentUpTo,
-                                index: audioChunkIndex++
+                                type: 'audio-data', audioData: audioData,
+                                timestamp: audioSentUpTo, index: audioChunkIndex++
                             }, [audioData]);
-                            
                             audioSentUpTo += frameCount / audioSampleRate;
                         } catch (audioErr) {
                             console.warn('Audio flush failed, stopping audio:', audioErr);
@@ -11402,25 +11268,100 @@ const isVis = !clip.hidden;
             };
             
             const restoreSpeaker = () => {
-                if (State.speakerNode) {
-                    State.speakerNode.gain.value = prevSpeakerGain;
-                }
+                if (State.speakerNode) State.speakerNode.gain.value = prevSpeakerGain;
             };
             
+            // Cleanup: restore clip.videoEl, remove DOM container, close modal
             const cleanupExport = () => {
+                // Restore original video element references
+                for (const [clipId, entry] of exportVideoEls) {
+                    const clip = State.clips.find(c => c.id === clipId);
+                    if (clip) clip.videoEl = entry.oldEl;
+                }
+                // Remove the hidden video container from DOM
+                const container = document.getElementById('_mb_export_videos');
+                if (container && container.parentNode) {
+                    container.parentNode.removeChild(container);
+                }
                 worker.removeEventListener('message', workerMsgHandler);
+                worker.removeEventListener('message', frameAckHandler);
                 State.isExporting = false;
                 restoreSpeaker();
                 closeExportModal();
                 stopMedia();
             };
+            
+            // Listen for frame-processed to track in-flight frames (backpressure)
+            const frameAckHandler = (e) => {
+                if (e.data.type === 'frame-processed') {
+                    framesInFlight--;
+                    if (framesInFlight < 0) framesInFlight = 0;
+                } else if (e.data.type === 'error') {
+                    workerError = e.data.error;
+                }
+            };
+            worker.addEventListener('message', frameAckHandler);
+            
+            const realtimeExportLoop = (now) => {
+                if (exportFinished || State.cancelExport || workerError) {
+                    exportFinished = true;
+                    return;
+                }
+                
+                const elapsed = (now - exportStartWallTime) / 1000;
+                State.currentTime = startTime + elapsed;
+                
+                // Capture frame at desired FPS intervals
+                const targetFrame = Math.floor(elapsed / timeStep);
+                if (targetFrame > lastCapturedFrame && targetFrame < totalFrames && framesInFlight < MAX_IN_FLIGHT) {
+                    lastCapturedFrame = targetFrame;
+                    
+                    // Only draw canvas when actually capturing a frame
+                    drawCanvas(exportCtx, exportW, exportH);
+                    
+                    // Capture bitmap synchronously (OffscreenCanvas.transferToImageBitmap)
+                    framesInFlight++;
+                    const bitmap = exportCanvas.transferToImageBitmap();
+                    sendFrameToWorker(bitmap, targetFrame);
+                }
+                
+                // Send audio chunks up to current elapsed time
+                sendAudioChunksUpTo(elapsed);
+                
+                // Update progress bar
+                const progress = Math.min(100, Math.round((elapsed / exportDuration) * 100));
+                document.getElementById('exportProgressBar').style.width = `${progress}%`;
+                document.getElementById('exportProgressText').textContent = `${progress}%`;
+                
+                if (elapsed >= exportDuration) {
+                    exportFinished = true;
+                    // Don't finalize here — let the success path below handle it.
+                    // The success path sets up Promise listeners BEFORE posting
+                    // finalize, avoiding a race where 'done' arrives before listeners.
+                    return;
+                } else {
+                    requestAnimationFrame(realtimeExportLoop);
+                }
+            };
+            
+            // Start the real-time export loop
+            requestAnimationFrame(realtimeExportLoop);
+            
+            // Wait for export to finish (by polling exportFinished)
+            while (!exportFinished && !State.cancelExport && !workerError) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            
+            // (flushAudioChunks, restoreSpeaker, and cleanupExport are defined above)
 
             if (workerError) {
                 flushAudioChunks();
+                worker.postMessage({ type: 'cancel' });
                 alert(`Export failed: ${workerError}`);
                 cleanupExport();
             } else if (State.cancelExport) {
                 flushAudioChunks();
+                worker.postMessage({ type: 'cancel' });
                 cleanupExport();
             } else {
                 // Flush remaining audio chunks
