@@ -26,9 +26,10 @@ self.onmessage = async (e) => {
         
         // Only add audio track when there's audio data to send
         if (hasAudio) {
-            // 'opus' works in both WebM and MP4 containers
+            // Use 'aac' for MP4 containers, 'opus' for WebM
+            const audioCodec = format === 'mp4' ? 'aac' : 'opus';
             audioSampleSource = new AudioSampleSource({
-                codec: 'opus',
+                codec: audioCodec,
                 numberOfChannels: 2,
                 sampleRate: 48000,
                 bitrate: 128000
