@@ -1,31 +1,31 @@
-import { Output, WebMOutputFormat, BufferTarget, VideoSampleSource, VideoSample } from 'mediabunny';
+import { Output, WebMOutputFormat, Mp4OutputFormat, BufferTarget, VideoSampleSource, VideoSample } from 'mediabunny';
 
 let output = null;
-let sampleSource = null;
+let videoSampleSource = null;
 
 self.onmessage = async (e) => {
     const data = e.data;
     if (data.type === 'start') {
-        const { width, height, fps, bitrate } = data.config;
+        const { width, height, fps, bitrate, format } = data.config;
         
+        const outputFormat = format === 'mp4' ? new Mp4OutputFormat() : new WebMOutputFormat();
         output = new Output({
-            format: new WebMOutputFormat(),
+            format: outputFormat,
             target: new BufferTarget()
         });
         
-        // We use standard VP9 configuration for WebM output
-        sampleSource = new VideoSampleSource({
-            codec: 'vp9',
+        const videoCodec = format === 'mp4' ? 'h264' : 'vp9';
+        videoSampleSource = new VideoSampleSource({
+            codec: videoCodec,
             width: width,
             height: height,
             bitrate: bitrate || 5e6
         });
-        
-        output.addVideoTrack(sampleSource);
+        output.addVideoTrack(videoSampleSource);
         
         await output.start();
     } else if (data.type === 'frame') {
-        if (!sampleSource) return;
+        if (!videoSampleSource) return;
         
         const { bitmap, timestamp, duration, index } = data;
         try {
@@ -34,7 +34,7 @@ self.onmessage = async (e) => {
                 duration: duration
             });
             
-            await sampleSource.add(sample);
+            await videoSampleSource.add(sample);
             sample.close();
             bitmap.close();
             
@@ -53,7 +53,7 @@ self.onmessage = async (e) => {
             });
         }
     } else if (data.type === 'finalize') {
-        if (!output || !sampleSource) return;
+        if (!output || !videoSampleSource) return;
         
         await output.finalize();
         
@@ -64,9 +64,9 @@ self.onmessage = async (e) => {
         }, [buffer]);
         
         output = null;
-        sampleSource = null;
+        videoSampleSource = null;
     } else if (data.type === 'cancel') {
         output = null;
-        sampleSource = null;
+        videoSampleSource = null;
     }
 };

@@ -97,10 +97,17 @@
                             </div>
                         </label>
                         <label class="cursor-pointer">
+                            <input type="radio" name="exportFormat" value="video-mediabunny-mp4" class="peer sr-only">
+                            <div class="p-3 border border-surface-200 dark:border-surface-700 rounded-lg peer-checked:border-brand-500 peer-checked:bg-brand-50 dark:peer-checked:bg-brand-700 text-surface-900 dark:text-surface-300 peer-checked:text-brand-700 dark:peer-checked:text-white hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors shadow-sm">
+                                <div class="font-bold text-sm mb-0.5">MB MP4 Video</div>
+                                <div class="text-[10px] opacity-70">Web worker H.264</div>
+                            </div>
+                        </label>
+                        <label class="cursor-pointer">
                             <input type="radio" name="exportFormat" value="video-mediabunny" class="peer sr-only">
                             <div class="p-3 border border-surface-200 dark:border-surface-700 rounded-lg peer-checked:border-brand-500 peer-checked:bg-brand-50 dark:peer-checked:bg-brand-700 text-surface-900 dark:text-surface-300 peer-checked:text-brand-700 dark:peer-checked:text-white hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors shadow-sm">
-                                <div class="font-bold text-sm mb-0.5">Media Bunny Video</div>
-                                <div class="text-[10px] opacity-70">Web worker export (.webm)</div>
+                                <div class="font-bold text-sm mb-0.5">MB WebM Video</div>
+                                <div class="text-[10px] opacity-70">Web worker VP9 (.webm)</div>
                             </div>
                         </label>
                     </div>
@@ -10720,7 +10727,7 @@ const isVis = !clip.hidden;
             if (State.isExporting) return;
             ensureAudioContext();
             
-            if (format === 'video-mediabunny') {
+            if (format === 'video-mediabunny' || format === 'video-mediabunny-mp4') {
                 const aspectStr = ASPECT_RATIOS[State.preview.aspectIndex].value;
                 const [wRatio, hRatio] = aspectStr.split('/').map(Number);
                 const baseRes = State.exportResolution || 1920;
@@ -10739,13 +10746,15 @@ const isVis = !clip.hidden;
                 exportH = Math.floor(exportH / 2) * 2;
 
                 const fps = parseInt(document.querySelector('input[name="exportFrameRate"]:checked').value) || 30;
+                const mbFormat = format === 'video-mediabunny-mp4' ? 'mp4' : 'webm';
                 
                 State.isExporting = true;
                 State.cancelExport = false;
                 
                 stopMedia();
                 
-                window.startMediaBunnyExport(exportW, exportH, fps, startTime, endTime);
+                // Pass format to allow both webm and mp4 MediaBunny exports
+                window.startMediaBunnyExport(exportW, exportH, fps, startTime, endTime, mbFormat);
                 return;
             }
 
@@ -10922,14 +10931,18 @@ const isVis = !clip.hidden;
         // Media Bunny Web Worker implementation
         const worker = new Worker(new URL('./export-worker.js', import.meta.url), { type: 'module' });
         
+        let mbExportFormat = 'webm';
+        
         worker.onmessage = (e) => {
             const data = e.data;
             if (data.type === 'done') {
-                const blob = new Blob([data.buffer], { type: 'video/webm' });
+                const mimeType = mbExportFormat === 'mp4' ? 'video/mp4' : 'video/webm';
+                const ext = mbExportFormat === 'mp4' ? 'mp4' : 'webm';
+                const blob = new Blob([data.buffer], { type: mimeType });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = `StudioPro_Export_MediaBunny.webm`;
+                a.download = `StudioPro_Export_MediaBunny.${ext}`;
                 a.click();
                 URL.revokeObjectURL(url);
                 
@@ -10942,18 +10955,60 @@ const isVis = !clip.hidden;
             }
         };
 
-        window.startMediaBunnyExport = async function(exportW, exportH, fps, startTime, endTime) {
-            // Configure worker
-            worker.postMessage({
-                type: 'start',
-                config: {
-                    width: exportW,
-                    height: exportH,
-                    fps: fps,
-                    bitrate: 5e6
-                }
-            });
+        // Helper to ensure a video element has loaded enough data before seeking
+        const ensureVideoReady = async (videoEl) => {
+            if (videoEl.readyState >= 2) return true; // HAVE_CURRENT_DATA or better
             
+            if (videoEl.readyState === 0) {
+                // No data yet - wait for loadedmetadata or canplay
+                try {
+                    await new Promise((resolve, reject) => {
+                        const onReady = () => {
+                            videoEl.removeEventListener('loadedmetadata', onReady);
+                            videoEl.removeEventListener('canplay', onReady);
+                            videoEl.removeEventListener('error', onError);
+                            resolve();
+                        };
+                        const onError = () => {
+                            videoEl.removeEventListener('loadedmetadata', onReady);
+                            videoEl.removeEventListener('canplay', onReady);
+                            videoEl.removeEventListener('error', onError);
+                            reject(new Error('Video load failed'));
+                        };
+                        videoEl.addEventListener('loadedmetadata', onReady);
+                        videoEl.addEventListener('canplay', onReady);
+                        videoEl.addEventListener('error', onError);
+                        videoEl.load();
+                    });
+                } catch (e) {
+                    return false;
+                }
+            } else {
+                // HAVE_METADATA (1) - wait for canplay
+                try {
+                    await new Promise((resolve, reject) => {
+                        const onCanPlay = () => {
+                            videoEl.removeEventListener('canplay', onCanPlay);
+                            videoEl.removeEventListener('error', onError);
+                            resolve();
+                        };
+                        const onError = () => {
+                            videoEl.removeEventListener('canplay', onCanPlay);
+                            videoEl.removeEventListener('error', onError);
+                            reject(new Error('Video canplay failed'));
+                        };
+                        videoEl.addEventListener('canplay', onCanPlay);
+                        videoEl.addEventListener('error', onError);
+                    });
+                } catch (e) {
+                    return false;
+                }
+            }
+            return videoEl.readyState >= 2;
+        };
+
+        window.startMediaBunnyExport = async function(exportW, exportH, fps, startTime, endTime, format = 'webm') {
+            mbExportFormat = format;
             const timeStep = 1 / fps;
             const totalFrames = Math.ceil((endTime - startTime) / timeStep);
             let currentFrame = 0;
@@ -10966,6 +11021,11 @@ const isVis = !clip.hidden;
             
             if (State.speakerNode) State.speakerNode.gain.value = 0;
             
+            // --- Audio setup is deferred ---
+            // MediaBunny's AudioSampleSource + AudioSample support is complex
+            // and requires full AudioData pipeline (ScriptProcessorNode → AudioData → worker).
+            // For now, video-only export. Audio will be added in a follow-up.
+
             // Helper to recursively collect active video clips
             const getActiveVideoClips = (sceneId, time) => {
                 let list = [];
@@ -11002,7 +11062,13 @@ const isVis = !clip.hidden;
                 newVideo.volume = volume;
                 
                 const loadPromise = new Promise((resolve) => {
-                    newVideo.onloadedmetadata = () => resolve();
+                    newVideo.onloadedmetadata = () => {
+                        // Ensure we have enough data to seek
+                        if (newVideo.readyState >= 2) resolve();
+                        else {
+                            newVideo.addEventListener('canplay', () => resolve(), { once: true });
+                        }
+                    };
                     newVideo.onerror = () => resolve();
                 });
                 newVideo.load();
@@ -11012,7 +11078,7 @@ const isVis = !clip.hidden;
                 return newVideo;
             };
 
-            // Helper to wait for all active video clips to seek
+            // Improved helper to wait for all active video clips to seek
             const waitForSeeking = async (t) => {
                 const activeVideos = getActiveVideoClips(State.activeSceneId, t);
                 if (activeVideos.length === 0) return;
@@ -11021,6 +11087,7 @@ const isVis = !clip.hidden;
                     let el = clip.videoEl;
                     if (!el) return;
 
+                    // Check for error state
                     if (el.error) {
                         console.warn("Video element in error state before seek, recreating...", clip.title);
                         el = await recreateVideoEl(clip);
@@ -11028,13 +11095,26 @@ const isVis = !clip.hidden;
                     }
                     
                     const targetTime = clip.sourceOffset + timeInClip;
-                    if (Math.abs(el.currentTime - targetTime) < 0.01) {
+                    
+                    // Skip if already at target
+                    if (Math.abs(el.currentTime - targetTime) < 0.01 && el.readyState >= 2) {
                         return;
+                    }
+                    
+                    // Ensure video element has loaded enough data before seeking
+                    if (el.readyState < 2) {
+                        const ready = await ensureVideoReady(el);
+                        if (!ready) {
+                            console.warn("Could not prepare video for seek, recreating...", clip.title);
+                            el = await recreateVideoEl(clip);
+                            if (!el) return;
+                        }
                     }
                     
                     const performSeek = (videoEl) => {
                         return new Promise(resolve => {
                             let resolved = false;
+                            const seekTimeout = 5000;
                             const timeoutId = setTimeout(() => {
                                 if (resolved) return;
                                 resolved = true;
@@ -11042,7 +11122,7 @@ const isVis = !clip.hidden;
                                 videoEl.removeEventListener('error', onError);
                                 console.warn("Video seek timeout, forcing resolve:", targetTime);
                                 resolve(false);
-                            }, 2000);
+                            }, seekTimeout);
 
                             const onSeeked = () => {
                                 if (resolved) return;
@@ -11052,13 +11132,13 @@ const isVis = !clip.hidden;
                                 videoEl.removeEventListener('error', onError);
                                 resolve(true);
                             };
-                            const onError = (err) => {
+                            const onError = () => {
                                 if (resolved) return;
                                 resolved = true;
                                 clearTimeout(timeoutId);
                                 videoEl.removeEventListener('seeked', onSeeked);
                                 videoEl.removeEventListener('error', onError);
-                                console.warn("Video seek error during performSeek:", err);
+                                console.warn("Video seek error during performSeek (target:", targetTime, ")");
                                 resolve(false);
                             };
                             videoEl.addEventListener('seeked', onSeeked);
@@ -11080,6 +11160,23 @@ const isVis = !clip.hidden;
                 await Promise.all(seekPromises);
             };
 
+            // Pre-seek video elements to the start time before the frame loop.
+            // This ensures video frames are decoded and ready so the first 3-4
+            // exported frames don't come out empty while video elements load.
+            await waitForSeeking(startTime);
+
+            // Configure worker
+            worker.postMessage({
+                type: 'start',
+                config: {
+                    width: exportW,
+                    height: exportH,
+                    fps: fps,
+                    bitrate: format === 'mp4' ? 8e6 : 5e6,
+                    format: format
+                }
+            });
+            
             // Global error listener for worker during export
             let workerError = null;
             const workerMsgHandler = (e) => {
