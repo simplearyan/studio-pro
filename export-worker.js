@@ -1,12 +1,13 @@
-import { Output, WebMOutputFormat, Mp4OutputFormat, BufferTarget, VideoSampleSource, VideoSample } from 'mediabunny';
+import { Output, WebMOutputFormat, Mp4OutputFormat, BufferTarget, VideoSampleSource, VideoSample, AudioSampleSource, AudioSample } from 'mediabunny';
 
 let output = null;
 let videoSampleSource = null;
+let audioSampleSource = null;
 
 self.onmessage = async (e) => {
     const data = e.data;
     if (data.type === 'start') {
-        const { width, height, fps, bitrate, format } = data.config;
+        const { width, height, fps, bitrate, format, hasAudio } = data.config;
         
         const outputFormat = format === 'mp4' ? new Mp4OutputFormat() : new WebMOutputFormat();
         output = new Output({
@@ -14,7 +15,7 @@ self.onmessage = async (e) => {
             target: new BufferTarget()
         });
         
-        const videoCodec = format === 'mp4' ? 'h264' : 'vp9';
+        const videoCodec = format === 'mp4' ? 'avc' : 'vp9';
         videoSampleSource = new VideoSampleSource({
             codec: videoCodec,
             width: width,
@@ -23,7 +24,21 @@ self.onmessage = async (e) => {
         });
         output.addVideoTrack(videoSampleSource);
         
+        // Only add audio track when there's audio data to send
+        if (hasAudio) {
+            // 'opus' works in both WebM and MP4 containers
+            audioSampleSource = new AudioSampleSource({
+                codec: 'opus',
+                numberOfChannels: 2,
+                sampleRate: 48000,
+                bitrate: 128000
+            });
+            output.addAudioTrack(audioSampleSource);
+        }
+        
         await output.start();
+        
+        self.postMessage({ type: 'ready' });
     } else if (data.type === 'frame') {
         if (!videoSampleSource) return;
         
@@ -52,21 +67,59 @@ self.onmessage = async (e) => {
                 index: index
             });
         }
+    } else if (data.type === 'audio-data') {
+        if (!audioSampleSource) return;
+        
+        const { audioData, timestamp, index } = data;
+        try {
+            const sample = new AudioSample(audioData, {
+                timestamp: timestamp,
+                duration: audioData.numberOfFrames / audioData.sampleRate
+            });
+            
+            await audioSampleSource.add(sample);
+            sample.close();
+            audioData.close();
+            
+            self.postMessage({
+                type: 'audio-processed',
+                index: index
+            });
+        } catch (err) {
+            self.postMessage({
+                type: 'error',
+                error: 'Audio error: ' + (err.message || String(err)),
+                index: index
+            });
+        }
     } else if (data.type === 'finalize') {
-        if (!output || !videoSampleSource) return;
+        if (!output) return;
         
-        await output.finalize();
-        
-        const buffer = output.target.buffer;
-        self.postMessage({
-            type: 'done',
-            buffer: buffer
-        }, [buffer]);
+        try {
+            // output.finalize() internally flushes and finalizes all attached tracks
+            await output.finalize();
+            
+            const buffer = output.target.buffer;
+            self.postMessage({
+                type: 'done',
+                buffer: buffer
+            }, [buffer]);
+        } catch (err) {
+            self.postMessage({
+                type: 'error',
+                error: 'Finalize error: ' + (err.message || String(err))
+            });
+        }
         
         output = null;
         videoSampleSource = null;
+        audioSampleSource = null;
     } else if (data.type === 'cancel') {
+        try {
+            if (output) output.cancel();
+        } catch (_) {}
         output = null;
         videoSampleSource = null;
+        audioSampleSource = null;
     }
 };
