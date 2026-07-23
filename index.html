@@ -10492,6 +10492,22 @@ const isVis = !clip.hidden;
                 }
 
                 if (el) {
+                    // Recover video elements that entered error state from repeated seeking
+                    if (clip.videoEl && clip.videoEl.error && clip.fileUrl) {
+                        console.warn('Video element in error state, recreating:', clip.title);
+                        const newVideo = document.createElement('video');
+                        newVideo.src = clip.fileUrl;
+                        newVideo.crossOrigin = 'anonymous';
+                        newVideo.muted = clip.videoEl.muted;
+                        newVideo.volume = clip.videoEl.volume;
+                        // Attempt to set scrub position immediately (may throw if
+                        // metadata not yet loaded; next sync cycle will retry)
+                        const seekTarget = clip.sourceOffset + (State.currentTime - clip.start);
+                        try { newVideo.currentTime = Math.max(0, seekTarget); } catch (_) {}
+                        clip.videoEl = newVideo;
+                        el = newVideo;
+                    }
+                    
                     if (shouldPlay) {
                         if (clip.audioEl) applyAudioEffects(clip);
                         
