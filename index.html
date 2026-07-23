@@ -10436,7 +10436,7 @@ const isVis = !clip.hidden;
             
             State.clips.forEach(clip => {
                 const track = State.tracks.find(t => t.id === clip.trackId);
-                const el = clip.audioEl || clip.videoEl;
+                let el = clip.audioEl || clip.videoEl;
                 
                 if (track && track.hidden) {
                     if (el && !el.paused) {
@@ -10497,6 +10497,7 @@ const isVis = !clip.hidden;
                         console.warn('Video element in error state, recreating:', clip.title);
                         const newVideo = document.createElement('video');
                         newVideo.src = clip.fileUrl;
+                        newVideo.preload = 'auto';
                         newVideo.crossOrigin = 'anonymous';
                         newVideo.muted = clip.videoEl.muted;
                         newVideo.volume = clip.videoEl.volume;
