@@ -7694,11 +7694,30 @@ const isVis = !clip.hidden;
                         audioEl.crossOrigin = "anonymous";
                         
                         let decodedBuffer = null;
+                        
+                        // For video files, get the duration from the video element FIRST.
+                        // decodeAudioData below can succeed for some containers (MP4 with AAC)
+                        // and return the audio track's duration instead of the full video duration.
+                        if (isVideo) {
+                            const videoMeta = document.createElement('video');
+                            videoMeta.preload = 'metadata';
+                            await new Promise((resolve) => {
+                                videoMeta.onloadedmetadata = () => { duration = videoMeta.duration; resolve(); };
+                                videoMeta.onerror = resolve;
+                                videoMeta.src = objectUrl;
+                            });
+                            if (isNaN(duration) || duration <= 0) duration = 5;
+                        }
+                        
                         try {
                             const arrayBuffer = await file.arrayBuffer();
                             const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
                             decodedBuffer = audioBuffer;
-                            duration = audioBuffer.duration;
+                            // Only update duration from audio if it's not a video file
+                            // (video duration was already set from the video element above)
+                            if (!isVideo) {
+                                duration = audioBuffer.duration;
+                            }
                             
                             const data = audioBuffer.getChannelData(0);
                             const step = Math.floor(audioBuffer.sampleRate / peaksPerSecond);
@@ -10388,6 +10407,18 @@ const isVis = !clip.hidden;
             }
             
             State.drag.active = false;
+            
+            // Recalculate timeline duration if clips were moved beyond the current boundary
+            let maxEnd = 0;
+            State.clips.forEach(c => {
+                if (c.start + c.duration > maxEnd) {
+                    maxEnd = c.start + c.duration;
+                }
+            });
+            if (maxEnd > State.duration) {
+                State.duration = Math.ceil(maxEnd + 10);
+                updateTimelineWidth();
+            }
             
             calcOverlaps();
             renderClips();
