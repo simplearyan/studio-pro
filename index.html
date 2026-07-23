@@ -11171,10 +11171,8 @@ const isVis = !clip.hidden;
             }
             await Promise.all(seekWaits);
             
-            // Now play all videos — they'll run at real-time speed
-            for (const { el } of exportVideoEls.values()) {
-                try { el.play(); } catch (_) {}
-            }
+            // Videos start staggered — each clip plays only when the export
+            // reaches its timeline start time (see realtimeExportLoop below).
 
             // Configure worker
             worker.postMessage({
@@ -11358,6 +11356,29 @@ const isVis = !clip.hidden;
                 const elapsed = (now - exportStartWallTime) / 1000;
                 State.currentTime = startTime + elapsed;
                 
+                // Staggered playback: start/stop each clip at its timeline boundary
+                // This ensures each clip's video element stays at the correct position
+                // naturally (since playback is at 1x real-time from when the clip starts).
+                const exportTime = startTime + elapsed;
+                for (const [clipId, entry] of exportVideoEls) {
+                    const clip = State.clips.find(c => c.id === clipId);
+                    if (!clip) continue;
+                    if (exportTime >= clip.start && exportTime < clip.start + clip.duration) {
+                        // Clip is active — play it if paused
+                        if (entry.el.paused) {
+                            // Seek to correct position before starting
+                            const targetTime = clip.sourceOffset + (exportTime - clip.start);
+                            try { entry.el.currentTime = Math.max(0, targetTime); } catch (_) {}
+                            entry.el.play().catch(() => {});
+                        }
+                    } else {
+                        // Clip is not active — pause it
+                        if (!entry.el.paused) {
+                            entry.el.pause();
+                        }
+                    }
+                }
+
                 // Capture frame at desired FPS intervals
                 const targetFrame = Math.floor(elapsed / timeStep);
                 if (targetFrame > lastCapturedFrame && targetFrame < totalFrames && framesInFlight < MAX_IN_FLIGHT) {
