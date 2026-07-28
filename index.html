@@ -51,7 +51,7 @@
     <div id="exportOverlay" class="fixed inset-0 bg-surface-950/80 backdrop-blur-sm z-[100] hidden flex-col items-center justify-center p-4 transition-all duration-300">
         
         <!-- Settings State -->
-        <div id="exportSettings" class="bg-white dark:bg-surface-800 p-6 sm:p-8 rounded-2xl shadow-2xl flex flex-col max-w-md w-full border border-surface-200 dark:border-surface-700">
+        <div id="exportSettings" data-accent="mediabunny" class="bg-white dark:bg-surface-800 p-6 sm:p-8 rounded-2xl shadow-2xl flex flex-col max-w-md w-full border border-surface-200 dark:border-surface-700">
             <div class="flex justify-between items-center mb-6">
                 <h2 class="text-xl font-bold text-surface-900 dark:text-white flex items-center gap-2"><i data-lucide="download" class="w-5 h-5 text-brand-500"></i> Export Media</h2>
                 <button onclick="closeExportModal()" class="text-surface-500 hover:text-surface-900 dark:hover:text-white bg-surface-100 dark:bg-surface-900 p-1.5 rounded-md"><i data-lucide="x" class="w-4 h-4"></i></button>
@@ -62,21 +62,27 @@
                     <label class="block text-xs font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest mb-2">Format</label>
                     <!-- Format Tabs -->
                     <div class="flex gap-1 bg-surface-100 dark:bg-surface-800 p-1 rounded-lg mb-3">
-                        <button type="button" onclick="switchExportTab('standard')" id="exportTab-standard" class="flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all duration-200 bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm flex items-center justify-center gap-1.5">
-                            <i data-lucide="video" class="w-3.5 h-3.5"></i> Video
+                        <button type="button" onclick="switchExportTab('standard')" id="exportTab-standard" class="flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all duration-200 text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-white flex items-center justify-center gap-1.5">
+                            <i data-lucide="video" class="w-3.5 h-3.5"></i>
+                            <span class="hidden sm:inline">Video</span>
+                            <span class="sm:hidden">Std</span>
                         </button>
-                        <button type="button" onclick="switchExportTab('mediabunny')" id="exportTab-mediabunny" class="flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all duration-200 text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-white flex items-center justify-center gap-1.5">
-                            <i data-lucide="zap" class="w-3.5 h-3.5"></i> MediaBunny
+                        <button type="button" onclick="switchExportTab('mediabunny')" id="exportTab-mediabunny" class="flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all duration-200 bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm flex items-center justify-center gap-1.5">
+                            <i data-lucide="zap" class="w-3.5 h-3.5"></i>
+                            <span class="hidden sm:inline">MediaBunny</span>
+                            <span class="sm:hidden">MB</span>
                         </button>
                         <button type="button" onclick="switchExportTab('audio')" id="exportTab-audio" class="flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all duration-200 text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-white flex items-center justify-center gap-1.5">
-                            <i data-lucide="music" class="w-3.5 h-3.5"></i> Audio
+                            <i data-lucide="music" class="w-3.5 h-3.5"></i>
+                            <span class="hidden sm:inline">Audio</span>
+                            <span class="sm:hidden">A</span>
                         </button>
                     </div>
                     
                     <!-- Standard Video Formats -->
-                    <div id="exportGroup-standard" class="grid grid-cols-2 gap-2">
+                    <div id="exportGroup-standard" class="grid grid-cols-2 gap-2 hidden">
                         <label class="cursor-pointer">
-                            <input type="radio" name="exportFormat" value="video-mp4" class="peer sr-only" checked>
+                            <input type="radio" name="exportFormat" value="video-mp4" class="peer sr-only">
                             <div class="p-3 border border-surface-200 dark:border-surface-700 rounded-lg peer-checked:border-brand-500 peer-checked:bg-brand-50 dark:peer-checked:bg-brand-700 text-surface-900 dark:text-surface-300 peer-checked:text-brand-700 dark:peer-checked:text-white hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors shadow-sm">
                                 <i data-lucide="film" class="w-4 h-4 mb-1 text-surface-400 dark:text-surface-500 peer-checked:text-brand-500"></i>
                                 <div class="font-bold text-sm mb-0.5">MP4 Video</div>
@@ -102,9 +108,9 @@
                     </div>
                     
                     <!-- MediaBunny (Web Worker) Formats -->
-                    <div id="exportGroup-mediabunny" class="grid grid-cols-2 gap-2 hidden">
+                    <div id="exportGroup-mediabunny" class="grid grid-cols-2 gap-2">
                         <label class="cursor-pointer">
-                            <input type="radio" name="exportFormat" value="video-mediabunny-mp4" class="peer sr-only">
+                            <input type="radio" name="exportFormat" value="video-mediabunny-mp4" class="peer sr-only" checked>
                             <div class="p-3 border border-surface-200 dark:border-surface-700 rounded-lg peer-checked:border-brand-500 peer-checked:bg-brand-50 dark:peer-checked:bg-brand-700 text-surface-900 dark:text-surface-300 peer-checked:text-brand-700 dark:peer-checked:text-white hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors shadow-sm">
                                 <i data-lucide="cpu" class="w-4 h-4 mb-1 text-surface-400 dark:text-surface-500 peer-checked:text-brand-500"></i>
                                 <div class="font-bold text-sm mb-0.5">Fast MP4 (H.264)</div>
@@ -134,7 +140,7 @@
                         <label class="cursor-pointer">
                             <input type="radio" name="exportFormat" value="audio-wav" class="peer sr-only">
                             <div class="p-3 border border-surface-200 dark:border-surface-700 rounded-lg peer-checked:border-brand-500 peer-checked:bg-brand-50 dark:peer-checked:bg-brand-700 text-surface-900 dark:text-surface-300 peer-checked:text-brand-700 dark:peer-checked:text-white hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors shadow-sm">
-                                <i data-lucide="waveform" class="w-4 h-4 mb-1 text-surface-400 dark:text-surface-500 peer-checked:text-brand-500"></i>
+                                <i data-lucide="activity" class="w-4 h-4 mb-1 text-surface-400 dark:text-surface-500 peer-checked:text-brand-500"></i>
                                 <div class="font-bold text-sm mb-0.5">WAV Audio</div>
                                 <div class="text-[10px] opacity-70">Uncompressed — Maximum quality</div>
                             </div>
@@ -142,7 +148,7 @@
                     </div>
                 </div>
 
-                <div>
+                <div id="exportResolutionSection">
                     <label class="block text-xs font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest mb-2">Resolution</label>
                     <div class="grid grid-cols-3 gap-2">
                         <label class="cursor-pointer">
@@ -169,7 +175,7 @@
                     </div>
                 </div>
 
-                <div>
+                <div id="exportFpsSection">
                     <label class="block text-xs font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest mb-2">Frame Rate</label>
                     <div class="grid grid-cols-3 gap-1.5 mb-1.5">
                         <label class="cursor-pointer text-center">
@@ -275,19 +281,119 @@
         </div>
 
         <!-- Rendering State -->
-        <div id="exportProgress" class="bg-white dark:bg-surface-800 p-6 sm:p-8 rounded-2xl shadow-2xl flex flex-col items-center max-w-sm w-full border border-surface-200 dark:border-surface-700 hidden">
-            <i data-lucide="loader-2" class="w-10 h-10 text-brand-500 animate-spin mb-4"></i>
-            <h3 class="text-base font-semibold text-surface-900 dark:text-white mb-1">Rendering Masterpiece</h3>
-            <p class="text-xs text-surface-500 dark:text-surface-400 mb-6 text-center leading-relaxed">Processing in real-time. Please do not close or switch tabs during export.</p>
+        <div id="exportProgress" class="bg-white dark:bg-surface-800 p-6 sm:p-8 rounded-2xl shadow-2xl flex flex-col max-w-sm w-full border border-surface-200 dark:border-surface-700 hidden">
+            <div class="flex items-center gap-3 mb-5 w-full">
+                <i data-lucide="loader-2" class="w-8 h-8 text-brand-500 animate-spin shrink-0"></i>
+                <div class="flex-1 min-w-0">
+                    <h3 class="text-sm font-bold text-surface-900 dark:text-white truncate">Exporting…</h3>
+                    <p id="exportDetailLine" class="text-[11px] text-surface-500 dark:text-surface-400 truncate">MediaBunny MP4 · 30 fps · 60.0s</p>
+                </div>
+                <div class="shrink-0 text-right flex flex-col items-end gap-0.5">
+                    <p id="exportTimerDisplay" class="text-lg font-mono font-bold text-surface-800 dark:text-white tracking-tight">0:00</p>
+                    <p id="exportEtaDisplay" class="text-[11px] font-mono font-semibold text-surface-500 dark:text-surface-400 opacity-0 transition-opacity duration-300">~0:00 remaining</p>
+                </div>
+            </div>
             <div class="w-full bg-surface-100 dark:bg-surface-900 h-2.5 rounded-full overflow-hidden mb-2 border border-surface-200 dark:border-surface-700 shadow-inner">
                 <div id="exportProgressBar" class="h-full bg-brand-500 w-0 ease-linear transition-all duration-75 relative overflow-hidden">
                     <div class="absolute inset-0 bg-white/20" style="background-image: linear-gradient(45deg,rgba(255,255,255,.15) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.15) 50%,rgba(255,255,255,.15) 75%,transparent 75%,transparent); background-size: 1rem 1rem; animation: progress-stripes 1s linear infinite;"></div>
                 </div>
             </div>
-            <p id="exportProgressText" class="text-sm font-bold text-brand-500 font-mono mb-6">0%</p>
-            <button onclick="cancelExport()" class="px-4 py-1.5 text-xs font-bold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 rounded border border-transparent hover:border-red-200 dark:hover:border-red-500/30 transition-all">Cancel Rendering</button>
+            <div class="flex items-center justify-between w-full mb-5">
+                <p id="exportProgressText" class="text-sm font-bold text-brand-500 font-mono">0%</p>
+                <p id="exportFpsDetail" class="text-[10px] font-mono text-surface-400 dark:text-surface-500 opacity-0 transition-opacity duration-500"></p>
+            </div>
+            <button onclick="cancelExport()" class="mt-2 self-center px-5 py-2 text-xs font-bold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg border border-red-200 dark:border-red-800/40 hover:border-red-300 dark:hover:border-red-600/60 transition-all duration-200 flex items-center gap-1.5 shadow-sm hover:shadow-md active:scale-[0.97]">
+                <i data-lucide="square" class="w-3 h-3 fill-current"></i>
+                <span>Stop Export</span>
+            </button>
         </div>
         <style>@keyframes progress-stripes { from { background-position: 1rem 0; } to { background-position: 0 0; } }</style>
+        <style>
+            /* ── Tab-based accent color system ──────────────────────────── */
+            /* CRITICAL: All selectors use `.peer:checked ~` so they ONLY    */
+            /* apply when the radio input IS checked. Without this, the      */
+            /* styles would apply to ALL cards, making them all look same.   */
+            
+            /* === Default accent (MediaBunny — matches exact export button color #5644dd) === */
+            #exportSettings .peer:checked ~ .peer-checked\:border-brand-500 {
+                border-color: #5644dd !important;
+                border-width: 2.5px !important;
+            }
+            #exportSettings .peer:checked ~ .peer-checked\:bg-brand-50 {
+                background: #5644dd !important;
+            }
+            #exportSettings .peer:checked ~ .peer-checked\:text-brand-700 {
+                color: #ffffff !important;
+                font-weight: 700 !important;
+            }
+            #exportSettings .peer:checked ~ .peer-checked\:text-brand-500 {
+                color: #eef2ff !important;
+            }
+            .dark #exportSettings .peer:checked ~ .dark\:peer-checked\:bg-brand-700 {
+                background: #5644dd !important;
+            }
+            #exportSettings #fastModeSwitch.bg-brand-500 { background-color: #5644dd; }
+
+            /* Unselected card hover — only when input is NOT checked */
+            #exportSettings label:has(> input:not(:checked)):hover > div {
+                border-color: #818cf8 !important;
+            }
+            .dark #exportSettings label:has(> input:not(:checked)):hover > div {
+                border-color: #5644dd !important;
+            }
+
+            /* === Standard accent (Video — blue) === */
+            #exportSettings[data-accent="standard"] .peer:checked ~ .peer-checked\:border-brand-500 {
+                border-color: #3b82f6 !important;
+                border-width: 2.5px !important;
+            }
+            #exportSettings[data-accent="standard"] .peer:checked ~ .peer-checked\:bg-brand-50 {
+                background: #2563eb !important;
+            }
+            #exportSettings[data-accent="standard"] .peer:checked ~ .peer-checked\:text-brand-700 {
+                color: #ffffff !important;
+                font-weight: 700 !important;
+            }
+            #exportSettings[data-accent="standard"] .peer:checked ~ .peer-checked\:text-brand-500 {
+                color: #eff6ff !important;
+            }
+            .dark #exportSettings[data-accent="standard"] .peer:checked ~ .dark\:peer-checked\:bg-brand-700 {
+                background: #2563eb !important;
+            }
+            #exportSettings[data-accent="standard"] #fastModeSwitch.bg-brand-500 { background-color: #3b82f6; }
+            #exportSettings[data-accent="standard"] label:has(> input:not(:checked)):hover > div {
+                border-color: #60a5fa !important;
+            }
+            .dark #exportSettings[data-accent="standard"] label:has(> input:not(:checked)):hover > div {
+                border-color: #2563eb !important;
+            }
+
+            /* === Audio accent (green) === */
+            #exportSettings[data-accent="audio"] .peer:checked ~ .peer-checked\:border-brand-500 {
+                border-color: #10b981 !important;
+                border-width: 2.5px !important;
+            }
+            #exportSettings[data-accent="audio"] .peer:checked ~ .peer-checked\:bg-brand-50 {
+                background: #059669 !important;
+            }
+            #exportSettings[data-accent="audio"] .peer:checked ~ .peer-checked\:text-brand-700 {
+                color: #ffffff !important;
+                font-weight: 700 !important;
+            }
+            #exportSettings[data-accent="audio"] .peer:checked ~ .peer-checked\:text-brand-500 {
+                color: #ecfdf5 !important;
+            }
+            .dark #exportSettings[data-accent="audio"] .peer:checked ~ .dark\:peer-checked\:bg-brand-700 {
+                background: #059669 !important;
+            }
+            #exportSettings[data-accent="audio"] #fastModeSwitch.bg-brand-500 { background-color: #10b981; }
+            #exportSettings[data-accent="audio"] label:has(> input:not(:checked)):hover > div {
+                border-color: #34d399 !important;
+            }
+            .dark #exportSettings[data-accent="audio"] label:has(> input:not(:checked)):hover > div {
+                border-color: #059669 !important;
+            }
+        </style>
     </div>
     <!-- Compact Professional Navbar -->
     <header class="h-14 bg-white dark:bg-surface-800 flex items-center justify-between px-2 sm:px-4 shrink-0 z-40 shadow-sm relative w-full gap-2">
@@ -10873,12 +10979,23 @@ const isVis = !clip.hidden;
         // --- Export Engine ---
 
         function switchExportTab(tabId) {
-            // Update tab button styling
+            // Update tab button styling with unique accent per tab
+            const tabStyles = {
+                standard: { base: 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm' },
+                mediabunny: { base: 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm' },
+                audio: { base: 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm' }
+            };
+            const idleStyles = 'text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-white';
+            
+            // Set data-accent on the container to change peer-checked colors for format/FPS/resolution cards
+            const settingsEl = document.getElementById('exportSettings');
+            if (settingsEl) settingsEl.setAttribute('data-accent', tabId);
+            
             ['standard', 'mediabunny', 'audio'].forEach(id => {
                 const btn = document.getElementById('exportTab-' + id);
                 const group = document.getElementById('exportGroup-' + id);
                 if (id === tabId) {
-                    btn.className = 'flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all duration-200 bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm flex items-center justify-center gap-1.5';
+                    btn.className = 'flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all duration-200 ' + tabStyles[id].base + ' flex items-center justify-center gap-1.5';
                     group.classList.remove('hidden');
                     // Auto-select first format in this tab if none is checked
                     const checked = group.querySelector('input[name="exportFormat"]:checked');
@@ -10887,10 +11004,17 @@ const isVis = !clip.hidden;
                         if (first) first.checked = true;
                     }
                 } else {
-                    btn.className = 'flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all duration-200 text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-white flex items-center justify-center gap-1.5';
+                    btn.className = 'flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all duration-200 ' + idleStyles + ' flex items-center justify-center gap-1.5';
                     group.classList.add('hidden');
                 }
             });
+            // Show FPS settings only for MediaBunny tab (frame-by-frame capture)
+            const fpsSection = document.getElementById('exportFpsSection');
+            if (fpsSection) fpsSection.style.display = tabId === 'mediabunny' ? '' : 'none';
+            // Resolution only for video tabs (not audio)
+            const resSection = document.getElementById('exportResolutionSection');
+            if (resSection) resSection.style.display = tabId === 'audio' ? 'none' : '';
+            
             // Re-create lucide icons in the newly visible tab
             if (typeof lucide !== 'undefined') lucide.createIcons();
         }
@@ -10907,8 +11031,50 @@ const isVis = !clip.hidden;
             document.getElementById('exportSettings').classList.remove('hidden');
             document.getElementById('exportProgress').classList.add('hidden');
             
-            // Reset to Standard Video tab on each open
-            switchExportTab('standard');
+            // Load saved preferences from localStorage
+            const savedPrefs = (() => { try { return JSON.parse(localStorage.getItem('mbExportPrefs') || '{}'); } catch (_) { return {}; }})();
+            
+            // Default to MediaBunny tab (user's most-used format)
+            switchExportTab(savedPrefs.tab || 'mediabunny');
+            
+            // Restore saved format value if it exists and is in the current tab's group
+            if (savedPrefs.format) {
+                const formatRadio = document.querySelector('input[name="exportFormat"][value="' + savedPrefs.format + '"]');
+                if (formatRadio) formatRadio.checked = true;
+            }
+            
+            // Restore saved FPS
+            if (savedPrefs.fps) {
+                if (savedPrefs.fps === 'custom' || (savedPrefs.fpsValue && savedPrefs.fpsValue > 90)) {
+                    // Select Custom radio and set the custom value
+                    const customRadio = document.querySelector('input[name="exportFrameRate"][value="custom"]');
+                    if (customRadio) {
+                        customRadio.checked = true;
+                        document.getElementById('customFpsInput').classList.remove('hidden');
+                        if (savedPrefs.fpsValue) document.getElementById('exportCustomFps').value = savedPrefs.fpsValue;
+                    }
+                } else {
+                    const fpsRadio = document.querySelector('input[name="exportFrameRate"][value="' + savedPrefs.fps + '"]');
+                    if (fpsRadio) fpsRadio.checked = true;
+                }
+            }
+            
+            // Restore saved fast mode
+            if (savedPrefs.fastMode) {
+                document.getElementById('exportFastMode').checked = true;
+                document.getElementById('fastModeSwitch').classList.toggle('bg-brand-500', true);
+                document.getElementById('fastModeSwitch').classList.toggle('bg-surface-300', false);
+                document.getElementById('fastModeSwitch').classList.toggle('dark:bg-surface-600', false);
+                document.getElementById('fastModeKnob').classList.toggle('translate-x-3.5', true);
+            }
+            
+            // Restore saved scope and custom range
+            if (savedPrefs.scope === 'custom') {
+                document.querySelector('input[name="exportScope"][value="custom"]').checked = true;
+                document.getElementById('customRangeInputs').classList.remove('hidden');
+                if (savedPrefs.startT !== undefined) document.getElementById('exportStartTime').value = savedPrefs.startT;
+                if (savedPrefs.endT !== undefined) document.getElementById('exportEndTime').value = savedPrefs.endT;
+            }
             
             // Show GPU-based recommendation (only if not previously dismissed)
             const recEl = document.getElementById('gpuRecommendation');
@@ -10996,6 +11162,30 @@ const isVis = !clip.hidden;
                 startT = parseFloat(document.getElementById('exportStartTime').value) || 0;
                 endT = parseFloat(document.getElementById('exportEndTime').value) || State.duration;
             }
+            
+            // Save preferences to localStorage for next time
+            const fpsRadioVal = document.querySelector('input[name="exportFrameRate"]:checked');
+            const savedPrefs = {
+                tab: document.querySelector('#exportGroup-mediabunny:not(.hidden)') ? 'mediabunny' :
+                      document.querySelector('#exportGroup-audio:not(.hidden)') ? 'audio' : 'standard',
+                format: format,
+                fps: fpsRadioVal ? fpsRadioVal.value : '30',
+                fpsValue: fps,
+                fastMode: State.exportFastMode,
+                scope: scope,
+                startT: startT,
+                endT: endT
+            };
+            try { localStorage.setItem('mbExportPrefs', JSON.stringify(savedPrefs)); } catch (_) {}
+            
+            // Set export detail line in progress view
+            const formatLabels = {
+                'video-mp4': 'Standard MP4', 'video-webm': 'Standard WebM', 'gif': 'GIF',
+                'video-mediabunny-mp4': 'MB MP4', 'video-mediabunny': 'MB WebM',
+                'audio-webm': 'Audio WebM', 'audio-wav': 'Audio WAV'
+            };
+            document.getElementById('exportDetailLine').textContent =
+                (formatLabels[format] || format) + ' · ' + fps + ' fps · ' + (endT - startT).toFixed(1) + 's';
             
             document.getElementById('exportSettings').classList.add('hidden');
             document.getElementById('exportProgress').classList.remove('hidden');
@@ -11672,6 +11862,34 @@ const isVis = !clip.hidden;
                     const progress = Math.min(100, Math.round(((lastCapturedFrame + 1) / totalFrames) * 100));
                     document.getElementById('exportProgressBar').style.width = `${progress}%`;
                     document.getElementById('exportProgressText').textContent = `${progress}%`;
+                    
+                    // Update elapsed timer + ETA (throttled same rate)
+                    const elapsedSec = (performance.now() - exportStartWallTime) / 1000;
+                    const mins = Math.floor(elapsedSec / 60);
+                    const secs = Math.floor(elapsedSec % 60);
+                    document.getElementById('exportTimerDisplay').textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
+                    
+                    // Calculate ETA based on progress. Only show after 5% progress for reliability.
+                    const progressFraction = (lastCapturedFrame + 1) / totalFrames;
+                    const etaEl = document.getElementById('exportEtaDisplay');
+                    if (progressFraction > 0.05 && elapsedSec > 3) {
+                        const estimatedTotal = elapsedSec / progressFraction;
+                        const etaSec = Math.max(0, estimatedTotal - elapsedSec);
+                        const etaMins = Math.floor(etaSec / 60);
+                        const etaSecs = Math.floor(etaSec % 60);
+                        etaEl.textContent = `~${etaMins}:${etaSecs.toString().padStart(2, '0')} remaining`;
+                        etaEl.style.opacity = '0.6';
+                    } else {
+                        etaEl.style.opacity = '0';
+                    }
+                    
+                    // Show actual fps after first few frames
+                    if (lastCapturedFrame > 30) {
+                        const actualFps = lastCapturedFrame / elapsedSec;
+                        const fpsEl = document.getElementById('exportFpsDetail');
+                        fpsEl.textContent = actualFps.toFixed(1) + ' fps actual';
+                        fpsEl.style.opacity = '0.6';
+                    }
                 }
                 
                 // Completion check: all frames captured (not wall-clock based)
