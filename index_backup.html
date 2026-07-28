@@ -10958,20 +10958,13 @@ const isVis = !clip.hidden;
                 const elapsed = State.currentTime - startTime;
                 const progress = Math.min(100, Math.max(0, Math.round((elapsed / durationRange) * 100)));
                 
-                // Throttle progress bar updates to ~100ms to reduce DOM pressure
-                if (now - (exportLoop._lastProgressUpdate || 0) > 100 || State.currentTime >= endTime) {
-                    exportLoop._lastProgressUpdate = now;
-                    document.getElementById('exportProgressBar').style.width = `${progress}%`;
-                    document.getElementById('exportProgressText').textContent = `${progress}%`;
-                }
+                document.getElementById('exportProgressBar').style.width = `${progress}%`;
+                document.getElementById('exportProgressText').textContent = `${progress}%`;
 
                 if (State.currentTime >= endTime) {
                     recorder.stop();
                 } else {
-                    // Use setTimeout instead of requestAnimationFrame to yield to browser's event loop.
-                    // This prevents the main thread from being blocked for 50ms+ per frame,
-                    // which would cause the PC to freeze during export.
-                    setTimeout(() => exportLoop(performance.now()), 33);
+                    requestAnimationFrame(exportLoop);
                 }
             }
             requestAnimationFrame(exportLoop);
@@ -11355,16 +11348,19 @@ const isVis = !clip.hidden;
             };
             worker.addEventListener('message', frameAckHandler);
             
+            // Adaptive timing for non-blocking export
+            let avgRenderMs = 16;
             let lastProgressUpdate = 0;
+            const EXPORT_LOOP_INTERVAL = 16; // ~60fps base check rate
 
-            const realtimeExportLoop = async () => {
+            const realtimeExportLoop = () => {
                 if (exportFinished || State.cancelExport || workerError) {
                     exportFinished = true;
                     return;
                 }
                 
-                const loopStart = performance.now();
-                const elapsed = (loopStart - exportStartWallTime) / 1000;
+                const now = performance.now();
+                const elapsed = (now - exportStartWallTime) / 1000;
                 State.currentTime = startTime + elapsed;
                 
                 // Staggered playback: start/stop each clip at its timeline boundary
@@ -11386,49 +11382,28 @@ const isVis = !clip.hidden;
                 }
 
                 // Capture frame at desired FPS intervals
+                // Note: No backpressure check — always capture when a frame is due
                 const targetFrame = Math.floor(elapsed / timeStep);
-                let captureThisFrame = false;
                 if (targetFrame > lastCapturedFrame && targetFrame < totalFrames) {
                     lastCapturedFrame = targetFrame;
-                    captureThisFrame = true;
                     
-                    // Give GPU time to process seeks before reading pixels (inspired by Kenichi Studio)
-                    await new Promise(r => setTimeout(r, 16));
-                    
+                    // Measure render time for adaptive scheduling
+                    const renderStart = performance.now();
                     drawCanvas(exportCtx, exportW, exportH);
+                    const renderTime = performance.now() - renderStart;
+                    avgRenderMs = avgRenderMs * 0.85 + renderTime * 0.15;
                     
                     framesInFlight++;
-                    
-                    // CRITICAL: Use createImageBitmap (async, non-blocking GPU read) instead of
-                    // transferToImageBitmap (sync, stalls GPU pipeline 30-50ms on GT 740).
-                    // Inspired by Kenichi Studio's approach which prevents GPU driver timeout/BSOD.
-                    const bitmap = await createImageBitmap(exportCanvas);
+                    const bitmap = exportCanvas.transferToImageBitmap();
                     sendFrameToWorker(bitmap, targetFrame);
-                    
-                    // Wait for worker acknowledgment before sending next frame (natural backpressure)
-                    // Inspired by Kenichi Studio's FRAME_DONE pattern
-                    await new Promise(resolve => {
-                        const handler = (e) => {
-                            if (e.data.type === 'frame-processed' && e.data.index === targetFrame) {
-                                worker.removeEventListener('message', handler);
-                                resolve();
-                            }
-                        };
-                        worker.addEventListener('message', handler);
-                        // Safety timeout — don't stall forever if ack is lost
-                        setTimeout(() => {
-                            worker.removeEventListener('message', handler);
-                            resolve();
-                        }, 3000);
-                    });
                 }
                 
                 // Send audio chunks up to current elapsed time
                 sendAudioChunksUpTo(elapsed);
                 
                 // Update progress bar (throttled to ~100ms to reduce DOM pressure)
-                if (loopStart - lastProgressUpdate > 100 || elapsed >= exportDuration) {
-                    lastProgressUpdate = loopStart;
+                if (now - lastProgressUpdate > 100 || elapsed >= exportDuration) {
+                    lastProgressUpdate = now;
                     const progress = Math.min(100, Math.round((elapsed / exportDuration) * 100));
                     document.getElementById('exportProgressBar').style.width = `${progress}%`;
                     document.getElementById('exportProgressText').textContent = `${progress}%`;
@@ -11438,16 +11413,17 @@ const isVis = !clip.hidden;
                     exportFinished = true;
                     return;
                 } else {
-                    // Simple adaptive delay — with createImageBitmap + frame ack, the GPU is no longer
-                    // stalled synchronously, so we just need a basic yield between captures.
-                    // The natural backpressure from awaiting frame acknowledgment already slows us down.
-                    const delay = captureThisFrame ? 33 : 33;
+                    // Use setTimeout to yield to browser's event loop between frames.
+                    // This gives video decoding, DOM repaints, and user input a chance
+                    // to be processed — preventing the PC from freezing during export.
+                    const breathingRoom = Math.max(0, avgRenderMs - EXPORT_LOOP_INTERVAL);
+                    const delay = Math.min(100, Math.round(EXPORT_LOOP_INTERVAL + breathingRoom * 0.5));
                     setTimeout(realtimeExportLoop, delay);
                 }
             };
             
             // Start the real-time export loop (setTimeout yields to browser immediately)
-            setTimeout(realtimeExportLoop, 33);
+            setTimeout(realtimeExportLoop, EXPORT_LOOP_INTERVAL);
             
             // Wait for export to finish (by polling exportFinished)
             while (!exportFinished && !State.cancelExport && !workerError) {
