@@ -274,6 +274,20 @@
                 </div>
             </div>
 
+            <!-- Browser Warning Note (non-Chromium: MediaBunny not available) -->
+            <div id="browserWarning" class="hidden mt-2 px-3 py-2 rounded-lg border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-900/20 text-[11px] leading-snug transition-all duration-300">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="alert-triangle" class="w-3.5 h-3.5 text-amber-500 shrink-0"></i>
+                    <div class="flex-1 min-w-0">
+                        <span class="font-bold text-amber-700 dark:text-amber-400">Browser note:</span>
+                        <span class="text-amber-600 dark:text-amber-300 ml-1">MediaBunny exports need Chrome, Edge, or Opera. Standard export still works.</span>
+                    </div>
+                    <button onclick="dismissBrowserWarning()" class="shrink-0 p-0.5 rounded hover:bg-amber-100 dark:hover:bg-amber-800/40 opacity-50 hover:opacity-100 transition-opacity flex items-center justify-center" title="Dismiss">
+                        <i data-lucide="x" class="w-3 h-3 text-amber-500"></i>
+                    </button>
+                </div>
+            </div>
+
             <div class="mt-8 flex justify-end gap-3 pt-4 border-t border-surface-100 dark:border-surface-700">
                 <button onclick="closeExportModal()" class="px-4 py-2 text-sm font-bold text-surface-600 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white hover:bg-surface-100 dark:hover:bg-surface-700 rounded-md transition-colors">Cancel</button>
                 <button onclick="submitExport()" class="px-5 py-2 bg-brand-600 hover:bg-brand-500 text-white text-sm font-bold rounded-md shadow-sm transition-colors flex items-center gap-2">Start Export <i data-lucide="arrow-right" class="w-4 h-4"></i></button>
@@ -2549,7 +2563,7 @@
                     const vp9Config = {
                         type: 'file',
                         video: {
-                            contentType: 'video/webm; codecs="vp9"',
+                            contentType: 'video/webm; codecs="vp09.00.40.08"',
                             width: 1920,
                             height: 1080,
                             bitrate: 5000000,
@@ -2602,6 +2616,30 @@
         }
         let gpuInfoCache = null;
         detectGPU().then(info => { gpuInfoCache = info; });
+
+        /** Detect if browser is Chromium-based (required for MediaBunny / WebCodecs API) */
+        function isChromiumBrowser() {
+            // WebCodecs API check — the foundation MediaBunny needs
+            if (typeof VideoEncoder === 'undefined') return false;
+            if (typeof ImageBitmap === 'undefined') return false;
+            // Check for Worker module support (export-worker.js uses import)
+            if (typeof Worker === 'undefined') return false;
+            // Check user agent for Chromium-based browsers (Chrome, Edge, Opera, etc.)
+            // Note: Safari's UA also contains 'safari' and 'applewebkit', but NOT 'chrome'
+            try {
+                const ua = navigator.userAgent.toLowerCase();
+                return /chrome|chromium|crios|edg|opr|samsung/i.test(ua) && !/firefox|fxios/i.test(ua);
+            } catch (_) {
+                return false;
+            }
+        }
+        
+        /** Cache browser check result so we don't recompute on every modal open */
+        let _isChromium = null;
+        function checkChromium() {
+            if (_isChromium === null) _isChromium = isChromiumBrowser();
+            return _isChromium;
+        }
         
         function createOffscreenCanvas(width, height) {
             if (typeof OffscreenCanvas !== 'undefined') {
@@ -10980,6 +11018,10 @@ const isVis = !clip.hidden;
         // --- Export Engine ---
 
         function switchExportTab(tabId) {
+            // Block MediaBunny tab for non-Chromium browsers (WebCodecs not available)
+            if (tabId === 'mediabunny' && !checkChromium()) {
+                return;
+            }
             // Update tab button styling with unique accent per tab
             const tabStyles = {
                 standard: { base: 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm' },
@@ -11025,6 +11067,12 @@ const isVis = !clip.hidden;
             document.getElementById('gpuRecommendation').classList.add('hidden');
         }
 
+        function dismissBrowserWarning() {
+            try { localStorage.setItem('browserWarnDismissed', '1'); } catch (_) {}
+            const el = document.getElementById('browserWarning');
+            if (el) el.classList.add('hidden');
+        }
+
         function openExportModal() {
             document.getElementById('exportEndTime').value = State.duration.toFixed(1);
             document.getElementById('exportOverlay').classList.remove('hidden');
@@ -11035,8 +11083,20 @@ const isVis = !clip.hidden;
             // Load saved preferences from localStorage
             const savedPrefs = (() => { try { return JSON.parse(localStorage.getItem('mbExportPrefs') || '{}'); } catch (_) { return {}; }})();
             
-            // Default to MediaBunny tab (user's most-used format)
-            switchExportTab(savedPrefs.tab || 'mediabunny');
+            // Check if browser supports MediaBunny (Chromium with WebCodecs)
+            const isChromium = checkChromium();
+            const browserWarningEl = document.getElementById('browserWarning');
+            
+            // Non-Chromium: force default to standard tab (MediaBunny won't work)
+            const defaultTab = !isChromium ? 'standard' : (savedPrefs.tab || 'mediabunny');
+            
+            // Show browser warning banner (only if not previously dismissed)
+            const browserWarnDismissed = (() => { try { return localStorage.getItem('browserWarnDismissed') === '1'; } catch (_) { return false; } })();
+            if (!isChromium && !browserWarnDismissed && browserWarningEl) {
+                browserWarningEl.classList.remove('hidden');
+            }
+            
+            switchExportTab(defaultTab);
             
             // Restore saved format value if it exists and is in the current tab's group
             if (savedPrefs.format) {
