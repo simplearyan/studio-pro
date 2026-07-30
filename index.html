@@ -461,6 +461,9 @@
                 </div>
             </div>
             <input type="file" id="fontInput" accept=".ttf,.otf,.woff,.woff2" class="hidden">
+            <button id="btnToggleCaptions" class="p-1.5 text-surface-600 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white bg-surface-100 dark:bg-surface-800 rounded-md border border-surface-200 dark:border-surface-700 shadow-sm" title="Captions (Subtitles)">
+                <i data-lucide="subtitles" class="w-4 h-4"></i>
+            </button>
             <button id="btnImportFont" class="p-1.5 text-surface-600 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white bg-surface-100 dark:bg-surface-800 rounded-md border border-surface-200 dark:border-surface-700 shadow-sm" title="Import Custom Font">
                 <i data-lucide="file-type" class="w-4 h-4"></i>
             </button>
@@ -709,6 +712,7 @@
                     <button onclick="setSidebarTab('animations')" id="tabAnimations" class="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded transition-colors text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-surface-100">Animations</button>
                     <button onclick="setSidebarTab('audio_library')" id="tabAudioLib" class="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded transition-colors text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-surface-100">Audio</button>
                     <button onclick="setSidebarTab('presets')" id="tabPresets" class="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded transition-colors text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-surface-100">Presets</button>
+                    <button onclick="setSidebarTab('subtitles')" id="tabSubtitles" class="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded transition-colors text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-surface-100">Captions</button>
                 </div>
                 <div class="flex items-center gap-1">
                     <button onclick="rebuildAudioSystem()" class="p-1.5 rounded text-surface-400 hover:text-brand-500 dark:hover:text-brand-400 hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors shrink-0" title="Sync Audio Output (Headphones / Speakers)">
@@ -769,7 +773,7 @@
             selectedClipId: null,
             multiSelectedClipIds: [],
             activePropertyTab: 'volume',
-            sidebarTab: 'properties', // 'properties', 'animations', 'audio_library', 'presets'
+            sidebarTab: 'properties', // 'properties', 'animations', 'audio_library', 'presets', 'subtitles'
             audioSubTab: 'library', // 'library', 'mixer'
             activeAnimTab: 'in',
             audioLibrary: [],
@@ -780,7 +784,33 @@
             speakerNode: null,
             audioCtxInitialzed: false,
             canvasBgColor: '#231F20',
-            
+            subtitles: [],
+            subtitleConfig: {
+                fontSize: 36,
+                fontFamily: 'Inter',
+                fontWeight: 700,
+                fillColor: '#ffffff',
+                strokeEnable: true,
+                strokeColor: '#000000',
+                strokeWidth: 3,
+                shadowEnable: true,
+                shadowColor: '#000000',
+                shadowBlur: 4,
+                shadowX: 0,
+                shadowY: 2,
+                bgEnable: false,
+                bgColor: 'rgba(0,0,0,0.5)',
+                bgPadding: 8,
+                animIn: 'none',
+                animInDur: 0.3,
+                animOut: 'none',
+                animOutDur: 0.3,
+                animEase: 'easeOut',
+                position: 'bottom',
+                bottomOffset: 60,
+                lineHeight: 1.3,
+                letterSpacing: 0
+            },
             tracks: [
                 { id: 'v1', type: 'video', name: 'V1', height: 90, colorIndex: 0, hidden: false, locked: false, volume: 1.0, muted: false, solo: false }, 
                 { id: 'a1', type: 'audio', name: 'A1', height: 90, colorIndex: 1, hidden: false, locked: false, volume: 1.0, muted: false, solo: false },
@@ -1495,6 +1525,7 @@
 
             loadCustomFonts();
             loadGoogleFonts();
+            loadSubtitlesFromStorage();
             
             // Handle headphone plug/unplug in real-time
             if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
@@ -3760,6 +3791,9 @@
                 placeholder.classList.remove('hidden');
                 canvas.classList.add('hidden');
             }
+
+            // ── Draw subtitles on top of everything ────────────────────────
+            drawSubtitlesOnCanvas(ctx, w, h);
         }
 
         // --- Web Audio Graph Builder ---
@@ -4267,6 +4301,10 @@
             }
             if (State.sidebarTab === 'presets') {
                 renderPresetsLibrary();
+                return;
+            }
+            if (State.sidebarTab === 'subtitles') {
+                renderSubtitlesPanel();
                 return;
             }
 
@@ -5997,6 +6035,8 @@
             if (btnAnims) btnAnims.className = (tab === 'animations') ? activeClass : inactiveClass;
             if (btnAudio) btnAudio.className = (tab === 'audio_library') ? activeClass : inactiveClass;
             if (btnPresets) btnPresets.className = (tab === 'presets') ? activeClass : inactiveClass;
+            const btnSubs = document.getElementById('tabSubtitles');
+            if (btnSubs) btnSubs.className = (tab === 'subtitles') ? activeClass : inactiveClass;
             
             updateSidebarPanel();
         }
@@ -7693,6 +7733,534 @@ const isVis = !clip.hidden;
             updatePropertiesPanel();
         }
 
+        // ═══════════════════════════════════════════════════════════════════════════
+        //  SUBTITLES (Captions) — Import SRT/VTT, manual add, global config, per-sub editing
+        // ═══════════════════════════════════════════════════════════════════════════
+
+        /** Parse SRT or VTT subtitle content into subtitle entries */
+        function parseSRT(content) {
+            const entries = [];
+            content = content.replace(/\r\n?/g, '\n').trim();
+            const blocks = content.split(/\n\n+/).filter(b => b.trim());
+            for (const block of blocks) {
+                const lines = block.split('\n').filter(l => l.trim());
+                if (lines.length < 2) continue;
+                if (lines[0].trim() === 'WEBVTT') continue;
+                let timeIdx = -1;
+                for (let i = 0; i < lines.length; i++) {
+                    if (lines[i].includes('-->')) { timeIdx = i; break; }
+                }
+                if (timeIdx < 0) continue;
+                const parts = lines[timeIdx].split('-->');
+                if (parts.length !== 2) continue;
+                const parseTime = (t) => {
+                    t = t.trim().replace(',', '.');
+                    const p = t.split(':');
+                    if (p.length === 3) return parseFloat(p[0])*3600 + parseFloat(p[1])*60 + parseFloat(p[2]);
+                    if (p.length === 2) return parseFloat(p[0])*60 + parseFloat(p[1]);
+                    return parseFloat(t) || 0;
+                };
+                const start = parseTime(parts[0]);
+                const end = parseTime(parts[1]);
+                const textLines = lines.slice(timeIdx + 1).filter(l => l.trim());
+                if (!textLines.length) continue;
+                // Strip HTML tags and positioning tags from text
+                const cleanText = textLines.join('\n').replace(/<[^>]*>/g, '').replace(/\{[^}]*\}/g, '').trim();
+                if (!cleanText) continue;
+                entries.push({
+                    id: 'sub_' + Date.now() + '_' + Math.random().toString(36).substr(2,5),
+                    text: cleanText,
+                    startTime: start,
+                    endTime: end,
+                    effects: {}
+                });
+            }
+            return entries;
+        }
+
+        // ── Storage ──────────────────────────────────────────────────────────────
+        function saveSubtitlesToStorage() {
+            try {
+                localStorage.setItem('studiopro_subtitles', JSON.stringify(State.subtitles));
+                localStorage.setItem('studiopro_subtitleConfig', JSON.stringify(State.subtitleConfig));
+            } catch(e){}
+        }
+        function loadSubtitlesFromStorage() {
+            try {
+                const s = localStorage.getItem('studiopro_subtitles');
+                if (s) State.subtitles = JSON.parse(s);
+                const c = localStorage.getItem('studiopro_subtitleConfig');
+                if (c) State.subtitleConfig = { ...State.subtitleConfig, ...JSON.parse(c) };
+            } catch(e){}
+        }
+
+        // ── Format seconds for display ────────────────────────────────────────────
+        window.formatSubTime = function(seconds) {
+            const m = Math.floor(seconds / 60);
+            const s = Math.floor(seconds % 60);
+            const ms = Math.floor((seconds % 1) * 100);
+            return m.toString().padStart(2,'0') + ':' + s.toString().padStart(2,'0') + '.' + ms.toString().padStart(2,'0');
+        };
+
+        // ── Add / Delete / Clear ──────────────────────────────────────────────────
+        window.addEmptySubtitle = function() {
+            const t = State.currentTime;
+            State.subtitles.push({ id:'sub_'+Date.now()+'_'+Math.random().toString(36).substr(2,5), text:'New caption', startTime:t, endTime:t+3, effects:{} });
+            saveSubtitlesToStorage();
+            renderSubtitlesPanel();
+        };
+        window.deleteSubtitle = function(id) {
+            State.subtitles = State.subtitles.filter(s => s.id !== id);
+            saveSubtitlesToStorage();
+            renderSubtitlesPanel();
+        };
+        window.clearAllSubtitles = function() {
+            if (!State.subtitles.length) return;
+            if (confirm('Delete all captions?')) { State.subtitles = []; saveSubtitlesToStorage(); renderSubtitlesPanel(); }
+        };
+
+        // ── Render the Subtitles panel ───────────────────────────────────────────
+        function renderSubtitlesPanel() {
+            const cfg = State.subtitleConfig;
+            const subs = State.subtitles || [];
+            sidebarContent.className = 'flex flex-col w-full flex-1 min-h-0 bg-surface-50 dark:bg-surface-900';
+
+            let listHtml = subs.length === 0
+                ? `<div class="flex flex-col items-center justify-center py-8 text-surface-400 dark:text-surface-500 gap-2"><i data-lucide="subtitles" class="w-8 h-8 opacity-50"></i><p class="text-xs font-bold">No captions yet</p><p class="text-[10px] text-center max-w-[200px]">Import .SRT or .VTT, or click Add</p></div>`
+                : subs.map((sub, i) => `
+                    <div class="flex items-start gap-2 p-2 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm hover:border-brand-300 dark:hover:border-brand-600 transition-colors cursor-pointer group" onclick="openSubtitleEditor('${sub.id}')">
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-2"><span class="text-[10px] font-mono font-bold text-brand-600 dark:text-brand-400 shrink-0">#${i+1}</span><span class="text-[10px] font-mono text-surface-500">${window.formatSubTime(sub.startTime)} → ${window.formatSubTime(sub.endTime)}</span></div>
+                            <p class="text-xs font-semibold text-surface-800 dark:text-surface-200 mt-0.5 truncate">${sub.text || '(empty)'}</p>
+                        </div>
+                        <button onclick="event.stopPropagation(); deleteSubtitle('${sub.id}')" class="shrink-0 p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-surface-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all" title="Delete"><i data-lucide="x" class="w-3 h-3"></i></button>
+                    </div>
+                `).join('');
+
+            const fontSelect = (name, value, selected) =>
+                `<option value="${value}" ${cfg.fontFamily === value ? 'selected' : ''}>${name}</option>`;
+
+            let html = `
+                <div class="flex flex-col gap-3 p-3 overflow-y-auto flex-1">
+                    <!-- Toolbar -->
+                    <div class="flex items-center gap-2 shrink-0">
+                        <input type="file" id="subfileinput" accept=".srt,.vtt" class="hidden" multiple>
+                        <button onclick="document.getElementById('subfileinput').click()" class="flex-1 py-2 px-3 bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-sm">
+                            <i data-lucide="file-text" class="w-3.5 h-3.5"></i> Import
+                        </button>
+                        <button onclick="addEmptySubtitle()" class="py-2 px-3 bg-surface-200 dark:bg-surface-700 hover:bg-surface-300 dark:hover:bg-surface-600 text-surface-700 dark:text-surface-200 text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-sm">
+                            <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                        </button>
+                        <button onclick="clearAllSubtitles()" class="py-2 px-3 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-sm" title="Clear">
+                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                        </button>
+                    </div>
+
+                    <!-- List -->
+                    <div class="flex flex-col gap-1.5">${listHtml}</div>
+
+                    <!-- Divider -->
+                    <div class="border-t border-surface-200 dark:border-surface-700 my-2"></div>
+
+                    <!-- Global Style Config -->
+                    <details class="group bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden" open>
+                        <summary class="flex items-center justify-between p-3 cursor-pointer list-none bg-surface-50 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700">
+                            <span class="text-xs font-bold text-surface-700 dark:text-surface-300 flex items-center gap-2"><i data-lucide="settings" class="w-3.5 h-3.5"></i>Caption Style</span>
+                            <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-surface-400 transition-transform group-open:rotate-180"></i>
+                        </summary>
+                        <div class="p-3 flex flex-col gap-3">
+                            <!-- Row: Font family + size -->
+                            <div class="grid grid-cols-3 gap-2">
+                                <div class="col-span-2">
+                                    <label class="text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest mb-1 block">Font</label>
+                                    <select class="w-full text-xs p-2 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner focus:outline-none focus:border-brand-500 font-bold text-surface-800 dark:text-surface-200" onchange="cfg.fontFamily = this.value; saveSubtitlesToStorage(); drawCanvas();">
+                                        <option value="Inter" ${cfg.fontFamily==='Inter'?'selected':''}>Inter</option>
+                                        <option value="Rubik" ${cfg.fontFamily==='Rubik'?'selected':''}>Rubik</option>
+                                        <option value="Montserrat" ${cfg.fontFamily==='Montserrat'?'selected':''}>Montserrat</option>
+                                        <option value="Oswald" ${cfg.fontFamily==='Oswald'?'selected':''}>Oswald</option>
+                                        <option value="Lora" ${cfg.fontFamily==='Lora'?'selected':''}>Lora</option>
+                                        <option value="Arial" ${cfg.fontFamily==='Arial'?'selected':''}>Arial</option>
+                                        <option value="sans-serif" ${cfg.fontFamily==='sans-serif'?'selected':''}>Sans-serif</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest mb-1 block">Size</label>
+                                    <select class="w-full text-xs p-2 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner focus:outline-none focus:border-brand-500 font-bold" onchange="cfg.fontSize = parseInt(this.value); saveSubtitlesToStorage(); drawCanvas();">
+                                        <option value="24" ${cfg.fontSize===24?'selected':''}>24px</option>
+                                        <option value="28" ${cfg.fontSize===28?'selected':''}>28px</option>
+                                        <option value="32" ${cfg.fontSize===32?'selected':''}>32px</option>
+                                        <option value="36" ${cfg.fontSize===36?'selected':''}>36px</option>
+                                        <option value="42" ${cfg.fontSize===42?'selected':''}>42px</option>
+                                        <option value="48" ${cfg.fontSize===48?'selected':''}>48px</option>
+                                        <option value="56" ${cfg.fontSize===56?'selected':''}>56px</option>
+                                        <option value="64" ${cfg.fontSize===64?'selected':''}>64px</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Row: Color + BG -->
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest mb-1 block">Color</label>
+                                    <div class="relative h-8 rounded border border-surface-200 dark:border-surface-700 overflow-hidden">
+                                        <input type="color" value="${cfg.fillColor||'#ffffff'}" class="absolute inset-0 w-full h-full cursor-pointer" oninput="cfg.fillColor = this.value; saveSubtitlesToStorage(); drawCanvas();">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest mb-1 block">Weight</label>
+                                    <select class="w-full text-xs p-2 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner focus:outline-none focus:border-brand-500 font-bold" onchange="cfg.fontWeight = parseInt(this.value); saveSubtitlesToStorage(); drawCanvas();">
+                                        <option value="400" ${cfg.fontWeight===400?'selected':''}>Normal</option>
+                                        <option value="600" ${cfg.fontWeight===600?'selected':''}>Semi Bold</option>
+                                        <option value="700" ${cfg.fontWeight===700?'selected':''}>Bold</option>
+                                        <option value="900" ${cfg.fontWeight===900?'selected':''}>Black</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Stroke toggle + width -->
+                            <div class="flex items-center justify-between">
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" ${cfg.strokeEnable?'checked':''} class="rounded text-brand-500 focus:ring-brand-500" onchange="cfg.strokeEnable = this.checked; saveSubtitlesToStorage(); drawCanvas(); renderSubtitlesPanel();">
+                                    <span class="text-xs font-bold text-surface-700 dark:text-surface-300">Stroke</span>
+                                </label>
+                                ${cfg.strokeEnable ? `
+                                    <div class="flex items-center gap-2">
+                                        <div class="relative w-5 h-5 rounded border border-surface-200 dark:border-surface-700 overflow-hidden shrink-0">
+                                            <input type="color" value="${cfg.strokeColor||'#000000'}" class="absolute inset-0 w-full h-full cursor-pointer opacity-0" oninput="cfg.strokeColor = this.value; saveSubtitlesToStorage(); drawCanvas();">
+                                            <div class="w-full h-full rounded" style="background:${cfg.strokeColor||'#000000'}"></div>
+                                        </div>
+                                        <input type="range" min="1" max="6" value="${cfg.strokeWidth||3}" class="w-16 custom-slider" oninput="cfg.strokeWidth = parseInt(this.value); saveSubtitlesToStorage(); drawCanvas();">
+                                    </div>
+                                ` : ''}
+                            </div>
+
+                            <!-- Shadow toggle + params -->
+                            <div class="flex items-center justify-between">
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" ${cfg.shadowEnable?'checked':''} class="rounded text-brand-500 focus:ring-brand-500" onchange="cfg.shadowEnable = this.checked; saveSubtitlesToStorage(); drawCanvas(); renderSubtitlesPanel();">
+                                    <span class="text-xs font-bold text-surface-700 dark:text-surface-300">Shadow</span>
+                                </label>
+                                ${cfg.shadowEnable ? `
+                                    <div class="flex items-center gap-2">
+                                        <div class="relative w-5 h-5 rounded border border-surface-200 dark:border-surface-700 overflow-hidden shrink-0">
+                                            <input type="color" value="${cfg.shadowColor||'#000000'}" class="absolute inset-0 w-full h-full cursor-pointer opacity-0" oninput="cfg.shadowColor = this.value; saveSubtitlesToStorage(); drawCanvas();">
+                                            <div class="w-full h-full rounded" style="background:${cfg.shadowColor||'#000000'}"></div>
+                                        </div>
+                                        <input type="range" min="0" max="10" value="${cfg.shadowBlur||4}" class="w-14 custom-slider" oninput="cfg.shadowBlur = parseInt(this.value); saveSubtitlesToStorage(); drawCanvas();">
+                                    </div>
+                                ` : ''}
+                            </div>
+
+                            <!-- BG toggle -->
+                            <div class="flex items-center justify-between">
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" ${cfg.bgEnable?'checked':''} class="rounded text-brand-500 focus:ring-brand-500" onchange="cfg.bgEnable = this.checked; saveSubtitlesToStorage(); drawCanvas(); renderSubtitlesPanel();">
+                                    <span class="text-xs font-bold text-surface-700 dark:text-surface-300">Background</span>
+                                </label>
+                                ${cfg.bgEnable ? `
+                                    <input type="range" min="10" max="100" value="${Math.round((cfg.bgOpacity||0.5)*100)}" class="w-20 custom-slider" oninput="cfg.bgOpacity = this.value/100; saveSubtitlesToStorage(); drawCanvas();">
+                                ` : ''}
+                            </div>
+
+                            <!-- Animation -->
+                            <div>
+                                <label class="text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest mb-1 block">Animation</label>
+                                <div class="grid grid-cols-3 gap-1.5">
+                                    <select class="text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 focus:outline-none focus:border-brand-500 font-bold" onchange="cfg.animIn = this.value; saveSubtitlesToStorage(); drawCanvas();">
+                                        <option value="none" ${cfg.animIn==='none'?'selected':''}>In: None</option>
+                                        <option value="fadeIn" ${cfg.animIn==='fadeIn'?'selected':''}>Fade</option>
+                                        <option value="slideUp" ${cfg.animIn==='slideUp'?'selected':''}>Slide up</option>
+                                    </select>
+                                    <select class="text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 focus:outline-none focus:border-brand-500 font-bold" onchange="cfg.animOut = this.value; saveSubtitlesToStorage(); drawCanvas();">
+                                        <option value="none" ${cfg.animOut==='none'?'selected':''}>Out: None</option>
+                                        <option value="fadeOut" ${cfg.animOut==='fadeOut'?'selected':''}>Fade</option>
+                                        <option value="slideDown" ${cfg.animOut==='slideDown'?'selected':''}>Slide</option>
+                                    </select>
+                                    <input type="number" value="${cfg.animInDur||0.3}" min="0.1" max="2" step="0.1" class="text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 focus:outline-none focus:border-brand-500 font-bold font-mono" onchange="cfg.animInDur=parseFloat(this.value); cfg.animOutDur=parseFloat(this.value); saveSubtitlesToStorage(); drawCanvas();">
+                                </div>
+                            </div>
+
+                            <!-- Position -->
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest mb-1 block">Position</label>
+                                    <select class="w-full text-xs p-2 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner focus:outline-none focus:border-brand-500 font-bold" onchange="cfg.position = this.value; saveSubtitlesToStorage(); drawCanvas();">
+                                        <option value="bottom" ${cfg.position==='bottom'?'selected':''}>Bottom</option>
+                                        <option value="top" ${cfg.position==='top'?'selected':''}>Top</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest mb-1 block">Offset</label>
+                                    <input type="number" value="${cfg.bottomOffset||60}" min="10" max="300" class="w-full text-xs p-2 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner focus:outline-none focus:border-brand-500 font-bold" onchange="cfg.bottomOffset = parseInt(this.value); saveSubtitlesToStorage(); drawCanvas();">
+                                </div>
+                            </div>
+                        </div>
+                    </details>
+                </div>
+            `;
+            sidebarContent.innerHTML = html;
+            lucide.createIcons();
+
+            // Wire up import
+            const inp = document.getElementById('subfileinput');
+            if (inp) inp.onchange = async (e) => {
+                if (!e.target.files.length) return;
+                for (const f of e.target.files) {
+                    const entries = parseSRT(await f.text());
+                    State.subtitles.push(...entries);
+                }
+                saveSubtitlesToStorage();
+                renderSubtitlesPanel();
+                inp.value = '';
+            };
+        }
+
+        // ── Subtitle Editor overlay ──────────────────────────────────────────────
+        window.openSubtitleEditor = function(id) {
+            const sub = State.subtitles.find(s => s.id === id);
+            if (!sub) return;
+            const cfg = State.subtitleConfig;
+            const ef = sub.effects || {};
+            const hasOverride = Object.keys(ef).length > 0;
+            const ov = (v, def) => v !== undefined ? v : def;
+
+            const ovrChecked = hasOverride ? 'checked' : '';
+            const ovrShow = hasOverride ? '' : 'hidden';
+
+            const overlay = document.createElement('div');
+            overlay.id = 'subEditorOverlay';
+            overlay.className = 'fixed inset-0 bg-black/50 z-[200] flex items-center justify-center p-4';
+            overlay.innerHTML = `
+                <div class="bg-white dark:bg-surface-800 rounded-2xl shadow-2xl max-w-md w-full border border-surface-200 dark:border-surface-700 max-h-[85vh] overflow-y-auto p-5 flex flex-col gap-4">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-sm font-bold text-surface-900 dark:text-white flex items-center gap-2"><i data-lucide="subtitles" class="w-4 h-4 text-brand-500"></i> Edit Caption</h3>
+                        <button onclick="this.closest('#subEditorOverlay').remove()" class="p-1 rounded hover:bg-surface-100 dark:hover:bg-surface-700 text-surface-500"><i data-lucide="x" class="w-4 h-4"></i></button>
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest mb-1 block">Text</label>
+                        <textarea id="subEText" class="w-full text-sm p-2 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner focus:outline-none focus:border-brand-500 font-bold text-surface-800 dark:text-surface-200 resize-none" rows="3">${sub.text}</textarea>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest mb-1 block">Start (s)</label>
+                            <input type="number" id="subEStart" value="${sub.startTime}" min="0" step="0.1" class="w-full text-xs p-2 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner focus:outline-none focus:border-brand-500 font-mono font-bold">
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest mb-1 block">End (s)</label>
+                            <input type="number" id="subEEnd" value="${sub.endTime}" min="0" step="0.1" class="w-full text-xs p-2 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner focus:outline-none focus:border-brand-500 font-mono font-bold">
+                        </div>
+                    </div>
+
+                    <details class="bg-surface-50 dark:bg-surface-900/50 rounded-lg border border-surface-200 dark:border-surface-700">
+                        <summary class="text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest p-3 cursor-pointer list-none select-none">Style Override <span class="text-[9px] font-normal opacity-60">(optional)</span></summary>
+                        <div class="p-3 flex flex-col gap-3 border-t border-surface-200 dark:border-surface-700">
+                            <div class="flex items-center gap-2">
+                                <input type="checkbox" id="subEOverride" ${ovrChecked} class="rounded text-brand-500 focus:ring-brand-500" onchange="document.getElementById('subEStyleFields').classList.toggle('hidden', !this.checked)">
+                                <span class="text-xs font-bold text-surface-600 dark:text-surface-400">Override global style</span>
+                            </div>
+                            <div id="subEStyleFields" class="flex flex-col gap-3 ${ovrShow}">
+                                <select id="subEFont" class="text-xs p-2 border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 focus:outline-none focus:border-brand-500 font-bold">
+                                    <option value="">Same as global</option>
+                                    <option value="Inter" ${ef.fontFamily==='Inter'?'selected':''}>Inter</option>
+                                    <option value="Rubik" ${ef.fontFamily==='Rubik'?'selected':''}>Rubik</option>
+                                    <option value="Montserrat" ${ef.fontFamily==='Montserrat'?'selected':''}>Montserrat</option>
+                                    <option value="Oswald" ${ef.fontFamily==='Oswald'?'selected':''}>Oswald</option>
+                                    <option value="Lora" ${ef.fontFamily==='Lora'?'selected':''}>Lora</option>
+                                </select>
+                                <div class="grid grid-cols-3 gap-2">
+                                    <div><label class="text-[9px] font-bold text-surface-400">Size</label><input type="number" id="subESize" value="${ov(ef.fontSize, cfg.fontSize)}" min="10" max="200" class="w-full text-xs p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 focus:outline-none focus:border-brand-500 font-mono font-bold"></div>
+                                    <div><label class="text-[9px] font-bold text-surface-400">Color</label><div class="relative h-7 rounded border border-surface-200 dark:border-surface-700 overflow-hidden"><input type="color" id="subEColor" value="${ov(ef.fillColor, cfg.fillColor)}" class="absolute inset-0 w-full h-full cursor-pointer"></div></div>
+                                    <div><label class="text-[9px] font-bold text-surface-400">Pos</label><select id="subEPos" class="w-full text-xs p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 focus:outline-none focus:border-brand-500 font-bold"><option value="bottom" ${(ef.position||cfg.position)==='bottom'?'selected':''}>Bottom</option><option value="top" ${ef.position==='top'?'selected':''}>Top</option></select></div>
+                                </div>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div><label class="text-[9px] font-bold text-surface-400">Anim In</label><select id="subEAnimIn" class="w-full text-xs p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 focus:outline-none focus:border-brand-500 font-bold"><option value="" ${!ef.animIn?'selected':''}>Same</option><option value="none" ${ef.animIn==='none'?'selected':''}>None</option><option value="fadeIn" ${ef.animIn==='fadeIn'?'selected':''}>Fade</option><option value="slideUp" ${ef.animIn==='slideUp'?'selected':''}>Slide up</option></select></div>
+                                    <div><label class="text-[9px] font-bold text-surface-400">Anim Out</label><select id="subEAnimOut" class="w-full text-xs p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 focus:outline-none focus:border-brand-500 font-bold"><option value="" ${!ef.animOut?'selected':''}>Same</option><option value="none" ${ef.animOut==='none'?'selected':''}>None</option><option value="fadeOut" ${ef.animOut==='fadeOut'?'selected':''}>Fade</option><option value="slideDown" ${ef.animOut==='slideDown'?'selected':''}>Slide</option></select></div>
+                                </div>
+                            </div>
+                        </div>
+                    </details>
+
+                    <div class="flex gap-2 justify-end pt-2 border-t border-surface-200 dark:border-surface-700">
+                        <button onclick="document.getElementById('subEditorOverlay').remove()" class="px-4 py-2 text-xs font-bold text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700 rounded-lg transition-colors">Cancel</button>
+                        <button onclick="saveSubtitleEditor('${id}')" class="px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold rounded-lg transition-colors shadow-sm">Save</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+            lucide.createIcons();
+        };
+
+        window.saveSubtitleEditor = function(id) {
+            const sub = State.subtitles.find(s => s.id === id);
+            if (!sub) return;
+            sub.text = document.getElementById('subEText').value;
+            sub.startTime = parseFloat(document.getElementById('subEStart').value) || 0;
+            sub.endTime = parseFloat(document.getElementById('subEEnd').value) || 1;
+
+            if (document.getElementById('subEOverride').checked) {
+                const animIn = document.getElementById('subEAnimIn').value;
+                const animOut = document.getElementById('subEAnimOut').value;
+                sub.effects = {
+                    fontFamily: document.getElementById('subEFont').value || undefined,
+                    fontSize: parseInt(document.getElementById('subESize').value) || undefined,
+                    fillColor: document.getElementById('subEColor').value || undefined,
+                    position: document.getElementById('subEPos').value || undefined,
+                    animIn: animIn || undefined,
+                    animOut: animOut || undefined
+                };
+                Object.keys(sub.effects).forEach(k => { if (!sub.effects[k]) delete sub.effects[k]; });
+            } else {
+                sub.effects = {};
+            }
+            saveSubtitlesToStorage();
+            document.getElementById('subEditorOverlay').remove();
+            renderSubtitlesPanel();
+            drawCanvas();
+        };
+
+        // ── Draw subtitle text on canvas ────────────────────────────────────────
+        function drawSubtitlesOnCanvas(ctx, w, h) {
+            const cfg = State.subtitleConfig;
+            const subs = State.subtitles || [];
+            const time = State.currentTime;
+
+            // Find active subtitles at current time
+            const active = subs.filter(s => time >= s.startTime && time < s.endTime);
+            if (!active.length) return;
+
+            // We only show the first active subtitle (no overlapping captions)
+            const sub = active[0];
+            const ef = { ...cfg, ...sub.effects };
+
+            // Calculate animation
+            const subTime = time - sub.startTime;
+            const subDuration = sub.endTime - sub.startTime;
+            const timeLeft = subDuration - subTime;
+            let alpha = 1;
+            let yOffset = 0;
+            let scale = 1;
+
+            // In animation (merge per-subtitle overrides via ef)
+            const animIn = ef.animIn !== undefined ? ef.animIn : cfg.animIn;
+            const animOut = ef.animOut !== undefined ? ef.animOut : cfg.animOut;
+            const animInDur = cfg.animInDur || 0.3;
+            const animOutDur = cfg.animOutDur || 0.3;
+            if (animIn !== 'none' && subTime < animInDur) {
+                const p = subTime / animInDur;
+                if (animIn === 'fadeIn') { alpha = p; }
+                else if (animIn === 'slideUp') { alpha = Math.min(1, p * 2); yOffset = 30 * (1 - p); }
+                else if (animIn === 'scaleIn') { alpha = Math.min(1, p * 2); scale = 0.5 + 0.5 * p; }
+            }
+            // Out animation
+            if (animOut !== 'none' && timeLeft < animOutDur) {
+                const p = timeLeft / animOutDur;
+                if (animOut === 'fadeOut') { alpha = p; }
+                else if (animOut === 'slideDown') { alpha = Math.min(1, p * 2); yOffset = -30 * (1 - p); }
+                else if (animOut === 'scaleOut') { alpha = Math.min(1, p * 2); scale = 0.5 + 0.5 * p; }
+            }
+
+            if (alpha <= 0) return;
+
+            ctx.save();
+            ctx.globalAlpha = alpha;
+
+            // Font setup
+            const fontSize = ef.fontSize || 36;
+            const fontFamily = ef.fontFamily || 'Inter';
+            const fontWeight = ef.fontWeight || 700;
+            ctx.font = fontWeight + ' ' + fontSize + 'px "' + fontFamily + '"';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            // Wrap text
+            const maxWidth = w * 0.85;
+            const lines = wrapText(ctx, sub.text || '', maxWidth);
+            const lh = (cfg.lineHeight || 1.3) * fontSize;
+            const totalH = lines.length * lh;
+
+            // Position
+            const pos = ef.position || 'bottom';
+            const offset = cfg.bottomOffset || 60;
+            const baseX = w / 2;
+            const baseY = pos === 'top' ? offset + totalH / 2 : h - offset - totalH / 2;
+
+            ctx.translate(baseX, baseY + yOffset);
+            ctx.scale(scale, scale);
+
+            // Background
+            if (cfg.bgEnable) {
+                let maxLineW = 0;
+                lines.forEach(l => { const m = ctx.measureText(l).width; if (m > maxLineW) maxLineW = m; });
+                const pad = cfg.bgPadding || 8;
+                const bgH = totalH + pad * 2;
+                const bgW = maxLineW + pad * 2;
+                const op = cfg.bgOpacity !== undefined ? cfg.bgOpacity : 0.5;
+                ctx.fillStyle = 'rgba(0,0,0,' + op + ')';
+                const r = 6;
+                ctx.beginPath();
+                ctx.roundRect(-bgW / 2, -totalH / 2 - pad, bgW, bgH, r);
+                ctx.fill();
+            }
+
+            // Draw each line
+            const startY = -((lines.length - 1) * lh) / 2;
+            lines.forEach((line, i) => {
+                const y = startY + i * lh;
+
+                // Shadow
+                if (cfg.shadowEnable) {
+                    ctx.shadowColor = cfg.shadowColor || '#000000';
+                    ctx.shadowBlur = cfg.shadowBlur || 4;
+                    ctx.shadowOffsetX = cfg.shadowX || 0;
+                    ctx.shadowOffsetY = cfg.shadowY || 2;
+                } else {
+                    ctx.shadowColor = 'transparent';
+                    ctx.shadowBlur = 0;
+                }
+
+                // Stroke
+                if (cfg.strokeEnable) {
+                    ctx.strokeStyle = cfg.strokeColor || '#000000';
+                    ctx.lineWidth = cfg.strokeWidth || 3;
+                    ctx.lineJoin = 'round';
+                    ctx.strokeText(line, 0, y);
+                    ctx.shadowColor = 'transparent';
+                    ctx.shadowBlur = 0;
+                }
+
+                ctx.fillStyle = ef.fillColor || '#ffffff';
+                ctx.fillText(line, 0, y);
+            });
+
+            ctx.restore();
+        }
+
+        /** Wrap text to fit maxWidth */
+        function wrapText(ctx, text, maxWidth) {
+            if (!text) return [''];
+            const words = text.split('\n');
+            const lines = [];
+            for (const paragraph of words) {
+                if (ctx.measureText(paragraph).width <= maxWidth) {
+                    lines.push(paragraph);
+                    continue;
+                }
+                let line = '';
+                for (const char of paragraph) {
+                    const test = line + char;
+                    if (ctx.measureText(test).width > maxWidth && line) {
+                        lines.push(line);
+                        line = char;
+                    } else {
+                        line = test;
+                    }
+                }
+                if (line) lines.push(line);
+            }
+            return lines.length ? lines : [''];
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════════
         // --- Track Management ---
         window.addTrack = (type) => {
             const currentSceneId = State.activeSceneId || null;
@@ -8110,6 +8678,10 @@ const isVis = !clip.hidden;
             renderClips();
             drawCanvas();
             mediaInput.value = ''; 
+        });
+
+        document.getElementById('btnToggleCaptions').addEventListener('click', () => {
+            setSidebarTab('subtitles');
         });
 
         btnImportFont.addEventListener('click', () => {

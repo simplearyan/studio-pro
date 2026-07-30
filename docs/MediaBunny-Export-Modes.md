@@ -13,8 +13,9 @@
 4. [Normal Mode vs Fast Mode Comparison](#4-normal-mode-vs-fast-mode-comparison)
 5. [Technical Deep Dive](#5-technical-deep-dive)
 6. [Recommendations by Use Case](#6-recommendations-by-use-case)
-7. [Quality & File Size Trade-offs](#7-quality--file-size-trade-offs)
-8. [Future Improvements](#8-future-improvements)
+7. [FPS Conversion & Lip Sync](#7-fps-conversion--lip-sync)
+8. [Quality & File Size Trade-offs](#8-quality--file-size-trade-offs)
+9. [Future Improvements](#9-future-improvements)
 
 ---
 
@@ -305,7 +306,66 @@ If target FPS is 30 but the GPU can only produce 15 frames per second of capture
 
 ---
 
-## 7. Quality & File Size Trade-offs
+## 7. FPS Conversion & Lip Sync
+
+### The Problem
+
+When your source video has one frame rate (e.g., 23.976 fps — the standard film rate) and you export at a different rate (e.g., 30 fps), the export must perform **frame rate conversion**. This can cause **lip sync drift** because the relationship between video frames and audio timing becomes irregular.
+
+### Why 23.976 → 30fps Breaks Sync (3:2 Pulldown)
+
+The standard conversion method is **3:2 pulldown**. Every 4 source frames become 5 output frames:
+
+```
+Source (23.976fps):  A     B     C     D    | A     B     C     D
+                     │     │     │     │    | │     │     │     │
+Output (30fps):      A  A  B  B  B  C  C  D  D  D
+                     (3:2 pattern: 3 fields, 2 fields)
+```
+
+- Frame A → 2 output frames (duration: 2/30 = **66.7 ms**)
+- Frame B → 3 output frames (duration: 3/30 = **100 ms**)
+- Frame C → 2 output frames (66.7 ms)
+- Frame D → 3 output frames (100 ms)
+
+**The problem**: Frames have **uneven display durations**. This causes:
+- **Visible judder** — motion looks uneven, stuttering every 4-frame cadence
+- **Perceived lip sync drift** — the relationship between "which video frame is showing" and "where the audio waveform is" feels inconsistent
+
+### Why 23.976 → 20fps Keeps Sync
+
+20 fps is a clean **5:6 ratio** to 24 fps. Every 6 source frames, you drop 1 and keep 5. The frames you DO keep are displayed at their **original durations** — no uneven 3:2 pattern, no judder.
+
+### Why 23.976 → 24fps Is Perfect
+
+24 fps (actually 23.976 in practice) is the **native rate** of film content. Every source frame maps to exactly one output frame. Audio and video are perfectly synchronized because no conversion is needed.
+
+### Conversion Table
+
+| Source FPS | Export FPS | Ratio | Lip Sync | Why |
+|---|---|---|---|---|
+| 23.976 | **24** | ≈1:1 | ✅ **Perfect** | Source frame = output frame (trivial pulldown) |
+| 23.976 | **20** | 5:6 | ✅ **Good** | Even frame drops, no judder |
+| 23.976 | **30** | 4:5 | ❌ **Off** | 3:2 pulldown — uneven frame durations |
+| 23.976 | **60** | 2:5 | ❌ **Worse** | Even more duplication, more unevenness |
+| 23.976 | **12** | 2:1 | ✅ **Good** | Drop every other frame evenly |
+| 30 | **30** | 1:1 | ✅ **Perfect** | No conversion needed |
+| 30 | **24** | 5:4 | ⚠️ **Slight** | Frame blending required |
+| 30 | **60** | 1:2 | ✅ **Good** | Duplicate every frame (no uneven timing) |
+
+### Key Rule
+
+> **If the source FPS evenly divides into the target FPS (or vice versa), lip sync is preserved.**
+>
+> 12 → 24 ✅ (12×2=24), 24 → 12 ✅ (24÷2=12), 24 → 48 ✅ (24×2=48)
+>
+> 24 → 30 ❌ (24÷30 = 0.8 — not a clean ratio)
+
+The most reliable approach: **match the source clip's native frame rate** when exporting content with dialogue or lip sync.
+
+---
+
+## 8. Quality & File Size Trade-offs
 
 ### FPS vs File Size (estimate for 60-second 1080p video)
 
@@ -327,7 +387,7 @@ At a fixed bitrate, higher FPS means **fewer bits per frame**. A 30fps video at 
 
 ---
 
-## 8. Future Improvements
+## 9. Future Improvements
 
 ### 1. Frame Blending for Low FPS
 
@@ -360,6 +420,49 @@ if (lastCaptureTime > 50) {  // GPU taking too long → add yield
 ### 4. Variable FPS Export
 
 Export at variable frame rate (like Fast Mode produces) but metadata-mark it as CFR for compatibility. Useful for content with mixed motion (talking head + action scenes).
+
+### 5. FPS Mismatch Warning
+
+When the user selects an export FPS that doesn't evenly divide into (or from) the source clip's frame rate, show a warning in the export modal:
+
+```
+⚠️ Source clip is 24fps. Exporting at 30fps may cause
+   lip sync drift. Consider 24fps or 60fps for best results.
+```
+
+Detection logic:
+```javascript
+function hasFpsMismatch(sourceFps, targetFps) {
+    // Check if one divides evenly into the other
+    const ratio = Math.max(sourceFps, targetFps) / Math.min(sourceFps, targetFps);
+    // A clean ratio means the remainder is very close to zero
+    return Math.abs(ratio - Math.round(ratio)) > 0.01;
+}
+```
+
+### 6. Match Source FPS Option
+
+Add a "Match Source FPS" checkbox in the export modal that auto-detects the timeline's dominant frame rate and sets it as the export FPS:
+
+```javascript
+function detectTimelineFps() {
+    // Find the most common frame rate among video clips
+    const fpsCounts = {};
+    State.clips.forEach(clip => {
+        if (clip.type === 'video' && clip.fps) {
+            fpsCounts[clip.fps] = (fpsCounts[clip.fps] || 0) + 1;
+        }
+    });
+    // Return the most common fps, defaulting to 30
+    return Object.entries(fpsCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || 30;
+}
+```
+
+This option would:
+1. Read the native frame rate from the first (or most common) video clip's `clip.fps` property
+2. Automatically select the matching export FPS
+3. Disable the manual FPS selector while checked
+4. Warn if clips have mixed frame rates
 
 ---
 
