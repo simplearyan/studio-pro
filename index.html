@@ -713,6 +713,7 @@
                     <button onclick="setSidebarTab('audio_library')" id="tabAudioLib" class="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded transition-colors text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-surface-100">Audio</button>
                     <button onclick="setSidebarTab('presets')" id="tabPresets" class="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded transition-colors text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-surface-100">Presets</button>
                     <button onclick="setSidebarTab('subtitles')" id="tabSubtitles" class="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded transition-colors text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-surface-100">Captions</button>
+                    <button onclick="setSidebarTab('markdown')" id="tabMarkdown" class="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded transition-colors text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-surface-100">Markdown</button>
                 </div>
                 <div class="flex items-center gap-1">
                     <button onclick="rebuildAudioSystem()" class="p-1.5 rounded text-surface-400 hover:text-brand-500 dark:hover:text-brand-400 hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors shrink-0" title="Sync Audio Output (Headphones / Speakers)">
@@ -773,7 +774,7 @@
             selectedClipId: null,
             multiSelectedClipIds: [],
             activePropertyTab: 'volume',
-            sidebarTab: 'properties', // 'properties', 'animations', 'audio_library', 'presets', 'subtitles'
+            sidebarTab: 'properties', // 'properties', 'animations', 'audio_library', 'presets', 'subtitles', 'markdown'
             audioSubTab: 'library', // 'library', 'mixer'
             activeAnimTab: 'in',
             audioLibrary: [],
@@ -786,7 +787,9 @@
             canvasBgColor: '#231F20',
             subtitles: [],
             subtitleSubTab: 'captions', // 'captions' | 'style'
+            captionsVisible: true,
             subtitleEditingId: null,
+            markdownText: '',
             subtitleConfig: {
                 fontSize: 36,
                 fontFamily: 'Inter',
@@ -3452,7 +3455,7 @@
                         }
                         ctx.restore();
                     } else {
-                    if (clip.isPlaceholder || (clip.type === 'image' && !clip.imageEl) || (clip.type === 'video' && !clip.videoEl)) {
+                    if (clip.isPlaceholder || (clip.type === 'image' && (!clip.imageEl || !clip.imageEl.complete || clip.imageEl.naturalWidth === 0)) || (clip.type === 'video' && !clip.videoEl)) {
                         const borderRadius = clip.effects.borderRadius !== undefined ? clip.effects.borderRadius : 0;
 
                         const clipTime = State.currentTime - clip.start;
@@ -4322,6 +4325,10 @@
             }
             if (State.sidebarTab === 'subtitles') {
                 renderSubtitlesPanel();
+                return;
+            }
+            if (State.sidebarTab === 'markdown') {
+                renderMarkdownPanel();
                 return;
             }
 
@@ -6054,6 +6061,8 @@
             if (btnPresets) btnPresets.className = (tab === 'presets') ? activeClass : inactiveClass;
             const btnSubs = document.getElementById('tabSubtitles');
             if (btnSubs) btnSubs.className = (tab === 'subtitles') ? activeClass : inactiveClass;
+            const btnMd = document.getElementById('tabMarkdown');
+            if (btnMd) btnMd.className = (tab === 'markdown') ? activeClass : inactiveClass;
             
             updateSidebarPanel();
         }
@@ -8157,6 +8166,9 @@ const isVis = !clip.hidden;
                         <button onclick="clearAllSubtitles()" class="py-2 px-3 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-sm" title="Clear">
                             <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
                         </button>
+                        <button onclick="toggleCaptionsVisibility()" id="btnToggleCaptions" class="py-2 px-3 bg-surface-200 dark:bg-surface-700 hover:bg-amber-100 dark:hover:bg-amber-900/30 text-surface-700 dark:text-surface-200 hover:text-amber-600 dark:hover:text-amber-400 text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-sm" title="Toggle captions visibility">
+                            <i data-lucide="eye" class="w-3.5 h-3.5"></i>
+                        </button>
                         <button onclick="syncSubtitlesToClips()" class="py-2 px-3 bg-surface-200 dark:bg-surface-700 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 text-surface-700 dark:text-surface-200 hover:text-indigo-600 dark:hover:text-indigo-400 text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-sm" title="Generate captions track on timeline">
                             <i data-lucide="list-video" class="w-3.5 h-3.5"></i>
                         </button>
@@ -8199,8 +8211,397 @@ const isVis = !clip.hidden;
             };
         }
 
+        // ── Markdown Panel ────────────────────────────────────────────────────────
+        window.toggleCaptionsVisibility = function() {
+            State.captionsVisible = !State.captionsVisible;
+            const btn = document.getElementById('btnToggleCaptions');
+            if (btn) {
+                const icon = btn.querySelector('i');
+                if (icon) {
+                    icon.setAttribute('data-lucide', State.captionsVisible ? 'eye' : 'eye-off');
+                }
+                btn.classList.toggle('bg-amber-100', !State.captionsVisible);
+                btn.classList.toggle('dark:bg-amber-900/30', !State.captionsVisible);
+                btn.classList.toggle('text-amber-600', !State.captionsVisible);
+                btn.classList.toggle('dark:text-amber-400', !State.captionsVisible);
+                lucide.createIcons();
+            }
+            drawCanvas();
+        };
+
+        const MARKDOWN_PRESET_ANIMALS = `# 🦁 Amazing Animals & Dinosaurs
+
+Explore the fascinating world of animals and dinosaurs that roamed the Earth millions of years ago!
+
+---
+
+## 🦖 Tyrannosaurus Rex
+
+The Tyrannosaurus Rex was one of the largest land carnivores of all time, measuring up to 40 feet long and 12 feet tall.
+
+![T-Rex](https://images.pexels.com/photos/247376/pexels-photo-247376.jpeg?auto=compress&cs=tinysrgb&w=800)
+
+---
+
+## 🦕 Brachiosaurus
+
+With its incredibly long neck reaching up to 30 feet, the Brachiosaurus could browse treetops that other dinosaurs couldn't reach.
+
+![Brachiosaurus](https://images.pexels.com/photos/12875626/pexels-photo-12875626.jpeg?auto=compress&cs=tinysrgb&w=800)
+
+---
+
+## 🦅 Majestic Eagles
+
+Eagles are birds of prey with incredible vision — they can spot prey from over a mile away!
+
+![Eagle](https://images.pexels.com/photos/32068807/pexels-photo-32068807.jpeg?auto=compress&cs=tinysrgb&w=800)
+
+---
+
+## 🐘 African Elephants
+
+Elephants are the largest land animals on Earth, with the African elephant weighing up to 6,000 kilograms.
+
+![Elephant](https://images.pexels.com/photos/941693/pexels-photo-941693.jpeg?auto=compress&cs=tinysrgb&w=800)
+
+---
+
+## 🐬 Dolphins
+
+Dolphins are highly intelligent marine mammals known for their playful behavior and complex social structures.
+
+![Dolphin](https://images.pexels.com/photos/33603933/pexels-photo-33603933.jpeg?auto=compress&cs=tinysrgb&w=800)
+
+---
+
+## 🦁 Lions
+
+Known as the king of the jungle, lions are the only cats that live in groups called prides.
+
+![Lion](https://images.pexels.com/photos/247502/pexels-photo-247502.jpeg?auto=compress&cs=tinysrgb&w=800)
+
+---
+
+## 🦈 Great White Sharks
+
+Great white sharks can detect a single drop of blood in 25 gallons of water and sense electromagnetic fields.
+
+![Shark](https://images.pexels.com/photos/33522109/pexels-photo-33522109.jpeg?auto=compress&cs=tinysrgb&w=800)
+
+---
+
+## 🦋 Butterflies
+
+Butterflies taste with their feet and have a lifespan that ranges from a few weeks to nearly a year depending on the species.
+
+![Butterfly](https://images.pexels.com/photos/674010/pexels-photo-674010.jpeg?auto=compress&cs=tinysrgb&w=800)
+
+---
+
+## 🐺 Wolves
+
+Wolves communicate through howls, body language, and scent marking — a single howl can be heard up to 10 miles away.
+
+![Wolf](https://images.pexels.com/photos/36129744/pexels-photo-36129744.jpeg?auto=compress&cs=tinysrgb&w=800)
+
+---
+
+## 🦉 Owls
+
+Owls can rotate their heads up to 270 degrees and have silent flight thanks to special feather adaptations.
+
+![Owl](https://images.pexels.com/photos/36828322/pexels-photo-36828322.jpeg?auto=compress&cs=tinysrgb&w=800)
+
+---
+
+## 🐧 Penguins
+
+Emperor penguins are the tallest and heaviest of all penguin species, standing nearly 4 feet tall.
+
+![Penguin](https://images.pexels.com/photos/28386059/pexels-photo-28386059.jpeg?auto=compress&cs=tinysrgb&w=800)
+
+---
+
+## 🦄 Nature is Beautiful
+
+From the smallest butterfly to the mightiest T-Rex, every creature plays a unique role in the tapestry of life on Earth. Let's protect and cherish our planet's incredible biodiversity!`;
+
+        const MARKDOWN_HELP_TEXT = 'Write **Markdown** with `## Heading` for titles, `![alt](url)` for images, and text for paragraphs. Use `---` to separate slides.';
+
+        window.renderMarkdownPanel = function() {
+            sidebarContent.className = 'flex flex-col w-full flex-1 min-h-0 bg-surface-50 dark:bg-surface-900';
+            
+            let html = `
+                <div class="flex flex-col w-full flex-1 min-h-0">
+                    <div class="flex items-center gap-2 p-3 bg-white dark:bg-surface-800 border-b border-surface-200 dark:border-surface-700 shrink-0">
+                        <i data-lucide="file-text" class="w-4 h-4 text-surface-500 dark:text-surface-400 shrink-0"></i>
+                        <span class="text-sm font-bold text-surface-800 dark:text-surface-200">Markdown to Video</span>
+                    </div>
+                    <div class="flex-1 overflow-y-auto p-3 flex flex-col gap-3">
+                        <div class="flex items-center gap-2 shrink-0">
+                            <button onclick="loadMarkdownPreset()" class="flex-1 py-2 px-3 bg-indigo-500 hover:bg-indigo-400 text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-sm">
+                                <i data-lucide="sparkles" class="w-3.5 h-3.5"></i> Load Preset
+                            </button>
+                            <button onclick="parseMarkdownToClips()" class="flex-1 py-2 px-3 bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-sm">
+                                <i data-lucide="play" class="w-3.5 h-3.5"></i> Generate Clips
+                            </button>
+                            <button onclick="clearMarkdownClips()" class="py-2 px-3 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-sm" title="Clear generated clips">
+                                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                            </button>
+                        </div>
+                        <div class="text-[10px] text-surface-500 dark:text-surface-400 italic bg-surface-100 dark:bg-surface-800 rounded-lg p-2 border border-surface-200 dark:border-surface-700">
+                            <i data-lucide="info" class="w-3 h-3 inline-block mr-1"></i>${MARKDOWN_HELP_TEXT}
+                        </div>
+                        <textarea id="markdownTextarea" class="w-full flex-1 min-h-[200px] bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg p-3 text-sm text-surface-800 dark:text-surface-200 font-mono leading-relaxed resize-none outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500" placeholder="Write your markdown here...
+
+Use ## for headings
+Use ![alt](url) for images
+Use --- to separate slides
+
+Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</textarea>
+                    </div>
+                </div>
+            `;
+            
+            sidebarContent.innerHTML = html;
+            lucide.createIcons();
+            
+            // Auto-save markdown text on input
+            const ta = document.getElementById('markdownTextarea');
+            if (ta) {
+                ta.addEventListener('input', function() {
+                    State.markdownText = this.value;
+                });
+            }
+        };
+
+        window.loadMarkdownPreset = function() {
+            State.markdownText = MARKDOWN_PRESET_ANIMALS;
+            renderMarkdownPanel();
+            // Auto-set textarea value after render
+            setTimeout(() => {
+                const ta = document.getElementById('markdownTextarea');
+                if (ta) ta.value = State.markdownText;
+            }, 0);
+        };
+
+        function clearMarkdownClips() {
+            // Remove all clips that were created by markdown
+            const mdClipIds = State.clips.filter(c => c._mdGenerated).map(c => c.id);
+            if (!mdClipIds.length) {
+                const ta = document.getElementById('markdownTextarea');
+                if (ta) ta.focus();
+                return;
+            }
+            State.clips = State.clips.filter(c => !c._mdGenerated);
+            calcOverlaps();
+            renderTracks();
+            renderTrackHeaders();
+            renderClips();
+            drawCanvas();
+        }
+
+        window.parseMarkdownToClips = function() {
+            const ta = document.getElementById('markdownTextarea');
+            if (!ta || !ta.value.trim()) return;
+            
+            const md = ta.value;
+            State.markdownText = md;
+            
+            // First, clear any previously generated markdown clips
+            State.clips = State.clips.filter(c => !c._mdGenerated);
+            
+            // Parse markdown into slides/blocks
+            const lines = md.split('\n');
+            const slides = [];
+            let currentSlide = { heading: '', text: '', imageUrl: '', imageAlt: '' };
+            
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+                
+                // Separator = new slide
+                if (line === '---' || line === '___' || line === '***') {
+                    if (currentSlide.heading || currentSlide.text || currentSlide.imageUrl) {
+                        slides.push(currentSlide);
+                    }
+                    currentSlide = { heading: '', text: '', imageUrl: '', imageAlt: '' };
+                    continue;
+                }
+                
+                // Image: ![alt](url)
+                const imgMatch = line.match(/^!\[([^\]]*)\]\s*\(([^)]+)\)/);
+                if (imgMatch) {
+                    currentSlide.imageUrl = imgMatch[2];
+                    currentSlide.imageAlt = imgMatch[1] || '';
+                    continue;
+                }
+                
+                // Heading: ## text or ##text
+                const headingMatch = line.match(/^##\s+(.+)/);
+                if (headingMatch) {
+                    if (currentSlide.heading || currentSlide.text || currentSlide.imageUrl) {
+                        slides.push(currentSlide);
+                        currentSlide = { heading: '', text: '', imageUrl: '', imageAlt: '' };
+                    }
+                    currentSlide.heading = headingMatch[1].trim();
+                    continue;
+                }
+                
+                // Regular text (skip empty lines and headings that are just #)
+                if (line && !line.startsWith('#')) {
+                    if (currentSlide.text) currentSlide.text += '\n' + line;
+                    else currentSlide.text = line;
+                }
+            }
+            // Push the last slide
+            if (currentSlide.heading || currentSlide.text || currentSlide.imageUrl) {
+                slides.push(currentSlide);
+            }
+            
+            if (!slides.length) return;
+            
+            // Create clips on timeline
+            let currentTime = State.currentTime;
+            const slideDuration = 5; // 5 seconds per slide
+            
+            // Ensure we have video tracks
+            let trackId = getAvailableTrack('video', currentTime, slides.length * slideDuration);
+            
+            slides.forEach((slide, index) => {
+                const id = 'md_' + Date.now() + '_' + index + '_' + Math.random().toString(36).substr(2, 5);
+                const clipStart = currentTime + index * slideDuration;
+                
+                // Get a fresh track for this slide
+                let slideTrackId = getAvailableTrack('video', clipStart, slideDuration);
+                let targetTrack = State.tracks.find(t => t.id === slideTrackId);
+                let clipColor = (targetTrack ? (targetTrack.colorIndex + 1 + index) % PALETTES.length : 0);
+                
+                // Create text clip for heading
+                if (slide.heading) {
+                    const headingClip = {
+                        id: id + '_heading',
+                        sceneId: State.activeSceneId || null,
+                        trackId: slideTrackId,
+                        colorIndex: clipColor,
+                        type: 'text',
+                        title: slide.heading.substring(0, 30),
+                        text: slide.heading,
+                        start: clipStart,
+                        duration: slideDuration,
+                        sourceOffset: 0,
+                        maxDuration: 3600,
+                        _mdGenerated: true,
+                        effects: {
+                            scale: 1, rotate: 0, offsetX: 0, offsetY: 0,
+                            fontFamily: 'Rubik', fontWeight: 700, fillColor: '#ffffff',
+                            strokeEnable: true, strokeColor: '#000000', strokeWidth: 4,
+                            shadowEnable: true, shadowColor: '#000000', shadowBlur: 20, shadowX: 0, shadowY: 10,
+                            extrudeEnable: false, extrudeDepth: 5, extrudeColor: '#000000',
+                            animIn: 'fadeIn', animOut: 'none', animLoop: 'none', animInDur: 0.5, animOutDur: 0.5, animEase: 'easeOut',
+                            animTextIn: 'none', animTextOut: 'none', animTextLoop: 'none', animTextEase: 'easeOut', animTextStagger: 'letter', animTextInDur: 0.5, animTextOutDur: 0.5, flashColor: '#ffe600'
+                        }
+                    };
+                    State.clips.push(headingClip);
+                }
+                
+                // If there's additional text, create a sub-text clip on the next track
+                if (slide.text) {
+                    let textTrackId = getAvailableTrack('video', clipStart, slideDuration);
+                    let textTrack = State.tracks.find(t => t.id === textTrackId);
+                    let textColor = (textTrack ? (textTrack.colorIndex + 2 + index) % PALETTES.length : 0);
+                    
+                    const textClip = {
+                        id: id + '_text',
+                        sceneId: State.activeSceneId || null,
+                        trackId: textTrackId,
+                        colorIndex: textColor,
+                        type: 'text',
+                        title: (slide.text || '').substring(0, 30),
+                        text: slide.text,
+                        start: clipStart + 0.3,
+                        duration: slideDuration - 0.3,
+                        sourceOffset: 0,
+                        maxDuration: 3600,
+                        _mdGenerated: true,
+                        effects: {
+                            scale: 1, rotate: 0, offsetX: 0, offsetY: 0,
+                            fontFamily: 'Inter', fontWeight: 400, fillColor: '#eeeeee',
+                            strokeEnable: true, strokeColor: '#000000', strokeWidth: 2,
+                            shadowEnable: true, shadowColor: '#000000', shadowBlur: 10, shadowX: 0, shadowY: 4,
+                            extrudeEnable: false, extrudeDepth: 3, extrudeColor: '#000000',
+                            animIn: 'slideUp', animOut: 'none', animLoop: 'none', animInDur: 0.4, animOutDur: 0.3, animEase: 'easeOut',
+                            animTextIn: 'none', animTextOut: 'none', animTextLoop: 'none', animTextEase: 'easeOut', animTextStagger: 'word', animTextInDur: 0.3, animTextOutDur: 0.3, flashColor: '#ffe600'
+                        }
+                    };
+                    State.clips.push(textClip);
+                }
+                
+                // If there's an image URL, create an image clip on the background track
+                if (slide.imageUrl) {
+                    let imgTrackId = getAvailableTrack('video', clipStart, slideDuration);
+                    let imgTrack = State.tracks.find(t => t.id === imgTrackId);
+                    let imgColor = (imgTrack ? (imgTrack.colorIndex + 3 + index) % PALETTES.length : 0);
+                    
+                    // Create image element for rendering
+                    const img = new Image();
+                    img.crossOrigin = 'anonymous';
+                    img.onerror = function(){};
+                    img.src = slide.imageUrl;
+                    
+                    const imageClip = {
+                        id: id + '_image',
+                        sceneId: State.activeSceneId || null,
+                        trackId: imgTrackId,
+                        colorIndex: imgColor,
+                        type: 'image',
+                        title: slide.imageAlt || 'Image ' + (index + 1),
+                        start: clipStart,
+                        duration: slideDuration,
+                        sourceOffset: 0,
+                        maxDuration: 3600,
+                        fileUrl: slide.imageUrl,
+                        imageEl: img,
+                        _mdGenerated: true,
+                        effects: {
+                            scale: 1, rotate: 0, borderRadius: 0, offsetX: 0, offsetY: 0,
+                            strokeEnable: false, strokeColor: '#ffffff', strokeWidth: 4,
+                            shadowEnable: false, shadowColor: '#000000', shadowBlur: 20, shadowX: 0, shadowY: 10,
+                            animIn: 'fadeIn', animOut: 'none', animLoop: 'none', animInDur: 0.5, animOutDur: 0.3, animEase: 'easeOut',
+                            cropLeft: 0, cropRight: 0, cropTop: 0, cropBottom: 0,
+                            maskingZoom: 100, frameZoom: 100, framingPanX: 0, framingPanY: 0,
+                            maskType: 'none', maskWidth: 50, maskHeight: 50, maskX: 0, maskY: 0, maskFeather: 0, maskInvert: false,
+                            opacity: 100, blendMode: 'source-over'
+                        }
+                    };
+                    State.clips.push(imageClip);
+                }
+            });
+            
+            // Update duration if needed
+            const totalDuration = currentTime + slides.length * slideDuration;
+            if (totalDuration > State.duration) {
+                State.duration = Math.ceil(totalDuration + 10);
+                updateTimelineWidth();
+            }
+            
+            calcOverlaps();
+            renderTracks();
+            renderTrackHeaders();
+            renderClips();
+            drawCanvas();
+            
+            // Select the first generated clip
+            const firstGen = State.clips.find(c => c._mdGenerated);
+            if (firstGen) {
+                State.selectedClipId = firstGen.id;
+                State.multiSelectedClipIds = [firstGen.id];
+            }
+        };
+
         // ── Draw subtitle text on canvas ────────────────────────────────────────
         function drawSubtitlesOnCanvas(ctx, w, h) {
+            if (!State.captionsVisible) return;
             const cfg = State.subtitleConfig;
             const subs = State.subtitles || [];
             const time = State.currentTime;
