@@ -4057,6 +4057,20 @@
                     if (clip.type === 'image' || clip.type === 'video' || clip.type === 'text' || clip.type === 'shape' || clip.type === 'scene') needsCanvasRedraw = true;
                     if (clip.type === 'text' || clip.type === 'shape') needsClipsRedraw = true;
                     if (clip.audioNodes) applyAudioEffects(clip);
+
+                    // Sync to subtitle data if this is a subtitle-linked clip
+                    if (clip.subtitleId) {
+                        const sub = State.subtitles.find(s => s.id === clip.subtitleId);
+                        if (sub) {
+                            if (!sub.effects) sub.effects = {};
+                            // Map text properties from clip effects to subtitle effects
+                            const subtitleEffectMap = ['fontFamily', 'fontSize', 'fillColor', 'fontWeight', 'fontStyle', 'lineHeight', 'shadowEnable', 'shadowColor', 'shadowBlur', 'shadowX', 'shadowY', 'strokeEnable', 'strokeColor', 'strokeWidth'];
+                            if (subtitleEffectMap.includes(effectName)) {
+                                sub.effects[effectName] = clip.effects[effectName];
+                                saveSubtitlesToStorage();
+                            }
+                        }
+                    }
                 }
             });
 
@@ -4482,11 +4496,11 @@
                 textHTML = `
                     <details id="cardContent" class="group bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 shadow-sm rounded-lg shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'} overflow-hidden flex flex-col" open>
                         <summary class="flex items-center justify-between p-3 ${isHorizontal ? '' : 'cursor-pointer'} list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700 " onclick="${isHorizontal ? 'event.preventDefault();' : ''}">
-                            <div class="text-sm font-bold text-surface-800 dark:text-surface-200 flex items-center gap-2"><i data-lucide="type" class="w-4 h-4 text-surface-500 dark:text-surface-400"></i> Text Content</div>
+                            <div class="text-sm font-bold text-surface-800 dark:text-surface-200 flex items-center gap-2"><i data-lucide="type" class="w-4 h-4 text-surface-500 dark:text-surface-400"></i> Text Content${clip.subtitleId ? ' <span class="text-[9px] font-bold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-900/30 px-1.5 py-0.5 rounded-sm border border-brand-200 dark:border-brand-700">Captions</span>' : ''}</div>
                             ${isHorizontal ? '' : '<i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>'}
                         </summary>
                         <div class="p-3 flex flex-col gap-3 bg-surface-50 dark:bg-surface-900/50 flex-1">
-                            <textarea class="w-full h-20 bg-surface-50 dark:bg-surface-900/80 shadow-inner border border-surface-200 dark:border-surface-700 rounded-lg p-2 text-sm text-surface-900 dark:text-white outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500" oninput="State.clips.find(c=>c.id==='${clip.id}').text=this.value; drawCanvas(); renderClips();">${clip.text}</textarea>
+                            <textarea class="w-full h-20 bg-surface-50 dark:bg-surface-900/80 shadow-inner border border-surface-200 dark:border-surface-700 rounded-lg p-2 text-sm text-surface-900 dark:text-white outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500" oninput="const _c=State.clips.find(c=>c.id==='${clip.id}');if(_c){_c.text=this.value;if(_c.subtitleId){const _s=State.subtitles.find(s=>s.id===_c.subtitleId);if(_s){_s.text=this.value;saveSubtitlesToStorage();}}drawCanvas();renderClips();}">${clip.text}</textarea>
                             
                             <div class="flex flex-col gap-2 mt-1">
                                 <div class="flex items-center justify-between py-1 bg-surface-100 dark:bg-surface-800/50 px-2 rounded border border-surface-200 dark:border-surface-700">
@@ -8242,12 +8256,12 @@ const isVis = !clip.hidden;
             // Wrap text
             const maxWidth = w * 0.85;
             const lines = wrapText(ctx, sub.text || '', maxWidth);
-            const lh = (cfg.lineHeight || 1.3) * fontSize;
+            const lh = (ef.lineHeight !== undefined ? ef.lineHeight : (cfg.lineHeight || 1.3)) * fontSize;
             const totalH = lines.length * lh;
 
             // Position
             const pos = ef.position || 'bottom';
-            const offset = cfg.bottomOffset || 60;
+            const offset = ef.bottomOffset !== undefined ? ef.bottomOffset : (cfg.bottomOffset || 60);
             const baseX = w / 2;
             const baseY = pos === 'top' ? offset + totalH / 2 : h - offset - totalH / 2;
 
@@ -8255,13 +8269,13 @@ const isVis = !clip.hidden;
             ctx.scale(scale, scale);
 
             // Background
-            if (cfg.bgEnable) {
+            if (ef.bgEnable !== undefined ? ef.bgEnable : cfg.bgEnable) {
                 let maxLineW = 0;
                 lines.forEach(l => { const m = ctx.measureText(l).width; if (m > maxLineW) maxLineW = m; });
-                const pad = cfg.bgPadding || 8;
+                const pad = ef.bgPadding || (cfg.bgPadding || 8);
                 const bgH = totalH + pad * 2;
                 const bgW = maxLineW + pad * 2;
-                const op = cfg.bgOpacity !== undefined ? cfg.bgOpacity : 0.5;
+                const op = ef.bgOpacity !== undefined ? ef.bgOpacity : (cfg.bgOpacity !== undefined ? cfg.bgOpacity : 0.5);
                 ctx.fillStyle = 'rgba(0,0,0,' + op + ')';
                 const r = 6;
                 ctx.beginPath();
@@ -8274,21 +8288,23 @@ const isVis = !clip.hidden;
             lines.forEach((line, i) => {
                 const y = startY + i * lh;
 
-                // Shadow
-                if (cfg.shadowEnable) {
-                    ctx.shadowColor = cfg.shadowColor || '#000000';
-                    ctx.shadowBlur = cfg.shadowBlur || 4;
-                    ctx.shadowOffsetX = cfg.shadowX || 0;
-                    ctx.shadowOffsetY = cfg.shadowY || 2;
+                // Shadow (per-subtitle ef overrides global cfg)
+                const shEnable = ef.shadowEnable !== undefined ? ef.shadowEnable : cfg.shadowEnable;
+                if (shEnable) {
+                    ctx.shadowColor = ef.shadowColor || (cfg.shadowColor || '#000000');
+                    ctx.shadowBlur = ef.shadowBlur !== undefined ? ef.shadowBlur : (cfg.shadowBlur || 4);
+                    ctx.shadowOffsetX = ef.shadowX !== undefined ? ef.shadowX : (cfg.shadowX || 0);
+                    ctx.shadowOffsetY = ef.shadowY !== undefined ? ef.shadowY : (cfg.shadowY || 2);
                 } else {
                     ctx.shadowColor = 'transparent';
                     ctx.shadowBlur = 0;
                 }
 
-                // Stroke
-                if (cfg.strokeEnable) {
-                    ctx.strokeStyle = cfg.strokeColor || '#000000';
-                    ctx.lineWidth = cfg.strokeWidth || 3;
+                // Stroke (per-subtitle ef overrides global cfg)
+                const stEnable = ef.strokeEnable !== undefined ? ef.strokeEnable : cfg.strokeEnable;
+                if (stEnable) {
+                    ctx.strokeStyle = ef.strokeColor || (cfg.strokeColor || '#000000');
+                    ctx.lineWidth = ef.strokeWidth !== undefined ? ef.strokeWidth : (cfg.strokeWidth || 3);
                     ctx.lineJoin = 'round';
                     ctx.strokeText(line, 0, y);
                     ctx.shadowColor = 'transparent';
