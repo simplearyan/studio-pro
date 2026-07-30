@@ -8142,6 +8142,9 @@ const isVis = !clip.hidden;
                         <button onclick="clearAllSubtitles()" class="py-2 px-3 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-sm" title="Clear">
                             <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
                         </button>
+                        <button onclick="syncSubtitlesToClips()" class="py-2 px-3 bg-surface-200 dark:bg-surface-700 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 text-surface-700 dark:text-surface-200 hover:text-indigo-600 dark:hover:text-indigo-400 text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-sm" title="Generate captions track on timeline">
+                            <i data-lucide="list-video" class="w-3.5 h-3.5"></i>
+                        </button>
                     </div>
                     <div class="flex flex-col gap-1.5">${listHtml}</div>
                 </div>
@@ -9737,12 +9740,18 @@ const isVis = !clip.hidden;
                 el.style.backgroundColor = palette.bg;
                 el.style.borderColor = palette.border;
 
+                // Subtitle clips get a distinct visual treatment
+                const isSubtitleClip = !!clip.subtitleId;
+                if (isSubtitleClip) {
+                    el.style.borderColor = '#818cf8';
+                    el.style.borderWidth = '2px';
+                }
                 let icon = 'film';
                 if (clip.type === 'audio') icon = 'music';
                 else if (clip.type === 'image') icon = 'image';
                 else if (clip.type === 'shape') icon = 'shapes';
                 else if (clip.type === 'scene') icon = 'layers';
-                else if (clip.type === 'text') icon = (clip.effects && clip.effects.renderAsMath) ? 'variable' : 'type';
+                else if (clip.type === 'text') icon = isSubtitleClip ? 'subtitles' : ((clip.effects && clip.effects.renderAsMath) ? 'variable' : 'type');
 
                 const hasWaveform = clip.peaks && clip.peaks.length > 0;
                 
@@ -9761,7 +9770,7 @@ const isVis = !clip.hidden;
                     textPreviewHtml = `
                         <div class="absolute inset-0 flex items-center justify-center overflow-hidden pointer-events-none opacity-90 z-10 px-2">
                             <span class="truncate w-full text-center ${isMath ? 'font-mono text-[11px]' : ''}" style="font-family: ${isMath ? 'monospace' : "'Rubik', sans-serif"}; font-weight: ${fontWeight}; font-size: ${isMath ? '11px' : '14px'}; color: ${isMath ? '#f59e0b' : palette.text}; line-height: 1.2;">
-                                ${displayVal}
+                                ${isSubtitleClip ? '<span class="inline-flex items-center gap-1"><i data-lucide="subtitles" class="w-2.5 h-2.5" style="color: #818cf8"></i> ' : ''}${displayVal}${isSubtitleClip ? '</span>' : ''}
                             </span>
                         </div>
                     `;
@@ -9799,6 +9808,8 @@ const isVis = !clip.hidden;
                     const shapeType = (clip.effects && clip.effects.shapeType) ? clip.effects.shapeType : 'rect';
                     const shapeName = shapeType === 'rect' ? 'Rectangle' : shapeType === 'semicircle' ? 'Semicircle' : shapeType.charAt(0).toUpperCase() + shapeType.slice(1);
                     headerTitle = `Shape: ${shapeName}`;
+                } else if (isSubtitleClip) {
+                    headerTitle = 'Caption';
                 } else if (isTextClip && clip.effects && clip.effects.renderAsMath) {
                     headerTitle = `Math: ${clip.text || 'Formula'}`;
                 }
