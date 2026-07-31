@@ -1056,7 +1056,8 @@
                 category: 'Scene Composition',
                 effects: {
                     scale: 1,
-                    opacity: 100
+                    opacity: 100,
+                    opaqueBg: false
                 }
             }
         ];
@@ -2293,6 +2294,7 @@
                 sceneId: State.activeSceneId,
                 effects: {
                     scale: 1, rotate: 0, opacity: 100, blendMode: 'source-over',
+                    opaqueBg: false,
                     animIn: 'none', animOut: 'none', animLoop: 'none', animInDur: 1.0, animOutDur: 1.0, animEase: 'easeOut'
                 }
             };
@@ -3414,9 +3416,11 @@
                         State.currentTime = prevTime - clip.start;
                         State.activeSceneId = clip.id;
                         
-                        // Scene offscreen: no opaque bg (so lower tracks show through)
-                        // and no subtitles (drawn once on the main canvas, not baked in)
-                        drawCanvas(offCtx, w, h, { skipSubtitles: true, skipBg: true });
+                        // Scene offscreen: no opaque bg by default (so lower tracks show through)
+                        // unless the user enables the scene's 'Opaque background' option.
+                        // Subtitles are always drawn once on the main canvas, not baked in.
+                        const opaqueBg = clip.effects && clip.effects.opaqueBg;
+                        drawCanvas(offCtx, w, h, { skipSubtitles: true, skipBg: !opaqueBg });
                         
                         State.currentTime = prevTime;
                         State.activeSceneId = prevSceneId;
@@ -4492,6 +4496,32 @@
             }
 
             const isText = clip.type === 'text';
+            const isScene = clip.type === 'scene';
+            let sceneHTML = '';
+            if (isScene) {
+                const opaqueBg = !!fx.opaqueBg;
+                sceneHTML = `
+                    <details id="cardScene" class="group bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 shadow-sm rounded-lg shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'} overflow-hidden flex flex-col" open>
+                        <summary class="flex items-center justify-between p-3 ${isHorizontal ? '' : 'cursor-pointer'} list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700 " onclick="${isHorizontal ? 'event.preventDefault();' : ''}">
+                            <div class="text-sm font-bold text-surface-800 dark:text-surface-200 flex items-center gap-2"><i data-lucide="layers" class="w-4 h-4 text-surface-500 dark:text-surface-400"></i> Scene</div>
+                            ${isHorizontal ? '' : '<i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>'}
+                        </summary>
+                        <div class="p-3 flex flex-col gap-2.5 bg-surface-50 dark:bg-surface-900/50 flex-1">
+                            <div class="flex items-center justify-between gap-2">
+                                <div class="flex flex-col min-w-0">
+                                    <span class="text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest">Opaque Background</span>
+                                    <span class="text-[11px] text-surface-500 dark:text-surface-400 mt-0.5 leading-snug">Fill the full frame so clips on other tracks are hidden behind this scene.</span>
+                                </div>
+                                <label class="relative inline-flex items-center cursor-pointer shrink-0" onclick="event.stopPropagation()">
+                                    <input type="checkbox" class="sr-only peer" ${opaqueBg ? 'checked' : ''} onchange="setClipEffect('${clip.id}', 'opaqueBg', this.checked); drawCanvas();">
+                                    <div class="w-7 h-4 bg-surface-300 dark:bg-surface-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-brand-500"></div>
+                                </label>
+                            </div>
+                        </div>
+                    </details>
+                `;
+            }
+
             let textHTML = '';
             let typographyHTML = '';
             let spacingHTML = '';
@@ -5877,6 +5907,7 @@
 
                 // Compile navigation items for Properties tab
                 const navItems = [];
+                if (sceneHTML) navItems.push({ id: 'cardScene', name: 'Scene', icon: 'layers' });
                 if (transformHTML) navItems.push({ id: 'cardTransform', name: 'Transform', icon: 'move' });
                 if (isText) {
                     navItems.push({ id: 'cardContent', name: 'Content', icon: 'type' });
@@ -5930,6 +5961,7 @@
                     
                     const cardsHtml = `
                         <div id="propertiesCardContainer" class="p-4 flex gap-6 min-w-0 ${isHorizontal ? 'flex-row overflow-x-auto flex-1 no-scrollbar' : 'flex-col overflow-y-auto flex-1 w-full properties-scroll-container'}">
+                            ${sceneHTML}
                             ${sourceHTML}
                             ${transformHTML}
                             ${isText ? textHTML : ''}
@@ -6000,7 +6032,7 @@
                     }, 0);
                 } else {
                     sidebarContent.className = "flex flex-col gap-3 p-4 w-full flex-1 min-h-0 overflow-y-auto";
-                    sidebarContent.innerHTML = sourceHTML + transformHTML + (isText ? (textHTML + typographyHTML + spacingHTML) : '') + (isShape ? shapeHTML : '') + cropHTML + maskHTML + strokeHTML + extrudeHTML + blendingHTML + shadowHTML + (isText ? systemFontsHTML : '') + (isText ? googleFontsHTML : '');
+                    sidebarContent.innerHTML = sceneHTML + sourceHTML + transformHTML + (isText ? (textHTML + typographyHTML + spacingHTML) : '') + (isShape ? shapeHTML : '') + cropHTML + maskHTML + strokeHTML + extrudeHTML + blendingHTML + shadowHTML + (isText ? systemFontsHTML : '') + (isText ? googleFontsHTML : '');
                 }
             }
             
