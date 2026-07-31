@@ -461,7 +461,7 @@
                 </div>
             </div>
             <input type="file" id="fontInput" accept=".ttf,.otf,.woff,.woff2" class="hidden">
-            <button id="btnToggleCaptions" class="p-1.5 text-surface-600 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white bg-surface-100 dark:bg-surface-800 rounded-md border border-surface-200 dark:border-surface-700 shadow-sm" title="Captions (Subtitles)">
+            <button id="btnOpenCaptionsPanel" class="p-1.5 text-surface-600 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white bg-surface-100 dark:bg-surface-800 rounded-md border border-surface-200 dark:border-surface-700 shadow-sm" title="Captions (Subtitles)">
                 <i data-lucide="subtitles" class="w-4 h-4"></i>
             </button>
             <button id="btnImportFont" class="p-1.5 text-surface-600 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white bg-surface-100 dark:bg-surface-800 rounded-md border border-surface-200 dark:border-surface-700 shadow-sm" title="Import Custom Font">
@@ -2707,7 +2707,9 @@
             return canvas;
         }
 
-        function drawCanvas(targetCtx, targetW, targetH) {
+        function drawCanvas(targetCtx, targetW, targetH, opts) {
+            const skipSubtitles = !!(opts && opts.skipSubtitles);
+            const skipBg = !!(opts && opts.skipBg);
             const domBoxContainer = document.getElementById('domBoundingBoxContainer');
             if (domBoxContainer && !State.isExporting && !targetCtx) domBoxContainer.innerHTML = '';
             const canvas = document.getElementById('renderCanvas');
@@ -2726,7 +2728,7 @@
             
             ctx.clearRect(0, 0, w, h);
             
-            if (State.canvasBgColor && State.canvasBgColor !== 'transparent') {
+            if (!skipBg && State.canvasBgColor && State.canvasBgColor !== 'transparent') {
                 ctx.fillStyle = State.canvasBgColor;
                 ctx.fillRect(0, 0, w, h);
             }
@@ -3412,7 +3414,9 @@
                         State.currentTime = prevTime - clip.start;
                         State.activeSceneId = clip.id;
                         
-                        drawCanvas(offCtx, w, h);
+                        // Scene offscreen: no opaque bg (so lower tracks show through)
+                        // and no subtitles (drawn once on the main canvas, not baked in)
+                        drawCanvas(offCtx, w, h, { skipSubtitles: true, skipBg: true });
                         
                         State.currentTime = prevTime;
                         State.activeSceneId = prevSceneId;
@@ -3818,8 +3822,8 @@
                 canvas.classList.add('hidden');
             }
 
-            // ── Draw subtitles on top of everything ────────────────────────
-            drawSubtitlesOnCanvas(ctx, w, h);
+            // ── Draw subtitles on top of everything (once, on the main canvas) ──
+            if (!skipSubtitles) drawSubtitlesOnCanvas(ctx, w, h);
         }
 
         // --- Web Audio Graph Builder ---
@@ -8189,8 +8193,8 @@ const isVis = !clip.hidden;
                         <button onclick="clearAllSubtitles()" class="py-2 px-3 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-sm" title="Clear">
                             <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
                         </button>
-                        <button onclick="toggleCaptionsVisibility()" id="btnToggleCaptions" class="py-2 px-3 bg-surface-200 dark:bg-surface-700 hover:bg-amber-100 dark:hover:bg-amber-900/30 text-surface-700 dark:text-surface-200 hover:text-amber-600 dark:hover:text-amber-400 text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-sm" title="Toggle captions visibility">
-                            <i data-lucide="eye" class="w-3.5 h-3.5"></i>
+                        <button onclick="toggleCaptionsVisibility()" id="btnToggleCaptions" class="py-2 px-3 ${State.captionsVisible ? 'bg-surface-200 dark:bg-surface-700 text-surface-700 dark:text-surface-200' : 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'} hover:opacity-80 text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-sm" title="Toggle captions visibility">
+                            <i data-lucide="${State.captionsVisible ? 'captions' : 'captions-off'}" class="w-3.5 h-3.5"></i>
                         </button>
                         <button onclick="syncSubtitlesToClips()" class="py-2 px-3 bg-surface-200 dark:bg-surface-700 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 text-surface-700 dark:text-surface-200 hover:text-indigo-600 dark:hover:text-indigo-400 text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-sm" title="Generate captions track on timeline">
                             <i data-lucide="list-video" class="w-3.5 h-3.5"></i>
@@ -8284,10 +8288,17 @@ const isVis = !clip.hidden;
             State.captionsVisible = !State.captionsVisible;
             const btn = document.getElementById('btnToggleCaptions');
             if (btn) {
-                const icon = btn.querySelector('i');
-                if (icon) {
-                    icon.setAttribute('data-lucide', State.captionsVisible ? 'eye' : 'eye-off');
-                }
+                // lucide.createIcons replaces <i> with <svg>, so recreate the icon element
+                const oldIcon = btn.querySelector('svg.lucide, i[data-lucide]');
+                if (oldIcon) oldIcon.remove();
+                const icon = document.createElement('i');
+                icon.setAttribute('data-lucide', State.captionsVisible ? 'captions' : 'captions-off');
+                icon.className = 'w-3.5 h-3.5';
+                btn.prepend(icon);
+                btn.classList.toggle('bg-surface-200', State.captionsVisible);
+                btn.classList.toggle('dark:bg-surface-700', State.captionsVisible);
+                btn.classList.toggle('text-surface-700', State.captionsVisible);
+                btn.classList.toggle('dark:text-surface-200', State.captionsVisible);
                 btn.classList.toggle('bg-amber-100', !State.captionsVisible);
                 btn.classList.toggle('dark:bg-amber-900/30', !State.captionsVisible);
                 btn.classList.toggle('text-amber-600', !State.captionsVisible);
@@ -9550,7 +9561,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             mediaInput.value = ''; 
         });
 
-        document.getElementById('btnToggleCaptions').addEventListener('click', () => {
+        document.getElementById('btnOpenCaptionsPanel').addEventListener('click', () => {
             setSidebarTab('subtitles');
         });
 
