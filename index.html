@@ -805,7 +805,8 @@
                 slideDuration: 5,
                 headingAnimIn: 'fadeIn',
                 textAnimIn: 'slideUp',
-                imageAnimIn: 'fadeIn'
+                imageAnimIn: 'fadeIn',
+                trackMode: 'auto' // 'auto' (by type) | 'script' (by script order)
             },
             subtitleEditingId: null,
             markdownText: '',
@@ -8398,6 +8399,15 @@ From the smallest butterfly to the mightiest T-Rex, every creature plays a uniqu
             renderMarkdownPanel();
         };
 
+        window.setMdTrackMode = function(mode) {
+            State.markdownConfig.trackMode = mode;
+            renderMarkdownPanel();
+            // If clips are already generated, regenerate instantly so the user sees the new layout
+            if (State.clips.some(c => c._mdGenerated)) {
+                parseMarkdownToClips();
+            }
+        };
+
         window.renderMarkdownPanel = function() {
             sidebarContent.className = 'flex flex-col w-full flex-1 min-h-0 bg-surface-50 dark:bg-surface-900';
             const cfg = State.markdownConfig;
@@ -8428,6 +8438,20 @@ From the smallest butterfly to the mightiest T-Rex, every creature plays a uniqu
             const textFontOptionsHtml = mdFontOpts(textFontValue);
             const styleHtml = `
                 <div class="flex flex-col gap-3 p-3 overflow-y-auto flex-1">
+                    <div class="bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden">
+                        <div class="p-3 flex flex-col gap-3">
+                            <label class="text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest mb-0.5 block">Track Layout</label>
+                            <div class="flex gap-1 bg-surface-100 dark:bg-surface-900 p-1 rounded-lg">
+                                <button type="button" onclick="setMdTrackMode('auto')" class="flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all ` + (cfg.trackMode !== 'script' ? activeBtnClass : inactiveBtnClass) + `" title="Group clips by type: images on the Images lane, heading & text on their own per-slide tracks">
+                                    <i data-lucide="layers" class="w-3 h-3 inline-block mr-1 align-middle"></i>Auto
+                                </button>
+                                <button type="button" onclick="setMdTrackMode('script')" class="flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all ` + (cfg.trackMode === 'script' ? activeBtnClass : inactiveBtnClass) + `" title="Place clips on tracks in the exact order they appear in the script — image & text from different blocks can share a track">
+                                    <i data-lucide="list-ordered" class="w-3 h-3 inline-block mr-1 align-middle"></i>Script Order
+                                </button>
+                            </div>
+                            <p class="text-[9px] text-surface-400 dark:text-surface-500 leading-snug">Auto groups by type. Script Order mirrors the script: the 1st element of every block shares a row, the 2nd shares the next, and so on — so image & text can share a track when their script order matches.</p>
+                        </div>
+                    </div>
                     <div class="bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden">
                         <div class="p-3 flex flex-col gap-3">
                             <label class="text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest mb-0.5 block">Heading Style</label>
@@ -8655,10 +8679,13 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
         }
 
         window.parseMarkdownToClips = function() {
+            // Prefer the live textarea (Content tab), but fall back to the last saved
+            // State.markdownText so the generator also works from the Style sub-tab
+            // (e.g. when toggling the track layout mode auto-regenerates clips).
             const ta = document.getElementById('markdownTextarea');
-            if (!ta || !ta.value.trim()) return;
+            const md = (ta && ta.value.trim()) ? ta.value : (State.markdownText || '');
+            if (!md.trim()) return;
             
-            const md = ta.value;
             State.markdownText = md;
             
             // First, clear any previously generated markdown clips
@@ -8667,7 +8694,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             // Parse markdown into slides/blocks
             const lines = md.split('\n');
             const slides = [];
-            let currentSlide = { heading: '', text: '', images: [] };
+            let currentSlide = { heading: '', text: '', images: [], elements: [] };
             
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i].trim();
@@ -8677,7 +8704,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     if (currentSlide.heading || currentSlide.text || currentSlide.images.length) {
                         slides.push(currentSlide);
                     }
-                    currentSlide = { heading: '', text: '', images: [] };
+                    currentSlide = { heading: '', text: '', images: [], elements: [] };
                     continue;
                 }
                 
@@ -8685,6 +8712,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 const imgMatch = line.match(/^!\[([^\]]*)\]\s*\(([^)]+)\)/);
                 if (imgMatch) {
                     currentSlide.images.push({ url: imgMatch[2], alt: imgMatch[1] || '' });
+                    currentSlide.elements.push({ kind: 'image', url: imgMatch[2], alt: imgMatch[1] || '' });
                     continue;
                 }
                 
@@ -8693,9 +8721,10 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 if (headingMatch) {
                     if (currentSlide.heading || currentSlide.text || currentSlide.images.length) {
                         slides.push(currentSlide);
-                        currentSlide = { heading: '', text: '', images: [] };
+                        currentSlide = { heading: '', text: '', images: [], elements: [] };
                     }
                     currentSlide.heading = headingMatch[1].trim();
+                    currentSlide.elements.push({ kind: 'heading' });
                     continue;
                 }
                 
@@ -8703,6 +8732,10 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 if (line && !line.startsWith('#')) {
                     if (currentSlide.text) currentSlide.text += '\n' + line;
                     else currentSlide.text = line;
+                    // Track contiguous text runs as a single 'text' element (per-run text) for script-order mode
+                    const lastEl = currentSlide.elements[currentSlide.elements.length - 1];
+                    if (lastEl && lastEl.kind === 'text') lastEl.text += (lastEl.text ? '\n' : '') + line;
+                    else currentSlide.elements.push({ kind: 'text', text: line });
                 }
             }
             // Push the last slide
@@ -8753,10 +8786,148 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 return lane.id;
             }
             
+            // Script-order lanes — one per element POSITION in a block, shared across ALL
+            // blocks. Block A's 2nd element (an image) and Block B's 2nd element (text)
+            // land on the same lane, mirroring the order elements appear in the script.
+            // The lane stack is built top-to-bottom (position 0 = first element) and the
+            // lanes are reused across generations so re-running doesn't duplicate tracks.
+            const mdScriptLanes = {};
+            function getMdScriptLane(pos) {
+                if (mdScriptLanes[pos]) return mdScriptLanes[pos];
+                const sc = State.activeSceneId || null;
+                const prefix = 'mdscr_' + pos + '_';
+                const existing = State.tracks.find(t => t.id.startsWith(prefix) && (t.sceneId || null) === sc);
+                if (existing) { mdScriptLanes[pos] = existing.id; return existing.id; }
+                const lane = {
+                    id: prefix + Date.now(),
+                    type: 'video',
+                    name: 'Row ' + (pos + 1),
+                    height: 90,
+                    colorIndex: State.tracks.length % PALETTES.length,
+                    muted: false,
+                    sceneId: sc
+                };
+                if (pos === 0) {
+                    // Position 0 lane goes at the very top
+                    State.tracks.unshift(lane);
+                } else {
+                    // Each new lane stacks directly below the previous script-order lane
+                    const prevIdx = State.tracks.findIndex(t => t.id === mdScriptLanes[pos - 1]);
+                    if (prevIdx === -1) State.tracks.push(lane);
+                    else State.tracks.splice(prevIdx + 1, 0, lane);
+                }
+                mdScriptLanes[pos] = lane.id;
+                return lane.id;
+            }
+            
+            // ── Shared clip builders (identical output in both track modes) ───────────
+            function mdHeadingClip(slide, index, id, start, dur, trackId, colorIndex) {
+                return {
+                    id: id + '_heading',
+                    sceneId: State.activeSceneId || null,
+                    trackId: trackId,
+                    colorIndex: colorIndex,
+                    type: 'text',
+                    title: slide.heading.substring(0, 30),
+                    text: slide.heading,
+                    start: start,
+                    duration: dur,
+                    sourceOffset: 0,
+                    maxDuration: 3600,
+                    _mdGenerated: true,
+                    effects: {
+                        scale: 1, rotate: 0, offsetX: 0, offsetY: 0,
+                        fontFamily: 'Rubik', fontWeight: 700, fillColor: '#ffffff',
+                        strokeEnable: true, strokeColor: '#000000', strokeWidth: 4,
+                        shadowEnable: true, shadowColor: '#000000', shadowBlur: 20, shadowX: 0, shadowY: 10,
+                        extrudeEnable: false, extrudeDepth: 5, extrudeColor: '#000000',
+                        animIn: 'fadeIn', animOut: 'none', animLoop: 'none', animInDur: 0.5, animOutDur: 0.5, animEase: 'easeOut',
+                        animTextIn: 'none', animTextOut: 'none', animTextLoop: 'none', animTextEase: 'easeOut', animTextStagger: 'letter', animTextInDur: 0.5, animTextOutDur: 0.5, flashColor: '#ffe600'
+                    }
+                };
+            }
+            function mdTextClip(slide, index, id, start, dur, trackId, colorIndex) {
+                return {
+                    id: id + '_text',
+                    sceneId: State.activeSceneId || null,
+                    trackId: trackId,
+                    colorIndex: colorIndex,
+                    type: 'text',
+                    title: (slide.text || '').substring(0, 30),
+                    text: wrapMdText(slide.text || '', 45),
+                    start: start,
+                    duration: dur,
+                    sourceOffset: 0,
+                    maxDuration: 3600,
+                    _mdGenerated: true,
+                    effects: {
+                        scale: 1, rotate: 0, offsetX: 0, offsetY: 0,
+                        fontFamily: 'Inter', fontWeight: 400, fillColor: '#eeeeee',
+                        strokeEnable: true, strokeColor: '#000000', strokeWidth: 2,
+                        shadowEnable: true, shadowColor: '#000000', shadowBlur: 10, shadowX: 0, shadowY: 4,
+                        extrudeEnable: false, extrudeDepth: 3, extrudeColor: '#000000',
+                        animIn: 'slideUp', animOut: 'none', animLoop: 'none', animInDur: 0.4, animOutDur: 0.3, animEase: 'easeOut',
+                        animTextIn: 'none', animTextOut: 'none', animTextLoop: 'none', animTextEase: 'easeOut', animTextStagger: 'word', animTextInDur: 0.3, animTextOutDur: 0.3, flashColor: '#ffe600'
+                    }
+                };
+            }
+            function mdImageClip(img, index, imgIdx, id, start, dur, trackId, colorIndex) {
+                const imgEl = new Image();
+                imgEl.crossOrigin = 'anonymous';
+                imgEl.onerror = function(){};
+                imgEl.src = img.url;
+                return {
+                    id: id + '_image' + imgIdx,
+                    sceneId: State.activeSceneId || null,
+                    trackId: trackId,
+                    colorIndex: colorIndex,
+                    type: 'image',
+                    title: img.alt || 'Image ' + (index + 1),
+                    start: start,
+                    duration: dur,
+                    sourceOffset: 0,
+                    maxDuration: 3600,
+                    fileUrl: img.url,
+                    imageEl: imgEl,
+                    _mdGenerated: true,
+                    effects: {
+                        scale: cfg.imageScale || 1, rotate: 0, borderRadius: cfg.imageBorderRadius || 0, offsetX: 0, offsetY: 0,
+                        strokeEnable: false, strokeColor: '#ffffff', strokeWidth: 4,
+                        shadowEnable: false, shadowColor: '#000000', shadowBlur: 20, shadowX: 0, shadowY: 10,
+                        animIn: cfg.imageAnimIn || 'fadeIn', animOut: 'none', animLoop: 'none', animInDur: 0.5, animOutDur: 0.3, animEase: 'easeOut',
+                        cropLeft: 0, cropRight: 0, cropTop: 0, cropBottom: 0,
+                        maskingZoom: 100, frameZoom: 100, framingPanX: 0, framingPanY: 0,
+                        maskType: 'none', maskWidth: 50, maskHeight: 50, maskX: 0, maskY: 0, maskFeather: 0, maskInvert: false,
+                        opacity: 100, blendMode: 'source-over'
+                    }
+                };
+            }
+            
             slides.forEach((slide, index) => {
                 const id = 'md_' + Date.now() + '_' + index + '_' + Math.random().toString(36).substr(2, 5);
                 const clipStart = currentTime + index * slideDuration;
                 
+                // ── Script-order mode: one lane per element position, shared across all
+                //    blocks — image & text from different blocks can share a lane when
+                //    they appear at the same spot in the script. Full slide duration.
+                if (cfg.trackMode === 'script') {
+                    (slide.elements || []).forEach((el, pos) => {
+                        const trackId = getMdScriptLane(pos);
+                        const colorIndex = (pos + 1) % PALETTES.length;
+                        if (el.kind === 'heading') {
+                            State.clips.push(mdHeadingClip(slide, index, id, clipStart, slideDuration, trackId, colorIndex));
+                        } else if (el.kind === 'text') {
+                            // Use this run's own text so text split by images stays independent
+                            const runSlide = Object.assign({}, slide, { text: el.text || slide.text || '' });
+                            State.clips.push(mdTextClip(runSlide, index, id, clipStart, slideDuration, trackId, colorIndex));
+                        } else if (el.kind === 'image') {
+                            State.clips.push(mdImageClip(el, index, pos, id, clipStart, slideDuration, trackId, colorIndex));
+                        }
+                    });
+                    return;
+                }
+                
+                // ── Auto mode (default): dedicated lanes per element type ──────────
                 // Get a fresh track for this slide
                 let slideTrackId = getAvailableTrack('video', clipStart, slideDuration);
                 let targetTrack = State.tracks.find(t => t.id === slideTrackId);
@@ -8764,30 +8935,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 
                 // Create text clip for heading
                 if (slide.heading) {
-                    const headingClip = {
-                        id: id + '_heading',
-                        sceneId: State.activeSceneId || null,
-                        trackId: slideTrackId,
-                        colorIndex: clipColor,
-                        type: 'text',
-                        title: slide.heading.substring(0, 30),
-                        text: slide.heading,
-                        start: clipStart,
-                        duration: slideDuration,
-                        sourceOffset: 0,
-                        maxDuration: 3600,
-                        _mdGenerated: true,
-                        effects: {
-                            scale: 1, rotate: 0, offsetX: 0, offsetY: 0,
-                            fontFamily: 'Rubik', fontWeight: 700, fillColor: '#ffffff',
-                            strokeEnable: true, strokeColor: '#000000', strokeWidth: 4,
-                            shadowEnable: true, shadowColor: '#000000', shadowBlur: 20, shadowX: 0, shadowY: 10,
-                            extrudeEnable: false, extrudeDepth: 5, extrudeColor: '#000000',
-                            animIn: 'fadeIn', animOut: 'none', animLoop: 'none', animInDur: 0.5, animOutDur: 0.5, animEase: 'easeOut',
-                            animTextIn: 'none', animTextOut: 'none', animTextLoop: 'none', animTextEase: 'easeOut', animTextStagger: 'letter', animTextInDur: 0.5, animTextOutDur: 0.5, flashColor: '#ffe600'
-                        }
-                    };
-                    State.clips.push(headingClip);
+                    State.clips.push(mdHeadingClip(slide, index, id, clipStart, slideDuration, slideTrackId, clipColor));
                 }
                 
                 // If there's additional text, create a sub-text clip on the next track
@@ -8795,31 +8943,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     let textTrackId = getAvailableTrack('video', clipStart, slideDuration);
                     let textTrack = State.tracks.find(t => t.id === textTrackId);
                     let textColor = (textTrack ? (textTrack.colorIndex + 2 + index) % PALETTES.length : 0);
-                    
-                    const textClip = {
-                        id: id + '_text',
-                        sceneId: State.activeSceneId || null,
-                        trackId: textTrackId,
-                        colorIndex: textColor,
-                        type: 'text',
-                        title: (slide.text || '').substring(0, 30),
-                        text: wrapMdText(slide.text || '', 45),
-                        start: clipStart + 0.3,
-                        duration: slideDuration - 0.3,
-                        sourceOffset: 0,
-                        maxDuration: 3600,
-                        _mdGenerated: true,
-                        effects: {
-                            scale: 1, rotate: 0, offsetX: 0, offsetY: 0,
-                            fontFamily: 'Inter', fontWeight: 400, fillColor: '#eeeeee',
-                            strokeEnable: true, strokeColor: '#000000', strokeWidth: 2,
-                            shadowEnable: true, shadowColor: '#000000', shadowBlur: 10, shadowX: 0, shadowY: 4,
-                            extrudeEnable: false, extrudeDepth: 3, extrudeColor: '#000000',
-                            animIn: 'slideUp', animOut: 'none', animLoop: 'none', animInDur: 0.4, animOutDur: 0.3, animEase: 'easeOut',
-                            animTextIn: 'none', animTextOut: 'none', animTextLoop: 'none', animTextEase: 'easeOut', animTextStagger: 'word', animTextInDur: 0.3, animTextOutDur: 0.3, flashColor: '#ffe600'
-                        }
-                    };
-                    State.clips.push(textClip);
+                    State.clips.push(mdTextClip(slide, index, id, clipStart + 0.3, slideDuration - 0.3, textTrackId, textColor));
                 }
                 
                 // Create image clips — one per image in script order. The LAST image of the
@@ -8832,39 +8956,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         const imgTrackId = getMdImageLane(posFromEnd, slideTrackId);
                         const imgTrack = State.tracks.find(t => t.id === imgTrackId);
                         const imgColor = (imgTrack ? (imgTrack.colorIndex + 3 + imgIdx) % PALETTES.length : 0);
-                        
-                        // Create image element for rendering
-                        const imgEl = new Image();
-                        imgEl.crossOrigin = 'anonymous';
-                        imgEl.onerror = function(){};
-                        imgEl.src = img.url;
-                        
-                        const imageClip = {
-                            id: id + '_image' + imgIdx,
-                            sceneId: State.activeSceneId || null,
-                            trackId: imgTrackId,
-                            colorIndex: imgColor,
-                            type: 'image',
-                            title: img.alt || 'Image ' + (index + 1),
-                            start: clipStart,
-                            duration: slideDuration,
-                            sourceOffset: 0,
-                            maxDuration: 3600,
-                            fileUrl: img.url,
-                            imageEl: imgEl,
-                        _mdGenerated: true,
-                        effects: {
-                            scale: cfg.imageScale || 1, rotate: 0, borderRadius: cfg.imageBorderRadius || 0, offsetX: 0, offsetY: 0,
-                            strokeEnable: false, strokeColor: '#ffffff', strokeWidth: 4,
-                            shadowEnable: false, shadowColor: '#000000', shadowBlur: 20, shadowX: 0, shadowY: 10,
-                            animIn: cfg.imageAnimIn || 'fadeIn', animOut: 'none', animLoop: 'none', animInDur: 0.5, animOutDur: 0.3, animEase: 'easeOut',
-                            cropLeft: 0, cropRight: 0, cropTop: 0, cropBottom: 0,
-                            maskingZoom: 100, frameZoom: 100, framingPanX: 0, framingPanY: 0,
-                            maskType: 'none', maskWidth: 50, maskHeight: 50, maskX: 0, maskY: 0, maskFeather: 0, maskInvert: false,
-                                opacity: 100, blendMode: 'source-over'
-                            }
-                        };
-                        State.clips.push(imageClip);
+                        State.clips.push(mdImageClip(img, index, imgIdx, id, clipStart, slideDuration, imgTrackId, imgColor));
                     });
                 }
             });
@@ -9063,7 +9155,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
 
         function getAvailableTrack(type, start, duration) {
             const currentSceneId = State.activeSceneId || null;
-            for (const track of State.tracks.filter(t => t.type === type && (t.sceneId || null) === currentSceneId && !t.id.startsWith('mdimg_'))) {
+            for (const track of State.tracks.filter(t => t.type === type && (t.sceneId || null) === currentSceneId && !t.id.startsWith('mdimg_') && !t.id.startsWith('mdscr_'))) {
                 const hasOverlap = State.clips.some(c => 
                     c.trackId === track.id && 
                     (start < c.start + c.duration && start + duration > c.start)
