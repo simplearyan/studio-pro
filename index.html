@@ -8244,6 +8244,7 @@ const isVis = !clip.hidden;
                     clip.effects.fontSize = cfg.headingFontSize || 60;
                     clip.effects.fontWeight = cfg.headingFontWeight || 700;
                     clip.effects.fillColor = cfg.headingColor || '#ffffff';
+                    clip.effects.animIn = cfg.headingAnimIn || 'fadeIn';
                     const baseY = cfg.headingPosition === 'top' ? -30 : cfg.headingPosition === 'bottom' ? 30 : 0;
                     clip.effects.offsetY = baseY + offset;
                 } else if (clip.type === 'text' && clip.id && clip.id.endsWith('_text')) {
@@ -8251,10 +8252,12 @@ const isVis = !clip.hidden;
                     clip.effects.fontSize = cfg.textFontSize || 32;
                     clip.effects.fontWeight = cfg.textFontWeight || 400;
                     clip.effects.fillColor = cfg.textColor || '#eeeeee';
+                    clip.effects.animIn = cfg.textAnimIn || 'slideUp';
                 }
                 if (clip.type === 'image') {
                     clip.effects.scale = cfg.imageScale || 1;
                     clip.effects.borderRadius = cfg.imageBorderRadius || 0;
+                    clip.effects.animIn = cfg.imageAnimIn || 'fadeIn';
                 }
             });
             drawCanvas();
@@ -8836,12 +8839,12 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     maxDuration: 3600,
                     _mdGenerated: true,
                     effects: {
-                        scale: 1, rotate: 0, offsetX: 0, offsetY: 0,
-                        fontFamily: 'Rubik', fontWeight: 700, fillColor: '#ffffff',
+                        scale: 1, rotate: 0, offsetX: 0, offsetY: (cfg.headingPosition === 'top' ? -30 : cfg.headingPosition === 'bottom' ? 30 : 0) + (cfg.headingOffset || 0),
+                        fontFamily: cfg.headingFontFamily || 'Rubik', fontSize: cfg.headingFontSize || 60, fontWeight: cfg.headingFontWeight || 700, fillColor: cfg.headingColor || '#ffffff',
                         strokeEnable: true, strokeColor: '#000000', strokeWidth: 4,
                         shadowEnable: true, shadowColor: '#000000', shadowBlur: 20, shadowX: 0, shadowY: 10,
                         extrudeEnable: false, extrudeDepth: 5, extrudeColor: '#000000',
-                        animIn: 'fadeIn', animOut: 'none', animLoop: 'none', animInDur: 0.5, animOutDur: 0.5, animEase: 'easeOut',
+                        animIn: cfg.headingAnimIn || 'fadeIn', animOut: 'none', animLoop: 'none', animInDur: 0.5, animOutDur: 0.5, animEase: 'easeOut',
                         animTextIn: 'none', animTextOut: 'none', animTextLoop: 'none', animTextEase: 'easeOut', animTextStagger: 'letter', animTextInDur: 0.5, animTextOutDur: 0.5, flashColor: '#ffe600'
                     }
                 };
@@ -8862,11 +8865,11 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     _mdGenerated: true,
                     effects: {
                         scale: 1, rotate: 0, offsetX: 0, offsetY: 0,
-                        fontFamily: 'Inter', fontWeight: 400, fillColor: '#eeeeee',
+                        fontFamily: cfg.textFontFamily || 'Inter', fontSize: cfg.textFontSize || 32, fontWeight: cfg.textFontWeight || 400, fillColor: cfg.textColor || '#eeeeee',
                         strokeEnable: true, strokeColor: '#000000', strokeWidth: 2,
                         shadowEnable: true, shadowColor: '#000000', shadowBlur: 10, shadowX: 0, shadowY: 4,
                         extrudeEnable: false, extrudeDepth: 3, extrudeColor: '#000000',
-                        animIn: 'slideUp', animOut: 'none', animLoop: 'none', animInDur: 0.4, animOutDur: 0.3, animEase: 'easeOut',
+                        animIn: cfg.textAnimIn || 'slideUp', animOut: 'none', animLoop: 'none', animInDur: 0.4, animOutDur: 0.3, animEase: 'easeOut',
                         animTextIn: 'none', animTextOut: 'none', animTextLoop: 'none', animTextEase: 'easeOut', animTextStagger: 'word', animTextInDur: 0.3, animTextOutDur: 0.3, flashColor: '#ffe600'
                     }
                 };
