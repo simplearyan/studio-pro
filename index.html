@@ -8391,7 +8391,7 @@ Emperor penguins are the tallest and heaviest of all penguin species, standing n
 
 From the smallest butterfly to the mightiest T-Rex, every creature plays a unique role in the tapestry of life on Earth. Let's protect and cherish our planet's incredible biodiversity!`;
 
-        const MARKDOWN_HELP_TEXT = 'Write **Markdown** with `## Heading` for titles, `![alt](url)` for images, and text for paragraphs. Use `---` to separate slides.';
+        const MARKDOWN_HELP_TEXT = 'Write **Markdown** with `## Heading` for titles, `![alt](url)` for images (multiple per slide supported), and text for paragraphs. Use `---` to separate slides.';
 
         window.setMarkdownSubTab = function(tab) {
             State.markdownSubTab = tab;
@@ -8667,34 +8667,33 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             // Parse markdown into slides/blocks
             const lines = md.split('\n');
             const slides = [];
-            let currentSlide = { heading: '', text: '', imageUrl: '', imageAlt: '' };
+            let currentSlide = { heading: '', text: '', images: [] };
             
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i].trim();
                 
                 // Separator = new slide
                 if (line === '---' || line === '___' || line === '***') {
-                    if (currentSlide.heading || currentSlide.text || currentSlide.imageUrl) {
+                    if (currentSlide.heading || currentSlide.text || currentSlide.images.length) {
                         slides.push(currentSlide);
                     }
-                    currentSlide = { heading: '', text: '', imageUrl: '', imageAlt: '' };
+                    currentSlide = { heading: '', text: '', images: [] };
                     continue;
                 }
                 
-                // Image: ![alt](url)
+                // Image: ![alt](url) — collect ALL images in script order
                 const imgMatch = line.match(/^!\[([^\]]*)\]\s*\(([^)]+)\)/);
                 if (imgMatch) {
-                    currentSlide.imageUrl = imgMatch[2];
-                    currentSlide.imageAlt = imgMatch[1] || '';
+                    currentSlide.images.push({ url: imgMatch[2], alt: imgMatch[1] || '' });
                     continue;
                 }
                 
                 // Heading: # text or ## text
                 const headingMatch = line.match(/^#{1,2}\s+(.+)/);
                 if (headingMatch) {
-                    if (currentSlide.heading || currentSlide.text || currentSlide.imageUrl) {
+                    if (currentSlide.heading || currentSlide.text || currentSlide.images.length) {
                         slides.push(currentSlide);
-                        currentSlide = { heading: '', text: '', imageUrl: '', imageAlt: '' };
+                        currentSlide = { heading: '', text: '', images: [] };
                     }
                     currentSlide.heading = headingMatch[1].trim();
                     continue;
@@ -8707,7 +8706,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 }
             }
             // Push the last slide
-            if (currentSlide.heading || currentSlide.text || currentSlide.imageUrl) {
+            if (currentSlide.heading || currentSlide.text || currentSlide.images.length) {
                 slides.push(currentSlide);
             }
             
@@ -8717,6 +8716,42 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             let currentTime = State.currentTime;
             const cfg = State.markdownConfig;
             const slideDuration = cfg.slideDuration || 5;
+            
+            // Dedicated image lanes — one per "position from the end" of a block's image
+            // list. The LAST image in a block sits on the bottom 'Images' lane (background);
+            // earlier images sit on 'Images 2', 'Images 3', ... lanes placed just below the
+            // heading track, so script order is mirrored vertically on the timeline.
+            // Lanes are reused across generations so re-running doesn't duplicate tracks.
+            const mdImageLanes = {};
+            function getMdImageLane(posFromEnd, anchorTrackId) {
+                if (mdImageLanes[posFromEnd]) return mdImageLanes[posFromEnd];
+                const sc = State.activeSceneId || null;
+                const prefix = 'mdimg_' + posFromEnd + '_';
+                const existing = State.tracks.find(t => t.id.startsWith(prefix) && (t.sceneId || null) === sc);
+                if (existing) { mdImageLanes[posFromEnd] = existing.id; return existing.id; }
+                const lane = {
+                    id: prefix + Date.now(),
+                    type: 'video',
+                    name: posFromEnd === 0 ? 'Images' : 'Images ' + (posFromEnd + 1),
+                    height: 90,
+                    colorIndex: State.tracks.length % PALETTES.length,
+                    muted: false,
+                    sceneId: sc
+                };
+                if (posFromEnd === 0) {
+                    // Background lane → very bottom, just above any audio tracks
+                    const firstAudioIdx = State.tracks.findIndex(t => t.type === 'audio');
+                    if (firstAudioIdx === -1) State.tracks.push(lane);
+                    else State.tracks.splice(firstAudioIdx, 0, lane);
+                } else {
+                    // Secondary lane → right below the anchor track (the slide's heading)
+                    const anchorIdx = State.tracks.findIndex(t => t.id === anchorTrackId);
+                    if (anchorIdx === -1) State.tracks.push(lane);
+                    else State.tracks.splice(anchorIdx + 1, 0, lane);
+                }
+                mdImageLanes[posFromEnd] = lane.id;
+                return lane.id;
+            }
             
             slides.forEach((slide, index) => {
                 const id = 'md_' + Date.now() + '_' + index + '_' + Math.random().toString(36).substr(2, 5);
@@ -8787,31 +8822,36 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     State.clips.push(textClip);
                 }
                 
-                // If there's an image URL, create an image clip on the background track
-                if (slide.imageUrl) {
-                    let imgTrackId = getAvailableTrack('video', clipStart, slideDuration);
-                    let imgTrack = State.tracks.find(t => t.id === imgTrackId);
-                    let imgColor = (imgTrack ? (imgTrack.colorIndex + 3 + index) % PALETTES.length : 0);
-                    
-                    // Create image element for rendering
-                    const img = new Image();
-                    img.crossOrigin = 'anonymous';
-                    img.onerror = function(){};
-                    img.src = slide.imageUrl;
-                    
-                    const imageClip = {
-                        id: id + '_image',
-                        sceneId: State.activeSceneId || null,
-                        trackId: imgTrackId,
-                        colorIndex: imgColor,
-                        type: 'image',
-                        title: slide.imageAlt || 'Image ' + (index + 1),
-                        start: clipStart,
-                        duration: slideDuration,
-                        sourceOffset: 0,
-                        maxDuration: 3600,
-                        fileUrl: slide.imageUrl,
-                        imageEl: img,
+                // Create image clips — one per image in script order. The LAST image of the
+                // block goes on the bottom 'Images' lane; earlier images sit on secondary
+                // lanes just below the heading track, so both images stay visible at once.
+                if (slide.images && slide.images.length) {
+                    const imgCount = slide.images.length;
+                    slide.images.forEach((img, imgIdx) => {
+                        const posFromEnd = imgCount - 1 - imgIdx;
+                        const imgTrackId = getMdImageLane(posFromEnd, slideTrackId);
+                        const imgTrack = State.tracks.find(t => t.id === imgTrackId);
+                        const imgColor = (imgTrack ? (imgTrack.colorIndex + 3 + imgIdx) % PALETTES.length : 0);
+                        
+                        // Create image element for rendering
+                        const imgEl = new Image();
+                        imgEl.crossOrigin = 'anonymous';
+                        imgEl.onerror = function(){};
+                        imgEl.src = img.url;
+                        
+                        const imageClip = {
+                            id: id + '_image' + imgIdx,
+                            sceneId: State.activeSceneId || null,
+                            trackId: imgTrackId,
+                            colorIndex: imgColor,
+                            type: 'image',
+                            title: img.alt || 'Image ' + (index + 1),
+                            start: clipStart,
+                            duration: slideDuration,
+                            sourceOffset: 0,
+                            maxDuration: 3600,
+                            fileUrl: img.url,
+                            imageEl: imgEl,
                         _mdGenerated: true,
                         effects: {
                             scale: cfg.imageScale || 1, rotate: 0, borderRadius: cfg.imageBorderRadius || 0, offsetX: 0, offsetY: 0,
@@ -8821,10 +8861,11 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                             cropLeft: 0, cropRight: 0, cropTop: 0, cropBottom: 0,
                             maskingZoom: 100, frameZoom: 100, framingPanX: 0, framingPanY: 0,
                             maskType: 'none', maskWidth: 50, maskHeight: 50, maskX: 0, maskY: 0, maskFeather: 0, maskInvert: false,
-                            opacity: 100, blendMode: 'source-over'
-                        }
-                    };
-                    State.clips.push(imageClip);
+                                opacity: 100, blendMode: 'source-over'
+                            }
+                        };
+                        State.clips.push(imageClip);
+                    });
                 }
             });
             
@@ -9022,7 +9063,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
 
         function getAvailableTrack(type, start, duration) {
             const currentSceneId = State.activeSceneId || null;
-            for (const track of State.tracks.filter(t => t.type === type && (t.sceneId || null) === currentSceneId)) {
+            for (const track of State.tracks.filter(t => t.type === type && (t.sceneId || null) === currentSceneId && !t.id.startsWith('mdimg_'))) {
                 const hasOverlap = State.clips.some(c => 
                     c.trackId === track.id && 
                     (start < c.start + c.duration && start + duration > c.start)
