@@ -17,3 +17,5 @@
 
 markdown clips dual mode - 
 
+
+let's there are two clips sideb by sie one one track - one is text another is shape - when user drag text clip end to increase it's duration it overlap with shape clip - which is fine - but can we add some advance feature whihc user can toggle from timeline header or with some shorrtcut key - where when user drag text clip end to increase it's duration the shape clip move - as user drag text clip 
