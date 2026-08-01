@@ -9,9 +9,13 @@
 - Scene Creator 
 - Text - Image - creator with markdown 
 
-
-
 markdown clips dual mode - 
+
+capcut dark gray mode 
+
+analysis of editor and comparison with remotion 
+
+
 
 
 # more advanced animtions sysytem - with  modifers - centeralized animtions system 
