@@ -2847,7 +2847,28 @@
                 height: 0
             };
             if (window.mathImageCache) {
+                // Prune superseded records for this clip so a fast slider drag doesn't balloon the
+                // cache with stale size variants. IMPORTANT: only prune records that have already
+                // finished loading. In-flight records must stay in the cache so their onload can
+                // promote them to _mathLastGood/_mathLastExtrude — pruning a still-loading record
+                // would break that and cause a main/extrude ping-pong churn when extrude is on.
+                for (const k in window.mathImageCache) {
+                    const rec = window.mathImageCache[k];
+                    if (k !== cacheKey && k.indexOf(clip.id + '_') === 0 && rec && rec.loaded) {
+                        delete window.mathImageCache[k];
+                    }
+                }
                 window.mathImageCache[cacheKey] = record;
+            }
+            // Stamp this as the newest requested key for this clip AND record type (main vs extrude)
+            // so a stale in-flight record's onload can detect it's been superseded. Separate stamps
+            // per type are required: drawText creates the main record and the extrude record in the
+            // same synchronous block, so a single shared stamp would be overwritten by the extrude
+            // call and the main record's onload would never promote to _mathLastGood.
+            if (colorOverride) {
+                clip._mathLatestExtrudeKey = cacheKey;
+            } else {
+                clip._mathLatestMainKey = cacheKey;
             }
             
             if (!window.MathJax || !window.MathJax.tex2svg) {
@@ -2924,16 +2945,23 @@
                         
                         record.image.onload = () => {
                             record.loaded = true;
-                            // Remember the last successfully rendered image so a cache-key change
-                            // (stroke/size/color edit) can keep showing a formula instead of flashing
-                            // the raw LaTeX while the new SVG rasterizes.
-                            if (colorOverride) {
-                                clip._mathLastExtrude = record;
+                            const latestKey = colorOverride ? clip._mathLatestExtrudeKey : clip._mathLatestMainKey;
+                            if (window.mathImageCache && window.mathImageCache[cacheKey] === record && latestKey === cacheKey) {
+                                // This record is still the current one — remember it as the last good
+                                // render so a cache-key change (stroke/size/color edit) can keep showing
+                                // a formula instead of flashing raw LaTeX while the new SVG rasterizes.
+                                if (colorOverride) {
+                                    clip._mathLastExtrude = record;
+                                } else {
+                                    clip._mathLastGood = record;
+                                }
+                                URL.revokeObjectURL(url);
+                                drawCanvas();
                             } else {
-                                clip._mathLastGood = record;
+                                // Superseded by a newer regeneration during a slider drag — just clean
+                                // up the blob URL, no repaint (prevents out-of-order flicker).
+                                URL.revokeObjectURL(url);
                             }
-                            URL.revokeObjectURL(url);
-                            drawCanvas();
                         };
                         record.image.src = url;
                     }
@@ -2958,13 +2986,13 @@
             });
         }
 
-        function getMathClipPreviewSvg(clip) {
+        function getMathClipPreviewSvg(clip, previewColor) {
             const text = clip.text || '';
-            // Neutral preview color — the timeline thumbnail intentionally does NOT
-            // reflect the user's fill/stroke styling. Keeps the clip preview simple
-            // and readable in both light & dark themes.
-            const previewColor = '#94a3b8';
-            const key = `${clip.id}||${text}`;
+            // Use the caller-provided color (the theme text color from renderClips) so the
+            // timeline thumbnail reads like a normal text clip. Defaults to the theme text
+            // color so it stays readable in both light & dark themes.
+            const color = previewColor || '#e2e8f0';
+            const key = `${clip.id}||${text}||${color}`;
             if (clip._mathPreview && clip._mathPreview.key === key) return clip._mathPreview.html;
             let html = '';
             if (window.MathJax && window.MathJax.tex2svg && text) {
@@ -2972,7 +3000,7 @@
                     const container = window.MathJax.tex2svg(text);
                     const svgNode = container.querySelector('svg');
                     if (svgNode) {
-                        svgNode.style.color = previewColor;
+                        svgNode.style.color = color;
                         svgNode.style.display = 'block';
                         svgNode.style.width = 'auto';
                         svgNode.style.height = 'auto';
@@ -2987,7 +3015,7 @@
             }
             if (!html) {
                 // Simple neutral placeholder — never show raw LaTeX syntax in the timeline
-                html = `<span class="flex items-center justify-center gap-1" style="color:#94a3b8; font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase;">∑ Math</span>`;
+                html = `<span class="flex items-center justify-center gap-1" style="color:${color}; font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase;">∑ Math</span>`;
             }
             clip._mathPreview = { key, html };
             return html;
@@ -3181,9 +3209,10 @@
                         let mathRecord = null;
                         if (isMath) {
                             mathRecord = getOrRenderMathImage(clip);
-                            // Use the current record's size when available; otherwise fall back to the
-                            // last good render so the layout doesn't jump while a new SVG rasterizes.
-                            const _mRef = (mathRecord && mathRecord.loaded) ? mathRecord : (clip._mathLastGood || null);
+                            // record.width/height are computed SYNCHRONOUSLY from tex2svg (before the
+                            // image loads), so use them as the layout size immediately. This keeps the
+                            // canvas layout tracking the Formula Size slider in real time.
+                            const _mRef = (mathRecord && mathRecord.width > 0) ? mathRecord : (clip._mathLastGood || null);
                             if (_mRef && _mRef.width > 0) {
                                 dw = _mRef.width;
                                 dh = _mRef.height;
@@ -3238,8 +3267,15 @@
                                 // Prefer the freshly rendered record; while a new SVG is still loading
                                 // (stroke/size/color changed) fall back to the last good image so the
                                 // preview never flashes raw LaTeX.
-                                const mathImg = (mathRecord && mathRecord.loaded) ? mathRecord : (clip._mathLastGood || null);
-                                if (mathImg) {
+                                //
+                                // record.width/height are known synchronously (from tex2svg), so we use
+                                // them as the TARGET size and draw the fallback image SCALED to them.
+                                // This makes the Formula Size slider resize smoothly instead of jumping
+                                // between the old-size fallback and the new-size image.
+                                const targetW = (mathRecord && mathRecord.width > 0) ? mathRecord.width : ((clip._mathLastGood && clip._mathLastGood.width) || 0);
+                                const targetH = (mathRecord && mathRecord.height > 0) ? mathRecord.height : ((clip._mathLastGood && clip._mathLastGood.height) || 0);
+                                const mathImg = (mathRecord && mathRecord.loaded) ? mathRecord : (clip._mathLastGood || (mathRecord && mathRecord.width > 0 ? mathRecord : null));
+                                if (mathImg && targetW > 0 && targetH > 0) {
                                     // 3D Extrude for math
                                     if (clip.effects.extrudeEnable) {
                                         const depth = clip.effects.extrudeDepth || 5;
@@ -3253,10 +3289,12 @@
                                         else if (ed === 'r') { dx = 1; dy = 0; }
                                         else if (ed === 'l') { dx = -1; dy = 0; }
                                         const extrudeRecord = getOrRenderMathImage(clip, clip.effects.extrudeColor || '#000000');
+                                        const extTargetW = (extrudeRecord && extrudeRecord.width > 0) ? extrudeRecord.width : targetW;
+                                        const extTargetH = (extrudeRecord && extrudeRecord.height > 0) ? extrudeRecord.height : targetH;
                                         const extrudeImg = (extrudeRecord && extrudeRecord.loaded) ? extrudeRecord : (clip._mathLastExtrude || null);
                                         if (extrudeImg) {
                                             for (let i = depth; i > 0; i -= 1) {
-                                                ctx.drawImage(extrudeImg.image, -mathImg.width / 2 + dx * i, -mathImg.height / 2 + dy * i);
+                                                ctx.drawImage(extrudeImg.image, -extTargetW / 2 + dx * i, -extTargetH / 2 + dy * i, extTargetW, extTargetH);
                                             }
                                         }
                                     }
@@ -3272,7 +3310,7 @@
                                         ctx.shadowOffsetX = 0;
                                         ctx.shadowOffsetY = 0;
                                     }
-                                    ctx.drawImage(mathImg.image, -mathImg.width / 2, -mathImg.height / 2);
+                                    ctx.drawImage(mathImg.image, -targetW / 2, -targetH / 2, targetW, targetH);
                                     // Reset shadow to avoid bleeding into other clips
                                     ctx.shadowColor = 'transparent';
                                     ctx.shadowBlur = 0;
@@ -11473,12 +11511,14 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     const fontWeight = (clip.effects && clip.effects.fontWeight) ? clip.effects.fontWeight : 'bold';
                     const isMath = clip.effects && clip.effects.renderAsMath;
                     if (isMath) {
-                        // Render the actual formula (MathJax SVG) instead of raw LaTeX text,
-                        // with a fixed neutral color so the preview stays simple & theme-agnostic
+                        // Render the actual formula (MathJax SVG) instead of raw LaTeX text.
+                        // Always use the theme text color so the thumbnail reads like a normal
+                        // text clip — never the user's fill/stroke styling.
+                        const mathPreviewColor = palette.text;
                         textPreviewHtml = `
                         <div class="absolute inset-0 flex items-center justify-center overflow-hidden pointer-events-none opacity-90 z-10 px-2">
-                            <div class="math-clip-preview w-full flex items-center justify-center overflow-hidden" style="max-height: 75%; color: #94a3b8;">
-                                ${getMathClipPreviewSvg(clip)}
+                            <div class="math-clip-preview w-full flex items-center justify-center overflow-hidden" style="max-height: 75%; color: ${mathPreviewColor};">
+                                ${getMathClipPreviewSvg(clip, mathPreviewColor)}
                             </div>
                         </div>
                     `;
