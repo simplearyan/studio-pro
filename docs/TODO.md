@@ -15,6 +15,8 @@ capcut dark gray mode
 
 analysis of editor and comparison with remotion 
 
+- new katex elmeetn 
+
 can we show video frames in timeline - or can  we show images preview in timeline for images clips 
 
 
