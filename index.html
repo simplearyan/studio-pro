@@ -545,6 +545,13 @@
                         </span>
                         <span id="indicatorKeyboardSeekClip" class="w-2 h-2 rounded-full bg-surface-300 dark:bg-surface-600"></span>
                     </button>
+                    
+                    <button onclick="togglePushTrim(); event.stopPropagation();" id="btnPushTrimMenu" class="px-3 py-2.5 text-xs font-semibold text-left text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700 hover:text-surface-900 dark:hover:text-white flex items-center justify-between w-full">
+                        <span class="flex items-center gap-2">
+                            <i data-lucide="move-right" class="w-3.5 h-3.5 text-surface-400"></i> Push Trim (P)
+                        </span>
+                        <span id="indicatorPushTrim" class="w-2 h-2 rounded-full bg-surface-300 dark:bg-surface-600"></span>
+                    </button>
                 </div>
             </div>
         </div>
@@ -619,6 +626,9 @@
                             </button>
                             <button id="btnDelete" class="w-8 h-8 flex items-center justify-center rounded-md hover:bg-red-50 dark:hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-400 text-surface-600 dark:text-surface-400" title="Delete Selected Clip (Del)">
                                 <i data-lucide="trash-2" class="w-4 h-4"></i>
+                            </button>
+                            <button id="btnPushTrim" class="w-8 h-8 flex items-center justify-center rounded-md hover:bg-surface-100 dark:hover:bg-surface-700 hover:text-brand-600 dark:hover:text-brand-400 text-surface-600 dark:text-surface-400" title="Push Trim (P) — move following clips on the track">
+                                <i data-lucide="move-right" class="w-4 h-4"></i>
                             </button>
                         </div>
 
@@ -861,6 +871,7 @@
             layout: { isSideBySide: false },
             inspector: { visible: false, dock: 'left', fullWidth: false, width: 320 },
             hoverPlayheadEnabled: true,
+            pushTrim: false,
             timelineSeekAnywhere: false,
             keyboardSeekClip: false
         };
@@ -2408,6 +2419,28 @@
             const indicator = document.getElementById('indicatorTimelineSeekAnywhere');
             if (indicator) {
                 if (State.timelineSeekAnywhere) {
+                    indicator.className = "w-2 h-2 rounded-full bg-brand-500";
+                } else {
+                    indicator.className = "w-2 h-2 rounded-full bg-surface-300 dark:bg-surface-600";
+                }
+            }
+        }
+
+        function togglePushTrim() {
+            State.pushTrim = !State.pushTrim;
+            const btn = document.getElementById('btnPushTrim');
+            if (btn) {
+                if (State.pushTrim) {
+                    btn.classList.add('text-brand-600', 'dark:text-brand-400', 'bg-brand-50', 'dark:bg-brand-500/10');
+                    btn.classList.remove('text-surface-600', 'dark:text-surface-400');
+                } else {
+                    btn.classList.remove('text-brand-600', 'dark:text-brand-400', 'bg-brand-50', 'dark:bg-brand-500/10');
+                    btn.classList.add('text-surface-600', 'dark:text-surface-400');
+                }
+            }
+            const indicator = document.getElementById('indicatorPushTrim');
+            if (indicator) {
+                if (State.pushTrim) {
                     indicator.className = "w-2 h-2 rounded-full bg-brand-500";
                 } else {
                     indicator.className = "w-2 h-2 rounded-full bg-surface-300 dark:bg-surface-600";
@@ -11165,6 +11198,8 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             if (btnRemoveSilence) btnRemoveSilence.addEventListener('click', removeSilenceFromSelectedClip);
             if (btnDuplicate) btnDuplicate.addEventListener('click', duplicateSelectedClip);
             btnDelete.addEventListener('click', deleteSelectedClip);
+            const btnPushTrim = document.getElementById('btnPushTrim');
+            if (btnPushTrim) btnPushTrim.addEventListener('click', togglePushTrim);
 
             btnViewMenu.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -11393,6 +11428,10 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 else if (k === 'c') {
                     e.preventDefault();
                     toggleTimelineSeekAnywhere();
+                }
+                else if (k === 'p') {
+                    e.preventDefault();
+                    togglePushTrim();
                 }
                 else if (e.key === '\\') handleToggleVis();
             });
@@ -12001,6 +12040,13 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             State.drag.startY = e.clientY;
 
             State.drag.initialMulti = [];
+            State.drag.ripplePushedIds = new Set();
+            // Snapshot original starts of all same-track clips so ripple pushes are computed
+            // from drag-start positions (not the already-shifted positions from prior mousemoves).
+            State.drag.initialTrackStarts = {};
+            State.clips.forEach(c => {
+                if (c.trackId === dragClip.trackId) State.drag.initialTrackStarts[c.id] = c.start;
+            });
             if (!trimHandle) {
                 const dragGroupIds = new Set();
                 if (State.multiSelectedClipIds.includes(dragClipId)) {
@@ -12038,6 +12084,55 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     if(freshClipEl) freshClipEl.classList.add('dragging');
                 }
             }
+        }
+
+        // Push/ripple trim: shift same-track clips (plus their linked groups) by
+        // appliedDelta, clamped so they never overlap the trimmed clip or each other.
+        // dir 'right' pushes following clips; dir 'left' pushes preceding clips.
+        function ripplePushClips(trimClip, appliedDelta, dir) {
+            if (!State.pushTrim || appliedDelta === 0) return;
+            const sameTrack = State.clips.filter(c => c.id !== trimClip.id && c.trackId === trimClip.trackId);
+            let candidates;
+            if (dir === 'right') {
+                candidates = sameTrack
+                    .filter(c => c.start >= State.drag.initialStart + State.drag.initialDuration - 0.001)
+                    .sort((a, b) => a.start - b.start);
+            } else {
+                candidates = sameTrack
+                    .filter(c => c.start + c.duration <= State.drag.initialStart + 0.001)
+                    .sort((a, b) => b.start - a.start); // nearest to the trim point first
+            }
+            const pushedGroups = new Set();
+            // Chain boundary: following clips must start after it, preceding clips must end before it
+            let boundary = dir === 'right'
+                ? trimClip.start + trimClip.duration + 0.001
+                : trimClip.start - 0.001;
+            candidates.forEach(fc => {
+                const group = getLinkedClipsGroup(fc);
+                const groupKey = group.map(g => g.id).sort().join('|');
+                if (pushedGroups.has(groupKey)) return;
+                pushedGroups.add(groupKey);
+                // The same-track member is the one we clamp against; linked partners follow its shift
+                const anchor = group.find(g => g.trackId === trimClip.trackId) || fc;
+                // Compute from the drag-start position so repeated mousemoves don't accumulate the delta
+                const origStart = (State.drag.initialTrackStarts && State.drag.initialTrackStarts[anchor.id] !== undefined)
+                    ? State.drag.initialTrackStarts[anchor.id]
+                    : anchor.start;
+                let newAnchorStart;
+                if (dir === 'right') {
+                    newAnchorStart = Math.max(0, Math.max(origStart + appliedDelta, boundary));
+                } else {
+                    newAnchorStart = Math.max(0, Math.min(origStart + appliedDelta, boundary - anchor.duration));
+                }
+                const shift = newAnchorStart - anchor.start;
+                group.forEach(g => {
+                    g.start += shift;
+                    if (State.drag.ripplePushedIds) State.drag.ripplePushedIds.add(g.id);
+                    const gEl = document.querySelector(`.clip[data-clip-id="${g.id}"]`);
+                    if (gEl) gEl.style.left = `${g.start * State.pixelsPerSecond}px`;
+                });
+                boundary = dir === 'right' ? anchor.start + anchor.duration + 0.001 : anchor.start - 0.001;
+            });
         }
 
         function handleMouseMove(e) {
@@ -12253,6 +12348,8 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 
                 clipEl.style.left = `${clip.start * State.pixelsPerSecond}px`;
                 clipEl.style.width = `${clip.duration * State.pixelsPerSecond}px`;
+
+                ripplePushClips(clip, clip.start - State.drag.initialStart, 'left');
                 
                 const dragTooltip = document.getElementById('dragTooltip');
                 dragTooltip.innerHTML = `Start: ${formatTime(clip.start)}`;
@@ -12272,6 +12369,8 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 
                 clip.duration = newDuration;
                 clipEl.style.width = `${clip.duration * State.pixelsPerSecond}px`;
+
+                ripplePushClips(clip, clip.duration - State.drag.initialDuration, 'right');
                 
                 const dragTooltip = document.getElementById('dragTooltip');
                 dragTooltip.innerHTML = `End: ${formatTime(clip.start + clip.duration)}`;
@@ -12390,6 +12489,27 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 });
                 saveSubtitlesToStorage();
             }
+
+            // ── Ripple-pushed subtitle clips: sync timing back to subtitle data ──
+            if (State.drag.ripplePushedIds && State.drag.ripplePushedIds.size > 0) {
+                let anySubChanged = false;
+                State.drag.ripplePushedIds.forEach(id => {
+                    const rClip = State.clips.find(c => c.id === id);
+                    if (rClip && rClip.subtitleId) {
+                        const sub = State.subtitles.find(s => s.id === rClip.subtitleId);
+                        if (sub) {
+                            sub.startTime = rClip.start;
+                            sub.endTime = rClip.start + rClip.duration;
+                            anySubChanged = true;
+                        }
+                    }
+                });
+                if (anySubChanged) {
+                    saveSubtitlesToStorage();
+                    if (State.sidebarTab === 'subtitles') renderSubtitlesPanel();
+                }
+            }
+            State.drag.ripplePushedIds = new Set(); // reset bookkeeping so marquee/other drags don't see stale ids
             
             // Recalculate timeline duration if clips were moved beyond the current boundary
             let maxEnd = 0;
