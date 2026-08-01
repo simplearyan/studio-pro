@@ -323,6 +323,15 @@
         </div>
         <style>@keyframes progress-stripes { from { background-position: 1rem 0; } to { background-position: 0 0; } }</style>
         <style>
+            /* Math formula preview inside timeline clips: scale SVG to fit the clip body */
+            .math-clip-preview svg {
+                width: auto !important;
+                height: auto !important;
+                max-width: 100% !important;
+                max-height: 100% !important;
+                flex-shrink: 0;
+            }
+
             /* ── Tab-based accent color system ──────────────────────────── */
             /* CRITICAL: All selectors use `.peer:checked ~` so they ONLY    */
             /* apply when the radio input IS checked. Without this, the      */
@@ -442,6 +451,9 @@
             </button>
             <button id="btnAddShape" class="p-1.5 text-surface-600 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white bg-surface-100 dark:bg-surface-800 rounded-md border border-surface-200 dark:border-surface-700 shadow-sm" title="Add Shape">
                 <i data-lucide="shapes" class="w-4 h-4"></i>
+            </button>
+            <button id="btnAddMath" class="p-1.5 text-surface-600 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white bg-surface-100 dark:bg-surface-800 rounded-md border border-surface-200 dark:border-surface-700 shadow-sm" title="Add Math (LaTeX)">
+                <i data-lucide="sigma" class="w-4 h-4"></i>
             </button>
             <input type="file" id="mediaInput" accept="audio/*,video/*,image/*" class="hidden" multiple>
             <button id="btnImport" class="p-1.5 text-surface-600 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white bg-surface-100 dark:bg-surface-800 rounded-md border border-surface-200 dark:border-surface-700 shadow-sm" title="Import Media">
@@ -1105,6 +1117,195 @@
                     opaqueBg: false,
                     bgColor: null
                 }
+            },
+            // --- MATH PRESETS ---
+            {
+                id: 'preset_math_quadratic',
+                name: 'Quadratic Formula',
+                type: 'text',
+                category: 'Math',
+                text: 'x = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}',
+                effects: {
+                    renderAsMath: true,
+                    fontSize: 60,
+                    fillColor: '#ffffff',
+                    scale: 1,
+                    shadowEnable: true,
+                    shadowColor: 'rgba(0,0,0,0.6)',
+                    shadowBlur: 15,
+                    shadowX: 0,
+                    shadowY: 6
+                }
+            },
+            {
+                id: 'preset_math_euler',
+                name: "Euler's Identity",
+                type: 'text',
+                category: 'Math',
+                text: 'e^{i\\pi} + 1 = 0',
+                effects: {
+                    renderAsMath: true,
+                    fontSize: 70,
+                    fillColor: '#ffffff',
+                    scale: 1,
+                    strokeEnable: true,
+                    strokeColor: '#000000',
+                    strokeWidth: 3,
+                    shadowEnable: true,
+                    shadowColor: 'rgba(0,0,0,0.5)',
+                    shadowBlur: 12,
+                    shadowX: 0,
+                    shadowY: 5
+                }
+            },
+            {
+                id: 'preset_math_pythagoras',
+                name: 'Pythagorean Theorem',
+                type: 'text',
+                category: 'Math',
+                text: 'a^2 + b^2 = c^2',
+                effects: {
+                    renderAsMath: true,
+                    fontSize: 70,
+                    fillColor: '#a5f3fc',
+                    scale: 1,
+                    strokeEnable: true,
+                    strokeColor: '#155e75',
+                    strokeWidth: 2,
+                    extrudeEnable: true,
+                    extrudeColor: '#155e75',
+                    extrudeDepth: 6,
+                    extrudeDir: 'br',
+                    shadowEnable: true,
+                    shadowColor: 'rgba(21,94,117,0.5)',
+                    shadowBlur: 12,
+                    shadowX: 0,
+                    shadowY: 6
+                }
+            },
+            {
+                id: 'preset_math_schrodinger',
+                name: 'Schrödinger Equation',
+                type: 'text',
+                category: 'Math',
+                text: 'i\\hbar\\frac{\\partial}{\\partial t}\\Psi = \\hat{H}\\Psi',
+                effects: {
+                    renderAsMath: true,
+                    fontSize: 48,
+                    fillColor: '#ffffff',
+                    scale: 1,
+                    shadowEnable: true,
+                    shadowColor: 'rgba(0,0,0,0.6)',
+                    shadowBlur: 16,
+                    shadowX: 0,
+                    shadowY: 7
+                }
+            },
+            {
+                id: 'preset_math_integral',
+                name: 'Definite Integral',
+                type: 'text',
+                category: 'Math',
+                text: '\\int_{0}^{\\infty} e^{-x^2}\\,dx = \\frac{\\sqrt{\\pi}}{2}',
+                effects: {
+                    renderAsMath: true,
+                    fontSize: 50,
+                    fillColor: '#bbf7d0',
+                    scale: 1,
+                    strokeEnable: true,
+                    strokeColor: '#14532d',
+                    strokeWidth: 2,
+                    shadowEnable: true,
+                    shadowColor: 'rgba(20,83,45,0.45)',
+                    shadowBlur: 12,
+                    shadowX: 0,
+                    shadowY: 5
+                }
+            },
+            {
+                id: 'preset_math_derivative_q',
+                name: 'Derivative Question',
+                type: 'text',
+                category: 'Math',
+                text: '\\text{Find } \\frac{dy}{dx} \\text{ if } y = x^2 \\sin x',
+                effects: {
+                    renderAsMath: true,
+                    fontSize: 44,
+                    fillColor: '#fde68a',
+                    scale: 1,
+                    strokeEnable: true,
+                    strokeColor: '#78350f',
+                    strokeWidth: 2,
+                    shadowEnable: true,
+                    shadowColor: 'rgba(120,53,15,0.45)',
+                    shadowBlur: 12,
+                    shadowX: 0,
+                    shadowY: 5
+                }
+            },
+            {
+                id: 'preset_math_limit_q',
+                name: 'Limit Question',
+                type: 'text',
+                category: 'Math',
+                text: '\\lim_{x \\to 0} \\frac{\\sin x}{x} = 1',
+                effects: {
+                    renderAsMath: true,
+                    fontSize: 52,
+                    fillColor: '#fecaca',
+                    scale: 1,
+                    strokeEnable: true,
+                    strokeColor: '#7f1d1d',
+                    strokeWidth: 2,
+                    shadowEnable: true,
+                    shadowColor: 'rgba(127,29,29,0.45)',
+                    shadowBlur: 12,
+                    shadowX: 0,
+                    shadowY: 5
+                }
+            },
+            {
+                id: 'preset_math_taylor',
+                name: 'Taylor Series',
+                type: 'text',
+                category: 'Math',
+                text: 'f(x) = \\sum_{n=0}^{\\infty} \\frac{f^{(n)}(a)}{n!}(x-a)^n',
+                effects: {
+                    renderAsMath: true,
+                    fontSize: 44,
+                    fillColor: '#c7d2fe',
+                    scale: 1,
+                    shadowEnable: true,
+                    shadowColor: 'rgba(49,46,129,0.45)',
+                    shadowBlur: 12,
+                    shadowX: 0,
+                    shadowY: 5
+                }
+            },
+            {
+                id: 'preset_math_einstein',
+                name: 'Mass–Energy Equivalence',
+                type: 'text',
+                category: 'Math',
+                text: 'E = mc^2',
+                effects: {
+                    renderAsMath: true,
+                    fontSize: 72,
+                    fillColor: '#fbcfe8',
+                    scale: 1,
+                    strokeEnable: true,
+                    strokeColor: '#831843',
+                    strokeWidth: 2,
+                    extrudeEnable: true,
+                    extrudeColor: '#831843',
+                    extrudeDepth: 7,
+                    extrudeDir: 'br',
+                    shadowEnable: true,
+                    shadowColor: 'rgba(131,24,67,0.5)',
+                    shadowBlur: 14,
+                    shadowX: 0,
+                    shadowY: 6
+                }
             }
         ];
 
@@ -1155,6 +1356,7 @@
         const btnImportFont = document.getElementById('btnImportFont');
         const btnAddText = document.getElementById('btnAddText');
         const btnAddShape = document.getElementById('btnAddShape');
+        const btnAddMath = document.getElementById('btnAddMath');
         const mediaInput = document.getElementById('mediaInput');
         const fontInput = document.getElementById('fontInput');
         const canvasColorPicker = document.getElementById('canvasColorPicker');
@@ -2624,10 +2826,15 @@
             return prev.value + t * (next.value - prev.value);
         };
 
-        function getOrRenderMathImage(clip) {
+        function getOrRenderMathImage(clip, colorOverride) {
             const text = clip.text || '';
-            const color = clip.effects.fillColor || '#ffffff';
-            const cacheKey = `${clip.id}_${text}_${color}`;
+            const color = colorOverride || clip.effects.fillColor || '#ffffff';
+            const strokeOn = !colorOverride && clip.effects.strokeEnable;
+            const strokeColor = clip.effects.strokeColor || '#ffffff';
+            const strokeWidth = clip.effects.strokeWidth || 4;
+            const strokeOnly = !colorOverride && clip.effects.strokeOnly;
+            const fontSize = clip.effects.fontSize || 100;
+            const cacheKey = `${clip.id}_${text}_${fontSize}_${color}_${strokeOn ? strokeColor + strokeWidth + strokeOnly : 'nostroke'}`;
             
             if (window.mathImageCache && window.mathImageCache[cacheKey]) {
                 return window.mathImageCache[cacheKey];
@@ -2643,14 +2850,60 @@
                 window.mathImageCache[cacheKey] = record;
             }
             
+            if (!window.MathJax || !window.MathJax.tex2svg) {
+                // MathJax CDN may still be loading (async). Register a one-time retry so a
+                // clip added during the first moments repaints as soon as MathJax is ready.
+                if (!record._retryRegistered) {
+                    record._retryRegistered = true;
+                    const tryRender = () => {
+                        if (window.MathJax && window.MathJax.tex2svg) {
+                            if (window.mathImageCache) delete window.mathImageCache[cacheKey];
+                            drawCanvas();
+                            renderClips && renderClips();
+                        } else {
+                            setTimeout(tryRender, 500);
+                        }
+                    };
+                    if (window.MathJax && window.MathJax.startup && window.MathJax.startup.promise) {
+                        window.MathJax.startup.promise.then(() => { tryRender(); });
+                    } else {
+                        setTimeout(tryRender, 500);
+                    }
+                }
+            }
             if (window.MathJax && window.MathJax.tex2svg) {
                 try {
                     const container = window.MathJax.tex2svg(text);
                     const svgNode = container.querySelector('svg');
                     if (svgNode) {
                         svgNode.style.color = color;
-                        svgNode.querySelectorAll('path').forEach(p => {
-                            p.setAttribute('fill', color);
+                        const scaleFactor = fontSize * 0.55;
+                        // Compute px-per-viewBox-unit so the stroke renders at the user's chosen px width.
+                        // MathJax output uses a large viewBox (e.g. 0 -700 12853 2795); stroke-width must
+                        // be in those units, not in display pixels, or it becomes invisible.
+                        const _vbParts = (svgNode.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number);
+                        const _valW0 = parseFloat(svgNode.getAttribute('width')) || 0;
+                        const _vbW = (_vbParts.length === 4 && _vbParts[2] > 0) ? _vbParts[2] : 1;
+                        const _pxPerUnit = _valW0 > 0 ? ((_valW0 * scaleFactor) / _vbW) : 1;
+                        const strokeUnits = _pxPerUnit > 0 ? (strokeWidth / _pxPerUnit) : strokeWidth;
+                        svgNode.querySelectorAll('path, rect, circle, ellipse, line, polyline, polygon').forEach(p => {
+                            if (strokeOn && strokeOnly) {
+                                // Stroke-only (outline) mode: no fill, just the glyph/bar outlines
+                                p.setAttribute('fill', 'none');
+                                p.setAttribute('stroke', strokeColor);
+                                p.setAttribute('stroke-width', strokeUnits);
+                                p.setAttribute('stroke-linejoin', 'round');
+                                p.setAttribute('stroke-linecap', 'round');
+                            } else {
+                                p.setAttribute('fill', color);
+                                if (strokeOn) {
+                                    p.setAttribute('stroke', strokeColor);
+                                    p.setAttribute('stroke-width', strokeUnits);
+                                    p.setAttribute('stroke-linejoin', 'round');
+                                    p.setAttribute('stroke-linecap', 'round');
+                                    p.setAttribute('paint-order', 'stroke fill');
+                                }
+                            }
                         });
                         
                         const svgWidth = svgNode.getAttribute('width');
@@ -2658,7 +2911,6 @@
                         
                         const valW = parseFloat(svgWidth) || 0;
                         const valH = parseFloat(svgHeight) || 0;
-                        const scaleFactor = (clip.effects.fontSize || 100) * 0.55;
                         
                         record.width = valW * scaleFactor;
                         record.height = valH * scaleFactor;
@@ -2672,6 +2924,14 @@
                         
                         record.image.onload = () => {
                             record.loaded = true;
+                            // Remember the last successfully rendered image so a cache-key change
+                            // (stroke/size/color edit) can keep showing a formula instead of flashing
+                            // the raw LaTeX while the new SVG rasterizes.
+                            if (colorOverride) {
+                                clip._mathLastExtrude = record;
+                            } else {
+                                clip._mathLastGood = record;
+                            }
                             URL.revokeObjectURL(url);
                             drawCanvas();
                         };
@@ -2683,6 +2943,54 @@
             }
             
             return record;
+        }
+
+        // Pre-render (warm) a math clip's image record so the very first canvas paint
+        // already shows the formula — prevents the empty-frame flicker when adding a clip.
+        function warmMathImage(clip) {
+            const rec = getOrRenderMathImage(clip);
+            if (!rec || rec.loaded) return Promise.resolve();
+            return new Promise(res => {
+                const done = () => res();
+                rec.image.addEventListener('load', done, { once: true });
+                rec.image.addEventListener('error', done, { once: true });
+                setTimeout(done, 2000); // safety: never hang the handler
+            });
+        }
+
+        function getMathClipPreviewSvg(clip) {
+            const text = clip.text || '';
+            // Neutral preview color — the timeline thumbnail intentionally does NOT
+            // reflect the user's fill/stroke styling. Keeps the clip preview simple
+            // and readable in both light & dark themes.
+            const previewColor = '#94a3b8';
+            const key = `${clip.id}||${text}`;
+            if (clip._mathPreview && clip._mathPreview.key === key) return clip._mathPreview.html;
+            let html = '';
+            if (window.MathJax && window.MathJax.tex2svg && text) {
+                try {
+                    const container = window.MathJax.tex2svg(text);
+                    const svgNode = container.querySelector('svg');
+                    if (svgNode) {
+                        svgNode.style.color = previewColor;
+                        svgNode.style.display = 'block';
+                        svgNode.style.width = 'auto';
+                        svgNode.style.height = 'auto';
+                        svgNode.style.maxWidth = '100%';
+                        svgNode.style.maxHeight = '100%';
+                        svgNode.style.verticalAlign = 'middle';
+                        html = svgNode.outerHTML;
+                    }
+                } catch (err) {
+                    console.error('Math timeline preview failed:', err);
+                }
+            }
+            if (!html) {
+                // Simple neutral placeholder — never show raw LaTeX syntax in the timeline
+                html = `<span class="flex items-center justify-center gap-1" style="color:#94a3b8; font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase;">∑ Math</span>`;
+            }
+            clip._mathPreview = { key, html };
+            return html;
         }
 
         // ── GPU Capability Detection ───────────────────────────
@@ -2873,9 +3181,12 @@
                         let mathRecord = null;
                         if (isMath) {
                             mathRecord = getOrRenderMathImage(clip);
-                            if (mathRecord && mathRecord.loaded) {
-                                dw = mathRecord.width;
-                                dh = mathRecord.height;
+                            // Use the current record's size when available; otherwise fall back to the
+                            // last good render so the layout doesn't jump while a new SVG rasterizes.
+                            const _mRef = (mathRecord && mathRecord.loaded) ? mathRecord : (clip._mathLastGood || null);
+                            if (_mRef && _mRef.width > 0) {
+                                dw = _mRef.width;
+                                dh = _mRef.height;
                             }
                         } 
                         
@@ -2924,11 +3235,49 @@
 
                         let drawText = () => {
                             if (isMath) {
-                                if (mathRecord && mathRecord.loaded) {
-                                    ctx.drawImage(mathRecord.image, -mathRecord.width / 2, -mathRecord.height / 2);
-                                } else {
-                                    ctx.fillStyle = clip.effects.fillColor || '#ffffff';
-                                    ctx.fillText(renderText, 0, 0);
+                                // Prefer the freshly rendered record; while a new SVG is still loading
+                                // (stroke/size/color changed) fall back to the last good image so the
+                                // preview never flashes raw LaTeX.
+                                const mathImg = (mathRecord && mathRecord.loaded) ? mathRecord : (clip._mathLastGood || null);
+                                if (mathImg) {
+                                    // 3D Extrude for math
+                                    if (clip.effects.extrudeEnable) {
+                                        const depth = clip.effects.extrudeDepth || 5;
+                                        let dx = 1, dy = 1;
+                                        const ed = clip.effects.extrudeDir || 'br';
+                                        if (ed === 'bl') { dx = -1; dy = 1; }
+                                        else if (ed === 'b') { dx = 0; dy = 1; }
+                                        else if (ed === 'tr') { dx = 1; dy = -1; }
+                                        else if (ed === 'tl') { dx = -1; dy = -1; }
+                                        else if (ed === 't') { dx = 0; dy = -1; }
+                                        else if (ed === 'r') { dx = 1; dy = 0; }
+                                        else if (ed === 'l') { dx = -1; dy = 0; }
+                                        const extrudeRecord = getOrRenderMathImage(clip, clip.effects.extrudeColor || '#000000');
+                                        const extrudeImg = (extrudeRecord && extrudeRecord.loaded) ? extrudeRecord : (clip._mathLastExtrude || null);
+                                        if (extrudeImg) {
+                                            for (let i = depth; i > 0; i -= 1) {
+                                                ctx.drawImage(extrudeImg.image, -mathImg.width / 2 + dx * i, -mathImg.height / 2 + dy * i);
+                                            }
+                                        }
+                                    }
+                                    // Drop shadow for math
+                                    if (clip.effects.shadowEnable) {
+                                        ctx.shadowColor = clip.effects.shadowColor || '#000000';
+                                        ctx.shadowBlur = clip.effects.shadowBlur || 20;
+                                        ctx.shadowOffsetX = clip.effects.shadowX || 0;
+                                        ctx.shadowOffsetY = clip.effects.shadowY || 10;
+                                    } else {
+                                        ctx.shadowColor = 'transparent';
+                                        ctx.shadowBlur = 0;
+                                        ctx.shadowOffsetX = 0;
+                                        ctx.shadowOffsetY = 0;
+                                    }
+                                    ctx.drawImage(mathImg.image, -mathImg.width / 2, -mathImg.height / 2);
+                                    // Reset shadow to avoid bleeding into other clips
+                                    ctx.shadowColor = 'transparent';
+                                    ctx.shadowBlur = 0;
+                                    ctx.shadowOffsetX = 0;
+                                    ctx.shadowOffsetY = 0;
                                 }
                                 return;
                             }
@@ -4670,6 +5019,12 @@
                             <textarea class="w-full h-20 bg-surface-50 dark:bg-surface-900/80 shadow-inner border border-surface-200 dark:border-surface-700 rounded-lg p-2 text-sm text-surface-900 dark:text-white outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500" oninput="const _c=State.clips.find(c=>c.id==='${clip.id}');if(_c){_c.text=this.value;if(_c.subtitleId){const _s=State.subtitles.find(s=>s.id===_c.subtitleId);if(_s){_s.text=this.value;saveSubtitlesToStorage();}}drawCanvas();renderClips();}">${clip.text}</textarea>
                             
                             <div class="flex flex-col gap-2 mt-1">
+                                ${fx.renderAsMath ? `
+                                <div class="flex items-center justify-between py-1.5 px-2 rounded border border-brand-200 dark:border-brand-700 bg-brand-50 dark:bg-brand-900/20">
+                                    <span class="text-[10px] font-bold text-brand-600 dark:text-brand-400 uppercase tracking-widest flex items-center gap-1"><i data-lucide="sigma" class="w-3 h-3"></i> Math Element</span>
+                                    <span class="text-[9px] font-bold text-brand-600 dark:text-brand-400 bg-white dark:bg-surface-800 px-1.5 py-0.5 rounded border border-brand-200 dark:border-brand-700">LaTeX</span>
+                                </div>
+                                ` : `
                                 <div class="flex items-center justify-between py-1 bg-surface-100 dark:bg-surface-800/50 px-2 rounded border border-surface-200 dark:border-surface-700">
                                     <label class="text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest cursor-pointer select-none" for="mathModeToggle">Math Mode (LaTeX)</label>
                                     <label class="relative inline-flex items-center cursor-pointer">
@@ -4677,6 +5032,7 @@
                                         <div class="w-7 h-4 bg-surface-200 dark:bg-surface-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:border-surface-600 dark:peer-checked:bg-brand-500 peer-checked:bg-brand-500"></div>
                                     </label>
                                 </div>
+                                `}
                                 
                                 ${fx.renderAsMath ? `
                                 <div class="flex flex-wrap gap-1 mt-1 bg-surface-100 dark:bg-surface-900 p-1.5 rounded border border-surface-200 dark:border-surface-700">
@@ -4690,6 +5046,13 @@
                                     <button onclick="insertTexTemplate('${clip.id}', '\\\\pi')" class="px-1.5 py-0.5 text-[9px] bg-white dark:bg-surface-800 hover:bg-brand-50 dark:hover:bg-brand-950/20 text-surface-700 dark:text-surface-300 rounded border border-surface-200 dark:border-surface-700 font-mono shadow-sm" title="Pi">\\pi</button>
                                     <button onclick="insertTexTemplate('${clip.id}', '\\\\theta')" class="px-1.5 py-0.5 text-[9px] bg-white dark:bg-surface-800 hover:bg-brand-50 dark:hover:bg-brand-950/20 text-surface-700 dark:text-surface-300 rounded border border-surface-200 dark:border-surface-700 font-mono shadow-sm" title="Theta">\\theta</button>
                                     <button onclick="insertTexTemplate('${clip.id}', '\\\\Delta')" class="px-1.5 py-0.5 text-[9px] bg-white dark:bg-surface-800 hover:bg-brand-50 dark:hover:bg-brand-950/20 text-surface-700 dark:text-surface-300 rounded border border-surface-200 dark:border-surface-700 font-mono shadow-sm" title="Delta">\\Delta</button>
+                                </div>
+                                <div class="flex items-center justify-between py-1 bg-surface-100 dark:bg-surface-800/50 px-2 rounded border border-surface-200 dark:border-surface-700 mt-1">
+                                    <label class="text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest cursor-pointer select-none" for="mathStrokeOnlyToggle">Outline Only</label>
+                                    <label class="relative inline-flex items-center cursor-pointer">
+                                        <input type="checkbox" id="mathStrokeOnlyToggle" class="sr-only peer" ${fx.strokeOnly ? 'checked' : ''} onchange="const _c=State.clips.find(c=>c.id==='${clip.id}');setClipEffect('${clip.id}', 'strokeOnly', this.checked); if(this.checked && _c && !_c.effects.strokeEnable){setClipEffect('${clip.id}', 'strokeEnable', true);} updatePropertiesPanel(); drawCanvas();">
+                                        <div class="w-7 h-4 bg-surface-200 dark:bg-surface-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:border-surface-600 dark:peer-checked:bg-brand-500 peer-checked:bg-brand-500"></div>
+                                    </label>
                                 </div>
                                 ` : ''}
 
@@ -4814,7 +5177,7 @@
                 }
             }
 
-            const extrudeHTML = ((clip.type === 'text' && !fx.renderAsMath) || clip.type === 'shape') ? `
+            const extrudeHTML = (clip.type === 'text' || clip.type === 'shape') ? `
                 <details id="cardExtrude" class="group bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 shadow-sm rounded-lg shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'} overflow-hidden flex flex-col" open>
                     <summary class="flex items-center justify-between p-3 ${isHorizontal ? '' : 'cursor-pointer'} list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700 " onclick="${isHorizontal ? 'event.preventDefault();' : ''}">
                         <div class="text-sm font-bold text-surface-800 dark:text-surface-200 flex items-center gap-2"><i data-lucide="box" class="w-4 h-4 text-surface-500 dark:text-surface-400"></i> Extrude 3D</div>
@@ -4920,7 +5283,7 @@
                 </details>
             ` : '';
 
-            const strokeHTML = ((clip.type === 'text' && !fx.renderAsMath) || clip.type === 'shape' || clip.type === 'image' || clip.type === 'video') ? `
+            const strokeHTML = (clip.type === 'text' || clip.type === 'shape' || clip.type === 'image' || clip.type === 'video') ? `
                 <details id="cardStroke" class="group bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 shadow-sm rounded-lg shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'} overflow-hidden flex flex-col" open>
                     <summary class="flex items-center justify-between p-3 ${isHorizontal ? '' : 'cursor-pointer'} list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700 " onclick="${isHorizontal ? 'event.preventDefault();' : ''}">
                         <div class="text-sm font-bold text-surface-800 dark:text-surface-200 flex items-center gap-2"><i data-lucide="edit-3" class="w-4 h-4 text-surface-500 dark:text-surface-400"></i> Stroke & Outline</div>
@@ -6339,6 +6702,7 @@
             
             const categories = [
                 { id: 'all', name: 'All' },
+                { id: 'math', name: 'Math' },
                 { id: 'text', name: 'Text' },
                 { id: 'shape', name: 'Shapes' },
                 { id: 'media', name: 'Media' },
@@ -6349,6 +6713,7 @@
                 if (State.activePresetFilter === 'all') return true;
                 if (State.activePresetFilter === 'keyframes') return p.category === 'Keyframe Path';
                 if (State.activePresetFilter === 'media') return p.type === 'image' || p.type === 'video';
+                if (State.activePresetFilter === 'math') return p.category === 'Math';
                 return p.type === State.activePresetFilter;
             });
             
@@ -6409,7 +6774,7 @@
                 `;
             } else {
                 filtered.forEach(p => {
-                    const iconName = p.type === 'text' ? 'type' : (p.type === 'shape' ? 'shapes' : (p.type === 'image' ? 'image' : (p.type === 'video' ? 'video' : 'film')));
+                    const iconName = p.category === 'Math' ? 'variable' : (p.type === 'text' ? 'type' : (p.type === 'shape' ? 'shapes' : (p.type === 'image' ? 'image' : (p.type === 'video' ? 'video' : 'film'))));
                     
                     const selectedClip = State.clips.find(c => c.id === State.selectedClipId);
                     let canApply = selectedClip && selectedClip.type === p.type;
@@ -6466,7 +6831,7 @@
             updateSidebarPanel();
         };
 
-        window.addPresetToTimeline = function(presetId) {
+        window.addPresetToTimeline = async function(presetId) {
             const preset = DEFAULT_PRESETS.find(p => p.id === presetId) || loadCustomPresets().find(p => p.id === presetId);
             if (!preset) return;
 
@@ -6516,6 +6881,9 @@
 
             calcOverlaps();
             renderClips();
+            if (newClip.effects && newClip.effects.renderAsMath) {
+                await warmMathImage(newClip);
+            }
             drawCanvas();
             updateSidebarPanel();
         };
@@ -9794,6 +10162,51 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 drawCanvas();
             });
 
+            btnAddMath.addEventListener('click', async () => {
+                let targetTrackId = getAvailableTrack('video', State.currentTime, 5);
+                let targetTrack = State.tracks.find(t=>t.id===targetTrackId);
+                let clipColor = (targetTrack.colorIndex + 5) % PALETTES.length;
+
+                const newMathClip = {
+                    id: 'c_' + Date.now() + Math.random().toString(36).substr(2, 5),
+                    sceneId: State.activeSceneId || null,
+                    trackId: targetTrackId,
+                    colorIndex: clipColor,
+                    type: 'text',
+                    title: 'Math',
+                    text: 'x = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}',
+                    start: State.currentTime,
+                    duration: 5,
+                    sourceOffset: 0,
+                    maxDuration: 3600,
+                    effects: { 
+                        scale: 1, rotate: 0, offsetX: 0, offsetY: 0, 
+                        fontFamily: 'Rubik', fontWeight: 700, fillColor: '#ffffff',
+                        renderAsMath: true,
+                        fontSize: 60,
+                        strokeEnable: false, strokeColor: '#ffffff', strokeWidth: 4,
+                        shadowEnable: false, shadowColor: '#000000', shadowBlur: 20, shadowX: 0, shadowY: 10, 
+                        extrudeEnable: false, extrudeDepth: 5, extrudeColor: '#000000',
+                        animIn: 'none', animOut: 'none', animLoop: 'none', animInDur: 1.0, animOutDur: 1.0, animEase: 'easeOut',
+                        animTextIn: 'none', animTextOut: 'none', animTextLoop: 'none', animTextEase: 'easeOut', animTextStagger: 'letter', animTextInDur: 1.0, animTextOutDur: 1.0, flashColor: '#ffe600'
+                    }
+                };
+                State.clips.push(newMathClip);
+                State.selectedClipId = newMathClip.id;
+                State.multiSelectedClipIds = [newMathClip.id];
+                
+                if (State.currentTime + 5 > State.duration) {
+                    State.duration = Math.ceil(State.currentTime + 5 + 10);
+                    updateTimelineWidth();
+                }
+                
+                calcOverlaps();
+                renderClips();
+                updatePropertiesPanel();
+                await warmMathImage(newMathClip);
+                drawCanvas();
+            });
+
         mediaInput.addEventListener('change', async (e) => {
             const files = Array.from(e.target.files);
             if (!files.length) return;
@@ -11059,15 +11472,26 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 if (isTextClip && clip.text) {
                     const fontWeight = (clip.effects && clip.effects.fontWeight) ? clip.effects.fontWeight : 'bold';
                     const isMath = clip.effects && clip.effects.renderAsMath;
-                    const displayVal = isMath ? (clip.text.length > 20 ? clip.text.substring(0, 18) + '...' : clip.text) : clip.text;
-                    
-                    textPreviewHtml = `
+                    if (isMath) {
+                        // Render the actual formula (MathJax SVG) instead of raw LaTeX text,
+                        // with a fixed neutral color so the preview stays simple & theme-agnostic
+                        textPreviewHtml = `
                         <div class="absolute inset-0 flex items-center justify-center overflow-hidden pointer-events-none opacity-90 z-10 px-2">
-                            <span class="truncate w-full text-center ${isMath ? 'font-mono text-[11px]' : ''}" style="font-family: ${isMath ? 'monospace' : "'Rubik', sans-serif"}; font-weight: ${fontWeight}; font-size: ${isMath ? '11px' : '14px'}; color: ${isMath ? '#f59e0b' : palette.text}; line-height: 1.2;">
+                            <div class="math-clip-preview w-full flex items-center justify-center overflow-hidden" style="max-height: 75%; color: #94a3b8;">
+                                ${getMathClipPreviewSvg(clip)}
+                            </div>
+                        </div>
+                    `;
+                    } else {
+                        const displayVal = clip.text.length > 20 ? clip.text.substring(0, 18) + '...' : clip.text;
+                        textPreviewHtml = `
+                        <div class="absolute inset-0 flex items-center justify-center overflow-hidden pointer-events-none opacity-90 z-10 px-2">
+                            <span class="truncate w-full text-center" style="font-family: 'Rubik', sans-serif; font-weight: ${fontWeight}; font-size: 14px; color: ${palette.text}; line-height: 1.2;">
                                 ${isSubtitleClip ? '<span class="inline-flex items-center gap-1"><i data-lucide="subtitles" class="w-2.5 h-2.5" style="color: #818cf8"></i> ' : ''}${displayVal}${isSubtitleClip ? '</span>' : ''}
                             </span>
                         </div>
                     `;
+                    }
                 }
 
                 let shapePreviewHtml = '';
@@ -11105,7 +11529,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 } else if (isSubtitleClip) {
                     headerTitle = 'Caption';
                 } else if (isTextClip && clip.effects && clip.effects.renderAsMath) {
-                    headerTitle = `Math: ${clip.text || 'Formula'}`;
+                    headerTitle = 'Math';
                 }
 
                 const isLinked = clip.linkedClipIds && clip.linkedClipIds.length > 0;
