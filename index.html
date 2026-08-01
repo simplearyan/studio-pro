@@ -2339,9 +2339,10 @@
             
             // Lazy load default tracks for this scene if none exist
             if (!State.tracks.some(t => t.sceneId === sceneId)) {
+                const defaultTrackH = TRACK_SIZES[currentTrackSize] ? TRACK_SIZES[currentTrackSize].height : 90;
                 State.tracks.push(
-                    { id: 'v1_' + sceneId, type: 'video', name: 'V1', height: 90, colorIndex: 0, hidden: false, locked: false, sceneId: sceneId }, 
-                    { id: 'a1_' + sceneId, type: 'audio', name: 'A1', height: 90, colorIndex: 1, hidden: false, locked: false, sceneId: sceneId }
+                    { id: 'v1_' + sceneId, type: 'video', name: 'V1', height: defaultTrackH, colorIndex: 0, hidden: false, locked: false, sceneId: sceneId }, 
+                    { id: 'a1_' + sceneId, type: 'audio', name: 'A1', height: defaultTrackH, colorIndex: 1, hidden: false, locked: false, sceneId: sceneId }
                 );
             }
 
@@ -8860,7 +8861,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     id: prefix + Date.now(),
                     type: 'video',
                     name: posFromEnd === 0 ? 'Images' : 'Images ' + (posFromEnd + 1),
-                    height: 90,
+                    height: TRACK_SIZES[currentTrackSize] ? TRACK_SIZES[currentTrackSize].height : 90,
                     colorIndex: State.tracks.length % PALETTES.length,
                     muted: false,
                     sceneId: sc
@@ -8896,7 +8897,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     id: prefix + Date.now(),
                     type: 'video',
                     name: 'Row ' + (pos + 1),
-                    height: 90,
+                    height: TRACK_SIZES[currentTrackSize] ? TRACK_SIZES[currentTrackSize].height : 90,
                     colorIndex: State.tracks.length % PALETTES.length,
                     muted: false,
                     sceneId: sc
@@ -9230,7 +9231,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 id: type.charAt(0) + Date.now(),
                 type: type,
                 name: `${type === 'video' ? 'V' : 'A'}${count}`,
-                height: 90, 
+                height: TRACK_SIZES[currentTrackSize] ? TRACK_SIZES[currentTrackSize].height : 90, 
                 colorIndex: State.tracks.length % PALETTES.length,
                 muted: false,
                 solo: false,
@@ -9261,7 +9262,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 id: type.charAt(0) + Date.now(),
                 type: type,
                 name: `${type === 'video' ? 'V' : 'A'}${count}`,
-                height: 90,
+                height: TRACK_SIZES[currentTrackSize] ? TRACK_SIZES[currentTrackSize].height : 90,
                 colorIndex: State.tracks.length % PALETTES.length,
                 muted: false,
                 sceneId: currentSceneId
@@ -10578,6 +10579,14 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     }
                 });
                 
+                // Per-track height resize handle (bottom edge of the header)
+                const resizeHandle = document.createElement('div');
+                resizeHandle.className = 'track-resize-handle';
+                resizeHandle.dataset.trackId = track.id;
+                resizeHandle.title = 'Drag to resize this track\'s height';
+                resizeHandle.addEventListener('mousedown', (ev) => { startTrackResize(track.id, ev); });
+                el.appendChild(resizeHandle);
+                
                 trackHeadersContainer.appendChild(el);
             });
             lucide.createIcons();
@@ -10604,6 +10613,42 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 tracksContentContainer.appendChild(el);
             });
         }
+
+        // ── Per-track height resize (drag the bottom edge of a track header/lane) ──
+        window.startTrackResize = function(trackId, e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const track = State.tracks.find(t => t.id === trackId);
+            if (!track) return;
+            if (track.locked) return; // locked tracks can't be resized (consistent with clip-move lock)
+            const startY = e.clientY;
+            const startH = track.height;
+            const headerEl = trackHeadersContainer.querySelector(`[data-track-id="${trackId}"]`);
+            const laneEl = tracksContentContainer.querySelector(`.track-lane[data-track-id="${trackId}"]`);
+            const handleEl = document.querySelector(`.track-resize-handle[data-track-id="${trackId}"]`);
+            if (handleEl) handleEl.classList.add('active');
+            State.trackResizing = true;
+
+            const onMove = (ev) => {
+                let h = Math.round(startH + (ev.clientY - startY));
+                h = Math.max(30, Math.min(250, h));
+                track.height = h;
+                if (headerEl) headerEl.style.height = h + 'px';
+                if (laneEl) laneEl.style.height = h + 'px';
+                if (typeof drawAllWaveforms === 'function') drawAllWaveforms();
+            };
+
+            const onUp = () => {
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup', onUp);
+                if (handleEl) handleEl.classList.remove('active');
+                State.trackResizing = false;
+                saveLayoutSettings();
+            };
+
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+        };
 
         function renderClips() {
             document.querySelectorAll('.clip').forEach(e => e.remove());
@@ -11780,7 +11825,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             const hptc = document.getElementById('hoverPlayheadTimeContainer');
             
             container.addEventListener('mousemove', (e) => {
-                if (!State.hoverPlayheadEnabled || State.drag.active) {
+                if (!State.hoverPlayheadEnabled || State.drag.active || State.trackResizing) {
                     hp.classList.add('hidden');
                     return;
                 }
@@ -12109,17 +12154,36 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 let newSourceOffset = State.drag.initialSourceOffset + deltaTime;
                 let newDuration = State.drag.initialDuration - deltaTime;
 
-                if (newSourceOffset < 0) {
-                    deltaTime = -State.drag.initialSourceOffset;
-                    newStart = State.drag.initialStart + deltaTime;
+                // Procedural clips (text/shape/image/scene) have no source media to trim
+                // into — sourceOffset stays 0 and they stretch freely from the front (up to
+                // maxDuration). Only media clips (video/audio) are bounded by the start of
+                // their source file, so the newSourceOffset clamp applies to them only.
+                const isProcedural = clip.type === 'text' || clip.type === 'shape' || clip.type === 'image' || clip.type === 'scene';
+
+                if (isProcedural) {
+                    if (newStart < 0) {
+                        // Can't start before time 0: keep the clip ending where it was
+                        newStart = 0;
+                        newDuration = State.drag.initialStart + State.drag.initialDuration;
+                    }
+                    if (newDuration > clip.maxDuration) {
+                        newDuration = clip.maxDuration;
+                        newStart = (State.drag.initialStart + State.drag.initialDuration) - clip.maxDuration;
+                    }
                     newSourceOffset = 0;
-                    newDuration = State.drag.initialDuration - deltaTime;
+                } else {
+                    if (newSourceOffset < 0) {
+                        deltaTime = -State.drag.initialSourceOffset;
+                        newStart = State.drag.initialStart + deltaTime;
+                        newSourceOffset = 0;
+                        newDuration = State.drag.initialDuration - deltaTime;
+                    }
                 }
                 
                 if (newDuration < 0.2) {
                     newDuration = 0.2;
                     newStart = (State.drag.initialStart + State.drag.initialDuration) - 0.2;
-                    newSourceOffset = (State.drag.initialSourceOffset + State.drag.initialDuration) - 0.2;
+                    newSourceOffset = isProcedural ? 0 : (State.drag.initialSourceOffset + State.drag.initialDuration) - 0.2;
                 }
 
                 clip.start = newStart;
