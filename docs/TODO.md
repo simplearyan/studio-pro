@@ -17,6 +17,8 @@ analysis of editor and comparison with remotion
 
 - new katex elmeetn 
 
+- for vector math when user adds 3d extrude shadow with big depth - the clips on timeline becomes lag - to drag - and not smooth - can we fix thi issue 
+
 can we show video frames in timeline - or can  we show images preview in timeline for images clips 
 
 

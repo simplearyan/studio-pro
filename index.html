@@ -455,6 +455,9 @@
             <button id="btnAddMath" class="p-1.5 text-surface-600 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white bg-surface-100 dark:bg-surface-800 rounded-md border border-surface-200 dark:border-surface-700 shadow-sm" title="Add Math (LaTeX)">
                 <i data-lucide="sigma" class="w-4 h-4"></i>
             </button>
+            <button id="btnAddMathVec" class="p-1.5 text-surface-600 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white bg-surface-100 dark:bg-surface-800 rounded-md border border-surface-200 dark:border-surface-700 shadow-sm" title="Add Vector Math (crisp LaTeX shapes)">
+                <i data-lucide="pen-tool" class="w-4 h-4"></i>
+            </button>
             <input type="file" id="mediaInput" accept="audio/*,video/*,image/*" class="hidden" multiple>
             <button id="btnImport" class="p-1.5 text-surface-600 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white bg-surface-100 dark:bg-surface-800 rounded-md border border-surface-200 dark:border-surface-700 shadow-sm" title="Import Media">
                 <i data-lucide="folder-plus" class="w-4 h-4"></i>
@@ -3036,6 +3039,190 @@
             return html;
         }
 
+        // ── Vector Math (crisp Path2D, no rasterization) ────────────────────
+        // Inspired by rough-math's extractPaths: parse the MathJax SVG DOM into native
+        // canvas Path2D outlines (with their DOMMatrix transforms) and redraw them as
+        // true vector shapes every frame — no image/blob pipeline, so strokes stay
+        // infinitely crisp at any zoom/export resolution and there is zero flicker.
+        function applyMathTransform(matrix, transformStr) {
+            if (!transformStr) return matrix;
+            const regex = /([a-zA-Z]+)\(([^)]+)\)/g;
+            let m = new DOMMatrix(matrix);
+            let match;
+            while ((match = regex.exec(transformStr)) !== null) {
+                const type = match[1];
+                const args = match[2].split(/[,\s]+/).map(parseFloat);
+                if (type === 'translate') m = m.translate(args[0], args[1] || 0);
+                else if (type === 'scale') m = m.scale(args[0], args[1] !== undefined ? args[1] : args[0]);
+                else if (type === 'rotate') m = m.rotate(0, 0, args[0]);
+                else if (type === 'matrix') m = m.multiply(new DOMMatrix(args));
+            }
+            return m;
+        }
+
+        function extractMathVectorPaths(svgNode) {
+            const defs = {};
+            svgNode.querySelectorAll('defs path').forEach(p => { defs[p.id] = p.getAttribute('d'); });
+            const paths = [];
+            function traverse(node, currentMatrix) {
+                let matrix = new DOMMatrix(currentMatrix);
+                const transform = node.getAttribute('transform');
+                if (transform) matrix = applyMathTransform(matrix, transform);
+                const x = parseFloat(node.getAttribute('x') || 0);
+                const y = parseFloat(node.getAttribute('y') || 0);
+                if (x !== 0 || y !== 0) matrix = matrix.translate(x, y);
+                const tagName = node.tagName.toLowerCase();
+                if (tagName === 'use') {
+                    const href = node.getAttribute('href') || node.getAttribute('xlink:href');
+                    if (href) {
+                        const id = href.substring(1);
+                        if (defs[id]) {
+                            try { paths.push({ path: new Path2D(defs[id]), m: matrix }); } catch (_) {}
+                        }
+                    }
+                } else if (tagName === 'path' && !node.closest('defs')) {
+                    const d = node.getAttribute('d');
+                    if (d) { try { paths.push({ path: new Path2D(d), m: matrix }); } catch (_) {} }
+                } else if (tagName === 'rect') {
+                    const w = parseFloat(node.getAttribute('width') || 0);
+                    const h = parseFloat(node.getAttribute('height') || 0);
+                    if (w > 0 && h > 0) {
+                        try { paths.push({ path: new Path2D(`M 0 0 L ${w} 0 L ${w} ${h} L 0 ${h} Z`), m: matrix }); } catch (_) {}
+                    }
+                }
+                Array.from(node.children).forEach(child => {
+                    if (child.tagName.toLowerCase() !== 'defs') traverse(child, matrix);
+                });
+            }
+            traverse(svgNode, new DOMMatrix());
+            return paths;
+        }
+
+        function getMathVectorGeometry(clip) {
+            const text = clip.text || '';
+            const fontSize = clip.effects.fontSize || 100;
+            const cacheKey = `${clip.id}_${text}_${fontSize}`;
+            if (window.mathVectorCache && window.mathVectorCache[cacheKey]) return window.mathVectorCache[cacheKey];
+            const geo = { paths: [], vb: [0, 0, 1000, 1000], w: 0, h: 0 };
+            if (window.MathJax && window.MathJax.tex2svg && text) {
+                try {
+                    const container = window.MathJax.tex2svg(text);
+                    const svgNode = container.querySelector('svg');
+                    if (svgNode) {
+                        const vbAttr = svgNode.getAttribute('viewBox') || '0 0 1000 1000';
+                        const vb = vbAttr.trim().split(/[\s,]+/).map(Number);
+                        const valW = parseFloat(svgNode.getAttribute('width')) || 0;
+                        const valH = parseFloat(svgNode.getAttribute('height')) || 0;
+                        const scaleFactor = fontSize * 0.55;
+                        geo.paths = extractMathVectorPaths(svgNode);
+                        geo.vb = vb.length === 4 ? vb : [0, 0, 1000, 1000];
+                        geo.w = valW * scaleFactor;
+                        geo.h = valH * scaleFactor;
+                    }
+                } catch (err) { console.error('Vector math parse failed:', err); }
+            }
+            if (window.mathVectorCache) {
+                // Only cache when geometry parsed successfully. If MathJax is still loading
+                // (paths empty), don't cache — the next drawCanvas frame will re-parse once
+                // MathJax becomes ready, just like the image mode's retry hook.
+                if (geo.paths.length > 0) {
+                    // Prune stale geometries for this clip (old text/fontSize combos) so
+                    // the cache stays bounded while the user iterates on a formula.
+                    for (const k in window.mathVectorCache) {
+                        if (k !== cacheKey && k.indexOf(clip.id + '_') === 0) {
+                            delete window.mathVectorCache[k];
+                        }
+                    }
+                    window.mathVectorCache[cacheKey] = geo;
+                }
+            }
+            return geo;
+        }
+
+        function drawVectorMath(ctx, clip, targetW, targetH) {
+            const geo = getMathVectorGeometry(clip);
+            if (!geo || !geo.paths.length || targetW <= 0 || targetH <= 0) return;
+            const vb = geo.vb;
+            if (vb[2] <= 0 || vb[3] <= 0) return;
+            const s = Math.min(targetW / vb[2], targetH / vb[3]);
+            const strokeOn = !!clip.effects.strokeEnable || !!clip.effects.strokeOnly;
+            const strokeOnly = !!clip.effects.strokeOnly;
+            const strokeColor = clip.effects.strokeColor || '#ffffff';
+            const strokeWUnits = (clip.effects.strokeWidth || 4) / s;
+            const fillColor = clip.effects.fillColor || '#ffffff';
+            const shadowOn = !!clip.effects.shadowEnable;
+            const shadowColor = clip.effects.shadowColor || '#000000';
+            const shadowBlur = (clip.effects.shadowBlur || 20) / s;
+            const shadowX = (clip.effects.shadowX || 0) / s;
+            const shadowY = (clip.effects.shadowY || 10) / s;
+
+            const paintPaths = (fill, stroke, withShadow) => {
+                for (const p of geo.paths) {
+                    ctx.save();
+                    ctx.transform(p.m.a, p.m.b, p.m.c, p.m.d, p.m.e, p.m.f);
+                    if (withShadow) {
+                        ctx.shadowColor = shadowColor;
+                        ctx.shadowBlur = shadowBlur;
+                        ctx.shadowOffsetX = shadowX;
+                        ctx.shadowOffsetY = shadowY;
+                    }
+                    if (fill) { ctx.fillStyle = fill; ctx.fill(p.path); }
+                    if (stroke) {
+                        ctx.strokeStyle = strokeColor;
+                        ctx.lineWidth = strokeWUnits;
+                        ctx.lineJoin = 'round';
+                        ctx.lineCap = 'round';
+                        ctx.stroke(p.path);
+                    }
+                    ctx.restore();
+                }
+            };
+
+            ctx.save();
+            // Map the MathJax viewBox so the formula is centered at the origin at the target size
+            ctx.scale(s, s);
+            ctx.translate(-(vb[0] + vb[2] / 2), -(vb[1] + vb[3] / 2));
+
+            // 3D Extrude — solid offset copies behind the main shape
+            if (clip.effects.extrudeEnable) {
+                const depth = clip.effects.extrudeDepth || 5;
+                let dx = 1, dy = 1;
+                const ed = clip.effects.extrudeDir || 'br';
+                if (ed === 'bl') { dx = -1; dy = 1; }
+                else if (ed === 'b') { dx = 0; dy = 1; }
+                else if (ed === 'tr') { dx = 1; dy = -1; }
+                else if (ed === 'tl') { dx = -1; dy = -1; }
+                else if (ed === 't') { dx = 0; dy = -1; }
+                else if (ed === 'r') { dx = 1; dy = 0; }
+                else if (ed === 'l') { dx = -1; dy = 0; }
+                const exColor = clip.effects.extrudeColor || '#000000';
+                ctx.save();
+                for (let i = depth; i > 0; i -= 1) {
+                    ctx.save();
+                    ctx.translate((dx * i) / s, (dy * i) / s);
+                    for (const p of geo.paths) {
+                        ctx.save();
+                        ctx.transform(p.m.a, p.m.b, p.m.c, p.m.d, p.m.e, p.m.f);
+                        ctx.fillStyle = exColor;
+                        ctx.fill(p.path);
+                        ctx.restore();
+                    }
+                    ctx.restore();
+                }
+                ctx.restore();
+            }
+
+            // Main pass — fill (+ optional stroke) with drop shadow
+            paintPaths(strokeOnly ? null : fillColor, strokeOn ? strokeColor : null, shadowOn);
+
+            ctx.restore();
+            // Reset shadow so it never bleeds into other clips
+            ctx.shadowColor = 'transparent';
+            ctx.shadowBlur = 0;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 0;
+        }
+
         // ── GPU Capability Detection ───────────────────────────
         // Runs once on page load to detect the user's GPU and store a tier recommendation.
         // Used by the export modal to show relevant settings advice.
@@ -3223,14 +3410,24 @@
                         let isMath = clip.effects && clip.effects.renderAsMath;
                         let mathRecord = null;
                         if (isMath) {
-                            mathRecord = getOrRenderMathImage(clip);
-                            // record.width/height are computed SYNCHRONOUSLY from tex2svg (before the
-                            // image loads), so use them as the layout size immediately. This keeps the
-                            // canvas layout tracking the Formula Size slider in real time.
-                            const _mRef = (mathRecord && mathRecord.width > 0) ? mathRecord : (clip._mathLastGood || null);
-                            if (_mRef && _mRef.width > 0) {
-                                dw = _mRef.width;
-                                dh = _mRef.height;
+                            if (clip.effects.mathRenderMode === 'vector') {
+                                // Vector math: geometry is computed synchronously (no image load),
+                                // so the layout tracks the Formula Size slider in real time.
+                                const _vg = getMathVectorGeometry(clip);
+                                if (_vg && _vg.w > 0) {
+                                    dw = _vg.w;
+                                    dh = _vg.h;
+                                }
+                            } else {
+                                mathRecord = getOrRenderMathImage(clip);
+                                // record.width/height are computed SYNCHRONOUSLY from tex2svg (before the
+                                // image loads), so use them as the layout size immediately. This keeps the
+                                // canvas layout tracking the Formula Size slider in real time.
+                                const _mRef = (mathRecord && mathRecord.width > 0) ? mathRecord : (clip._mathLastGood || null);
+                                if (_mRef && _mRef.width > 0) {
+                                    dw = _mRef.width;
+                                    dh = _mRef.height;
+                                }
                             }
                         } 
                         
@@ -3279,6 +3476,13 @@
 
                         let drawText = () => {
                             if (isMath) {
+                                if (clip.effects.mathRenderMode === 'vector') {
+                                    // Vector math: crisp Path2D shapes drawn directly (no rasterization).
+                                    // Infinitely sharp at any scale, and supports fill/stroke/shadow/extrude
+                                    // as native canvas operations.
+                                    drawVectorMath(ctx, clip, dw, dh);
+                                    return;
+                                }
                                 // Prefer the freshly rendered record; while a new SVG is still loading
                                 // (stroke/size/color changed) fall back to the last good image so the
                                 // preview never flashes raw LaTeX.
@@ -5074,7 +5278,7 @@
                             <div class="flex flex-col gap-2 mt-1">
                                 ${fx.renderAsMath ? `
                                 <div class="flex items-center justify-between py-1.5 px-2 rounded border border-brand-200 dark:border-brand-700 bg-brand-50 dark:bg-brand-900/20">
-                                    <span class="text-[10px] font-bold text-brand-600 dark:text-brand-400 uppercase tracking-widest flex items-center gap-1"><i data-lucide="sigma" class="w-3 h-3"></i> Math Element</span>
+                                    <span class="text-[10px] font-bold text-brand-600 dark:text-brand-400 uppercase tracking-widest flex items-center gap-1"><i data-lucide="${fx.mathRenderMode === 'vector' ? 'pen-tool' : 'sigma'}" class="w-3 h-3"></i> ${fx.mathRenderMode === 'vector' ? 'Vector Math' : 'Math Element'}</span>
                                     <span class="text-[9px] font-bold text-brand-600 dark:text-brand-400 bg-white dark:bg-surface-800 px-1.5 py-0.5 rounded border border-brand-200 dark:border-brand-700">LaTeX</span>
                                 </div>
                                 ` : `
@@ -6934,7 +7138,7 @@
 
             calcOverlaps();
             renderClips();
-            if (newClip.effects && newClip.effects.renderAsMath) {
+            if (newClip.effects && newClip.effects.renderAsMath && newClip.effects.mathRenderMode !== 'vector') {
                 await warmMathImage(newClip);
             }
             drawCanvas();
@@ -7480,6 +7684,7 @@
         };
 
         window.mathImageCache = {};
+        window.mathVectorCache = {};
 
         window.insertTexTemplate = function(clipId, templateStr) {
             const clip = State.clips.find(c => c.id === clipId);
@@ -10260,6 +10465,51 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 drawCanvas();
             });
 
+            btnAddMathVec.addEventListener('click', () => {
+                let targetTrackId = getAvailableTrack('video', State.currentTime, 5);
+                let targetTrack = State.tracks.find(t=>t.id===targetTrackId);
+                let clipColor = (targetTrack.colorIndex + 5) % PALETTES.length;
+
+                const newMathClip = {
+                    id: 'c_' + Date.now() + Math.random().toString(36).substr(2, 5),
+                    sceneId: State.activeSceneId || null,
+                    trackId: targetTrackId,
+                    colorIndex: clipColor,
+                    type: 'text',
+                    title: 'Vector Math',
+                    text: 'x = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}',
+                    start: State.currentTime,
+                    duration: 5,
+                    sourceOffset: 0,
+                    maxDuration: 3600,
+                    effects: { 
+                        scale: 1, rotate: 0, offsetX: 0, offsetY: 0, 
+                        fontFamily: 'Rubik', fontWeight: 700, fillColor: '#ffffff',
+                        renderAsMath: true,
+                        mathRenderMode: 'vector',
+                        fontSize: 60,
+                        strokeEnable: false, strokeColor: '#ffffff', strokeWidth: 4,
+                        shadowEnable: false, shadowColor: '#000000', shadowBlur: 20, shadowX: 0, shadowY: 10, 
+                        extrudeEnable: false, extrudeDepth: 5, extrudeColor: '#000000',
+                        animIn: 'none', animOut: 'none', animLoop: 'none', animInDur: 1.0, animOutDur: 1.0, animEase: 'easeOut',
+                        animTextIn: 'none', animTextOut: 'none', animTextLoop: 'none', animTextEase: 'easeOut', animTextStagger: 'letter', animTextInDur: 1.0, animTextOutDur: 1.0, flashColor: '#ffe600'
+                    }
+                };
+                State.clips.push(newMathClip);
+                State.selectedClipId = newMathClip.id;
+                State.multiSelectedClipIds = [newMathClip.id];
+                
+                if (State.currentTime + 5 > State.duration) {
+                    State.duration = Math.ceil(State.currentTime + 5 + 10);
+                    updateTimelineWidth();
+                }
+                
+                calcOverlaps();
+                renderClips();
+                updatePropertiesPanel();
+                drawCanvas();
+            });
+
         mediaInput.addEventListener('change', async (e) => {
             const files = Array.from(e.target.files);
             if (!files.length) return;
@@ -11584,7 +11834,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 } else if (isSubtitleClip) {
                     headerTitle = 'Caption';
                 } else if (isTextClip && clip.effects && clip.effects.renderAsMath) {
-                    headerTitle = 'Math';
+                    headerTitle = (clip.effects.mathRenderMode === 'vector') ? 'Vector Math' : 'Math';
                 }
 
                 const isLinked = clip.linkedClipIds && clip.linkedClipIds.length > 0;
