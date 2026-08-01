@@ -1057,7 +1057,8 @@
                 effects: {
                     scale: 1,
                     opacity: 100,
-                    opaqueBg: false
+                    opaqueBg: false,
+                    bgColor: null
                 }
             }
         ];
@@ -2295,6 +2296,7 @@
                 effects: {
                     scale: 1, rotate: 0, opacity: 100, blendMode: 'source-over',
                     opaqueBg: false,
+                    bgColor: null,
                     animIn: 'none', animOut: 'none', animLoop: 'none', animInDur: 1.0, animOutDur: 1.0, animEase: 'easeOut'
                 }
             };
@@ -2730,8 +2732,10 @@
             
             ctx.clearRect(0, 0, w, h);
             
-            if (!skipBg && State.canvasBgColor && State.canvasBgColor !== 'transparent') {
-                ctx.fillStyle = State.canvasBgColor;
+            // Use the scene's own background color when rendering a scene offscreen
+            const fillBgColor = (opts && opts.bgColor) || State.canvasBgColor;
+            if (!skipBg && fillBgColor && fillBgColor !== 'transparent') {
+                ctx.fillStyle = fillBgColor;
                 ctx.fillRect(0, 0, w, h);
             }
 
@@ -3420,7 +3424,8 @@
                         // unless the user enables the scene's 'Opaque background' option.
                         // Subtitles are always drawn once on the main canvas, not baked in.
                         const opaqueBg = clip.effects && clip.effects.opaqueBg;
-                        drawCanvas(offCtx, w, h, { skipSubtitles: true, skipBg: !opaqueBg });
+                        const sceneBgColor = clip.effects && clip.effects.bgColor;
+                        drawCanvas(offCtx, w, h, { skipSubtitles: true, skipBg: !opaqueBg, bgColor: sceneBgColor });
                         
                         State.currentTime = prevTime;
                         State.activeSceneId = prevSceneId;
@@ -4079,7 +4084,7 @@
                     
                     if (typeof value === 'boolean') {
                         clip.effects[effectName] = value;
-                    } else if (['shadowColor', 'animIn', 'animOut', 'animLoop', 'extrudeColor', 'fillColor', 'fontFamily', 'extrudeDir', 'textTransform', 'fontStyle', 'textDecoration', 'blendMode', 'animEase', 'animTextSpecial', 'flashColor', 'animTextIn', 'animTextOut', 'animTextLoop', 'animTextEase', 'animTextStagger', 'shapeType', 'strokeColor', 'maskType'].includes(effectName)) {
+                    } else if (['shadowColor', 'animIn', 'animOut', 'animLoop', 'extrudeColor', 'fillColor', 'fontFamily', 'extrudeDir', 'textTransform', 'fontStyle', 'textDecoration', 'blendMode', 'animEase', 'animTextSpecial', 'flashColor', 'animTextIn', 'animTextOut', 'animTextLoop', 'animTextEase', 'animTextStagger', 'shapeType', 'strokeColor', 'maskType', 'bgColor'].includes(effectName)) {
                         clip.effects[effectName] = value;
                     } else {
                         clip.effects[effectName] = parseFloat(value);
@@ -4513,9 +4518,24 @@
                                     <span class="text-[11px] text-surface-500 dark:text-surface-400 mt-0.5 leading-snug">Fill the full frame so clips on other tracks are hidden behind this scene.</span>
                                 </div>
                                 <label class="relative inline-flex items-center cursor-pointer shrink-0" onclick="event.stopPropagation()">
-                                    <input type="checkbox" class="sr-only peer" ${opaqueBg ? 'checked' : ''} onchange="setClipEffect('${clip.id}', 'opaqueBg', this.checked); drawCanvas();">
+                                    <input type="checkbox" class="sr-only peer" ${opaqueBg ? 'checked' : ''} onchange="setClipEffect('${clip.id}', 'opaqueBg', this.checked); updateSidebarPanel();">
                                     <div class="w-7 h-4 bg-surface-300 dark:bg-surface-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-brand-500"></div>
                                 </label>
+                            </div>
+                            <div class="w-full h-px bg-surface-200 dark:bg-surface-700 my-0.5"></div>
+                            <div class="flex flex-col gap-1.5 ${!opaqueBg ? 'opacity-40 pointer-events-none' : ''}">
+                                <div class="flex items-center justify-between">
+                                    <label class="text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest">Background Color</label>
+                                    <button type="button" onclick="setClipEffect('${clip.id}', 'bgColor', null); updateSidebarPanel();" class="flex items-center gap-1 text-[10px] font-bold text-surface-500 dark:text-surface-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors px-1.5 py-0.5 rounded hover:bg-surface-100 dark:hover:bg-surface-700 ${fx.bgColor ? '' : 'opacity-40 pointer-events-none'}" title="Reset to the global canvas color">
+                                        <i data-lucide="rotate-ccw" class="w-3 h-3"></i>Global
+                                    </button>
+                                </div>
+                                <div class="relative flex items-center bg-surface-50 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 rounded p-1.5 cursor-pointer shadow-inner w-full">
+                                    <div class="w-6 h-6 rounded shadow-sm" style="background-color: ${fx.bgColor || State.canvasBgColor || '#231F20'}"></div>
+                                    <span class="ml-3 font-mono font-bold text-xs text-surface-700 dark:text-surface-200 uppercase">${fx.bgColor || State.canvasBgColor || '#231F20'}</span>
+                                    <input type="color" value="${fx.bgColor || State.canvasBgColor || '#231F20'}" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full" oninput="setClipEffect('${clip.id}', 'bgColor', this.value); this.previousElementSibling.textContent = this.value; this.previousElementSibling.previousElementSibling.style.backgroundColor = this.value; drawCanvas();" onchange="updateSidebarPanel();">
+                                </div>
+                                <span class="text-[11px] text-surface-500 dark:text-surface-400 leading-snug">Used when Opaque Background is on. Click <i data-lucide="rotate-ccw" class="w-2.5 h-2.5 inline-block align-middle"></i> Global to use the canvas color.</span>
                             </div>
                         </div>
                     </details>
@@ -8484,9 +8504,12 @@ From the smallest butterfly to the mightiest T-Rex, every creature plays a uniqu
             const textFontOptionsHtml = mdFontOpts(textFontValue);
             const styleHtml = `
                 <div class="flex flex-col gap-3 p-3 overflow-y-auto flex-1">
-                    <div class="bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0">
+                    <details class="group bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0" open>
+                        <summary class="flex items-center justify-between p-3 cursor-pointer list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700">
+                            <span class="text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest flex items-center gap-1.5"><i data-lucide="layers" class="w-3.5 h-3.5"></i>Track Layout</span>
+                            <i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>
+                        </summary>
                         <div class="p-3 flex flex-col gap-3">
-                            <label class="text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest mb-0.5 block">Track Layout</label>
                             <div class="flex gap-1 bg-surface-100 dark:bg-surface-900 p-1 rounded-lg">
                                 <button type="button" onclick="setMdTrackMode('auto')" class="flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all ` + (cfg.trackMode !== 'script' ? activeBtnClass : inactiveBtnClass) + `" title="Group clips by type: images on the Images lane, heading & text on their own per-slide tracks">
                                     <i data-lucide="layers" class="w-3 h-3 inline-block mr-1 align-middle"></i>Auto
@@ -8497,10 +8520,13 @@ From the smallest butterfly to the mightiest T-Rex, every creature plays a uniqu
                             </div>
                             <p class="text-[9px] text-surface-400 dark:text-surface-500 leading-snug">Auto groups by type. Script Order mirrors the script: the 1st element of every block shares a row, the 2nd shares the next, and so on — so image & text can share a track when their script order matches.</p>
                         </div>
-                    </div>
-                    <div class="bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0">
+                    </details>
+                    <details class="group bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0" open>
+                        <summary class="flex items-center justify-between p-3 cursor-pointer list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700">
+                            <span class="text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest flex items-center gap-1.5"><i data-lucide="heading" class="w-3.5 h-3.5"></i>Heading Style</span>
+                            <i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>
+                        </summary>
                         <div class="p-3 flex flex-col gap-3">
-                            <label class="text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest mb-0.5 block">Heading Style</label>
                             <div class="grid grid-cols-2 gap-2">
                                 <div>
                                     <label class="text-[9px] font-semibold text-surface-400 dark:text-surface-500">Font</label>
@@ -8560,10 +8586,13 @@ From the smallest butterfly to the mightiest T-Rex, every creature plays a uniqu
                                 </div>
                             </div>
                         </div>
-                    </div>
-                    <div class="bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0">
+                    </details>
+                    <details class="group bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0" open>
+                        <summary class="flex items-center justify-between p-3 cursor-pointer list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700">
+                            <span class="text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest flex items-center gap-1.5"><i data-lucide="align-left" class="w-3.5 h-3.5"></i>Body Text Style</span>
+                            <i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>
+                        </summary>
                         <div class="p-3 flex flex-col gap-3">
-                            <label class="text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest mb-0.5 block">Body Text Style</label>
                             <div class="grid grid-cols-2 gap-2">
                                 <div>
                                     <label class="text-[9px] font-semibold text-surface-400 dark:text-surface-500">Font</label>
@@ -8606,10 +8635,13 @@ From the smallest butterfly to the mightiest T-Rex, every creature plays a uniqu
                                 </select>
                             </div>
                         </div>
-                    </div>
-                    <div class="bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0">
+                    </details>
+                    <details class="group bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0" open>
+                        <summary class="flex items-center justify-between p-3 cursor-pointer list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700">
+                            <span class="text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest flex items-center gap-1.5"><i data-lucide="image" class="w-3.5 h-3.5"></i>Image Style</span>
+                            <i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>
+                        </summary>
                         <div class="p-3 flex flex-col gap-3">
-                            <label class="text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest mb-0.5 block">Image Style</label>
                             <div class="grid grid-cols-2 gap-2">
                                 <div>
                                     <label class="text-[9px] font-semibold text-surface-400 dark:text-surface-500">Scale</label>
@@ -8643,7 +8675,7 @@ From the smallest butterfly to the mightiest T-Rex, every creature plays a uniqu
                                 </div>
                             </div>
                         </div>
-                    </div>
+                    </details>
                 </div>
             `;
             
@@ -11997,7 +12029,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                             mcEl.style.transition = 'none'; // Ensure instant visual feedback
                             
                             if (typedDelta !== 0) {
-                                const mcIsVisual = mcClip.type === 'video' || mcClip.type === 'image' || mcClip.type === 'text' || mcClip.type === 'shape';
+                                const mcIsVisual = mcClip.type === 'video' || mcClip.type === 'image' || mcClip.type === 'text' || mcClip.type === 'shape' || mcClip.type === 'scene';
                                 const mcTypedTracks = mcIsVisual ? State.tracks.filter(t => t.type === 'video') : State.tracks.filter(t => t.type === 'audio');
                                 const mcInitialIndex = mcTypedTracks.findIndex(t => t.id === mc.trackId);
                                 
