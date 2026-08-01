@@ -238,3 +238,89 @@ This allows users to start from a pre-built scene structure and customize it.
 2. **Track migration**: Entering a scene for the first time creates copies of tracks from the main sequence. These are independent — changing a main-sequence track doesn't affect scene tracks.
 3. **Export**: During export, the same recursive rendering pipeline is used (via `drawCanvas(targetCtx, targetW, targetH)` with `!targetCtx` check for selection overlays).
 4. **No undo**: Currently there's no undo/redo system for scene operations.
+
+---
+
+## Opaque vs. Transparent Scene Rendering
+
+### The problem it solves
+
+A scene comp renders its children onto an **offscreen canvas** and composites the result into the parent frame. Two behaviors matter:
+
+1. **Transparent regions** — Where a scene has no content, the pixels underneath (clips on lower tracks at the same time) can either show through or be hidden.
+2. **Background fill** — By default the offscreen is transparent (`clearRect` only). If the scene should act as a full-frame cover, it must first fill the offscreen with an opaque color.
+
+### Per-scene controls (Scene card in the Properties panel)
+
+| Control | Effect |
+|---|---|
+| **Opaque Background** (`clip.effects.opaqueBg`) | `false` (default) → the offscreen stays transparent, so lower tracks show through empty regions. `true` → the offscreen fills the full frame, hiding everything beneath the scene during its time range. |
+| **Background Color** (`clip.effects.bgColor`) | The fill color used when Opaque Background is on. `null` (default) → falls back to the **global canvas background color** (`State.canvasBgColor`). A **Global** button resets a custom color back to `null`. |
+
+### How it flows through `drawCanvas`
+
+```js
+// drawCanvas(targetCtx, targetW, targetH, opts)
+// opts = { skipSubtitles, skipBg, bgColor }
+
+const fillBgColor = (opts && opts.bgColor) || State.canvasBgColor;
+if (!skipBg && fillBgColor && fillBgColor !== 'transparent') {
+    ctx.fillStyle = fillBgColor;
+    ctx.fillRect(0, 0, w, h);
+}
+```
+
+When rendering a scene clip:
+
+```js
+} else if (clip.type === 'scene') {
+    const opaqueBg = clip.effects && clip.effects.opaqueBg;     // per-scene toggle
+    const sceneBgColor = clip.effects && clip.effects.bgColor;  // per-scene color
+    // Opaque on  → skipBg false → offscreen fills with sceneBgColor (or global fallback)
+    // Opaque off → skipBg true  → offscreen stays transparent
+    drawCanvas(offCtx, w, h, { skipSubtitles: true, skipBg: !opaqueBg, bgColor: sceneBgColor });
+}
+```
+
+Key points:
+
+- **`skipBg: !opaqueBg`** — `true` (opaque on) makes the offscreen fill; `false` (opaque off) keeps it transparent.
+- **`bgColor: sceneBgColor`** — only flows through the scene recursion; the main canvas and the export path call `drawCanvas()` with no opts, so they always use `State.canvasBgColor`.
+- **Nested scenes** each compute their own `opaqueBg`/`bgColor` during recursion — a scene inside an opaque scene renders with its own settings.
+- **Export** reuses the exact same pipeline (`drawCanvas(exportCtx, exportW, exportH)`), so exported videos match the canvas preview, including per-scene colors.
+
+### `setClipEffect` note
+
+`bgColor` is a **string-valued** effect and must be in the string whitelist inside `setClipEffect`:
+
+```js
+['shadowColor', 'animIn', ..., 'strokeColor', 'maskType', 'bgColor'].includes(effectName)
+```
+
+If it were missing, a hex string like `#ff0000` would fall through to the `parseFloat(value)` branch and store `NaN`. Always add new color-style effects to this whitelist.
+
+---
+
+## Subtitles inside Scene Comps (double-caption fix)
+
+**Bug:** A scene with a slide animation showed **two** captions moving with the scene. Root cause: `drawCanvas` recurses into the scene's offscreen, and *both* the recursive call and the outer call ran `drawSubtitlesOnCanvas()` — so the caption was baked into the offscreen (and transformed by the scene's animation) **and** drawn again on the main canvas.
+
+**Fix:** The scene recursion passes `skipSubtitles: true`, and the end-of-frame subtitle draw is guarded:
+
+```js
+if (!skipSubtitles) drawSubtitlesOnCanvas(ctx, w, h);
+```
+
+Subtitles are now drawn **exactly once**, on the main canvas, at the correct absolute time — they never get transformed by the scene's own animation.
+
+---
+
+## Behavior summary
+
+| Scenario | Result |
+|---|---|
+| Opaque Background OFF (default) | Scene is transparent where empty; clips on lower tracks at the same time are visible. |
+| Opaque Background ON, no custom color | Scene fills the full frame with the **global** canvas color. |
+| Opaque Background ON, custom color set | Scene fills the full frame with its **own** background color. |
+| Custom color + **Global** button | `bgColor` reset to `null` → back to the global canvas color. |
+| Captions during a scene | Drawn once on top of everything; never duplicated or animated with the scene. |
