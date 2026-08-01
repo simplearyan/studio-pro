@@ -806,6 +806,19 @@
                 headingColor: '#ffffff',
                 headingPosition: 'top', // 'center' | 'top' | 'bottom'
                 headingOffset: 0, // fine-tune Y position (-300 to 300)
+                headingFxTab: 'style', // sub-tab inside Heading Style accordion: 'style' | 'effects'
+                headingStrokeEnable: true,
+                headingStrokeColor: '#000000',
+                headingStrokeWidth: 4,
+                headingShadowEnable: true,
+                headingShadowColor: '#000000',
+                headingShadowBlur: 20,
+                headingShadowX: 0,
+                headingShadowY: 10,
+                headingExtrudeEnable: false,
+                headingExtrudeColor: '#000000',
+                headingExtrudeDir: 'br',
+                headingExtrudeDepth: 5,
                 textFontFamily: 'Inter',
                 textFontSize: 32,
                 textFontWeight: 400,
@@ -8336,6 +8349,19 @@ const isVis = !clip.hidden;
                     clip.effects.fontWeight = cfg.headingFontWeight || 700;
                     clip.effects.fillColor = cfg.headingColor || '#ffffff';
                     clip.effects.animIn = cfg.headingAnimIn || 'fadeIn';
+                    // Effects sub-tab: Stroke & Outline / Drop Shadow / 3D Extrude
+                    clip.effects.strokeEnable = cfg.headingStrokeEnable !== undefined ? cfg.headingStrokeEnable : true;
+                    clip.effects.strokeColor = cfg.headingStrokeColor || '#000000';
+                    clip.effects.strokeWidth = cfg.headingStrokeWidth || 4;
+                    clip.effects.shadowEnable = cfg.headingShadowEnable !== undefined ? cfg.headingShadowEnable : true;
+                    clip.effects.shadowColor = cfg.headingShadowColor || '#000000';
+                    clip.effects.shadowBlur = cfg.headingShadowBlur || 20;
+                    clip.effects.shadowX = cfg.headingShadowX || 0;
+                    clip.effects.shadowY = cfg.headingShadowY || 10;
+                    clip.effects.extrudeEnable = !!cfg.headingExtrudeEnable;
+                    clip.effects.extrudeColor = cfg.headingExtrudeColor || '#000000';
+                    clip.effects.extrudeDir = cfg.headingExtrudeDir || 'br';
+                    clip.effects.extrudeDepth = cfg.headingExtrudeDepth || 5;
                     const baseY = cfg.headingPosition === 'top' ? -30 : cfg.headingPosition === 'bottom' ? 30 : 0;
                     clip.effects.offsetY = baseY + offset;
                 } else if (clip.type === 'text' && clip.id && clip.id.endsWith('_text')) {
@@ -8500,6 +8526,35 @@ From the smallest butterfly to the mightiest T-Rex, every creature plays a uniqu
             renderMarkdownPanel();
         };
 
+        window.setMdHeadingFxTab = function(tab) {
+            State.markdownConfig.headingFxTab = tab;
+            renderMarkdownPanel();
+        };
+
+        window.setMdHeadingEffect = function(key, value) {
+            State.markdownConfig[key] = value;
+            applyMarkdownStyle();
+        };
+
+        // In-place visual update for the heading FX group toggles — no full panel rebuild,
+        // so the scroll position is preserved and the pill/knob reflect the checked state
+        // immediately (peer-checked: CSS variants fail for the nested knob + dark mode).
+        window.updateMdFxGroupToggle = function(cb) {
+            const group = cb.closest('.rounded-lg');
+            if (!group) return;
+            const label = group.querySelector('label');
+            const pill = label ? label.querySelector('div') : null;
+            const knob = pill ? pill.querySelector('div') : null;
+            const inner = group.children[1]; // the p-2.5 content div
+            const on = cb.checked;
+            if (pill) pill.style.backgroundColor = on ? '#6366f1' : '';
+            if (knob) knob.style.transform = on ? 'translateX(12px)' : '';
+            if (inner) {
+                inner.classList.toggle('opacity-40', !on);
+                inner.classList.toggle('pointer-events-none', !on);
+            }
+        };
+
         window.setMdTrackMode = function(mode) {
             State.markdownConfig.trackMode = mode;
             renderMarkdownPanel();
@@ -8569,6 +8624,73 @@ From the smallest butterfly to the mightiest T-Rex, every creature plays a uniqu
             }
             const headingFontOptionsHtml = mdFontOpts(headingFontValue);
             const textFontOptionsHtml = mdFontOpts(textFontValue);
+
+            // Effects sub-tab for Heading Style: Stroke & Outline / Drop Shadow / 3D Extrude
+            // (mirrors the per-clip text properties panel controls)
+            const headingFxColor = (key, value) => `
+                <div class="relative h-7 rounded border border-surface-200 dark:border-surface-700 overflow-hidden">
+                    <input type="color" value="${value}" class="absolute inset-0 w-full h-full cursor-pointer" oninput="setMdHeadingEffect('${key}', this.value);">
+                </div>`;
+            const headingFxSlider = (key, value, min, max, suffix) => `
+                <div>
+                    <div class="flex justify-between items-center mb-1">
+                        <label class="text-[9px] font-semibold text-surface-400 dark:text-surface-500 uppercase tracking-widest">${suffix.split('|')[0]}</label>
+                        <span class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-1.5 py-0.5 rounded">${value}${suffix.split('|')[1] || ''}</span>
+                    </div>
+                    <input type="range" min="${min}" max="${max}" value="${value}" class="w-full custom-slider" oninput="setMdHeadingEffect('${key}', parseFloat(this.value)); this.previousElementSibling.querySelector('span').textContent = this.value + '${suffix.split('|')[1] || ''}';">
+                </div>`;
+            const headingFxGroup = (title, icon, enableKey, enabled, inner) => `
+                <div class="rounded-lg border border-surface-200 dark:border-surface-700 overflow-hidden">
+                    <div class="flex items-center justify-between px-2.5 py-2 bg-surface-100 dark:bg-surface-800/80">
+                        <span class="text-[9px] font-bold uppercase tracking-widest text-surface-500 dark:text-surface-400 flex items-center gap-1.5"><i data-lucide="${icon}" class="w-3 h-3"></i>${title}</span>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" class="sr-only" ${enabled ? 'checked' : ''} onchange="setMdHeadingEffect('${enableKey}', this.checked); updateMdFxGroupToggle(this);">
+                            <div class="w-7 h-4 bg-surface-300 dark:bg-surface-600 rounded-full p-0.5 transition-colors duration-200" style="${enabled ? 'background-color:#6366f1' : ''}"><div class="w-3 h-3 bg-white rounded-full shadow-sm transition-transform duration-200" style="${enabled ? 'transform:translateX(12px)' : ''}"></div></div>
+                        </label>
+                    </div>
+                    <div class="p-2.5 flex flex-col gap-2.5 bg-surface-50 dark:bg-surface-900/50 ${!enabled ? 'opacity-40 pointer-events-none' : ''}">
+                        ${inner}
+                    </div>
+                </div>`;
+            const headingEffectsHtml = `
+                <div class="flex flex-col gap-2.5">
+                    ${headingFxGroup('Stroke & Outline', 'edit-3', 'headingStrokeEnable', !!cfg.headingStrokeEnable, `
+                        <div>
+                            <label class="block text-[9px] font-semibold text-surface-400 dark:text-surface-500 mb-1">Color</label>
+                            ${headingFxColor('headingStrokeColor', cfg.headingStrokeColor || '#000000')}
+                        </div>
+                        ${headingFxSlider('headingStrokeWidth', cfg.headingStrokeWidth || 4, 1, 50, 'Width|px')}
+                    `)}
+                    ${headingFxGroup('Drop Shadow', 'copy', 'headingShadowEnable', !!cfg.headingShadowEnable, `
+                        <div>
+                            <label class="block text-[9px] font-semibold text-surface-400 dark:text-surface-500 mb-1">Color</label>
+                            ${headingFxColor('headingShadowColor', cfg.headingShadowColor || '#000000')}
+                        </div>
+                        ${headingFxSlider('headingShadowBlur', cfg.headingShadowBlur || 20, 0, 100, 'Blur|')}
+                        ${headingFxSlider('headingShadowX', cfg.headingShadowX || 0, -100, 100, 'Offset X|')}
+                        ${headingFxSlider('headingShadowY', cfg.headingShadowY || 10, -100, 100, 'Offset Y|')}
+                    `)}
+                    ${headingFxGroup('3D Extrude', 'box', 'headingExtrudeEnable', !!cfg.headingExtrudeEnable, `
+                        <div>
+                            <label class="block text-[9px] font-semibold text-surface-400 dark:text-surface-500 mb-1">Color</label>
+                            ${headingFxColor('headingExtrudeColor', cfg.headingExtrudeColor || '#000000')}
+                        </div>
+                        <div>
+                            <label class="block text-[9px] font-semibold text-surface-400 dark:text-surface-500 mb-1">Direction</label>
+                            <select class="w-full text-xs p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 focus:outline-none focus:border-brand-500 font-bold text-surface-800 dark:text-surface-200" onchange="setMdHeadingEffect('headingExtrudeDir', this.value);">
+                                <option value="br" ${(cfg.headingExtrudeDir||'br')==='br'?'selected':''}>Bottom Right</option>
+                                <option value="bl" ${cfg.headingExtrudeDir==='bl'?'selected':''}>Bottom Left</option>
+                                <option value="tr" ${cfg.headingExtrudeDir==='tr'?'selected':''}>Top Right</option>
+                                <option value="tl" ${cfg.headingExtrudeDir==='tl'?'selected':''}>Top Left</option>
+                                <option value="b" ${cfg.headingExtrudeDir==='b'?'selected':''}>Bottom</option>
+                                <option value="t" ${cfg.headingExtrudeDir==='t'?'selected':''}>Top</option>
+                                <option value="l" ${cfg.headingExtrudeDir==='l'?'selected':''}>Left</option>
+                                <option value="r" ${cfg.headingExtrudeDir==='r'?'selected':''}>Right</option>
+                            </select>
+                        </div>
+                        ${headingFxSlider('headingExtrudeDepth', cfg.headingExtrudeDepth || 5, 1, 50, 'Depth|')}
+                    `)}
+                </div>`;
             const styleHtml = `
                 <div class="flex flex-col gap-3 p-3 overflow-y-auto flex-1">
                     <details class="group bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0" open>
@@ -8611,6 +8733,15 @@ From the smallest butterfly to the mightiest T-Rex, every creature plays a uniqu
                             <i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>
                         </summary>
                         <div class="p-3 flex flex-col gap-3">
+                            <div class="flex gap-1 bg-surface-100 dark:bg-surface-900 p-1 rounded-lg">
+                                <button type="button" onclick="setMdHeadingFxTab('style')" class="flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all ${cfg.headingFxTab !== 'effects' ? activeBtnClass : inactiveBtnClass}">
+                                    <i data-lucide="type" class="w-3.5 h-3.5 inline-block mr-1 align-middle"></i>Style
+                                </button>
+                                <button type="button" onclick="setMdHeadingFxTab('effects')" class="flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all ${cfg.headingFxTab === 'effects' ? activeBtnClass : inactiveBtnClass}">
+                                    <i data-lucide="sparkles" class="w-3.5 h-3.5 inline-block mr-1 align-middle"></i>Effects
+                                </button>
+                            </div>
+                            ${cfg.headingFxTab === 'effects' ? headingEffectsHtml : `
                             <div class="grid grid-cols-2 gap-2">
                                 <div>
                                     <label class="text-[9px] font-semibold text-surface-400 dark:text-surface-500">Font</label>
@@ -8669,6 +8800,7 @@ From the smallest butterfly to the mightiest T-Rex, every creature plays a uniqu
                                     </select>
                                 </div>
                             </div>
+                            `}
                         </div>
                     </details>
                     <details class="group bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0" open>
@@ -9025,9 +9157,9 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     effects: {
                         scale: 1, rotate: 0, offsetX: 0, offsetY: (cfg.headingPosition === 'top' ? -30 : cfg.headingPosition === 'bottom' ? 30 : 0) + (cfg.headingOffset || 0),
                         fontFamily: cfg.headingFontFamily || 'Rubik', fontSize: cfg.headingFontSize || 60, fontWeight: cfg.headingFontWeight || 700, fillColor: cfg.headingColor || '#ffffff',
-                        strokeEnable: true, strokeColor: '#000000', strokeWidth: 4,
-                        shadowEnable: true, shadowColor: '#000000', shadowBlur: 20, shadowX: 0, shadowY: 10,
-                        extrudeEnable: false, extrudeDepth: 5, extrudeColor: '#000000',
+                        strokeEnable: cfg.headingStrokeEnable !== undefined ? cfg.headingStrokeEnable : true, strokeColor: cfg.headingStrokeColor || '#000000', strokeWidth: cfg.headingStrokeWidth || 4,
+                        shadowEnable: cfg.headingShadowEnable !== undefined ? cfg.headingShadowEnable : true, shadowColor: cfg.headingShadowColor || '#000000', shadowBlur: cfg.headingShadowBlur || 20, shadowX: cfg.headingShadowX || 0, shadowY: cfg.headingShadowY || 10,
+                        extrudeEnable: !!cfg.headingExtrudeEnable, extrudeDepth: cfg.headingExtrudeDepth || 5, extrudeColor: cfg.headingExtrudeColor || '#000000', extrudeDir: cfg.headingExtrudeDir || 'br',
                         animIn: cfg.headingAnimIn || 'fadeIn', animOut: 'none', animLoop: 'none', animInDur: 0.5, animOutDur: 0.5, animEase: 'easeOut',
                         animTextIn: 'none', animTextOut: 'none', animTextLoop: 'none', animTextEase: 'easeOut', animTextStagger: 'letter', animTextInDur: 0.5, animTextOutDur: 0.5, flashColor: '#ffe600'
                     }
