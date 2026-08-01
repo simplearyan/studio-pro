@@ -639,6 +639,11 @@
                         <button id="btnToggleTrackHeight" class="w-8 h-8 flex shrink-0 items-center justify-center rounded-md hover:bg-surface-100 dark:hover:bg-surface-700 hover:text-brand-600 dark:hover:text-brand-400 text-surface-600 dark:text-surface-400" title="Toggle Track Height">
                             <i data-lucide="align-justify" class="w-4 h-4"></i>
                         </button>
+
+                        <!-- Image Thumbnails in Timeline -->
+                        <button id="btnToggleImageThumbs" class="w-8 h-8 flex shrink-0 items-center justify-center rounded-md hover:bg-surface-100 dark:hover:bg-surface-700 hover:text-brand-600 dark:hover:text-brand-400 text-surface-600 dark:text-surface-400" title="Show image thumbnails on timeline clips">
+                            <i data-lucide="image" class="w-4 h-4"></i>
+                        </button>
                         
                         <div class="w-px h-6 bg-surface-200 dark:bg-surface-700 hidden sm:block mx-1"></div>
 
@@ -894,6 +899,7 @@
                 initialMulti: [] // { id, start, trackId }
             },
             
+            showImageThumbs: true,
             preview: { hidden: false, aspectIndex: 0, position: 'top' },
             layout: { isSideBySide: false },
             inspector: { visible: false, dock: 'left', fullWidth: false, width: 320 },
@@ -2472,7 +2478,25 @@
                 } else {
                     indicator.className = "w-2 h-2 rounded-full bg-surface-300 dark:bg-surface-600";
                 }
+            }        }
+
+        function updateImageThumbsBtn() {
+            const btn = document.getElementById('btnToggleImageThumbs');
+            if (btn) {
+                if (State.showImageThumbs) {
+                    btn.classList.add('text-brand-600', 'dark:text-brand-400', 'bg-brand-50', 'dark:bg-brand-500/10');
+                    btn.classList.remove('text-surface-600', 'dark:text-surface-400');
+                } else {
+                    btn.classList.remove('text-brand-600', 'dark:text-brand-400', 'bg-brand-50', 'dark:bg-brand-500/10');
+                    btn.classList.add('text-surface-600', 'dark:text-surface-400');
+                }
             }
+        }
+
+        function toggleImageThumbs() {
+            State.showImageThumbs = !State.showImageThumbs;
+            updateImageThumbsBtn();
+            renderClips();
         }
 
         window.addEventListener('resize', () => {
@@ -10993,6 +11017,23 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 el.style.backgroundColor = palette.bg;
                 el.style.borderColor = palette.border;
 
+                // Image thumbnails on timeline clips — reuse the already-loaded imageEl (no extra fetch);
+                // fall back to fileUrl so internet-URL images still preview (CSS backgrounds bypass CORS,
+                // unlike the canvas-facing imageEl which may be blocked by the remote server).
+                if (clip.type === 'image' && State.showImageThumbs) {
+                    let thumbSrc = null;
+                    if (clip.imageEl && clip.imageEl.complete && clip.imageEl.naturalWidth > 0) {
+                        thumbSrc = clip.imageEl.src;
+                    } else if (clip.fileUrl) {
+                        thumbSrc = clip.fileUrl;
+                    }
+                    if (thumbSrc) {
+                        el.style.backgroundImage = `url("${thumbSrc}")`;
+                        el.style.backgroundSize = 'cover';
+                        el.style.backgroundPosition = 'center';
+                    }
+                }
+
                 // Subtitle clips get a distinct visual treatment
                 const isSubtitleClip = !!clip.subtitleId;
                 if (isSubtitleClip) {
@@ -11419,6 +11460,11 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             btnDelete.addEventListener('click', deleteSelectedClip);
             const btnPushTrim = document.getElementById('btnPushTrim');
             if (btnPushTrim) btnPushTrim.addEventListener('click', togglePushTrim);
+            const btnToggleImageThumbs = document.getElementById('btnToggleImageThumbs');
+            if (btnToggleImageThumbs) {
+                btnToggleImageThumbs.addEventListener('click', toggleImageThumbs);
+                updateImageThumbsBtn();
+            }
 
             btnViewMenu.addEventListener('click', (e) => {
                 e.stopPropagation();
