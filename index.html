@@ -824,6 +824,19 @@
                 textFontWeight: 400,
                 textColor: '#eeeeee',
                 textDelay: 0,
+                textFxTab: 'style', // sub-tab inside Text Style accordion: 'style' | 'effects'
+                textStrokeEnable: true,
+                textStrokeColor: '#000000',
+                textStrokeWidth: 2,
+                textShadowEnable: true,
+                textShadowColor: '#000000',
+                textShadowBlur: 10,
+                textShadowX: 0,
+                textShadowY: 4,
+                textExtrudeEnable: false,
+                textExtrudeColor: '#000000',
+                textExtrudeDir: 'br',
+                textExtrudeDepth: 3,
                 imageScale: 1,
                 imageBorderRadius: 0,
                 slideDuration: 5,
@@ -8370,6 +8383,19 @@ const isVis = !clip.hidden;
                     clip.effects.fontWeight = cfg.textFontWeight || 400;
                     clip.effects.fillColor = cfg.textColor || '#eeeeee';
                     clip.effects.animIn = cfg.textAnimIn || 'slideUp';
+                    // Effects sub-tab: Stroke & Outline / Drop Shadow / 3D Extrude
+                    clip.effects.strokeEnable = cfg.textStrokeEnable !== undefined ? cfg.textStrokeEnable : true;
+                    clip.effects.strokeColor = cfg.textStrokeColor || '#000000';
+                    clip.effects.strokeWidth = cfg.textStrokeWidth || 2;
+                    clip.effects.shadowEnable = cfg.textShadowEnable !== undefined ? cfg.textShadowEnable : true;
+                    clip.effects.shadowColor = cfg.textShadowColor || '#000000';
+                    clip.effects.shadowBlur = cfg.textShadowBlur || 10;
+                    clip.effects.shadowX = cfg.textShadowX || 0;
+                    clip.effects.shadowY = cfg.textShadowY || 4;
+                    clip.effects.extrudeEnable = !!cfg.textExtrudeEnable;
+                    clip.effects.extrudeColor = cfg.textExtrudeColor || '#000000';
+                    clip.effects.extrudeDir = cfg.textExtrudeDir || 'br';
+                    clip.effects.extrudeDepth = cfg.textExtrudeDepth || 3;
                 }
                 if (clip.type === 'image') {
                     clip.effects.scale = cfg.imageScale || 1;
@@ -8531,6 +8557,11 @@ From the smallest butterfly to the mightiest T-Rex, every creature plays a uniqu
             renderMarkdownPanel();
         };
 
+        window.setMdTextFxTab = function(tab) {
+            State.markdownConfig.textFxTab = tab;
+            renderMarkdownPanel();
+        };
+
         window.setMdHeadingEffect = function(key, value) {
             State.markdownConfig[key] = value;
             applyMarkdownStyle();
@@ -8540,12 +8571,13 @@ From the smallest butterfly to the mightiest T-Rex, every creature plays a uniqu
         // so the scroll position is preserved and the pill/knob reflect the checked state
         // immediately (peer-checked: CSS variants fail for the nested knob + dark mode).
         window.updateMdFxGroupToggle = function(cb) {
-            const group = cb.closest('.rounded-lg');
+            const group = cb.closest('details.rounded-lg');
             if (!group) return;
-            const label = group.querySelector('label');
+            const summary = group.querySelector('summary');
+            const label = summary ? summary.querySelector('label') : null;
             const pill = label ? label.querySelector('div') : null;
             const knob = pill ? pill.querySelector('div') : null;
-            const inner = group.children[1]; // the p-2.5 content div
+            const inner = group.children[1]; // the p-2.5 content div (children[0] = summary)
             const on = cb.checked;
             if (pill) pill.style.backgroundColor = on ? '#6366f1' : '';
             if (knob) knob.style.transform = on ? 'translateX(12px)' : '';
@@ -8594,7 +8626,8 @@ From the smallest butterfly to the mightiest T-Rex, every creature plays a uniqu
             State.ui.mdDetailsState = State.ui.mdDetailsState || {};
             sidebarContent.querySelectorAll('details').forEach(d => {
                 const summary = d.querySelector('summary');
-                if (summary) State.ui.mdDetailsState[summary.textContent.trim()] = d.open;
+                const key = d.dataset.fxKey || (summary ? summary.textContent.trim() : '');
+                if (key) State.ui.mdDetailsState[key] = d.open;
             });
 
             sidebarContent.className = 'flex flex-col w-full flex-1 min-h-0 bg-surface-50 dark:bg-surface-900';
@@ -8640,18 +8673,21 @@ From the smallest butterfly to the mightiest T-Rex, every creature plays a uniqu
                     <input type="range" min="${min}" max="${max}" value="${value}" class="w-full custom-slider" oninput="setMdHeadingEffect('${key}', parseFloat(this.value)); this.previousElementSibling.querySelector('span').textContent = this.value + '${suffix.split('|')[1] || ''}';">
                 </div>`;
             const headingFxGroup = (title, icon, enableKey, enabled, inner) => `
-                <div class="rounded-lg border border-surface-200 dark:border-surface-700 overflow-hidden">
-                    <div class="flex items-center justify-between px-2.5 py-2 bg-surface-100 dark:bg-surface-800/80">
+                <details class="group rounded-lg border border-surface-200 dark:border-surface-700 overflow-hidden bg-surface-50 dark:bg-surface-900/50" data-fx-key="${enableKey}" open>
+                    <summary class="flex items-center justify-between px-2.5 py-2 cursor-pointer list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80">
                         <span class="text-[9px] font-bold uppercase tracking-widest text-surface-500 dark:text-surface-400 flex items-center gap-1.5"><i data-lucide="${icon}" class="w-3 h-3"></i>${title}</span>
-                        <label class="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" class="sr-only" ${enabled ? 'checked' : ''} onchange="setMdHeadingEffect('${enableKey}', this.checked); updateMdFxGroupToggle(this);">
-                            <div class="w-7 h-4 bg-surface-300 dark:bg-surface-600 rounded-full p-0.5 transition-colors duration-200" style="${enabled ? 'background-color:#6366f1' : ''}"><div class="w-3 h-3 bg-white rounded-full shadow-sm transition-transform duration-200" style="${enabled ? 'transform:translateX(12px)' : ''}"></div></div>
-                        </label>
-                    </div>
+                        <span class="flex items-center gap-2">
+                            <label class="relative inline-flex items-center cursor-pointer" onclick="event.stopPropagation();">
+                                <input type="checkbox" class="sr-only" ${enabled ? 'checked' : ''} onchange="setMdHeadingEffect('${enableKey}', this.checked); updateMdFxGroupToggle(this);">
+                                <div class="w-7 h-4 bg-surface-300 dark:bg-surface-600 rounded-full p-0.5 transition-colors duration-200" style="${enabled ? 'background-color:#6366f1' : ''}"><div class="w-3 h-3 bg-white rounded-full shadow-sm transition-transform duration-200" style="${enabled ? 'transform:translateX(12px)' : ''}"></div></div>
+                            </label>
+                            <i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>
+                        </span>
+                    </summary>
                     <div class="p-2.5 flex flex-col gap-2.5 bg-surface-50 dark:bg-surface-900/50 ${!enabled ? 'opacity-40 pointer-events-none' : ''}">
                         ${inner}
                     </div>
-                </div>`;
+                </details>`;
             const headingEffectsHtml = `
                 <div class="flex flex-col gap-2.5">
                     ${headingFxGroup('Stroke & Outline', 'edit-3', 'headingStrokeEnable', !!cfg.headingStrokeEnable, `
@@ -8691,6 +8727,48 @@ From the smallest butterfly to the mightiest T-Rex, every creature plays a uniqu
                         ${headingFxSlider('headingExtrudeDepth', cfg.headingExtrudeDepth || 5, 1, 50, 'Depth|')}
                     `)}
                 </div>`;
+
+            // Effects sub-tab for Text Style: Stroke & Outline / Drop Shadow / 3D Extrude
+            // (same helpers as Heading Style — they accept any config key)
+            const textEffectsHtml = `
+                <div class="flex flex-col gap-2.5">
+                    ${headingFxGroup('Stroke & Outline', 'edit-3', 'textStrokeEnable', !!cfg.textStrokeEnable, `
+                        <div>
+                            <label class="block text-[9px] font-semibold text-surface-400 dark:text-surface-500 mb-1">Color</label>
+                            ${headingFxColor('textStrokeColor', cfg.textStrokeColor || '#000000')}
+                        </div>
+                        ${headingFxSlider('textStrokeWidth', cfg.textStrokeWidth || 2, 1, 50, 'Width|px')}
+                    `)}
+                    ${headingFxGroup('Drop Shadow', 'copy', 'textShadowEnable', !!cfg.textShadowEnable, `
+                        <div>
+                            <label class="block text-[9px] font-semibold text-surface-400 dark:text-surface-500 mb-1">Color</label>
+                            ${headingFxColor('textShadowColor', cfg.textShadowColor || '#000000')}
+                        </div>
+                        ${headingFxSlider('textShadowBlur', cfg.textShadowBlur || 10, 0, 100, 'Blur|')}
+                        ${headingFxSlider('textShadowX', cfg.textShadowX || 0, -100, 100, 'Offset X|')}
+                        ${headingFxSlider('textShadowY', cfg.textShadowY || 4, -100, 100, 'Offset Y|')}
+                    `)}
+                    ${headingFxGroup('3D Extrude', 'box', 'textExtrudeEnable', !!cfg.textExtrudeEnable, `
+                        <div>
+                            <label class="block text-[9px] font-semibold text-surface-400 dark:text-surface-500 mb-1">Color</label>
+                            ${headingFxColor('textExtrudeColor', cfg.textExtrudeColor || '#000000')}
+                        </div>
+                        <div>
+                            <label class="block text-[9px] font-semibold text-surface-400 dark:text-surface-500 mb-1">Direction</label>
+                            <select class="w-full text-xs p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 focus:outline-none focus:border-brand-500 font-bold text-surface-800 dark:text-surface-200" onchange="setMdHeadingEffect('textExtrudeDir', this.value);">
+                                <option value="br" ${(cfg.textExtrudeDir||'br')==='br'?'selected':''}>Bottom Right</option>
+                                <option value="bl" ${cfg.textExtrudeDir==='bl'?'selected':''}>Bottom Left</option>
+                                <option value="tr" ${cfg.textExtrudeDir==='tr'?'selected':''}>Top Right</option>
+                                <option value="tl" ${cfg.textExtrudeDir==='tl'?'selected':''}>Top Left</option>
+                                <option value="b" ${cfg.textExtrudeDir==='b'?'selected':''}>Bottom</option>
+                                <option value="t" ${cfg.textExtrudeDir==='t'?'selected':''}>Top</option>
+                                <option value="l" ${cfg.textExtrudeDir==='l'?'selected':''}>Left</option>
+                                <option value="r" ${cfg.textExtrudeDir==='r'?'selected':''}>Right</option>
+                            </select>
+                        </div>
+                        ${headingFxSlider('textExtrudeDepth', cfg.textExtrudeDepth || 3, 1, 50, 'Depth|')}
+                    `)}
+                </div>`;
             const styleHtml = `
                 <div class="flex flex-col gap-3 p-3 overflow-y-auto flex-1">
                     <details class="group bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0" open>
@@ -8728,19 +8806,19 @@ From the smallest butterfly to the mightiest T-Rex, every creature plays a uniqu
                         </div>
                     </details>
                     <details class="group bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0" open>
-                        <summary class="flex items-center justify-between p-3 cursor-pointer list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700">
-                            <span class="text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest flex items-center gap-1.5"><i data-lucide="heading" class="w-3.5 h-3.5"></i>Heading Style</span>
-                            <i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>
-                        </summary>
-                        <div class="p-3 flex flex-col gap-3">
-                            <div class="flex gap-1 bg-surface-100 dark:bg-surface-900 p-1 rounded-lg">
-                                <button type="button" onclick="setMdHeadingFxTab('style')" class="flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all ${cfg.headingFxTab !== 'effects' ? activeBtnClass : inactiveBtnClass}">
-                                    <i data-lucide="type" class="w-3.5 h-3.5 inline-block mr-1 align-middle"></i>Style
+                        <summary class="flex items-center gap-2 p-2.5 cursor-pointer list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700">
+                            <i data-lucide="heading" class="w-3.5 h-3.5 text-brand-500 shrink-0"></i>
+                            <div class="flex gap-1 bg-surface-100 dark:bg-surface-900 p-0.5 rounded-lg flex-1 min-w-0" onclick="event.stopPropagation();">
+                                <button type="button" onclick="setMdHeadingFxTab('style')" class="flex-1 py-1 text-[10px] font-bold rounded-md transition-all ${cfg.headingFxTab !== 'effects' ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm' : 'text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-white'}">
+                                    <i data-lucide="type" class="w-3 h-3 inline-block mr-1 align-middle"></i>Style
                                 </button>
-                                <button type="button" onclick="setMdHeadingFxTab('effects')" class="flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all ${cfg.headingFxTab === 'effects' ? activeBtnClass : inactiveBtnClass}">
-                                    <i data-lucide="sparkles" class="w-3.5 h-3.5 inline-block mr-1 align-middle"></i>Effects
+                                <button type="button" onclick="setMdHeadingFxTab('effects')" class="flex-1 py-1 text-[10px] font-bold rounded-md transition-all ${cfg.headingFxTab === 'effects' ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm' : 'text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-white'}">
+                                    <i data-lucide="sparkles" class="w-3 h-3 inline-block mr-1 align-middle"></i>Effects
                                 </button>
                             </div>
+                            <i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180 shrink-0"></i>
+                        </summary>
+                        <div class="p-3 flex flex-col gap-3">
                             ${cfg.headingFxTab === 'effects' ? headingEffectsHtml : `
                             <div class="grid grid-cols-2 gap-2">
                                 <div>
@@ -8804,11 +8882,20 @@ From the smallest butterfly to the mightiest T-Rex, every creature plays a uniqu
                         </div>
                     </details>
                     <details class="group bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0" open>
-                        <summary class="flex items-center justify-between p-3 cursor-pointer list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700">
-                            <span class="text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest flex items-center gap-1.5"><i data-lucide="align-left" class="w-3.5 h-3.5"></i>Body Text Style</span>
-                            <i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>
+                        <summary class="flex items-center gap-2 p-2.5 cursor-pointer list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700">
+                            <span class="text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest flex items-center gap-1.5 shrink-0"><i data-lucide="align-left" class="w-3.5 h-3.5"></i>Text Style</span>
+                            <div class="flex gap-1 bg-surface-100 dark:bg-surface-900 p-0.5 rounded-lg flex-1 min-w-0" onclick="event.stopPropagation();">
+                                <button type="button" onclick="setMdTextFxTab('style')" class="flex-1 py-1 text-[10px] font-bold rounded-md transition-all ${cfg.textFxTab !== 'effects' ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm' : 'text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-white'}">
+                                    <i data-lucide="type" class="w-3 h-3 inline-block mr-1 align-middle"></i>Style
+                                </button>
+                                <button type="button" onclick="setMdTextFxTab('effects')" class="flex-1 py-1 text-[10px] font-bold rounded-md transition-all ${cfg.textFxTab === 'effects' ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm' : 'text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-white'}">
+                                    <i data-lucide="sparkles" class="w-3 h-3 inline-block mr-1 align-middle"></i>Effects
+                                </button>
+                            </div>
+                            <i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180 shrink-0"></i>
                         </summary>
                         <div class="p-3 flex flex-col gap-3">
+                            ${cfg.textFxTab === 'effects' ? textEffectsHtml : `
                             <div class="grid grid-cols-2 gap-2">
                                 <div>
                                     <label class="text-[9px] font-semibold text-surface-400 dark:text-surface-500">Font</label>
@@ -8868,6 +8955,7 @@ From the smallest butterfly to the mightiest T-Rex, every creature plays a uniqu
                                 </div>
                                 <p class="text-[9px] text-surface-400 dark:text-surface-500 leading-snug mt-1.5">Delay before body text appears after the slide starts. Auto mode had a fixed 0.3s gap; now it's your choice (default 0s, matching Script Order).</p>
                             </div>
+                            `}
                         </div>
                     </details>
                     <details class="group bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0" open>
@@ -8946,12 +9034,10 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             // Restore accordion open/close state after re-render
             sidebarContent.querySelectorAll('details').forEach(d => {
                 const summary = d.querySelector('summary');
-                if (summary) {
-                    const title = summary.textContent.trim();
-                    if (State.ui.mdDetailsState[title] !== undefined) {
-                        if (State.ui.mdDetailsState[title]) d.setAttribute('open', '');
-                        else d.removeAttribute('open');
-                    }
+                const title = d.dataset.fxKey || (summary ? summary.textContent.trim() : '');
+                if (title && State.ui.mdDetailsState[title] !== undefined) {
+                    if (State.ui.mdDetailsState[title]) d.setAttribute('open', '');
+                    else d.removeAttribute('open');
                 }
             });
             
@@ -9182,9 +9268,9 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     effects: {
                         scale: 1, rotate: 0, offsetX: 0, offsetY: 0,
                         fontFamily: cfg.textFontFamily || 'Inter', fontSize: cfg.textFontSize || 32, fontWeight: cfg.textFontWeight || 400, fillColor: cfg.textColor || '#eeeeee',
-                        strokeEnable: true, strokeColor: '#000000', strokeWidth: 2,
-                        shadowEnable: true, shadowColor: '#000000', shadowBlur: 10, shadowX: 0, shadowY: 4,
-                        extrudeEnable: false, extrudeDepth: 3, extrudeColor: '#000000',
+                        strokeEnable: cfg.textStrokeEnable !== undefined ? cfg.textStrokeEnable : true, strokeColor: cfg.textStrokeColor || '#000000', strokeWidth: cfg.textStrokeWidth || 2,
+                        shadowEnable: cfg.textShadowEnable !== undefined ? cfg.textShadowEnable : true, shadowColor: cfg.textShadowColor || '#000000', shadowBlur: cfg.textShadowBlur || 10, shadowX: cfg.textShadowX || 0, shadowY: cfg.textShadowY || 4,
+                        extrudeEnable: !!cfg.textExtrudeEnable, extrudeDepth: cfg.textExtrudeDepth || 3, extrudeColor: cfg.textExtrudeColor || '#000000', extrudeDir: cfg.textExtrudeDir || 'br',
                         animIn: cfg.textAnimIn || 'slideUp', animOut: 'none', animLoop: 'none', animInDur: 0.4, animOutDur: 0.3, animEase: 'easeOut',
                         animTextIn: 'none', animTextOut: 'none', animTextLoop: 'none', animTextEase: 'easeOut', animTextStagger: 'word', animTextInDur: 0.3, animTextOutDur: 0.3, flashColor: '#ffe600'
                     }
