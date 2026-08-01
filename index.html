@@ -2936,6 +2936,21 @@
                         record.width = valW * scaleFactor;
                         record.height = valH * scaleFactor;
                         
+                        // MathJax's viewBox tightly bounds the glyphs, so a thick stroke extends
+                        // BEYOND the viewBox edges and gets clipped (bottom/left crop) when the SVG
+                        // is rasterized to an image. Expand the viewBox by the stroke width on all
+                        // sides and scale the output px size up proportionally, so the formula keeps
+                        // its exact visual size while the stroke gets room to render fully.
+                        if (strokeOn && _vbParts.length === 4 && _vbW > 0 && _vbParts[3] > 0) {
+                            const padUnits = strokeUnits; // stroke overhangs ~strokeUnits/2 per side; full gives safe margin
+                            const newVbW = _vbW + padUnits * 2;
+                            const newVbH = _vbParts[3] + padUnits * 2;
+                            const scaleUp = newVbW / _vbW;
+                            svgNode.setAttribute('viewBox', `${_vbParts[0] - padUnits} ${_vbParts[1] - padUnits} ${newVbW} ${newVbH}`);
+                            record.width = record.width * scaleUp;
+                            record.height = record.height * scaleUp;
+                        }
+                        
                         svgNode.setAttribute('width', record.width);
                         svgNode.setAttribute('height', record.height);
                         
