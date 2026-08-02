@@ -17,14 +17,17 @@ analysis of editor and comparison with remotion
 
 - new katex elmeetn 
 
-- for vector math when user adds 3d extrude shadow with big depth - the clips on timeline becomes lag - to drag - and not smooth - can we fix thi issue 
+✅ for vector math when user adds 3d extrude shadow with big depth - the clips on timeline becomes lag - to drag - and not smooth - can we fix thi issue 
+
 - the user noticed when it increase vector math element size with transfrom scale - it increase and decrease smoothly - but when it increase with forumla size slider - it is not smooth - fix this 
 
-- letter by letter custmization like thumb-maker 
-- add background and cutmize border radius and background color - stroke - drop shadow and 3d extrude for that background for text element 
+✅ letter by letter custmization like thumb-maker 
+✅ add background and cutmize border radius and background color - stroke - drop shadow and 3d extrude for that background for text element 
+
 - add texture for shape - text - background - like thumb maker 
 - for markdown style - add more script presets - one with math element - also add styles for it in styles sub tab 
 - captions animtions like kalakar.io - each text pop up - 
+- The text background works great for regular text clips. Can we add the same Background controls to the Markdown style tab (global heading style + text style) so markdown-generated clips can get an auto background box?
 
 
 # Export Test
