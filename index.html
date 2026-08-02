@@ -3139,83 +3139,236 @@
             return geo;
         }
 
-        function drawVectorMath(ctx, clip, targetW, targetH) {
+        // ── Vector Math Sprite Cache ─────────────────────────────
+        // Bakes the formula (fill + stroke + drop shadow + 3D extrude) into an offscreen
+        // sprite ONCE per style state. Previously every animation frame re-executed
+        // depth × pathCount path fills, so a big extrude depth made clip dragging stutter.
+        // Now each frame is a single drawImage. The sprite is supersampled (ss) so it
+        // stays crisp at any zoom or export resolution.
+
+        function getMathVectorSprite(clip, targetW, targetH) {
             const geo = getMathVectorGeometry(clip);
-            if (!geo || !geo.paths.length || targetW <= 0 || targetH <= 0) return;
+            if (!geo || !geo.paths.length || targetW <= 0 || targetH <= 0) return null;
             const vb = geo.vb;
-            if (vb[2] <= 0 || vb[3] <= 0) return;
+            if (vb[2] <= 0 || vb[3] <= 0) return null;
+            const fx = clip.effects || {};
+            const strokeOn = !!fx.strokeEnable || !!fx.strokeOnly;
+            const strokeOnly = !!fx.strokeOnly;
+            const strokeW = fx.strokeWidth || 4;
+            const depth = fx.extrudeEnable ? (fx.extrudeDepth || 5) : 0;
+            let dx = 1, dy = 1;
+            const ed = fx.extrudeDir || 'br';
+            if (ed === 'bl') { dx = -1; dy = 1; }
+            else if (ed === 'b') { dx = 0; dy = 1; }
+            else if (ed === 'tr') { dx = 1; dy = -1; }
+            else if (ed === 'tl') { dx = -1; dy = -1; }
+            else if (ed === 't') { dx = 0; dy = -1; }
+            else if (ed === 'r') { dx = 1; dy = 0; }
+            else if (ed === 'l') { dx = -1; dy = 0; }
+            const shadowBlur = fx.shadowEnable ? (fx.shadowBlur || 20) : 0;
+            const shadowX = fx.shadowEnable ? (fx.shadowX || 0) : 0;
+            const shadowY = fx.shadowEnable ? (fx.shadowY || 10) : 0;
+            // Room around the formula so extrude / shadow / stroke are never clipped
+            const padX = Math.ceil(Math.max(Math.abs(dx) * depth, Math.abs(shadowX) + shadowBlur) + strokeW / 2 + 2);
+            const padY = Math.ceil(Math.max(Math.abs(dy) * depth, Math.abs(shadowY) + shadowBlur) + strokeW / 2 + 2);
+            // Supersample so the sprite stays crisp when the clip is scaled up
+            const ss = Math.max(2, Math.ceil(window.devicePixelRatio || 1));
+            const cacheKey = [
+                clip.id, clip.text, fx.fontSize || 100,
+                Math.round(targetW), Math.round(targetH),
+                fx.fillColor || '#ffffff',
+                strokeOn ? 1 : 0, strokeOnly ? 1 : 0, fx.strokeColor || '#ffffff', strokeW,
+                fx.shadowEnable ? 1 : 0, fx.shadowColor || '#000000', shadowBlur, shadowX, shadowY,
+                fx.extrudeEnable ? 1 : 0, depth, ed, fx.extrudeColor || '#000000',
+                padX, padY, ss
+            ].join('|');
+            const cache = window.mathVectorSpriteCache || (window.mathVectorSpriteCache = {});
+            if (cache[cacheKey]) return cache[cacheKey];
+            // Prune stale sprites for this clip so the cache stays bounded
+            for (const k in cache) {
+                if (k !== cacheKey && k.indexOf(clip.id + '|') === 0) delete cache[k];
+            }
+
             const s = Math.min(targetW / vb[2], targetH / vb[3]);
-            const strokeOn = !!clip.effects.strokeEnable || !!clip.effects.strokeOnly;
-            const strokeOnly = !!clip.effects.strokeOnly;
-            const strokeColor = clip.effects.strokeColor || '#ffffff';
-            const strokeWUnits = (clip.effects.strokeWidth || 4) / s;
-            const fillColor = clip.effects.fillColor || '#ffffff';
-            const shadowOn = !!clip.effects.shadowEnable;
-            const shadowColor = clip.effects.shadowColor || '#000000';
-            const shadowBlur = (clip.effects.shadowBlur || 20) / s;
-            const shadowX = (clip.effects.shadowX || 0) / s;
-            const shadowY = (clip.effects.shadowY || 10) / s;
-
-            const paintPaths = (fill, stroke, withShadow) => {
-                for (const p of geo.paths) {
-                    ctx.save();
-                    ctx.transform(p.m.a, p.m.b, p.m.c, p.m.d, p.m.e, p.m.f);
-                    if (withShadow) {
-                        ctx.shadowColor = shadowColor;
-                        ctx.shadowBlur = shadowBlur;
-                        ctx.shadowOffsetX = shadowX;
-                        ctx.shadowOffsetY = shadowY;
-                    }
-                    if (fill) { ctx.fillStyle = fill; ctx.fill(p.path); }
-                    if (stroke) {
-                        ctx.strokeStyle = strokeColor;
-                        ctx.lineWidth = strokeWUnits;
-                        ctx.lineJoin = 'round';
-                        ctx.lineCap = 'round';
-                        ctx.stroke(p.path);
-                    }
-                    ctx.restore();
-                }
-            };
-
-            ctx.save();
-            // Map the MathJax viewBox so the formula is centered at the origin at the target size
-            ctx.scale(s, s);
-            ctx.translate(-(vb[0] + vb[2] / 2), -(vb[1] + vb[3] / 2));
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.ceil((targetW + padX * 2) * ss);
+            canvas.height = Math.ceil((targetH + padY * 2) * ss);
+            const cctx = canvas.getContext('2d');
+            cctx.save();
+            // Same coordinate mapping as the old direct render, scaled up by ss.
+            // Unit conversions (/ s) stay identical — the bigger canvas absorbs the
+            // supersample, so shadow/extrude/stroke land at the exact same px sizes.
+            cctx.translate(canvas.width / 2, canvas.height / 2);
+            cctx.scale(s * ss, s * ss);
+            cctx.translate(-(vb[0] + vb[2] / 2), -(vb[1] + vb[3] / 2));
 
             // 3D Extrude — solid offset copies behind the main shape
-            if (clip.effects.extrudeEnable) {
-                const depth = clip.effects.extrudeDepth || 5;
-                let dx = 1, dy = 1;
-                const ed = clip.effects.extrudeDir || 'br';
-                if (ed === 'bl') { dx = -1; dy = 1; }
-                else if (ed === 'b') { dx = 0; dy = 1; }
-                else if (ed === 'tr') { dx = 1; dy = -1; }
-                else if (ed === 'tl') { dx = -1; dy = -1; }
-                else if (ed === 't') { dx = 0; dy = -1; }
-                else if (ed === 'r') { dx = 1; dy = 0; }
-                else if (ed === 'l') { dx = -1; dy = 0; }
-                const exColor = clip.effects.extrudeColor || '#000000';
-                ctx.save();
+            if (depth > 0) {
+                const exColor = fx.extrudeColor || '#000000';
                 for (let i = depth; i > 0; i -= 1) {
-                    ctx.save();
-                    ctx.translate((dx * i) / s, (dy * i) / s);
+                    cctx.save();
+                    cctx.translate((dx * i) / s, (dy * i) / s);
                     for (const p of geo.paths) {
-                        ctx.save();
-                        ctx.transform(p.m.a, p.m.b, p.m.c, p.m.d, p.m.e, p.m.f);
-                        ctx.fillStyle = exColor;
-                        ctx.fill(p.path);
-                        ctx.restore();
+                        cctx.save();
+                        cctx.transform(p.m.a, p.m.b, p.m.c, p.m.d, p.m.e, p.m.f);
+                        cctx.fillStyle = exColor;
+                        cctx.fill(p.path);
+                        cctx.restore();
                     }
-                    ctx.restore();
+                    cctx.restore();
                 }
-                ctx.restore();
             }
 
             // Main pass — fill (+ optional stroke) with drop shadow
-            paintPaths(strokeOnly ? null : fillColor, strokeOn ? strokeColor : null, shadowOn);
+            const fillColor = fx.fillColor || '#ffffff';
+            const strokeColor = fx.strokeColor || '#ffffff';
+            const shadowColor = fx.shadowColor || '#000000';
+            for (const p of geo.paths) {
+                cctx.save();
+                cctx.transform(p.m.a, p.m.b, p.m.c, p.m.d, p.m.e, p.m.f);
+                if (fx.shadowEnable) {
+                    cctx.shadowColor = shadowColor;
+                    cctx.shadowBlur = shadowBlur / s;
+                    cctx.shadowOffsetX = shadowX / s;
+                    cctx.shadowOffsetY = shadowY / s;
+                }
+                if (!strokeOnly) { cctx.fillStyle = fillColor; cctx.fill(p.path); }
+                if (strokeOn) {
+                    cctx.strokeStyle = strokeColor;
+                    cctx.lineWidth = strokeW / s;
+                    cctx.lineJoin = 'round';
+                    cctx.lineCap = 'round';
+                    cctx.stroke(p.path);
+                }
+                cctx.restore();
+            }
+            cctx.restore();
+            cctx.shadowColor = 'transparent';
+            cctx.shadowBlur = 0;
+            cctx.shadowOffsetX = 0;
+            cctx.shadowOffsetY = 0;
 
-            ctx.restore();
+            const sprite = { canvas, w: canvas.width, h: canvas.height, ss };
+            cache[cacheKey] = sprite;
+            return sprite;
+        }
+
+        function drawVectorMath(ctx, clip, targetW, targetH) {
+            const sprite = getMathVectorSprite(clip, targetW, targetH);
+            if (!sprite) return;
+            // Sprite canvas is supersampled (ss) and centered on the formula — draw it
+            // back down at 1/ss. One drawImage per frame regardless of extrude depth.
+            ctx.drawImage(sprite.canvas, -sprite.w / 2 / sprite.ss, -sprite.h / 2 / sprite.ss, sprite.w / sprite.ss, sprite.h / sprite.ss);
+            // Reset shadow so it never bleeds into other clips
+            ctx.shadowColor = 'transparent';
+            ctx.shadowBlur = 0;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 0;
+        }
+
+        // ── Image Math Sprite Cache ───────────────────────────
+        // The rasterized formula (record.image) plus its 3D extrude layers and drop
+        // shadow are composited into an offscreen sprite ONCE per style state, then
+        // drawn with a single drawImage per frame. Previously every frame ran `depth`
+        // drawImage calls for extrude PLUS a canvas shadow blur (an expensive software
+        // blur) — both of which made clip dragging and export stutter at big extrude
+        // depths. This matches the vector-math sprite so BOTH modes are equally smooth.
+        // The sprite is supersampled (ss) so it stays crisp at zoom / export.
+
+        function getMathImageSprite(clip, targetW, targetH) {
+            const fx = clip.effects || {};
+            if (targetW <= 0 || targetH <= 0) return null;
+            // Always request the fresh record so its async onload can promote _mathLastGood.
+            const mathRecord = getOrRenderMathImage(clip);
+            const mathImg = (mathRecord && mathRecord.loaded) ? mathRecord : (clip._mathLastGood || null);
+            if (!mathImg || !mathImg.image) return null;
+            const depth = fx.extrudeEnable ? (fx.extrudeDepth || 5) : 0;
+            let dx = 1, dy = 1;
+            const ed = fx.extrudeDir || 'br';
+            if (ed === 'bl') { dx = -1; dy = 1; }
+            else if (ed === 'b') { dx = 0; dy = 1; }
+            else if (ed === 'tr') { dx = 1; dy = -1; }
+            else if (ed === 'tl') { dx = -1; dy = -1; }
+            else if (ed === 't') { dx = 0; dy = -1; }
+            else if (ed === 'r') { dx = 1; dy = 0; }
+            else if (ed === 'l') { dx = -1; dy = 0; }
+            const strokeW = fx.strokeWidth || 4;
+            const shadowBlur = fx.shadowEnable ? (fx.shadowBlur || 20) : 0;
+            const shadowX = fx.shadowEnable ? (fx.shadowX || 0) : 0;
+            const shadowY = fx.shadowEnable ? (fx.shadowY || 10) : 0;
+            // Room around the formula so extrude / shadow / stroke are never clipped
+            const padX = Math.ceil(Math.max(Math.abs(dx) * depth, Math.abs(shadowX) + shadowBlur) + strokeW / 2 + 2);
+            const padY = Math.ceil(Math.max(Math.abs(dy) * depth, Math.abs(shadowY) + shadowBlur) + strokeW / 2 + 2);
+            // The formula image is a FIXED-resolution raster, so supersampling can't add
+            // sharpness (unlike vector paths) — baking at 2x would just upscale then
+            // downscale, softening thin strokes. Render at dpr so 1:1 stays razor sharp;
+            // on dpr=1 that's exactly the old direct-draw quality, on retina it matches.
+            const ss = Math.max(1, Math.ceil(window.devicePixelRatio || 1));
+            // Round to 0.1px so two near-equal fractional sizes (valW*scaleFactor) never
+            // share a key and serve a slightly-stale sprite.
+            const cacheKey = [
+                clip.id, clip.text, fx.fontSize || 100,
+                Math.round(targetW * 10), Math.round(targetH * 10),
+                fx.fillColor || '#ffffff',
+                fx.strokeEnable ? 1 : 0, fx.strokeOnly ? 1 : 0, fx.strokeColor || '#ffffff', strokeW,
+                fx.shadowEnable ? 1 : 0, fx.shadowColor || '#000000', shadowBlur, shadowX, shadowY,
+                fx.extrudeEnable ? 1 : 0, depth, ed, fx.extrudeColor || '#000000',
+                padX, padY, ss
+            ].join('|');
+            const cache = window.mathImageSpriteCache || (window.mathImageSpriteCache = {});
+            if (cache[cacheKey]) return cache[cacheKey];
+            // Only cache when the FRESH records are loaded. While a re-render is in flight
+            // (style edit), fall back to the last-good image but don't cache — otherwise a
+            // stale fallback sprite would linger under the new key forever.
+            const extrudeOn = depth > 0;
+            const extrudeRecord = extrudeOn ? getOrRenderMathImage(clip, fx.extrudeColor || '#000000') : null;
+            const extrudeImg = extrudeOn ? ((extrudeRecord && extrudeRecord.loaded) ? extrudeRecord : (clip._mathLastExtrude || null)) : null;
+            const cacheable = !!mathRecord && !!mathRecord.loaded && (!extrudeOn || !!(extrudeRecord && extrudeRecord.loaded));
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.ceil((targetW + padX * 2) * ss);
+            canvas.height = Math.ceil((targetH + padY * 2) * ss);
+            const cctx = canvas.getContext('2d');
+            const cx = canvas.width / 2;
+            const cy = canvas.height / 2;
+            // 3D Extrude — solid offset copies behind the main image
+            if (extrudeOn && extrudeImg && extrudeImg.image) {
+                const extW = ((extrudeRecord && extrudeRecord.width > 0) ? extrudeRecord.width : targetW) * ss;
+                const extH = ((extrudeRecord && extrudeRecord.height > 0) ? extrudeRecord.height : targetH) * ss;
+                for (let i = depth; i > 0; i -= 1) {
+                    cctx.drawImage(extrudeImg.image, cx - extW / 2 + dx * i * ss, cy - extH / 2 + dy * i * ss, extW, extH);
+                }
+            }
+            // Main pass — formula image with optional drop shadow baked in
+            const w = targetW * ss;
+            const h = targetH * ss;
+            if (fx.shadowEnable) {
+                cctx.shadowColor = fx.shadowColor || '#000000';
+                cctx.shadowBlur = shadowBlur * ss;
+                cctx.shadowOffsetX = shadowX * ss;
+                cctx.shadowOffsetY = shadowY * ss;
+            }
+            cctx.drawImage(mathImg.image, cx - w / 2, cy - h / 2, w, h);
+            cctx.shadowColor = 'transparent';
+            cctx.shadowBlur = 0;
+            cctx.shadowOffsetX = 0;
+            cctx.shadowOffsetY = 0;
+            const sprite = { canvas, w: canvas.width, h: canvas.height, ss };
+            if (cacheable) {
+                // Prune stale sprites for this clip so the cache stays bounded
+                for (const k in cache) {
+                    if (k !== cacheKey && k.indexOf(clip.id + '|') === 0) delete cache[k];
+                }
+                cache[cacheKey] = sprite;
+            }
+            return sprite;
+        }
+
+        function drawMathImage(ctx, clip, targetW, targetH) {
+            const sprite = getMathImageSprite(clip, targetW, targetH);
+            if (!sprite) return;
+            // Sprite canvas is supersampled (ss) and centered on the formula — draw it
+            // back down at 1/ss. One drawImage per frame regardless of extrude depth.
+            ctx.drawImage(sprite.canvas, -sprite.w / 2 / sprite.ss, -sprite.h / 2 / sprite.ss, sprite.w / sprite.ss, sprite.h / sprite.ss);
             // Reset shadow so it never bleeds into other clips
             ctx.shadowColor = 'transparent';
             ctx.shadowBlur = 0;
@@ -3493,49 +3646,11 @@
                                 // between the old-size fallback and the new-size image.
                                 const targetW = (mathRecord && mathRecord.width > 0) ? mathRecord.width : ((clip._mathLastGood && clip._mathLastGood.width) || 0);
                                 const targetH = (mathRecord && mathRecord.height > 0) ? mathRecord.height : ((clip._mathLastGood && clip._mathLastGood.height) || 0);
-                                const mathImg = (mathRecord && mathRecord.loaded) ? mathRecord : (clip._mathLastGood || (mathRecord && mathRecord.width > 0 ? mathRecord : null));
-                                if (mathImg && targetW > 0 && targetH > 0) {
-                                    // 3D Extrude for math
-                                    if (clip.effects.extrudeEnable) {
-                                        const depth = clip.effects.extrudeDepth || 5;
-                                        let dx = 1, dy = 1;
-                                        const ed = clip.effects.extrudeDir || 'br';
-                                        if (ed === 'bl') { dx = -1; dy = 1; }
-                                        else if (ed === 'b') { dx = 0; dy = 1; }
-                                        else if (ed === 'tr') { dx = 1; dy = -1; }
-                                        else if (ed === 'tl') { dx = -1; dy = -1; }
-                                        else if (ed === 't') { dx = 0; dy = -1; }
-                                        else if (ed === 'r') { dx = 1; dy = 0; }
-                                        else if (ed === 'l') { dx = -1; dy = 0; }
-                                        const extrudeRecord = getOrRenderMathImage(clip, clip.effects.extrudeColor || '#000000');
-                                        const extTargetW = (extrudeRecord && extrudeRecord.width > 0) ? extrudeRecord.width : targetW;
-                                        const extTargetH = (extrudeRecord && extrudeRecord.height > 0) ? extrudeRecord.height : targetH;
-                                        const extrudeImg = (extrudeRecord && extrudeRecord.loaded) ? extrudeRecord : (clip._mathLastExtrude || null);
-                                        if (extrudeImg) {
-                                            for (let i = depth; i > 0; i -= 1) {
-                                                ctx.drawImage(extrudeImg.image, -extTargetW / 2 + dx * i, -extTargetH / 2 + dy * i, extTargetW, extTargetH);
-                                            }
-                                        }
-                                    }
-                                    // Drop shadow for math
-                                    if (clip.effects.shadowEnable) {
-                                        ctx.shadowColor = clip.effects.shadowColor || '#000000';
-                                        ctx.shadowBlur = clip.effects.shadowBlur || 20;
-                                        ctx.shadowOffsetX = clip.effects.shadowX || 0;
-                                        ctx.shadowOffsetY = clip.effects.shadowY || 10;
-                                    } else {
-                                        ctx.shadowColor = 'transparent';
-                                        ctx.shadowBlur = 0;
-                                        ctx.shadowOffsetX = 0;
-                                        ctx.shadowOffsetY = 0;
-                                    }
-                                    ctx.drawImage(mathImg.image, -targetW / 2, -targetH / 2, targetW, targetH);
-                                    // Reset shadow to avoid bleeding into other clips
-                                    ctx.shadowColor = 'transparent';
-                                    ctx.shadowBlur = 0;
-                                    ctx.shadowOffsetX = 0;
-                                    ctx.shadowOffsetY = 0;
-                                }
+                                // Image math also uses the sprite cache (getMathImageSprite): the
+                                // extrude layers + drop shadow are baked once per style state, so
+                                // each frame is ONE drawImage instead of `depth` drawImage calls
+                                // plus a canvas shadow blur — same smoothness as vector math.
+                                drawMathImage(ctx, clip, targetW, targetH);
                                 return;
                             }
                             if (animTextIn === 'none' && animTextOut === 'none' && animTextLoop === 'none') {
@@ -7684,7 +7799,9 @@
         };
 
         window.mathImageCache = {};
+        window.mathImageSpriteCache = {};
         window.mathVectorCache = {};
+        window.mathVectorSpriteCache = {};
 
         window.insertTexTemplate = function(clipId, templateStr) {
             const clip = State.clips.find(c => c.id === clipId);
