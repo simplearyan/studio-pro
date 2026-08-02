@@ -3214,10 +3214,16 @@
             const padY = Math.ceil(Math.max(Math.abs(dy) * depth, Math.abs(shadowY) + shadowBlur) + strokeW / 2 + 2);
             // Supersample so the sprite stays crisp when the clip is scaled up
             const ss = Math.max(2, Math.ceil(window.devicePixelRatio || 1));
+            // Quantize the bake size to an 8px grid. Continuous Formula Size drags then
+            // mostly reuse the cached masks (the caller scales the sprite to the exact
+            // size), so the expensive bake only runs when crossing a grid line — this is
+            // what keeps the slider smooth on low-end machines.
+            const bakeW = Math.max(4, Math.round(targetW / 8) * 8);
+            const bakeH = Math.max(4, Math.round(targetH / 8) * 8);
             // GEOMETRY key — deliberately excludes all colors
             const maskKey = [
                 clip.id, clip.text, fx.fontSize || 100,
-                Math.round(targetW * 10), Math.round(targetH * 10),
+                Math.round(bakeW * 10), Math.round(bakeH * 10),
                 strokeOn ? 1 : 0, strokeOnly ? 1 : 0, strokeW,
                 depth, ed, shadowBlur, shadowX, shadowY,
                 padX, padY, ss
@@ -3229,9 +3235,9 @@
                 if (k !== maskKey && k.indexOf(clip.id + '|') === 0) delete cache[k];
             }
 
-            const s = Math.min(targetW / vb[2], targetH / vb[3]);
-            const cw = Math.ceil((targetW + padX * 2) * ss);
-            const ch = Math.ceil((targetH + padY * 2) * ss);
+            const s = Math.min(bakeW / vb[2], bakeH / vb[3]);
+            const cw = Math.ceil((bakeW + padX * 2) * ss);
+            const ch = Math.ceil((bakeH + padY * 2) * ss);
             const mkCanvas = () => {
                 const c = document.createElement('canvas');
                 c.width = cw; c.height = ch;
@@ -3263,7 +3269,7 @@
                 }
             };
 
-            const masks = { w: cw, h: ch, ss, maskKey, strokeOnly, strokeOn };
+            const masks = { w: cw, h: ch, ss, maskKey, strokeOnly, strokeOn, bakeW, bakeH };
 
             // Shadow mask — white silhouette + white blurred halo (tinted to shadowColor)
             if (fx.shadowEnable) {
@@ -3337,17 +3343,42 @@
             if (masks.shadow) cctx.drawImage(tintMaskToColor(masks.shadow, shadowColor, masks.w, masks.h), 0, 0);
             if (masks.fill) cctx.drawImage(tintMaskToColor(masks.fill, fillColor, masks.w, masks.h), 0, 0);
             if (masks.stroke) cctx.drawImage(tintMaskToColor(masks.stroke, strokeColor, masks.w, masks.h), 0, 0);
-            const sprite = { canvas, w: masks.w, h: masks.h, ss: masks.ss };
+            const sprite = { canvas, w: masks.w, h: masks.h, ss: masks.ss, targetW: masks.bakeW, targetH: masks.bakeH };
             cache[cacheKey] = sprite;
             return sprite;
         }
 
+        // Cap how often the expensive vector-math bake (MathJax parse + extrude loop +
+        // shadow blur) can run, so a fast Formula Size drag never stalls the main thread.
+        // Between bakes the last sprite is drawn scaled to the exact target size, which
+        // keeps motion perfectly smooth while the bake happens at most ~12x/second.
+        let _vecMathLastRebake = 0;
+        function vecMathRebakeAllowed() {
+            const now = performance.now();
+            if (now - _vecMathLastRebake < 80) return false;
+            _vecMathLastRebake = now;
+            return true;
+        }
+
         function drawVectorMath(ctx, clip, targetW, targetH) {
-            const sprite = getMathVectorSprite(clip, targetW, targetH);
+            let sprite = clip.__vecLastSprite || null;
+            if (sprite && !vecMathRebakeAllowed()) {
+                // Still inside the cooldown window — reuse the last baked sprite (scaled below).
+            } else {
+                const fresh = getMathVectorSprite(clip, targetW, targetH);
+                if (fresh) { sprite = fresh; clip.__vecLastSprite = fresh; }
+            }
             if (!sprite) return;
-            // Sprite canvas is supersampled (ss) and centered on the formula — draw it
-            // back down at 1/ss. One drawImage per frame regardless of extrude depth.
-            ctx.drawImage(sprite.canvas, -sprite.w / 2 / sprite.ss, -sprite.h / 2 / sprite.ss, sprite.w / sprite.ss, sprite.h / sprite.ss);
+            // Draw scaled to the exact target size. The sprite was baked at a quantized
+            // size (masks.bakeW/H) and is supersampled, so the per-frame scale factor here
+            // is tiny and stays crisp — this is what keeps the Formula Size slider smooth.
+            const bw = sprite.targetW || targetW;
+            const bh = sprite.targetH || targetH;
+            const sw = sprite.w / sprite.ss;
+            const sh = sprite.h / sprite.ss;
+            const sx = (targetW > 0 && bw > 0) ? targetW / bw : 1;
+            const sy = (targetH > 0 && bh > 0) ? targetH / bh : 1;
+            ctx.drawImage(sprite.canvas, -sw * sx / 2, -sh * sy / 2, sw * sx, sh * sy);
             // Reset shadow so it never bleeds into other clips
             ctx.shadowColor = 'transparent';
             ctx.shadowBlur = 0;
@@ -3835,7 +3866,9 @@
                                     // Infinitely sharp at any scale, and supports fill/stroke/shadow/extrude
                                     // as native canvas operations.
                                     drawVectorMath(ctx, clip, dw, dh);
-                                    if (clip.effects.textureEnable) drawMathTextureOverlay(ctx, clip, getMathVectorSprite(clip, dw, dh));
+                                    // Reuse the exact sprite drawVectorMath just rendered so the texture
+                                    // stays throttled, aligned, and pixel-consistent with the formula.
+                                    if (clip.effects.textureEnable) drawMathTextureOverlay(ctx, clip, clip.__vecLastSprite || getMathVectorSprite(clip, dw, dh), dw, dh);
                                     return;
                                 }
                                 // Prefer the freshly rendered record; while a new SVG is still loading
@@ -3853,7 +3886,7 @@
                                 // each frame is ONE drawImage instead of `depth` drawImage calls
                                 // plus a canvas shadow blur — same smoothness as vector math.
                                 drawMathImage(ctx, clip, targetW, targetH);
-                                if (clip.effects.textureEnable) drawMathTextureOverlay(ctx, clip, getMathImageSprite(clip, targetW, targetH));
+                                if (clip.effects.textureEnable) drawMathTextureOverlay(ctx, clip, getMathImageSprite(clip, targetW, targetH), targetW, targetH);
                                 return;
                             }
                             // Text background box renders behind the text (covers fast path + animations)
@@ -6154,7 +6187,7 @@
 
         // Textures the whole formula sprite (both vector + image math modes) by masking
         // the texture to the sprite's alpha with 'source-in' on a scratch canvas.
-        function drawMathTextureOverlay(ctx, clip, sprite) {
+        function drawMathTextureOverlay(ctx, clip, sprite, targetW, targetH) {
             const fx = clip.effects || {};
             if (!fx.textureSrc || !sprite) return;
             loadClipTexture(clip);
@@ -6184,7 +6217,15 @@
             ctx.save();
             ctx.globalCompositeOperation = resolveTextureBlend(fx);
             ctx.globalAlpha *= (fx.textureOpacity !== undefined ? fx.textureOpacity : 50) / 100;
-            ctx.drawImage(scratch.canvas, -sprite.w / 2 / sprite.ss, -sprite.h / 2 / sprite.ss, sprite.w / sprite.ss, sprite.h / sprite.ss);
+            // Draw scaled to the exact target size so the texture stays aligned with the
+            // main sprite (which is scaled from its quantized bake size to the target).
+            const bw = sprite.targetW || targetW || (sprite.w / sprite.ss);
+            const bh = sprite.targetH || targetH || (sprite.h / sprite.ss);
+            const sw = sprite.w / sprite.ss;
+            const sh = sprite.h / sprite.ss;
+            const sx = (targetW > 0 && bw > 0) ? targetW / bw : 1;
+            const sy = (targetH > 0 && bh > 0) ? targetH / bh : 1;
+            ctx.drawImage(scratch.canvas, -sw * sx / 2, -sh * sy / 2, sw * sx, sh * sy);
             ctx.restore();
         }
 
