@@ -898,6 +898,12 @@
                 bgExtrudeColor: '#000000',
                 bgExtrudeDepth: 5,
                 bgExtrudeDir: 'br',
+                textureEnable: false,
+                textureSrc: null,
+                textureOpacity: 50,
+                textureBlendMode: 'multiply',
+                textureFitting: 'tile',
+                textureScale: 100,
                 animIn: 'none',
                 animInDur: 0.3,
                 animOut: 'none',
@@ -3822,6 +3828,7 @@
                                     // Infinitely sharp at any scale, and supports fill/stroke/shadow/extrude
                                     // as native canvas operations.
                                     drawVectorMath(ctx, clip, dw, dh);
+                                    if (clip.effects.textureEnable) drawMathTextureOverlay(ctx, clip, getMathVectorSprite(clip, dw, dh));
                                     return;
                                 }
                                 // Prefer the freshly rendered record; while a new SVG is still loading
@@ -3839,6 +3846,7 @@
                                 // each frame is ONE drawImage instead of `depth` drawImage calls
                                 // plus a canvas shadow blur — same smoothness as vector math.
                                 drawMathImage(ctx, clip, targetW, targetH);
+                                if (clip.effects.textureEnable) drawMathTextureOverlay(ctx, clip, getMathImageSprite(clip, targetW, targetH));
                                 return;
                             }
                             // Text background box renders behind the text (covers fast path + animations)
@@ -3852,6 +3860,7 @@
                                 const _wo = clip.effects.wordOverrides || {};
                                 if (Object.keys(_lo).length > 0 || Object.keys(_wo).length > 0) {
                                     drawTextWithLetterOverrides(ctx, clip, lines, startY, lh, fontSize);
+                                    if (clip.effects.textureEnable) drawTextTextureOverlay(ctx, clip, lines, startY, lh, fontSize);
                                     return;
                                 }
                                 // Original line-based rendering for performance and proper stroke
@@ -3914,6 +3923,9 @@
                                         ctx.fillRect(-tdw/2, startY + li * lh + (clip.effects.textDecoration === 'underline' ? fontSize*0.4 : -fontSize*0.1), tdw, fontSize*0.08);
                                     }
                                 });
+
+                                // Texture overlay masked to the text glyphs
+                                if (clip.effects.textureEnable) drawTextTextureOverlay(ctx, clip, lines, startY, lh, fontSize);
                             } else {
                                 // Character-level rendering for Vox-style animations
                                 const targetFill = clip.effects.fillColor || '#ffffff';
@@ -4108,6 +4120,9 @@
                                             ctx.fillStyle = cFill;
                                             ctx.fillText(char, -charWidth/2, 0);
 
+                                            // Texture overlay for this character (masked to the glyph)
+                                            if (clip.effects.textureEnable && clip.effects.textureSrc) drawCharTextureOverlay(ctx, clip, char, charWidth, fontSize);
+
                                             // Text Decoration
                                             if (clip.effects.textDecoration === 'underline' || clip.effects.textDecoration === 'line-through') {
                                                 ctx.fillRect(-charWidth/2, (clip.effects.textDecoration === 'underline' ? fontSize*0.4 : -fontSize*0.1), charWidth, fontSize*0.08);
@@ -4199,6 +4214,9 @@
                                     offCtx.fillRect(-tdw/2, startY + li * lh + (clip.effects.textDecoration === 'underline' ? fontSize*0.4 : -fontSize*0.1), tdw, fontSize*0.08);
                                 }
                             });
+
+                            // Texture overlay masked to the text glyphs (mosaic pass)
+                            if (clip.effects.textureEnable) drawTextTextureOverlay(offCtx, clip, lines, startY, lh, fontSize);
                             } // end letter-override else branch
 
                             // Draw to main canvas pixelated
@@ -4387,6 +4405,18 @@
                         drawShapePath(ctx, shapeType, sw, sh, borderRadius);
                         ctx.fillStyle = clip.effects.fillColor || '#ffbb00';
                         ctx.fill();
+
+                        // Texture overlay clipped to the shape
+                        if (clip.effects.textureEnable && clip.effects.textureSrc) {
+                            loadClipTexture(clip);
+                            if (clip._textureImg) {
+                                ctx.save();
+                                drawShapePath(ctx, shapeType, sw, sh, borderRadius);
+                                ctx.clip();
+                                drawTextureOverClip(ctx, clip, -sw/2, -sh/2, sw, sh);
+                                ctx.restore();
+                            }
+                        }
 
                         // Clear shadow before drawing stroke
                         ctx.shadowColor = 'transparent';
@@ -5116,7 +5146,7 @@
                     
                     if (typeof value === 'boolean') {
                         clip.effects[effectName] = value;
-                    } else if (['shadowColor', 'animIn', 'animOut', 'animLoop', 'extrudeColor', 'fillColor', 'fontFamily', 'extrudeDir', 'textTransform', 'fontStyle', 'textDecoration', 'blendMode', 'animEase', 'animTextSpecial', 'flashColor', 'animTextIn', 'animTextOut', 'animTextLoop', 'animTextEase', 'animTextStagger', 'shapeType', 'strokeColor', 'maskType', 'bgColor', 'bgStrokeColor', 'bgShadowColor', 'bgExtrudeColor', 'bgExtrudeDir'].includes(effectName)) {
+                    } else if (['shadowColor', 'animIn', 'animOut', 'animLoop', 'extrudeColor', 'fillColor', 'fontFamily', 'extrudeDir', 'textTransform', 'fontStyle', 'textDecoration', 'blendMode', 'animEase', 'animTextSpecial', 'flashColor', 'animTextIn', 'animTextOut', 'animTextLoop', 'animTextEase', 'animTextStagger', 'shapeType', 'strokeColor', 'maskType', 'bgColor', 'bgStrokeColor', 'bgShadowColor', 'bgExtrudeColor', 'bgExtrudeDir', 'textureSrc', 'textureBlendMode', 'textureFitting'].includes(effectName)) {
                         clip.effects[effectName] = value;
                     } else {
                         clip.effects[effectName] = parseFloat(value);
@@ -5701,6 +5731,18 @@
             ctx.fill();
             ctx.globalAlpha = prevAlpha;
 
+            // Texture overlay clipped to the background box
+            if (fx.textureEnable && fx.textureSrc) {
+                loadClipTexture(clip);
+                if (clip._textureImg) {
+                    ctx.save();
+                    roundedRectPath(ctx, bx, by, bw, bh, radius);
+                    ctx.clip();
+                    drawTextureOverClip(ctx, clip, bx, by, bw, bh);
+                    ctx.restore();
+                }
+            }
+
             // Reset shadow before stroke to avoid doubling
             ctx.shadowColor = 'transparent';
             ctx.shadowBlur = 0;
@@ -5715,6 +5757,259 @@
                 roundedRectPath(ctx, bx, by, bw, bh, radius);
                 ctx.stroke();
             }
+        }
+
+        // ── Texture Overlay (Thumb Maker style) ──────────────────────
+        // Reusable offscreen scratch canvases (grown on demand, never churned per frame)
+        const _sharedScratch = {};
+        function getSharedScratch(name, w, h) {
+            let s = _sharedScratch[name];
+            if (!s || s.canvas.width < w || s.canvas.height < h) {
+                const canvas = document.createElement('canvas');
+                canvas.width = w;
+                canvas.height = h;
+                s = { canvas, ctx: canvas.getContext('2d') };
+                _sharedScratch[name] = s;
+            }
+            return s;
+        }
+
+        // Lazily load the texture image from the stored data URL into clip._textureImg.
+        // Guarded by _textureSrcLoaded so it only decodes once per source.
+        function loadClipTexture(clip) {
+            const src = clip.effects && clip.effects.textureSrc;
+            if (!src) { clip._textureImg = null; return; }
+            if (clip._textureImg && clip._textureSrcLoaded === src) return;
+            if (clip._textureLoading === src) return;
+            clip._textureLoading = src;
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => {
+                clip._textureImg = img;
+                clip._textureSrcLoaded = src;
+                clip._textureLoading = null;
+            };
+            img.onerror = () => {
+                clip._textureImg = null;
+                clip._textureSrcLoaded = src;
+                clip._textureLoading = null;
+            };
+            img.src = src;
+        }
+
+        // Upload handler: downscale large images to a compact webp data URL (Thumb Maker style)
+        window.handleTextureUpload = function (clipId, input) {
+            const file = input && input.files && input.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const clip = State.clips.find(c => c.id === clipId);
+                if (!clip) return;
+                const src = e.target.result;
+                const img = new Image();
+                img.onload = () => {
+                    const MAX = 600;
+                    let w = img.width, h = img.height;
+                    if (w > MAX || h > MAX) {
+                        const ratio = Math.min(MAX / w, MAX / h);
+                        w = Math.round(w * ratio);
+                        h = Math.round(h * ratio);
+                    }
+                    const c = document.createElement('canvas');
+                    c.width = w; c.height = h;
+                    const cx = c.getContext('2d');
+                    cx.drawImage(img, 0, 0, w, h);
+                    const dataUrl = c.toDataURL('image/webp', 0.85);
+                    clip.effects.textureSrc = dataUrl;
+                    clip.effects.textureEnable = true;
+                    clip._textureImg = null;
+                    clip._textureSrcLoaded = null;
+                    clip._textureLoading = null;
+                    loadClipTexture(clip);
+                    drawCanvas();
+                    updateSidebarPanel();
+                };
+                img.onerror = () => {
+                    clip.effects.textureSrc = src;
+                    clip.effects.textureEnable = true;
+                    clip._textureImg = null;
+                    clip._textureSrcLoaded = null;
+                    clip._textureLoading = null;
+                    loadClipTexture(clip);
+                    drawCanvas();
+                    updateSidebarPanel();
+                };
+                img.src = src;
+            };
+            reader.readAsDataURL(file);
+        };
+
+        // Normalize the stored blend mode; 'normal' (legacy value) maps to the valid 'source-over'.
+        function resolveTextureBlend(fx) {
+            const b = fx.textureBlendMode;
+            return b === 'normal' ? 'source-over' : (b || 'multiply');
+        }
+
+        // Draws the texture over an already-established clip() region (shapes, bg boxes).
+        function drawTextureOverClip(ctx, clip, x, y, w, h) {
+            const fx = clip.effects || {};
+            if (!fx.textureSrc) return;
+            loadClipTexture(clip);
+            if (!clip._textureImg) return;
+            ctx.save();
+            // Defensive: never let a stale shadow bleed into the texture pass
+            ctx.shadowColor = 'transparent';
+            ctx.shadowBlur = 0;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 0;
+            ctx.globalCompositeOperation = resolveTextureBlend(fx);
+            ctx.globalAlpha *= (fx.textureOpacity !== undefined ? fx.textureOpacity : 50) / 100;
+            if (fx.textureFitting === 'stretch') {
+                ctx.drawImage(clip._textureImg, x, y, w, h);
+            } else {
+                const pattern = ctx.createPattern(clip._textureImg, 'repeat');
+                if (pattern) {
+                    const matrix = new DOMMatrix();
+                    const scale = (fx.textureScale !== undefined ? fx.textureScale : 100) / 100;
+                    matrix.scaleSelf(scale, scale);
+                    pattern.setTransform(matrix);
+                    ctx.fillStyle = pattern;
+                    ctx.fillRect(x, y, w, h);
+                }
+            }
+            ctx.restore();
+        }
+
+        // Textures multi-line text by masking the texture to the glyphs with a scratch
+        // canvas (destination-in). Drawn over the already-rendered text fill.
+        function drawTextTextureOverlay(ctx, clip, lines, startY, lh, fontSize) {
+            const fx = clip.effects || {};
+            if (!fx.textureSrc) return;
+            loadClipTexture(clip);
+            if (!clip._textureImg) return;
+            let maxW = 0;
+            for (let li = 0; li < lines.length; li++) {
+                const m = ctx.measureText(lines[li]);
+                if (m.width > maxW) maxW = m.width;
+            }
+            const pad = Math.ceil(fontSize * 0.6);
+            const totalW = Math.ceil(maxW) + pad * 2;
+            const totalH = Math.ceil(lines.length * lh) + pad * 2;
+            const scratch = getSharedScratch('textTex', totalW, totalH);
+            const sctx = scratch.ctx;
+            sctx.setTransform(1, 0, 0, 1, 0, 0);
+            sctx.globalAlpha = 1;
+            sctx.globalCompositeOperation = 'source-over';
+            sctx.clearRect(0, 0, totalW, totalH);
+            sctx.font = ctx.font;
+            sctx.textAlign = 'center';
+            sctx.textBaseline = 'middle';
+            if ('letterSpacing' in sctx) sctx.letterSpacing = ctx.letterSpacing || '0px';
+            sctx.fillStyle = fx.fillColor || '#ffffff';
+            for (let li = 0; li < lines.length; li++) {
+                sctx.fillText(lines[li], totalW / 2, pad + startY + li * lh);
+            }
+            sctx.globalCompositeOperation = resolveTextureBlend(fx);
+            sctx.globalAlpha = (fx.textureOpacity !== undefined ? fx.textureOpacity : 50) / 100;
+            if (fx.textureFitting === 'stretch') {
+                sctx.drawImage(clip._textureImg, 0, 0, totalW, totalH);
+            } else {
+                const pattern = sctx.createPattern(clip._textureImg, 'repeat');
+                if (pattern) {
+                    const matrix = new DOMMatrix();
+                    const scale = (fx.textureScale !== undefined ? fx.textureScale : 100) / 100;
+                    matrix.scaleSelf(scale, scale);
+                    pattern.setTransform(matrix);
+                    sctx.fillStyle = pattern;
+                    sctx.fillRect(0, 0, totalW, totalH);
+                }
+            }
+            sctx.globalCompositeOperation = 'destination-in';
+            sctx.fillStyle = '#ffffff';
+            for (let li = 0; li < lines.length; li++) {
+                sctx.fillText(lines[li], totalW / 2, pad + startY + li * lh);
+            }
+            ctx.drawImage(scratch.canvas, -totalW / 2, -pad);
+        }
+
+        // Per-character texture for the Vox-style animation path (matches Thumb Maker's
+        // per-char scratch technique). ctx is already translated/scaled to the char center.
+        function drawCharTextureOverlay(ctx, clip, ch, chW, fontSize) {
+            const fx = clip.effects || {};
+            if (!fx.textureSrc) return;
+            loadClipTexture(clip);
+            if (!clip._textureImg) return;
+            const chH = Math.ceil(fontSize * 1.6);
+            const pX = Math.ceil(fontSize * 0.6);
+            const pY = Math.ceil(fontSize * 0.6);
+            const cw = chW + pX * 2;
+            const chh = chH + pY * 2;
+            const scratch = getSharedScratch('charTex', cw, chh);
+            const sctx = scratch.ctx;
+            sctx.setTransform(1, 0, 0, 1, 0, 0);
+            sctx.globalAlpha = 1;
+            sctx.globalCompositeOperation = 'source-over';
+            sctx.clearRect(0, 0, cw, chh);
+            sctx.font = ctx.font;
+            sctx.textAlign = 'left';
+            sctx.textBaseline = 'middle';
+            sctx.fillStyle = fx.fillColor || '#ffffff';
+            sctx.fillText(ch, pX, pY + chH / 2);
+            sctx.globalCompositeOperation = resolveTextureBlend(fx);
+            sctx.globalAlpha = (fx.textureOpacity !== undefined ? fx.textureOpacity : 50) / 100;
+            if (fx.textureFitting === 'stretch') {
+                sctx.drawImage(clip._textureImg, pX, pY, chW, chH);
+            } else {
+                const pattern = sctx.createPattern(clip._textureImg, 'repeat');
+                if (pattern) {
+                    const matrix = new DOMMatrix();
+                    const scale = (fx.textureScale !== undefined ? fx.textureScale : 100) / 100;
+                    matrix.scaleSelf(scale, scale);
+                    pattern.setTransform(matrix);
+                    sctx.fillStyle = pattern;
+                    sctx.fillRect(pX, pY, chW, chH);
+                }
+            }
+            sctx.globalCompositeOperation = 'destination-in';
+            sctx.fillStyle = '#ffffff';
+            sctx.fillText(ch, pX, pY + chH / 2);
+            ctx.drawImage(scratch.canvas, -chW / 2 - pX, -pY);
+        }
+
+        // Textures the whole formula sprite (both vector + image math modes) by masking
+        // the texture to the sprite's alpha with 'source-in' on a scratch canvas.
+        function drawMathTextureOverlay(ctx, clip, sprite) {
+            const fx = clip.effects || {};
+            if (!fx.textureSrc || !sprite) return;
+            loadClipTexture(clip);
+            if (!clip._textureImg) return;
+            const w = sprite.canvas.width, h = sprite.canvas.height;
+            const scratch = getSharedScratch('mathTex', w, h);
+            const sctx = scratch.ctx;
+            sctx.setTransform(1, 0, 0, 1, 0, 0);
+            sctx.globalAlpha = 1;
+            sctx.globalCompositeOperation = 'source-over';
+            sctx.clearRect(0, 0, w, h);
+            sctx.drawImage(sprite.canvas, 0, 0);
+            sctx.globalCompositeOperation = 'source-in';
+            if (fx.textureFitting === 'stretch') {
+                sctx.drawImage(clip._textureImg, 0, 0, w, h);
+            } else {
+                const pattern = sctx.createPattern(clip._textureImg, 'repeat');
+                if (pattern) {
+                    const matrix = new DOMMatrix();
+                    const scale = (fx.textureScale !== undefined ? fx.textureScale : 100) / 100;
+                    matrix.scaleSelf(scale, scale);
+                    pattern.setTransform(matrix);
+                    sctx.fillStyle = pattern;
+                    sctx.fillRect(0, 0, w, h);
+                }
+            }
+            ctx.save();
+            ctx.globalCompositeOperation = resolveTextureBlend(fx);
+            ctx.globalAlpha *= (fx.textureOpacity !== undefined ? fx.textureOpacity : 50) / 100;
+            ctx.drawImage(scratch.canvas, -sprite.w / 2 / sprite.ss, -sprite.h / 2 / sprite.ss, sprite.w / sprite.ss, sprite.h / sprite.ss);
+            ctx.restore();
         }
 
         function drawTextWithLetterOverrides(ctx, clip, lines, startY, lh, fontSize) {
@@ -6576,6 +6871,82 @@
                                     </div>
                                 </div>
                             </div>
+                        </div>
+                    </details>
+                `;
+            }
+
+            // Texture Overlay card — available for text (incl. math + its background box) and shapes
+            let textureHTML = '';
+            if (isText || isShape) {
+                const texEnable = fx.textureEnable || false;
+                const texOpacity = fx.textureOpacity !== undefined ? fx.textureOpacity : 50;
+                const texBlend = fx.textureBlendMode || 'multiply';
+                const texFitting = fx.textureFitting || 'tile';
+                const texScale = fx.textureScale !== undefined ? fx.textureScale : 100;
+                const texSrc = fx.textureSrc || '';
+                textureHTML = `
+                    <details id="cardTexture" class="group bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 shadow-sm rounded-lg shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'} overflow-hidden flex flex-col" open>
+                        <summary class="flex items-center justify-between p-3 ${isHorizontal ? '' : 'cursor-pointer'} list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700 " onclick="${isHorizontal ? 'event.preventDefault();' : ''}">
+                            <div class="text-sm font-bold text-surface-800 dark:text-surface-200 flex items-center gap-2"><i data-lucide="grid" class="w-4 h-4 text-surface-500 dark:text-surface-400"></i> Texture</div>
+                            <div class="flex items-center gap-2">
+                                <label class="relative inline-flex items-center cursor-pointer" onclick="event.stopPropagation()">
+                                    <input type="checkbox" class="sr-only peer" ${texEnable ? 'checked' : ''} onchange="setClipEffect('${clip.id}', 'textureEnable', this.checked); updateSidebarPanel();">
+                                    <div class="w-7 h-4 bg-surface-300 dark:bg-surface-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:peer-checked:bg-brand-500 peer-checked:bg-brand-500"></div>
+                                </label>
+                                ${isHorizontal ? '' : '<i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>'}
+                            </div>
+                        </summary>
+                        <div class="p-3 flex flex-col gap-2.5 bg-surface-50 dark:bg-surface-900/50 flex-1 ${!texEnable ? 'opacity-50 pointer-events-none' : ''}">
+                            <div class="flex items-center gap-2">
+                                <button onclick="document.getElementById('textureUpload_${clip.id}').click()" class="flex-1 text-[10px] font-bold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-500/10 hover:bg-brand-100 dark:hover:bg-brand-500/20 px-2 py-1.5 rounded border border-brand-200 dark:border-brand-500/20 flex items-center justify-center gap-1.5"><i data-lucide="upload" class="w-3 h-3"></i> Upload Texture</button>
+                                <input type="file" id="textureUpload_${clip.id}" accept="image/*" class="hidden" onchange="handleTextureUpload('${clip.id}', this)">
+                                <div class="relative w-10 h-10 border border-surface-200 dark:border-surface-700 rounded overflow-hidden ${texSrc ? '' : 'hidden'} shrink-0">
+                                    <img src="${texSrc}" class="w-full h-full object-cover">
+                                    <button onclick="const _c = State.clips.find(c => c.id === '${clip.id}'); if (_c) { _c.effects.textureSrc = null; _c.effects.textureEnable = false; _c._textureImg = null; _c._textureSrcLoaded = null; } updateSidebarPanel(); drawCanvas();" class="absolute top-0 right-0 bg-red-500 text-white text-[8px] leading-none w-4 h-4 flex items-center justify-center hover:bg-red-600" title="Remove texture">&times;</button>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between items-center mb-1.5">
+                                    <label class="text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest">Opacity</label>
+                                    <span class="text-xs font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-1.5 py-0.5 rounded shadow-sm">${texOpacity}%</span>
+                                </div>
+                                <input type="range" min="0" max="100" value="${texOpacity}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'textureOpacity', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + '%'; drawCanvas();">
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="block text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest mb-1.5">Blend Mode</label>
+                                    <select class="w-full text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 font-bold text-surface-800 dark:text-surface-200" onchange="setClipEffect('${clip.id}', 'textureBlendMode', this.value); drawCanvas();">
+                                        <option value="multiply" ${texBlend === 'multiply' ? 'selected' : ''}>Multiply</option>
+                                        <option value="overlay" ${texBlend === 'overlay' ? 'selected' : ''}>Overlay</option>
+                                        <option value="soft-light" ${texBlend === 'soft-light' ? 'selected' : ''}>Soft Light</option>
+                                        <option value="hard-light" ${texBlend === 'hard-light' ? 'selected' : ''}>Hard Light</option>
+                                        <option value="screen" ${texBlend === 'screen' ? 'selected' : ''}>Screen</option>
+                                        <option value="color-dodge" ${texBlend === 'color-dodge' ? 'selected' : ''}>Color Dodge</option>
+                                        <option value="color-burn" ${texBlend === 'color-burn' ? 'selected' : ''}>Color Burn</option>
+                                        <option value="difference" ${texBlend === 'difference' ? 'selected' : ''}>Difference</option>
+                                        <option value="exclusion" ${texBlend === 'exclusion' ? 'selected' : ''}>Exclusion</option>
+                                        <option value="source-over" ${(texBlend === 'normal' || texBlend === 'source-over') ? 'selected' : ''}>Normal</option>
+                                        <option value="color" ${texBlend === 'color' ? 'selected' : ''}>Color</option>
+                                        <option value="luminosity" ${texBlend === 'luminosity' ? 'selected' : ''}>Luminosity</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest mb-1.5">Fitting</label>
+                                    <select class="w-full text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 font-bold text-surface-800 dark:text-surface-200" onchange="setClipEffect('${clip.id}', 'textureFitting', this.value); updateSidebarPanel();">
+                                        <option value="tile" ${texFitting === 'tile' ? 'selected' : ''}>Tile</option>
+                                        <option value="stretch" ${texFitting === 'stretch' ? 'selected' : ''}>Stretch</option>
+                                    </select>
+                                </div>
+                            </div>
+                            ${texFitting === 'tile' ? `
+                            <div>
+                                <div class="flex justify-between items-center mb-1.5">
+                                    <label class="text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest">Scale</label>
+                                    <span class="text-xs font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-1.5 py-0.5 rounded shadow-sm">${texScale}%</span>
+                                </div>
+                                <input type="range" min="10" max="300" value="${texScale}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'textureScale', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + '%'; drawCanvas();">
+                            </div>` : ''}
                         </div>
                     </details>
                 `;
@@ -7799,6 +8170,7 @@
                 if (extrudeHTML) navItems.push({ id: 'cardExtrude', name: 'Extrude 3D', icon: 'box' });
                 if (blendingHTML) navItems.push({ id: 'cardOpacity', name: 'Blending', icon: 'eye' });
                 if (shadowHTML) navItems.push({ id: 'cardShadow', name: 'Shadow', icon: 'layers' });
+                if (textureHTML) navItems.push({ id: 'cardTexture', name: 'Texture', icon: 'grid' });
                 if (isText) {
                     if (systemFontsHTML) navItems.push({ id: 'cardSystemFonts', name: 'PC Fonts', icon: 'laptop' });
                     if (googleFontsHTML) navItems.push({ id: 'cardGoogleFonts', name: 'Google Fonts', icon: 'globe' });
@@ -7851,6 +8223,7 @@
                             ${extrudeHTML}
                             ${blendingHTML}
                             ${shadowHTML}
+                            ${textureHTML}
                             ${isText ? systemFontsHTML : ''}
                             ${isText ? googleFontsHTML : ''}
                         </div>
@@ -7909,7 +8282,7 @@
                     }, 0);
                 } else {
                     sidebarContent.className = "flex flex-col gap-3 p-4 w-full flex-1 min-h-0 overflow-y-auto";
-                    sidebarContent.innerHTML = sceneHTML + sourceHTML + transformHTML + (isText ? (textHTML + typographyHTML + spacingHTML + letterStylesHTML + textBgHTML) : '') + (isShape ? shapeHTML : '') + cropHTML + maskHTML + strokeHTML + extrudeHTML + blendingHTML + shadowHTML + (isText ? systemFontsHTML : '') + (isText ? googleFontsHTML : '');
+                    sidebarContent.innerHTML = sceneHTML + sourceHTML + transformHTML + (isText ? (textHTML + typographyHTML + spacingHTML + letterStylesHTML + textBgHTML) : '') + (isShape ? shapeHTML : '') + cropHTML + maskHTML + strokeHTML + extrudeHTML + blendingHTML + shadowHTML + textureHTML + (isText ? systemFontsHTML : '') + (isText ? googleFontsHTML : '');
                 }
             }
             
