@@ -23,6 +23,7 @@ analysis of editor and comparison with remotion
 - add background and cutmize border radius and background color - stroke - drop shadow and 3d extrude for that background for text element 
 - add texture for shape - text - background - like thumb maker 
 - for markdown style - add more script presets - one with math element - also add styles for it in styles sub tab 
+- captions animtions like kalakar.io - each text pop up - 
 
 
 # Export Test
