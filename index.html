@@ -2994,6 +2994,10 @@
         // Pre-render (warm) a math clip's image record so the very first canvas paint
         // already shows the formula — prevents the empty-frame flicker when adding a clip.
         function warmMathImage(clip) {
+            const fx = clip.effects || {};
+            // Stroke-off clips use the white raster for cheap color tinting — kick that
+            // load off in parallel so the tinted sprite path isn't stuck on the fallback.
+            if (!(fx.strokeEnable || fx.strokeOnly)) getOrRenderMathImage(clip, '#ffffff');
             const rec = getOrRenderMathImage(clip);
             if (!rec || rec.loaded) return Promise.resolve();
             return new Promise(res => {
@@ -3146,7 +3150,15 @@
         // Now each frame is a single drawImage. The sprite is supersampled (ss) so it
         // stays crisp at any zoom or export resolution.
 
-        function getMathVectorSprite(clip, targetW, targetH) {
+        // ── Vector Math sprite: white geometry masks + cheap color tint ──
+        // The expensive bake (path fills, extrude loop, shadow blur) depends ONLY on
+        // GEOMETRY — the formula text/size and the extrude/shadow/stroke SETTINGS — never
+        // on colors. So we bake WHITE masks once per geometry, then re-tint them to the
+        // current colors with fast 'source-in' fills on every color change. Dragging the
+        // fill/shadow/stroke color sliders no longer re-runs the extrude loop or the
+        // shadow blur — just like text & shapes, which only swap fillStyle per frame.
+
+        function getMathVectorMasks(clip, targetW, targetH) {
             const geo = getMathVectorGeometry(clip);
             if (!geo || !geo.paths.length || targetW <= 0 || targetH <= 0) return null;
             const vb = geo.vb;
@@ -3173,82 +3185,130 @@
             const padY = Math.ceil(Math.max(Math.abs(dy) * depth, Math.abs(shadowY) + shadowBlur) + strokeW / 2 + 2);
             // Supersample so the sprite stays crisp when the clip is scaled up
             const ss = Math.max(2, Math.ceil(window.devicePixelRatio || 1));
-            const cacheKey = [
+            // GEOMETRY key — deliberately excludes all colors
+            const maskKey = [
                 clip.id, clip.text, fx.fontSize || 100,
-                Math.round(targetW), Math.round(targetH),
-                fx.fillColor || '#ffffff',
-                strokeOn ? 1 : 0, strokeOnly ? 1 : 0, fx.strokeColor || '#ffffff', strokeW,
-                fx.shadowEnable ? 1 : 0, fx.shadowColor || '#000000', shadowBlur, shadowX, shadowY,
-                fx.extrudeEnable ? 1 : 0, depth, ed, fx.extrudeColor || '#000000',
+                Math.round(targetW * 10), Math.round(targetH * 10),
+                strokeOn ? 1 : 0, strokeOnly ? 1 : 0, strokeW,
+                depth, ed, shadowBlur, shadowX, shadowY,
                 padX, padY, ss
             ].join('|');
+            const cache = window.mathVectorMaskCache || (window.mathVectorMaskCache = {});
+            if (cache[maskKey]) return cache[maskKey];
+            // Prune stale masks for this clip so the cache stays bounded
+            for (const k in cache) {
+                if (k !== maskKey && k.indexOf(clip.id + '|') === 0) delete cache[k];
+            }
+
+            const s = Math.min(targetW / vb[2], targetH / vb[3]);
+            const cw = Math.ceil((targetW + padX * 2) * ss);
+            const ch = Math.ceil((targetH + padY * 2) * ss);
+            const mkCanvas = () => {
+                const c = document.createElement('canvas');
+                c.width = cw; c.height = ch;
+                const c2 = c.getContext('2d');
+                c2.translate(cw / 2, ch / 2);
+                c2.scale(s * ss, s * ss);
+                c2.translate(-(vb[0] + vb[2] / 2), -(vb[1] + vb[3] / 2));
+                return c2;
+            };
+            const fillWhite = (c2) => {
+                for (const p of geo.paths) {
+                    c2.save();
+                    c2.transform(p.m.a, p.m.b, p.m.c, p.m.d, p.m.e, p.m.f);
+                    c2.fillStyle = '#ffffff';
+                    c2.fill(p.path);
+                    c2.restore();
+                }
+            };
+            const strokeWhite = (c2) => {
+                for (const p of geo.paths) {
+                    c2.save();
+                    c2.transform(p.m.a, p.m.b, p.m.c, p.m.d, p.m.e, p.m.f);
+                    c2.strokeStyle = '#ffffff';
+                    c2.lineWidth = strokeW / s;
+                    c2.lineJoin = 'round';
+                    c2.lineCap = 'round';
+                    c2.stroke(p.path);
+                    c2.restore();
+                }
+            };
+
+            const masks = { w: cw, h: ch, ss, maskKey, strokeOnly, strokeOn };
+
+            // Shadow mask — white silhouette + white blurred halo (tinted to shadowColor)
+            if (fx.shadowEnable) {
+                const c2 = mkCanvas();
+                c2.shadowColor = '#ffffff';
+                c2.shadowBlur = shadowBlur / s;
+                c2.shadowOffsetX = shadowX / s;
+                c2.shadowOffsetY = shadowY / s;
+                if (!strokeOnly) fillWhite(c2);
+                if (strokeOn) strokeWhite(c2);
+                masks.shadow = c2.canvas;
+            }
+            // Extrude mask — white extrude copies (tinted to extrudeColor)
+            if (depth > 0) {
+                const c2 = mkCanvas();
+                for (let i = depth; i > 0; i -= 1) {
+                    c2.save();
+                    c2.translate((dx * i) / s, (dy * i) / s);
+                    fillWhite(c2);
+                    c2.restore();
+                }
+                masks.extrude = c2.canvas;
+            }
+            // Fill mask — white silhouette (tinted to fillColor)
+            if (!strokeOnly) {
+                const c2 = mkCanvas();
+                fillWhite(c2);
+                masks.fill = c2.canvas;
+            }
+            // Stroke mask — white outline (tinted to strokeColor)
+            if (strokeOn) {
+                const c2 = mkCanvas();
+                strokeWhite(c2);
+                masks.stroke = c2.canvas;
+            }
+            cache[maskKey] = masks;
+            return masks;
+        }
+
+        function tintMaskToColor(src, color, w, h) {
+            const c = document.createElement('canvas');
+            c.width = w; c.height = h;
+            const c2 = c.getContext('2d');
+            c2.drawImage(src, 0, 0);
+            c2.globalCompositeOperation = 'source-in';
+            c2.fillStyle = color;
+            c2.fillRect(0, 0, w, h);
+            return c;
+        }
+
+        function getMathVectorSprite(clip, targetW, targetH) {
+            const masks = getMathVectorMasks(clip, targetW, targetH);
+            if (!masks) return null;
+            const fx = clip.effects || {};
+            const fillColor = fx.fillColor || '#ffffff';
+            const strokeColor = fx.strokeColor || '#ffffff';
+            const shadowColor = fx.shadowColor || '#000000';
+            const extrudeColor = fx.extrudeColor || '#000000';
+            const cacheKey = masks.maskKey + '|' + fillColor + '|' + strokeColor + '|' + shadowColor + '|' + extrudeColor;
             const cache = window.mathVectorSpriteCache || (window.mathVectorSpriteCache = {});
             if (cache[cacheKey]) return cache[cacheKey];
             // Prune stale sprites for this clip so the cache stays bounded
             for (const k in cache) {
                 if (k !== cacheKey && k.indexOf(clip.id + '|') === 0) delete cache[k];
             }
-
-            const s = Math.min(targetW / vb[2], targetH / vb[3]);
             const canvas = document.createElement('canvas');
-            canvas.width = Math.ceil((targetW + padX * 2) * ss);
-            canvas.height = Math.ceil((targetH + padY * 2) * ss);
+            canvas.width = masks.w; canvas.height = masks.h;
             const cctx = canvas.getContext('2d');
-            cctx.save();
-            // Same coordinate mapping as the old direct render, scaled up by ss.
-            // Unit conversions (/ s) stay identical — the bigger canvas absorbs the
-            // supersample, so shadow/extrude/stroke land at the exact same px sizes.
-            cctx.translate(canvas.width / 2, canvas.height / 2);
-            cctx.scale(s * ss, s * ss);
-            cctx.translate(-(vb[0] + vb[2] / 2), -(vb[1] + vb[3] / 2));
-
-            // 3D Extrude — solid offset copies behind the main shape
-            if (depth > 0) {
-                const exColor = fx.extrudeColor || '#000000';
-                for (let i = depth; i > 0; i -= 1) {
-                    cctx.save();
-                    cctx.translate((dx * i) / s, (dy * i) / s);
-                    for (const p of geo.paths) {
-                        cctx.save();
-                        cctx.transform(p.m.a, p.m.b, p.m.c, p.m.d, p.m.e, p.m.f);
-                        cctx.fillStyle = exColor;
-                        cctx.fill(p.path);
-                        cctx.restore();
-                    }
-                    cctx.restore();
-                }
-            }
-
-            // Main pass — fill (+ optional stroke) with drop shadow
-            const fillColor = fx.fillColor || '#ffffff';
-            const strokeColor = fx.strokeColor || '#ffffff';
-            const shadowColor = fx.shadowColor || '#000000';
-            for (const p of geo.paths) {
-                cctx.save();
-                cctx.transform(p.m.a, p.m.b, p.m.c, p.m.d, p.m.e, p.m.f);
-                if (fx.shadowEnable) {
-                    cctx.shadowColor = shadowColor;
-                    cctx.shadowBlur = shadowBlur / s;
-                    cctx.shadowOffsetX = shadowX / s;
-                    cctx.shadowOffsetY = shadowY / s;
-                }
-                if (!strokeOnly) { cctx.fillStyle = fillColor; cctx.fill(p.path); }
-                if (strokeOn) {
-                    cctx.strokeStyle = strokeColor;
-                    cctx.lineWidth = strokeW / s;
-                    cctx.lineJoin = 'round';
-                    cctx.lineCap = 'round';
-                    cctx.stroke(p.path);
-                }
-                cctx.restore();
-            }
-            cctx.restore();
-            cctx.shadowColor = 'transparent';
-            cctx.shadowBlur = 0;
-            cctx.shadowOffsetX = 0;
-            cctx.shadowOffsetY = 0;
-
-            const sprite = { canvas, w: canvas.width, h: canvas.height, ss };
+            // Composite order matches the old bake: extrude → shadow → fill → stroke
+            if (masks.extrude) cctx.drawImage(tintMaskToColor(masks.extrude, extrudeColor, masks.w, masks.h), 0, 0);
+            if (masks.shadow) cctx.drawImage(tintMaskToColor(masks.shadow, shadowColor, masks.w, masks.h), 0, 0);
+            if (masks.fill) cctx.drawImage(tintMaskToColor(masks.fill, fillColor, masks.w, masks.h), 0, 0);
+            if (masks.stroke) cctx.drawImage(tintMaskToColor(masks.stroke, strokeColor, masks.w, masks.h), 0, 0);
+            const sprite = { canvas, w: masks.w, h: masks.h, ss: masks.ss };
             cache[cacheKey] = sprite;
             return sprite;
         }
@@ -3275,7 +3335,132 @@
         // depths. This matches the vector-math sprite so BOTH modes are equally smooth.
         // The sprite is supersampled (ss) so it stays crisp at zoom / export.
 
+        // ── Image Math sprite: white geometry masks + cheap color tint ──
+        // Same split as vector math: the formula is rasterized ONCE in WHITE with a
+        // color-independent cache key, then re-tinted to the current colors with fast
+        // 'source-in' fills. Previously the fill color was baked into the MathJax SVG,
+        // so EVERY fill-color slider tick re-ran tex2svg + blob + async image decode.
+        // Now stroke-off color changes never re-rasterize; only the white masks tint.
+        // Stroke-on keeps the colored path below (stroke is baked into the raster).
+
         function getMathImageSprite(clip, targetW, targetH) {
+            const fx = clip.effects || {};
+            const strokeOn = !!fx.strokeEnable || !!fx.strokeOnly;
+            if (strokeOn) return getMathImageSpriteColored(clip, targetW, targetH);
+            return getMathImageSpriteTinted(clip, targetW, targetH);
+        }
+
+        function getMathImageSpriteTinted(clip, targetW, targetH) {
+            const fx = clip.effects || {};
+            if (targetW <= 0 || targetH <= 0) return null;
+            // White formula raster — color-independent key, so fill/shadow color changes
+            // never re-rasterize MathJax. (colorOverride '#ffffff' also disables stroke,
+            // which is exactly the stroke-off case we serve here.)
+            const whiteRec = getOrRenderMathImage(clip, '#ffffff');
+            // Fallback chain: fresh white raster when loaded, else _mathLastGood (always
+            // populated after warm) or _mathLastExtrude. Only alpha matters for source-in
+            // tinting, so a colored raster is a valid mask — this prevents first-paint
+            // flicker when the white raster is still loading.
+            const whiteImg = (whiteRec && whiteRec.loaded) ? whiteRec : (clip._mathLastGood || clip._mathLastExtrude || null);
+            if (!whiteImg || !whiteImg.image) return null;
+            const depth = fx.extrudeEnable ? (fx.extrudeDepth || 5) : 0;
+            let dx = 1, dy = 1;
+            const ed = fx.extrudeDir || 'br';
+            if (ed === 'bl') { dx = -1; dy = 1; }
+            else if (ed === 'b') { dx = 0; dy = 1; }
+            else if (ed === 'tr') { dx = 1; dy = -1; }
+            else if (ed === 'tl') { dx = -1; dy = -1; }
+            else if (ed === 't') { dx = 0; dy = -1; }
+            else if (ed === 'r') { dx = 1; dy = 0; }
+            else if (ed === 'l') { dx = -1; dy = 0; }
+            const strokeW = fx.strokeWidth || 4;
+            const shadowBlur = fx.shadowEnable ? (fx.shadowBlur || 20) : 0;
+            const shadowX = fx.shadowEnable ? (fx.shadowX || 0) : 0;
+            const shadowY = fx.shadowEnable ? (fx.shadowY || 10) : 0;
+            // Room around the formula so extrude / shadow / stroke are never clipped
+            const padX = Math.ceil(Math.max(Math.abs(dx) * depth, Math.abs(shadowX) + shadowBlur) + strokeW / 2 + 2);
+            const padY = Math.ceil(Math.max(Math.abs(dy) * depth, Math.abs(shadowY) + shadowBlur) + strokeW / 2 + 2);
+            // The formula image is a FIXED-resolution raster, so supersampling can't add
+            // sharpness — render at dpr so 1:1 stays razor sharp.
+            const ss = Math.max(1, Math.ceil(window.devicePixelRatio || 1));
+            // GEOMETRY key — deliberately excludes all colors
+            const maskKey = [
+                clip.id, clip.text, fx.fontSize || 100,
+                Math.round(targetW * 10), Math.round(targetH * 10),
+                depth, ed, shadowBlur, shadowX, shadowY, padX, padY, ss
+            ].join('|');
+            const maskCache = window.mathImageMaskCache || (window.mathImageMaskCache = {});
+            const cacheable = !!(whiteRec && whiteRec.loaded);
+            let masks = maskCache[maskKey];
+            if (!masks) {
+                const cw = Math.ceil((targetW + padX * 2) * ss);
+                const ch = Math.ceil((targetH + padY * 2) * ss);
+                const cx = cw / 2, cy = ch / 2;
+                const w = targetW * ss, h = targetH * ss;
+                masks = { w: cw, h: ch, ss, maskKey };
+                // Extrude mask — white copies (tinted to extrudeColor)
+                if (depth > 0) {
+                    const c = document.createElement('canvas');
+                    c.width = cw; c.height = ch;
+                    const c2 = c.getContext('2d');
+                    for (let i = depth; i > 0; i -= 1) {
+                        c2.drawImage(whiteImg.image, cx - w / 2 + dx * i * ss, cy - h / 2 + dy * i * ss, w, h);
+                    }
+                    masks.extrude = c;
+                }
+                // Shadow mask — white silhouette + white blurred halo (tinted to shadowColor)
+                if (fx.shadowEnable) {
+                    const c = document.createElement('canvas');
+                    c.width = cw; c.height = ch;
+                    const c2 = c.getContext('2d');
+                    c2.shadowColor = '#ffffff';
+                    c2.shadowBlur = shadowBlur * ss;
+                    c2.shadowOffsetX = shadowX * ss;
+                    c2.shadowOffsetY = shadowY * ss;
+                    c2.drawImage(whiteImg.image, cx - w / 2, cy - h / 2, w, h);
+                    masks.shadow = c;
+                }
+                // Fill mask — white formula (tinted to fillColor)
+                {
+                    const c = document.createElement('canvas');
+                    c.width = cw; c.height = ch;
+                    const c2 = c.getContext('2d');
+                    c2.drawImage(whiteImg.image, cx - w / 2, cy - h / 2, w, h);
+                    masks.fill = c;
+                }
+                if (cacheable) {
+                    for (const k in maskCache) {
+                        if (k !== maskKey && k.indexOf(clip.id + '|') === 0) delete maskCache[k];
+                    }
+                    maskCache[maskKey] = masks;
+                }
+            }
+            const fillColor = fx.fillColor || '#ffffff';
+            const shadowColor = fx.shadowColor || '#000000';
+            const extrudeColor = fx.extrudeColor || '#000000';
+            const cacheKey = maskKey + '|' + fillColor + '|' + shadowColor + '|' + extrudeColor;
+            const cache = window.mathImageSpriteCache || (window.mathImageSpriteCache = {});
+            if (cache[cacheKey]) return cache[cacheKey];
+            const canvas = document.createElement('canvas');
+            canvas.width = masks.w; canvas.height = masks.h;
+            const cctx = canvas.getContext('2d');
+            if (masks.extrude) cctx.drawImage(tintMaskToColor(masks.extrude, extrudeColor, masks.w, masks.h), 0, 0);
+            if (masks.shadow) cctx.drawImage(tintMaskToColor(masks.shadow, shadowColor, masks.w, masks.h), 0, 0);
+            if (masks.fill) cctx.drawImage(tintMaskToColor(masks.fill, fillColor, masks.w, masks.h), 0, 0);
+            const sprite = { canvas, w: masks.w, h: masks.h, ss: masks.ss };
+            if (cacheable) {
+                for (const k in cache) {
+                    if (k !== cacheKey && k.indexOf(clip.id + '|') === 0) delete cache[k];
+                }
+                cache[cacheKey] = sprite;
+            }
+            return sprite;
+        }
+
+        // Stroke-on image math: stroke is baked into the raster, so it keeps the direct
+        // colored sprite (fill color changes still re-rasterize here, but stroke-on math
+        // is the rare case — color sliders there are inherently tied to the raster).
+        function getMathImageSpriteColored(clip, targetW, targetH) {
             const fx = clip.effects || {};
             if (targetW <= 0 || targetH <= 0) return null;
             // Always request the fresh record so its async onload can promote _mathLastGood.
@@ -3296,16 +3481,9 @@
             const shadowBlur = fx.shadowEnable ? (fx.shadowBlur || 20) : 0;
             const shadowX = fx.shadowEnable ? (fx.shadowX || 0) : 0;
             const shadowY = fx.shadowEnable ? (fx.shadowY || 10) : 0;
-            // Room around the formula so extrude / shadow / stroke are never clipped
             const padX = Math.ceil(Math.max(Math.abs(dx) * depth, Math.abs(shadowX) + shadowBlur) + strokeW / 2 + 2);
             const padY = Math.ceil(Math.max(Math.abs(dy) * depth, Math.abs(shadowY) + shadowBlur) + strokeW / 2 + 2);
-            // The formula image is a FIXED-resolution raster, so supersampling can't add
-            // sharpness (unlike vector paths) — baking at 2x would just upscale then
-            // downscale, softening thin strokes. Render at dpr so 1:1 stays razor sharp;
-            // on dpr=1 that's exactly the old direct-draw quality, on retina it matches.
             const ss = Math.max(1, Math.ceil(window.devicePixelRatio || 1));
-            // Round to 0.1px so two near-equal fractional sizes (valW*scaleFactor) never
-            // share a key and serve a slightly-stale sprite.
             const cacheKey = [
                 clip.id, clip.text, fx.fontSize || 100,
                 Math.round(targetW * 10), Math.round(targetH * 10),
@@ -3317,9 +3495,6 @@
             ].join('|');
             const cache = window.mathImageSpriteCache || (window.mathImageSpriteCache = {});
             if (cache[cacheKey]) return cache[cacheKey];
-            // Only cache when the FRESH records are loaded. While a re-render is in flight
-            // (style edit), fall back to the last-good image but don't cache — otherwise a
-            // stale fallback sprite would linger under the new key forever.
             const extrudeOn = depth > 0;
             const extrudeRecord = extrudeOn ? getOrRenderMathImage(clip, fx.extrudeColor || '#000000') : null;
             const extrudeImg = extrudeOn ? ((extrudeRecord && extrudeRecord.loaded) ? extrudeRecord : (clip._mathLastExtrude || null)) : null;
@@ -3330,7 +3505,6 @@
             const cctx = canvas.getContext('2d');
             const cx = canvas.width / 2;
             const cy = canvas.height / 2;
-            // 3D Extrude — solid offset copies behind the main image
             if (extrudeOn && extrudeImg && extrudeImg.image) {
                 const extW = ((extrudeRecord && extrudeRecord.width > 0) ? extrudeRecord.width : targetW) * ss;
                 const extH = ((extrudeRecord && extrudeRecord.height > 0) ? extrudeRecord.height : targetH) * ss;
@@ -3338,7 +3512,6 @@
                     cctx.drawImage(extrudeImg.image, cx - extW / 2 + dx * i * ss, cy - extH / 2 + dy * i * ss, extW, extH);
                 }
             }
-            // Main pass — formula image with optional drop shadow baked in
             const w = targetW * ss;
             const h = targetH * ss;
             if (fx.shadowEnable) {
@@ -3354,7 +3527,6 @@
             cctx.shadowOffsetY = 0;
             const sprite = { canvas, w: canvas.width, h: canvas.height, ss };
             if (cacheable) {
-                // Prune stale sprites for this clip so the cache stays bounded
                 for (const k in cache) {
                     if (k !== cacheKey && k.indexOf(clip.id + '|') === 0) delete cache[k];
                 }
@@ -7800,8 +7972,10 @@
 
         window.mathImageCache = {};
         window.mathImageSpriteCache = {};
+        window.mathImageMaskCache = {};
         window.mathVectorCache = {};
         window.mathVectorSpriteCache = {};
+        window.mathVectorMaskCache = {};
 
         window.insertTexTemplate = function(clipId, templateStr) {
             const clip = State.clips.find(c => c.id === clipId);
