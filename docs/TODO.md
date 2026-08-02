@@ -18,6 +18,7 @@ analysis of editor and comparison with remotion
 - new katex elmeetn 
 
 - for vector math when user adds 3d extrude shadow with big depth - the clips on timeline becomes lag - to drag - and not smooth - can we fix thi issue 
+- the user noticed when it increase vector math element size with transfrom scale - it increase and decrease smoothly - but when it increase with forumla size slider - it is not smooth - fix this 
 
 - letter by letter custmization like thumb-maker 
 - add background and cutmize border radius and background color - stroke - drop shadow and 3d extrude for that background for text element 
