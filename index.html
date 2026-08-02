@@ -882,8 +882,22 @@
                 shadowX: 0,
                 shadowY: 2,
                 bgEnable: false,
-                bgColor: 'rgba(0,0,0,0.5)',
+                bgColor: '#000000',
+                bgOpacity: 0.5,
                 bgPadding: 8,
+                bgRadius: 10,
+                bgStrokeEnable: false,
+                bgStrokeColor: '#ffffff',
+                bgStrokeWidth: 4,
+                bgShadowEnable: false,
+                bgShadowColor: '#000000',
+                bgShadowBlur: 20,
+                bgShadowX: 0,
+                bgShadowY: 10,
+                bgExtrudeEnable: false,
+                bgExtrudeColor: '#000000',
+                bgExtrudeDepth: 5,
+                bgExtrudeDir: 'br',
                 animIn: 'none',
                 animInDur: 0.3,
                 animOut: 'none',
@@ -3827,6 +3841,9 @@
                                 drawMathImage(ctx, clip, targetW, targetH);
                                 return;
                             }
+                            // Text background box renders behind the text (covers fast path + animations)
+                            drawTextBackground(ctx, clip, lines, startY, lh, fontSize);
+
                             if (animTextIn === 'none' && animTextOut === 'none' && animTextLoop === 'none') {
                                 // Letter-by-letter styling (Thumb Maker style): when any letter/
                                 // word override exists, render per-character so color, font, scale
@@ -4117,6 +4134,9 @@
                             offCtx.textAlign = 'center';
                             offCtx.font = ctx.font;
                             offCtx.letterSpacing = ctx.letterSpacing;
+
+                            // Text background renders behind everything in the mosaic pass too
+                            drawTextBackground(offCtx, clip, lines, startY, lh, fontSize);
 
                             // Letter-by-letter overrides also apply in the mosaic pass so
                             // per-letter colors/scales/rotations survive the pixelation.
@@ -5096,7 +5116,7 @@
                     
                     if (typeof value === 'boolean') {
                         clip.effects[effectName] = value;
-                    } else if (['shadowColor', 'animIn', 'animOut', 'animLoop', 'extrudeColor', 'fillColor', 'fontFamily', 'extrudeDir', 'textTransform', 'fontStyle', 'textDecoration', 'blendMode', 'animEase', 'animTextSpecial', 'flashColor', 'animTextIn', 'animTextOut', 'animTextLoop', 'animTextEase', 'animTextStagger', 'shapeType', 'strokeColor', 'maskType', 'bgColor'].includes(effectName)) {
+                    } else if (['shadowColor', 'animIn', 'animOut', 'animLoop', 'extrudeColor', 'fillColor', 'fontFamily', 'extrudeDir', 'textTransform', 'fontStyle', 'textDecoration', 'blendMode', 'animEase', 'animTextSpecial', 'flashColor', 'animTextIn', 'animTextOut', 'animTextLoop', 'animTextEase', 'animTextStagger', 'shapeType', 'strokeColor', 'maskType', 'bgColor', 'bgStrokeColor', 'bgShadowColor', 'bgExtrudeColor', 'bgExtrudeDir'].includes(effectName)) {
                         clip.effects[effectName] = value;
                     } else {
                         clip.effects[effectName] = parseFloat(value);
@@ -5602,6 +5622,101 @@
         // ── Per-letter canvas renderer ────────────────────────────────────────────
         // Draws text character-by-character so per-letter overrides (color, font,
         // scale, rotation) apply on top of the clip's extrude/shadow/stroke effects.
+        // Draws a rounded rectangle path with clamped corner radii (safe for any box size).
+        function roundedRectPath(ctx, x, y, w, h, r) {
+            const radius = Math.max(0, Math.min(r, w / 2, h / 2));
+            ctx.beginPath();
+            ctx.moveTo(x + radius, y);
+            ctx.lineTo(x + w - radius, y);
+            ctx.arcTo(x + w, y, x + w, y + radius, radius);
+            ctx.lineTo(x + w, y + h - radius);
+            ctx.arcTo(x + w, y + h, x + w - radius, y + h, radius);
+            ctx.lineTo(x + radius, y + h);
+            ctx.arcTo(x, y + h, x, y + h - radius, radius);
+            ctx.lineTo(x, y + radius);
+            ctx.arcTo(x, y, x + radius, y, radius);
+            ctx.closePath();
+        }
+
+        // Text Background: a rounded box rendered BEHIND the text with its own fill color,
+        // opacity, padding, border radius, stroke, drop shadow and 3D extrude.
+        function drawTextBackground(ctx, clip, lines, startY, lh, fontSize) {
+            const fx = clip.effects || {};
+            if (!fx.bgEnable) return;
+            // Ensure no stale shadow settings from the previous clip bleed into the box
+            ctx.shadowColor = 'transparent';
+            ctx.shadowBlur = 0;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 0;
+            let maxW = 0;
+            for (let li = 0; li < lines.length; li++) {
+                const m = ctx.measureText(lines[li]);
+                if (m.width > maxW) maxW = m.width;
+            }
+            const pad = fx.bgPadding !== undefined ? fx.bgPadding : 8;
+            const radius = fx.bgRadius !== undefined ? fx.bgRadius : 10;
+            const op = fx.bgOpacity !== undefined ? fx.bgOpacity : 0.5;
+            const bw = maxW + pad * 2;
+            const bh = lines.length * lh + pad * 2;
+            const bx = -bw / 2;
+            const by = startY - lh / 2 - pad;
+
+            // 3D extrude - behind everything
+            if (fx.bgExtrudeEnable) {
+                ctx.fillStyle = fx.bgExtrudeColor || '#000000';
+                const depth = fx.bgExtrudeDepth || 5;
+                let dx = 1, dy = 1;
+                const ed = fx.bgExtrudeDir || 'br';
+                if (ed === 'bl') { dx = -1; dy = 1; }
+                else if (ed === 'b') { dx = 0; dy = 1; }
+                else if (ed === 'tr') { dx = 1; dy = -1; }
+                else if (ed === 'tl') { dx = -1; dy = -1; }
+                else if (ed === 't') { dx = 0; dy = -1; }
+                else if (ed === 'r') { dx = 1; dy = 0; }
+                else if (ed === 'l') { dx = -1; dy = 0; }
+                for (let i = depth; i > 0; i -= 0.5) {
+                    roundedRectPath(ctx, bx + dx * i, by + dy * i, bw, bh, radius);
+                    ctx.fill();
+                }
+            }
+
+            // Drop shadow - applies only to the box
+            if (fx.bgShadowEnable) {
+                ctx.shadowColor = fx.bgShadowColor || '#000000';
+                ctx.shadowBlur = fx.bgShadowBlur || 20;
+                ctx.shadowOffsetX = fx.bgShadowX || 0;
+                ctx.shadowOffsetY = fx.bgShadowY || 10;
+            } else {
+                ctx.shadowColor = 'transparent';
+                ctx.shadowBlur = 0;
+                ctx.shadowOffsetX = 0;
+                ctx.shadowOffsetY = 0;
+            }
+
+            // Fill with opacity
+            const prevAlpha = ctx.globalAlpha;
+            ctx.globalAlpha = prevAlpha * op;
+            ctx.fillStyle = fx.bgColor || '#000000';
+            roundedRectPath(ctx, bx, by, bw, bh, radius);
+            ctx.fill();
+            ctx.globalAlpha = prevAlpha;
+
+            // Reset shadow before stroke to avoid doubling
+            ctx.shadowColor = 'transparent';
+            ctx.shadowBlur = 0;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 0;
+
+            // Stroke / outline
+            if (fx.bgStrokeEnable) {
+                ctx.strokeStyle = fx.bgStrokeColor || '#ffffff';
+                ctx.lineWidth = fx.bgStrokeWidth || 4;
+                ctx.lineJoin = 'round';
+                roundedRectPath(ctx, bx, by, bw, bh, radius);
+                ctx.stroke();
+            }
+        }
+
         function drawTextWithLetterOverrides(ctx, clip, lines, startY, lh, fontSize) {
             const fx = clip.effects || {};
             const wordOverrides = fx.wordOverrides || {};
@@ -5996,6 +6111,7 @@
             let typographyHTML = '';
             let spacingHTML = '';
             let letterStylesHTML = '';
+            let textBgHTML = '';
             if (isText) {
                 const defaultFonts = [
                     { value: "Rubik", label: "Rubik (Fireship)", className: "font-rubik font-bold" },
@@ -6296,6 +6412,169 @@
                                 <button onclick="magicLetterRainbow()" class="py-1 text-[9px] font-bold rounded border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-300 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors" title="Rainbow every letter"><i data-lucide="palette" class="w-2.5 h-2.5 inline-block align-middle"></i> Rainbow</button>
                                 <button onclick="magicLetterRotate()" class="py-1 text-[9px] font-bold rounded border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-300 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors" title="Random rotation per letter"><i data-lucide="rotate-ccw" class="w-2.5 h-2.5 inline-block align-middle"></i> Rotate</button>
                                 <button onclick="magicLetterScale()" class="py-1 text-[9px] font-bold rounded border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-300 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors" title="Alternating scale per letter"><i data-lucide="stretch-horizontal" class="w-2.5 h-2.5 inline-block align-middle"></i> Scale</button>
+                            </div>
+                        </div>
+                    </details>
+                `;
+
+                const bgColor = fx.bgColor !== undefined && fx.bgColor !== null ? fx.bgColor : '#000000';
+                const bgOpacityPct = Math.round((fx.bgOpacity !== undefined ? fx.bgOpacity : 0.5) * 100);
+                const bgPadding = fx.bgPadding !== undefined ? fx.bgPadding : 8;
+                const bgRadius = fx.bgRadius !== undefined ? fx.bgRadius : 10;
+                const bgStrokeEnable = fx.bgStrokeEnable || false;
+                const bgStrokeColor = fx.bgStrokeColor || '#ffffff';
+                const bgStrokeWidth = fx.bgStrokeWidth || 4;
+                const bgShadowEnable = fx.bgShadowEnable || false;
+                const bgShadowColor = fx.bgShadowColor || '#000000';
+                const bgShadowBlur = fx.bgShadowBlur || 20;
+                const bgShadowX = fx.bgShadowX || 0;
+                const bgShadowY = fx.bgShadowY || 10;
+                const bgExtrudeEnable = fx.bgExtrudeEnable || false;
+                const bgExtrudeColor = fx.bgExtrudeColor || '#000000';
+                const bgExtrudeDepth = fx.bgExtrudeDepth || 5;
+                const bgExtrudeDir = fx.bgExtrudeDir || 'br';
+
+                textBgHTML = `
+                    <details id="cardTextBg" class="group bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 shadow-sm rounded-lg shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'} overflow-hidden flex flex-col" open>
+                        <summary class="flex items-center justify-between p-3 ${isHorizontal ? '' : 'cursor-pointer'} list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700 " onclick="${isHorizontal ? 'event.preventDefault();' : ''}">
+                            <div class="text-sm font-bold text-surface-800 dark:text-surface-200 flex items-center gap-2"><i data-lucide="square" class="w-4 h-4 text-surface-500 dark:text-surface-400"></i> Background</div>
+                            <div class="flex items-center gap-2">
+                                <label class="relative inline-flex items-center cursor-pointer" onclick="event.stopPropagation()">
+                                    <input type="checkbox" class="sr-only peer" ${fx.bgEnable ? 'checked' : ''} onchange="setClipEffect('${clip.id}', 'bgEnable', this.checked); updateSidebarPanel();">
+                                    <div class="w-7 h-4 bg-surface-300 dark:bg-surface-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:peer-checked:bg-brand-500 peer-checked:bg-brand-500"></div>
+                                </label>
+                                ${isHorizontal ? '' : '<i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>'}
+                            </div>
+                        </summary>
+                        <div class="p-3 flex flex-col gap-2.5 bg-surface-50 dark:bg-surface-900/50 flex-1 ${!fx.bgEnable ? 'opacity-50 pointer-events-none' : ''}">
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="block text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest mb-1.5">Fill Color</label>
+                                    <div class="relative flex items-center bg-surface-50 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 rounded p-1.5 cursor-pointer shadow-inner w-full">
+                                        <div class="w-6 h-6 rounded shadow-sm" style="background-color: ${bgColor}"></div>
+                                        <span class="ml-2 font-mono font-bold text-[10px] text-surface-700 dark:text-surface-200 uppercase">${bgColor}</span>
+                                        <input type="color" value="${bgColor}" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full" oninput="setClipEffect('${clip.id}', 'bgColor', this.value); this.previousElementSibling.textContent = this.value; this.previousElementSibling.previousElementSibling.style.backgroundColor = this.value; drawCanvas();">
+                                    </div>
+                                </div>
+                                <div>
+                                    <div class="flex justify-between items-center mb-1.5">
+                                        <label class="text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest">Opacity</label>
+                                        <span class="text-xs font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-1.5 py-0.5 rounded shadow-sm">${bgOpacityPct}%</span>
+                                    </div>
+                                    <input type="range" min="0" max="100" value="${bgOpacityPct}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'bgOpacity', this.value/100); this.previousElementSibling.querySelector('span').textContent = this.value + '%'; drawCanvas();">
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <div class="flex justify-between items-center mb-1.5">
+                                        <label class="text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest">Padding</label>
+                                        <span class="text-xs font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-1.5 py-0.5 rounded shadow-sm">${bgPadding}px</span>
+                                    </div>
+                                    <input type="range" min="0" max="60" value="${bgPadding}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'bgPadding', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + 'px'; drawCanvas();">
+                                </div>
+                                <div>
+                                    <div class="flex justify-between items-center mb-1.5">
+                                        <label class="text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest">Radius</label>
+                                        <span class="text-xs font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-1.5 py-0.5 rounded shadow-sm">${bgRadius}px</span>
+                                    </div>
+                                    <input type="range" min="0" max="60" value="${bgRadius}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'bgRadius', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + 'px'; drawCanvas();">
+                                </div>
+                            </div>
+
+                            <div class="border-t border-surface-200 dark:border-surface-700 pt-2.5">
+                                <div class="flex items-center justify-between mb-1.5">
+                                    <label class="text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest flex items-center gap-1"><i data-lucide="edit-3" class="w-3 h-3"></i> Stroke</label>
+                                    <label class="relative inline-flex items-center cursor-pointer">
+                                        <input type="checkbox" class="sr-only peer" ${bgStrokeEnable ? 'checked' : ''} onchange="setClipEffect('${clip.id}', 'bgStrokeEnable', this.checked); updateSidebarPanel();">
+                                        <div class="w-7 h-4 bg-surface-300 dark:bg-surface-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:peer-checked:bg-brand-500 peer-checked:bg-brand-500"></div>
+                                    </label>
+                                </div>
+                                <div class="grid grid-cols-2 gap-2 ${!bgStrokeEnable ? 'opacity-40 pointer-events-none' : ''}">
+                                    <div class="relative flex items-center bg-surface-50 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 rounded p-1.5 cursor-pointer shadow-inner">
+                                        <div class="w-5 h-5 rounded shadow-sm" style="background-color: ${bgStrokeColor}"></div>
+                                        <span class="ml-2 font-mono font-bold text-[10px] text-surface-700 dark:text-surface-200 uppercase">${bgStrokeColor}</span>
+                                        <input type="color" value="${bgStrokeColor}" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full" oninput="setClipEffect('${clip.id}', 'bgStrokeColor', this.value); this.previousElementSibling.textContent = this.value; this.previousElementSibling.previousElementSibling.style.backgroundColor = this.value; drawCanvas();">
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between items-center mb-1">
+                                            <label class="text-[9px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest">Width</label>
+                                            <span class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${bgStrokeWidth}px</span>
+                                        </div>
+                                        <input type="range" min="1" max="30" value="${bgStrokeWidth}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'bgStrokeWidth', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + 'px'; drawCanvas();">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="border-t border-surface-200 dark:border-surface-700 pt-2.5">
+                                <div class="flex items-center justify-between mb-1.5">
+                                    <label class="text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest flex items-center gap-1"><i data-lucide="cloud-rain" class="w-3 h-3"></i> Drop Shadow</label>
+                                    <label class="relative inline-flex items-center cursor-pointer">
+                                        <input type="checkbox" class="sr-only peer" ${bgShadowEnable ? 'checked' : ''} onchange="setClipEffect('${clip.id}', 'bgShadowEnable', this.checked); updateSidebarPanel();">
+                                        <div class="w-7 h-4 bg-surface-300 dark:bg-surface-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:peer-checked:bg-brand-500 peer-checked:bg-brand-500"></div>
+                                    </label>
+                                </div>
+                                <div class="grid grid-cols-2 gap-2 ${!bgShadowEnable ? 'opacity-40 pointer-events-none' : ''}">
+                                    <div class="relative flex items-center bg-surface-50 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 rounded p-1.5 cursor-pointer shadow-inner">
+                                        <div class="w-5 h-5 rounded shadow-sm" style="background-color: ${bgShadowColor}"></div>
+                                        <span class="ml-2 font-mono font-bold text-[10px] text-surface-700 dark:text-surface-200 uppercase">${bgShadowColor}</span>
+                                        <input type="color" value="${bgShadowColor}" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full" oninput="setClipEffect('${clip.id}', 'bgShadowColor', this.value); this.previousElementSibling.textContent = this.value; this.previousElementSibling.previousElementSibling.style.backgroundColor = this.value; drawCanvas();">
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between items-center mb-1">
+                                            <label class="text-[9px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest">Blur</label>
+                                            <span class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${bgShadowBlur}px</span>
+                                        </div>
+                                        <input type="range" min="0" max="60" value="${bgShadowBlur}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'bgShadowBlur', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + 'px'; drawCanvas();">
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between items-center mb-1">
+                                            <label class="text-[9px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest">X</label>
+                                            <span class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${bgShadowX}px</span>
+                                        </div>
+                                        <input type="range" min="-50" max="50" value="${bgShadowX}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'bgShadowX', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + 'px'; drawCanvas();">
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between items-center mb-1">
+                                            <label class="text-[9px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest">Y</label>
+                                            <span class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${bgShadowY}px</span>
+                                        </div>
+                                        <input type="range" min="-50" max="50" value="${bgShadowY}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'bgShadowY', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + 'px'; drawCanvas();">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="border-t border-surface-200 dark:border-surface-700 pt-2.5">
+                                <div class="flex items-center justify-between mb-1.5">
+                                    <label class="text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest flex items-center gap-1"><i data-lucide="box" class="w-3 h-3"></i> 3D Extrude</label>
+                                    <label class="relative inline-flex items-center cursor-pointer">
+                                        <input type="checkbox" class="sr-only peer" ${bgExtrudeEnable ? 'checked' : ''} onchange="setClipEffect('${clip.id}', 'bgExtrudeEnable', this.checked); updateSidebarPanel();">
+                                        <div class="w-7 h-4 bg-surface-300 dark:bg-surface-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:peer-checked:bg-brand-500 peer-checked:bg-brand-500"></div>
+                                    </label>
+                                </div>
+                                <div class="grid grid-cols-2 gap-2 ${!bgExtrudeEnable ? 'opacity-40 pointer-events-none' : ''}">
+                                    <div class="relative flex items-center bg-surface-50 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 rounded p-1.5 cursor-pointer shadow-inner">
+                                        <div class="w-5 h-5 rounded shadow-sm" style="background-color: ${bgExtrudeColor}"></div>
+                                        <span class="ml-2 font-mono font-bold text-[10px] text-surface-700 dark:text-surface-200 uppercase">${bgExtrudeColor}</span>
+                                        <input type="color" value="${bgExtrudeColor}" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full" oninput="setClipEffect('${clip.id}', 'bgExtrudeColor', this.value); this.previousElementSibling.textContent = this.value; this.previousElementSibling.previousElementSibling.style.backgroundColor = this.value; drawCanvas();">
+                                    </div>
+                                    <select class="w-full text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 font-bold text-surface-800 dark:text-surface-200" onchange="setClipEffect('${clip.id}', 'bgExtrudeDir', this.value); drawCanvas();">
+                                        <option value="br" ${bgExtrudeDir === 'br' ? 'selected' : ''}>BR</option>
+                                        <option value="bl" ${bgExtrudeDir === 'bl' ? 'selected' : ''}>BL</option>
+                                        <option value="tr" ${bgExtrudeDir === 'tr' ? 'selected' : ''}>TR</option>
+                                        <option value="tl" ${bgExtrudeDir === 'tl' ? 'selected' : ''}>TL</option>
+                                        <option value="b" ${bgExtrudeDir === 'b' ? 'selected' : ''}>Bottom</option>
+                                        <option value="t" ${bgExtrudeDir === 't' ? 'selected' : ''}>Top</option>
+                                        <option value="l" ${bgExtrudeDir === 'l' ? 'selected' : ''}>Left</option>
+                                        <option value="r" ${bgExtrudeDir === 'r' ? 'selected' : ''}>Right</option>
+                                    </select>
+                                    <div class="col-span-2">
+                                        <div class="flex justify-between items-center mb-1">
+                                            <label class="text-[9px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest">Depth</label>
+                                            <span class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${bgExtrudeDepth}px</span>
+                                        </div>
+                                        <input type="range" min="1" max="50" value="${bgExtrudeDepth}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'bgExtrudeDepth', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + 'px'; drawCanvas();">
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </details>
@@ -7508,6 +7787,7 @@
                     navItems.push({ id: 'cardTypography', name: 'Typography', icon: 'case-sensitive' });
                     navItems.push({ id: 'cardSpacing', name: 'Spacing', icon: 'sliders' });
                     if (letterStylesHTML) navItems.push({ id: 'cardLetterStyles', name: 'Letter Styles', icon: 'text-cursor-input' });
+                    if (textBgHTML) navItems.push({ id: 'cardTextBg', name: 'Background', icon: 'square' });
                 }
                 if (isShape) navItems.push({ id: 'cardContent', name: 'Shape', icon: 'shapes' });
                 if (isImageOrVideo) {
@@ -7563,6 +7843,7 @@
                             ${isText ? typographyHTML : ''}
                             ${isText ? spacingHTML : ''}
                             ${isText ? letterStylesHTML : ''}
+                            ${isText ? textBgHTML : ''}
                             ${isShape ? shapeHTML : ''}
                             ${cropHTML}
                             ${maskHTML}
@@ -7628,7 +7909,7 @@
                     }, 0);
                 } else {
                     sidebarContent.className = "flex flex-col gap-3 p-4 w-full flex-1 min-h-0 overflow-y-auto";
-                    sidebarContent.innerHTML = sceneHTML + sourceHTML + transformHTML + (isText ? (textHTML + typographyHTML + spacingHTML + letterStylesHTML) : '') + (isShape ? shapeHTML : '') + cropHTML + maskHTML + strokeHTML + extrudeHTML + blendingHTML + shadowHTML + (isText ? systemFontsHTML : '') + (isText ? googleFontsHTML : '');
+                    sidebarContent.innerHTML = sceneHTML + sourceHTML + transformHTML + (isText ? (textHTML + typographyHTML + spacingHTML + letterStylesHTML + textBgHTML) : '') + (isShape ? shapeHTML : '') + cropHTML + maskHTML + strokeHTML + extrudeHTML + blendingHTML + shadowHTML + (isText ? systemFontsHTML : '') + (isText ? googleFontsHTML : '');
                 }
             }
             
@@ -11232,7 +11513,11 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         extrudeEnable: false, extrudeDepth: 5, extrudeColor: '#000000',
                         animIn: 'none', animOut: 'none', animLoop: 'none', animInDur: 1.0, animOutDur: 1.0, animEase: 'easeOut',
                         animTextIn: 'none', animTextOut: 'none', animTextLoop: 'none', animTextEase: 'easeOut', animTextStagger: 'letter', animTextInDur: 1.0, animTextOutDur: 1.0, flashColor: '#ffe600',
-                        letterOverrides: {}, wordOverrides: {}
+                        letterOverrides: {}, wordOverrides: {},
+                        bgEnable: false, bgColor: '#000000', bgOpacity: 40, bgPadding: 18, bgRadius: 10,
+                        bgStrokeEnable: false, bgStrokeColor: '#ffffff', bgStrokeWidth: 4,
+                        bgShadowEnable: false, bgShadowColor: '#000000', bgShadowBlur: 20, bgShadowX: 0, bgShadowY: 10,
+                        bgExtrudeEnable: false, bgExtrudeColor: '#000000', bgExtrudeDepth: 5, bgExtrudeDir: 'br'
                     }
                 };
                 State.clips.push(newTextClip);
