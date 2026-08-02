@@ -23,11 +23,17 @@ analysis of editor and comparison with remotion
 
 ✅ letter by letter custmization like thumb-maker 
 ✅ add background and cutmize border radius and background color - stroke - drop shadow and 3d extrude for that background for text element 
+✅ add texture for shape - text - background - like thumb maker 
 
-- add texture for shape - text - background - like thumb maker 
 - for markdown style - add more script presets - one with math element - also add styles for it in styles sub tab 
 - captions animtions like kalakar.io - each text pop up - 
 - The text background works great for regular text clips. Can we add the same Background controls to the Markdown style tab (global heading style + text style) so markdown-generated clips can get an auto background box?
+- Can we let the texture respect the clip's borderRadius for images/videos too, and add a texture card for image and video clips so any element can get a material overlay?
+- Since textures are data URLs stored in clip effects, they bloat saved projects. Can we add a 'strip textures on export' option and warn when project size grows?
+- Can we let the texture respect the clip's borderRadius for images/videos too, and add a texture card for image and video clips so any element can get a material overlay?
+
+
+
 
 
 # Export Test
