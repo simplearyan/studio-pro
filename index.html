@@ -909,6 +909,7 @@
                 animOut: 'none',
                 animOutDur: 0.3,
                 animEase: 'easeOut',
+                animPreset: 'none',
                 position: 'bottom',
                 bottomOffset: 60,
                 lineHeight: 1.3,
@@ -10560,6 +10561,21 @@ const isVis = !clip.hidden;
                                     </select>
                                     <input type="number" value="${cfg.animInDur||0.3}" min="0.1" max="2" step="0.1" class="text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 focus:outline-none focus:border-brand-500 font-bold font-mono" onchange="State.subtitleConfig.animInDur=parseFloat(this.value); State.subtitleConfig.animOutDur=parseFloat(this.value); saveSubtitlesToStorage(); drawCanvas();">
                                 </div>
+                                <div class="mt-2">
+                                    <label class="text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest mb-1 block">Preset Animation</label>
+                                    <div class="grid grid-cols-4 gap-1">
+                                        ${[['none','None'],['fade','Fade Up'],['pop','Pop'],['letterPop','Letter Pop'],['letterFade','Letter Fade'],['typewriter','Typewriter'],['wordHighlight','Word Glow'],['bounce','Bounce'],['rotate','Rotate']].map(([pv, pl]) => `<button class="px-1 py-1.5 text-[9px] font-bold rounded transition-colors ${(cfg.animPreset||'none') === pv ? 'bg-brand-600 text-white shadow-sm' : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-700'}" onclick="State.subtitleConfig.animPreset='${pv}'; saveSubtitlesToStorage(); drawCanvas(); renderSubtitlesPanel();">${pl}</button>`).join('')}
+                                    </div>
+                                    <label class="text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest mt-2 mb-1 block">Easing</label>
+                                    <select class="w-full text-xs p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 focus:outline-none focus:border-brand-500 font-bold" onchange="State.subtitleConfig.animEase = this.value; saveSubtitlesToStorage(); drawCanvas();">
+                                        <option value="easeOut" ${cfg.animEase==='easeOut'?'selected':''}>Ease Out</option>
+                                        <option value="easeIn" ${cfg.animEase==='easeIn'?'selected':''}>Ease In</option>
+                                        <option value="easeInOut" ${cfg.animEase==='easeInOut'?'selected':''}>Ease In-Out</option>
+                                        <option value="elastic" ${cfg.animEase==='elastic'?'selected':''}>Elastic</option>
+                                        <option value="bounce" ${cfg.animEase==='bounce'?'selected':''}>Bounce</option>
+                                        <option value="linear" ${cfg.animEase==='linear'?'selected':''}>Linear</option>
+                                    </select>
+                                </div>
                             </div>
                             <div class="grid grid-cols-2 gap-3">
                                 <div>
@@ -10598,13 +10614,15 @@ const isVis = !clip.hidden;
                     const posEl = document.getElementById('subInlinePos_' + id);
                     const animInEl = document.getElementById('subInlineAnimIn_' + id);
                     const animOutEl = document.getElementById('subInlineAnimOut_' + id);
+                    const animPresetEl = document.getElementById('subInlineAnimPreset_' + id);
                     sub.effects = {
                         fontFamily: fontEl && fontEl.value ? fontEl.value : undefined,
                         fontSize: sizeEl ? parseInt(sizeEl.value) || undefined : undefined,
                         fillColor: colorEl && colorEl.value ? colorEl.value : undefined,
                         position: posEl && posEl.value ? posEl.value : undefined,
                         animIn: animInEl && animInEl.value ? animInEl.value : undefined,
-                        animOut: animOutEl && animOutEl.value ? animOutEl.value : undefined
+                        animOut: animOutEl && animOutEl.value ? animOutEl.value : undefined,
+                        animPreset: animPresetEl && animPresetEl.value ? animPresetEl.value : undefined
                     };
                 } else if (overrideCheck) {
                     sub.effects = {};
@@ -10663,6 +10681,7 @@ const isVis = !clip.hidden;
                                         <div><label class="text-[8px] font-bold text-surface-400">Anim In</label><select id="subInlineAnimIn_${sid}" onchange="autoSaveInlineSubtitle('${sid}')" class="w-full text-[10px] p-1 border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 focus:outline-none focus:border-brand-500 font-bold"><option value="" ${!ef.animIn?'selected':''}>Same</option><option value="none" ${ef.animIn==='none'?'selected':''}>None</option><option value="fadeIn" ${ef.animIn==='fadeIn'?'selected':''}>Fade</option><option value="slideUp" ${ef.animIn==='slideUp'?'selected':''}>Slide up</option></select></div>
                                         <div><label class="text-[8px] font-bold text-surface-400">Anim Out</label><select id="subInlineAnimOut_${sid}" onchange="autoSaveInlineSubtitle('${sid}')" class="w-full text-[10px] p-1 border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 focus:outline-none focus:border-brand-500 font-bold"><option value="" ${!ef.animOut?'selected':''}>Same</option><option value="none" ${ef.animOut==='none'?'selected':''}>None</option><option value="fadeOut" ${ef.animOut==='fadeOut'?'selected':''}>Fade</option><option value="slideDown" ${ef.animOut==='slideDown'?'selected':''}>Slide</option></select></div>
                                     </div>
+                                    <div><label class="text-[8px] font-bold text-surface-400">Preset</label><select id="subInlineAnimPreset_${sid}" onchange="autoSaveInlineSubtitle('${sid}')" class="w-full text-[10px] p-1 border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 focus:outline-none focus:border-brand-500 font-bold"><option value="" ${!ef.animPreset?'selected':''}>Same</option><option value="none" ${ef.animPreset==='none'?'selected':''}>None</option><option value="fade" ${ef.animPreset==='fade'?'selected':''}>Fade Up</option><option value="pop" ${ef.animPreset==='pop'?'selected':''}>Pop</option><option value="letterPop" ${ef.animPreset==='letterPop'?'selected':''}>Letter Pop</option><option value="letterFade" ${ef.animPreset==='letterFade'?'selected':''}>Letter Fade</option><option value="typewriter" ${ef.animPreset==='typewriter'?'selected':''}>Typewriter</option><option value="wordHighlight" ${ef.animPreset==='wordHighlight'?'selected':''}>Word Glow</option><option value="bounce" ${ef.animPreset==='bounce'?'selected':''}>Bounce</option><option value="rotate" ${ef.animPreset==='rotate'?'selected':''}>Rotate</option></select></div>
                                 </div>
                             </div>
                         </details>
@@ -11795,6 +11814,119 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
         };
 
         // ── Draw subtitle text on canvas ────────────────────────────────────────
+        /** Per-letter easing helper for caption presets */
+        function captionPresetEase(easeName, p) {
+            p = Math.max(0, Math.min(1, p));
+            const fn = EASING[easeName] || EASING.easeOut;
+            return fn(p);
+        }
+
+        /** Draw a single caption line letter-by-letter (letterPop / letterFade / typewriter / bounce / rotate) */
+        function drawCaptionLetters(ctx, line, y, ef, cfg, preset, subTime, animInDur) {
+            const chars = Array.from(line);
+            if (!chars.length) return;
+            const ls = (ef.letterSpacing !== undefined ? ef.letterSpacing : (cfg.letterSpacing || 0)) || 0;
+            const widths = chars.map(ch => ctx.measureText(ch).width + ls);
+            const totalW = widths.reduce((a, b) => a + b, 0) - ls;
+            const easeName = (ef.animEase !== undefined ? ef.animEase : cfg.animEase) || 'easeOut';
+            const dur = Math.max(0.2, animInDur || 0.4);
+            const stagger = (dur * 0.8) / Math.max(1, chars.length);
+            let x = -totalW / 2;
+            for (let i = 0; i < chars.length; i++) {
+                const p = (subTime - i * stagger) / dur;
+                const ep = captionPresetEase(easeName, p);
+                let la = 1, ls2 = 1, ly = 0, rot = 0;
+                if (preset === 'letterPop') { ls2 = 0.4 + 0.6 * ep; la = Math.min(1, p * 2); ly = (1 - ep) * 14; }
+                else if (preset === 'letterFade') { la = ep; ly = (1 - ep) * 20; }
+                else if (preset === 'typewriter') { la = p >= 1 ? 1 : 0; }
+                else if (preset === 'bounce') { ls2 = 0.4 + 0.6 * ep; la = Math.min(1, p * 2); ly = -(1 - ep) * 16; }
+                else if (preset === 'rotate') { rot = (1 - ep) * -Math.PI * 0.9; la = Math.min(1, p * 2); ls2 = 0.4 + 0.6 * ep; }
+                if (la <= 0.01) { x += widths[i]; continue; }
+                ctx.save();
+                ctx.globalAlpha *= la;
+                ctx.textAlign = 'left';
+                ctx.translate(x, 0);
+                ctx.translate(0, ly);
+                ctx.scale(ls2, ls2);
+                ctx.rotate(rot);
+                // Shadow (per-subtitle ef overrides global cfg)
+                const shEnable = ef.shadowEnable !== undefined ? ef.shadowEnable : cfg.shadowEnable;
+                if (shEnable) {
+                    ctx.shadowColor = ef.shadowColor || (cfg.shadowColor || '#000000');
+                    ctx.shadowBlur = ef.shadowBlur !== undefined ? ef.shadowBlur : (cfg.shadowBlur || 4);
+                    ctx.shadowOffsetX = ef.shadowX !== undefined ? ef.shadowX : (cfg.shadowX || 0);
+                    ctx.shadowOffsetY = ef.shadowY !== undefined ? ef.shadowY : (cfg.shadowY || 2);
+                } else { ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; }
+                // Stroke (per-subtitle ef overrides global cfg)
+                const stEnable = ef.strokeEnable !== undefined ? ef.strokeEnable : cfg.strokeEnable;
+                if (stEnable) {
+                    ctx.strokeStyle = ef.strokeColor || (cfg.strokeColor || '#000000');
+                    ctx.lineWidth = ef.strokeWidth !== undefined ? ef.strokeWidth : (cfg.strokeWidth || 3);
+                    ctx.lineJoin = 'round';
+                    ctx.strokeText(chars[i], 0, 0);
+                    ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
+                }
+                ctx.fillStyle = ef.fillColor || '#ffffff';
+                ctx.fillText(chars[i], 0, 0);
+                ctx.restore();
+                x += widths[i];
+            }
+        }
+
+        /** Karaoke word-glow preset: a highlight pill sweeps across the caption word by word */
+        function drawCaptionWordGlow(ctx, line, y, ef, cfg, subTime, animInDur, fontSize) {
+            const words = line.split(/\s+/).filter(Boolean);
+            if (!words.length) return;
+            const spaceW = ctx.measureText(' ').width;
+            const widths = words.map(w => ctx.measureText(w).width);
+            const totalW = widths.reduce((a, b) => a + b, 0) + spaceW * (words.length - 1);
+            const dur = Math.max(0.3, animInDur || 0.5);
+            const wordDur = dur / Math.max(1, words.length);
+            const op = ef.bgOpacity !== undefined ? ef.bgOpacity : (cfg.bgOpacity !== undefined ? cfg.bgOpacity : 0.5);
+            const pad = ef.bgPadding || (cfg.bgPadding || 8);
+            const pillH = fontSize + pad * 2;
+            const rad = ef.bgRadius || (cfg.bgRadius || 10);
+            let x = -totalW / 2;
+            words.forEach((w, wi) => {
+                const p = (subTime - wi * wordDur) / wordDur;
+                const active = p > 0 && p < 1;
+                const done = p >= 1;
+                if (active || done) {
+                    ctx.save();
+                    ctx.globalAlpha *= active ? op : op * 0.45;
+                    ctx.fillStyle = ef.bgColor || (cfg.bgColor || '#000000');
+                    ctx.beginPath();
+                    ctx.roundRect(x - pad, y - pillH / 2, widths[wi] + pad * 2, pillH, rad);
+                    ctx.fill();
+                    ctx.restore();
+                }
+                ctx.save();
+                ctx.globalAlpha *= (active || done) ? 1 : 0.4;
+                ctx.textAlign = 'left';
+                // Shadow
+                const shEnable = ef.shadowEnable !== undefined ? ef.shadowEnable : cfg.shadowEnable;
+                if (shEnable) {
+                    ctx.shadowColor = ef.shadowColor || (cfg.shadowColor || '#000000');
+                    ctx.shadowBlur = ef.shadowBlur !== undefined ? ef.shadowBlur : (cfg.shadowBlur || 4);
+                    ctx.shadowOffsetX = ef.shadowX !== undefined ? ef.shadowX : (cfg.shadowX || 0);
+                    ctx.shadowOffsetY = ef.shadowY !== undefined ? ef.shadowY : (cfg.shadowY || 2);
+                } else { ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; }
+                // Stroke
+                const stEnable = ef.strokeEnable !== undefined ? ef.strokeEnable : cfg.strokeEnable;
+                if (stEnable) {
+                    ctx.strokeStyle = ef.strokeColor || (cfg.strokeColor || '#000000');
+                    ctx.lineWidth = ef.strokeWidth !== undefined ? ef.strokeWidth : (cfg.strokeWidth || 3);
+                    ctx.lineJoin = 'round';
+                    ctx.strokeText(w, x, y);
+                    ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
+                }
+                ctx.fillStyle = ef.fillColor || '#ffffff';
+                ctx.fillText(w, x, y);
+                ctx.restore();
+                x += widths[wi] + spaceW;
+            });
+        }
+
         function drawSubtitlesOnCanvas(ctx, w, h) {
             if (!State.captionsVisible) return;
             const cfg = State.subtitleConfig;
@@ -11836,6 +11968,20 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 else if (animOut === 'scaleOut') { alpha = Math.min(1, p * 2); scale = 0.5 + 0.5 * p; }
             }
 
+            // Preset animation (CapCut / Kalakar style)
+            const animPreset = ef.animPreset !== undefined ? ef.animPreset : cfg.animPreset;
+            const presetEase = EASING[(ef.animEase !== undefined ? ef.animEase : cfg.animEase) || 'easeOut'] || EASING.easeOut;
+            if (animPreset === 'fade' && subTime < animInDur) {
+                const p = subTime / animInDur;
+                alpha = Math.min(1, p * 1.5);
+                yOffset = 20 * (1 - p);
+            } else if (animPreset === 'pop' && subTime < animInDur) {
+                const p = subTime / animInDur;
+                const e = presetEase(p);
+                alpha = Math.min(1, p * 1.6);
+                scale = 0.5 + 0.5 * e + Math.sin(p * Math.PI) * 0.2;
+            }
+
             if (alpha <= 0) return;
 
             ctx.save();
@@ -11865,7 +12011,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             ctx.scale(scale, scale);
 
             // Background
-            if (ef.bgEnable !== undefined ? ef.bgEnable : cfg.bgEnable) {
+            if (animPreset !== 'wordHighlight' && (ef.bgEnable !== undefined ? ef.bgEnable : cfg.bgEnable)) {
                 let maxLineW = 0;
                 lines.forEach(l => { const m = ctx.measureText(l).width; if (m > maxLineW) maxLineW = m; });
                 const pad = ef.bgPadding || (cfg.bgPadding || 8);
@@ -11881,8 +12027,17 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
 
             // Draw each line
             const startY = -((lines.length - 1) * lh) / 2;
+            const letterPresets = { letterPop: 1, letterFade: 1, typewriter: 1, bounce: 1, rotate: 1 };
             lines.forEach((line, i) => {
                 const y = startY + i * lh;
+                if (animPreset === 'wordHighlight') {
+                    drawCaptionWordGlow(ctx, line, y, ef, cfg, subTime, animInDur, fontSize);
+                    return;
+                }
+                if (letterPresets[animPreset]) {
+                    drawCaptionLetters(ctx, line, y, ef, cfg, animPreset, subTime, animInDur);
+                    return;
+                }
 
                 // Shadow (per-subtitle ef overrides global cfg)
                 const shEnable = ef.shadowEnable !== undefined ? ef.shadowEnable : cfg.shadowEnable;

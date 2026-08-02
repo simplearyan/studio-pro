@@ -27,10 +27,22 @@ analysis of editor and comparison with remotion
 
 - for markdown style - add more script presets - one with math element - also add styles for it in styles sub tab 
 - captions animtions like kalakar.io - each text pop up - 
+
+## Suggestions
+
 - The text background works great for regular text clips. Can we add the same Background controls to the Markdown style tab (global heading style + text style) so markdown-generated clips can get an auto background box?
 - Can we let the texture respect the clip's borderRadius for images/videos too, and add a texture card for image and video clips so any element can get a material overlay?
 - Since textures are data URLs stored in clip effects, they bloat saved projects. Can we add a 'strip textures on export' option and warn when project size grows?
 - Can we let the texture respect the clip's borderRadius for images/videos too, and add a texture card for image and video clips so any element can get a material overlay?
+- Vector math is smooth now. Can we apply the same quantized-bake + throttle trick to the image-based math mode (getOrRenderMathImage) so its Formula Size slider is equally smooth?
+- The bake throttle caps at ~12/sec. Can we offload the MathJax parse + mask bake to a Web Worker so even that never blocks the UI thread at all?
+- Since re-baking is now quantized, can we show the baked-resolution level (e.g., 'crisp / streaming / smooth') in the math properties panel so users understand the tradeoff?
+- Now that vector math scales smoothly via sprite scaling, can we also cache the tinted sprite per size so color changes during a drag don't re-composite every frame?
+
+
+
+
+
 
 
 
