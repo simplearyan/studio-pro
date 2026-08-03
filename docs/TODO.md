@@ -42,6 +42,10 @@ Add ability to use audio for specifi text - shape - image - math - elment
 - Since re-baking is now quantized, can we show the baked-resolution level (e.g., 'crisp / streaming / smooth') in the math properties panel so users understand the tradeoff?
 - Now that vector math scales smoothly via sprite scaling, can we also cache the tinted sprite per size so color changes during a drag don't re-composite every frame?
 
+- Add ready-made Puzzle presets (Fireship-style top sweep, random snap, block-by-block from center) as one-click options in the Animation tab so users don't have to configure direction/blocks/delay manually.
+
+
+- Wire the Puzzle animation into the Markdown tab's global heading/text/image style so generated slides automatically get the puzzle block reveal without per-clip setup.
 
 
 
