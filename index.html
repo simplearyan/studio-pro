@@ -808,6 +808,7 @@
             sidebarTab: 'properties', // 'properties', 'animations', 'audio_library', 'presets', 'subtitles', 'markdown'
             audioSubTab: 'library', // 'library', 'mixer'
             activeAnimTab: 'in',
+            animGroupOpen: { transform: true, text: true },
             audioLibrary: [],
             selectedAudioLibId: null,
             audioLibAutoplay: false,
@@ -8132,43 +8133,43 @@
 
             function renderPresetGrid(clipId, propertyName, currentVal, options, isTextStagger) {
                 return `
-                    <div class="grid grid-cols-[repeat(auto-fill,minmax(64px,1fr))] gap-2 w-full select-none">
+                    <div class="grid grid-cols-[repeat(auto-fill,minmax(74px,1fr))] gap-2 w-full select-none">
                         ${options.map(opt => {
                             const isActive = currentVal === opt.value;
                             const activeClasses = isActive 
-                                ? 'border-brand-500 ring-2 ring-brand-500/30 bg-brand-50 dark:bg-brand-500/20 shadow-sm' 
-                                : 'border-surface-200 dark:border-surface-700 hover:border-brand-400 dark:hover:border-brand-500/50 hover:bg-surface-100 dark:hover:bg-surface-800 shadow-sm';
+                                ? 'border-brand-500 ring-2 ring-brand-500/25 bg-gradient-to-br from-brand-50 to-white dark:from-brand-500/20 dark:to-surface-800/60 shadow-sm' 
+                                : 'border-surface-200/90 dark:border-surface-700/80 hover:border-brand-400/70 dark:hover:border-brand-500/60 hover:bg-surface-100 dark:hover:bg-surface-800 hover:-translate-y-0.5 hover:shadow-md';
                             
                             let previewEl = '';
                             if (opt.value !== 'none') {
                                 if (isTextStagger) {
-                                    previewEl = `<span class="text-[22px] font-extrabold text-brand-600 dark:text-brand-400 ${opt.previewClass}">Aa</span>`;
+                                    previewEl = `<span class="text-[20px] font-extrabold text-brand-600 dark:text-brand-400 leading-none ${opt.previewClass}">Aa</span>`;
                                 } else {
-                                    previewEl = `<div class="w-7 h-7 rounded bg-brand-500/90 dark:bg-brand-400/90 ${opt.previewClass} shadow-sm"></div>`;
+                                    previewEl = `<div class="w-6 h-6 rounded-md bg-gradient-to-br from-brand-400 to-brand-600 dark:from-brand-300 dark:to-brand-500 ${opt.previewClass} shadow-sm"></div>`;
                                 }
                             } else {
-                                previewEl = `<i data-lucide="ban" class="w-6 h-6 text-surface-400 dark:text-surface-600 opacity-50"></i>`;
+                                previewEl = `<i data-lucide="ban" class="w-5 h-5 text-surface-400 dark:text-surface-600 opacity-40"></i>`;
                             }
 
                             return `
                                 <button onclick="setClipEffect('${clipId}', '${propertyName}', '${opt.value}'); updateSidebarPanel();" 
-                                        class="group relative flex items-center justify-center rounded-xl border transition-all aspect-square bg-white dark:bg-surface-800/80 overflow-hidden ${activeClasses}"
+                                        class="group relative flex flex-col items-stretch rounded-lg border transition-all duration-150 bg-white dark:bg-surface-800/80 overflow-hidden ${activeClasses}"
                                         title="${opt.label}">
                                     
-                                    <!-- Inner Preview Element -->
-                                    <div class="flex items-center justify-center w-full h-full relative z-10 transition-transform duration-300 group-hover:scale-110">
+                                    <!-- Preview Area -->
+                                    <div class="flex items-center justify-center h-[38px] relative z-10 transition-transform duration-300 group-hover:scale-105 pt-1">
                                         ${previewEl}
                                     </div>
                                     
-                                    <!-- Hover Overlay (dark bg + name text) -->
-                                    <div class="absolute inset-0 bg-surface-900/85 backdrop-blur-[2px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-20 pointer-events-none p-1.5">
-                                        <span class="text-[10px] font-bold text-white leading-tight break-words text-center">${opt.label}</span>
+                                    <!-- Persistent Label (dark pill, always visible) -->
+                                    <div class="relative z-20 px-1 pb-1.5 pt-0.5">
+                                        <span class="block text-[8px] font-bold text-white uppercase tracking-wide text-center truncate rounded-md py-0.5 px-1 ${isActive ? 'bg-brand-500' : 'bg-surface-900/85 dark:bg-surface-700/90'}">${opt.label}</span>
                                     </div>
                                     
-                                    <!-- Active State (Persistent Label) -->
+                                    <!-- Active Check Badge -->
                                     ${isActive ? `
-                                        <div class="absolute bottom-0 inset-x-0 bg-brand-500/95 py-0.5 z-30 pointer-events-none shadow-sm">
-                                            <span class="text-[8px] font-bold text-white uppercase tracking-wider block text-center truncate px-1">${opt.label}</span>
+                                        <div class="absolute top-1 right-1 w-4 h-4 rounded-full bg-brand-500 text-white flex items-center justify-center z-30 shadow-sm ring-2 ring-white/60 dark:ring-surface-800/60">
+                                            <i data-lucide="check" class="w-2.5 h-2.5" style="stroke-width:3"></i>
                                         </div>
                                     ` : ''}
                                 </button>
@@ -8180,22 +8181,25 @@
 
             function renderEasingSelector(clipId, keyName, currentVal) {
                 const easings = [
-                    { value: 'linear', label: 'Linear' },
-                    { value: 'easeIn', label: 'In' },
-                    { value: 'easeOut', label: 'Out' },
-                    { value: 'easeInOut', label: 'In-Out' },
-                    { value: 'elastic', label: 'Elastic' },
-                    { value: 'bounce', label: 'Bounce' }
+                    { value: 'linear', label: 'Linear', d: 'M2 16 L22 4' },
+                    { value: 'easeIn', label: 'In', d: 'M2 16 C10 15 14 8 22 4' },
+                    { value: 'easeOut', label: 'Out', d: 'M2 16 C8 12 14 5 22 4' },
+                    { value: 'easeInOut', label: 'In-Out', d: 'M2 16 C8 16 14 4 22 4' },
+                    { value: 'elastic', label: 'Elastic', d: 'M2 16 C8 14 6 6 11 8 C14 9.5 13 5 17 6 C19 6.5 20 5 22 4' },
+                    { value: 'bounce', label: 'Bounce', d: 'M2 16 C5 12 4 10 7 11 C9.5 12 9 8 12 9 C14 10 14 6 17 7 C19 7.5 20 5.5 22 4' }
                 ];
                 return `
-                    <div class="grid grid-cols-3 gap-1 w-full bg-surface-100 dark:bg-surface-900/60 p-1 rounded-lg border border-surface-200 dark:border-surface-700/80 shadow-inner">
+                    <div class="grid grid-cols-3 gap-1 w-full select-none">
                         ${easings.map(e => {
                             const isActive = currentVal === e.value;
                             return `
                                 <button onclick="setClipEffect('${clipId}', '${keyName}', '${e.value}'); updateSidebarPanel();" 
-                                        class="text-[9px] font-bold py-1 px-0.5 rounded transition-all text-center truncate ${isActive ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm font-extrabold border border-surface-200/50 dark:border-surface-600/50' : 'text-surface-500 hover:text-surface-800 dark:hover:text-surface-200'}"
+                                        class="flex flex-col items-center gap-1 py-1.5 px-0.5 rounded-lg border transition-all duration-150 ${isActive ? 'bg-white dark:bg-surface-700 border-brand-400/70 dark:border-brand-500/60 shadow-sm ring-1 ring-brand-500/20' : 'bg-surface-100 dark:bg-surface-900/50 border-transparent hover:border-surface-300 dark:hover:border-surface-600 hover:bg-white dark:hover:bg-surface-800'}"
                                         title="${e.label}">
-                                    ${e.label}
+                                    <svg viewBox="0 0 24 20" class="w-full h-3.5 ${isActive ? 'text-brand-500 dark:text-brand-400' : 'text-surface-500 dark:text-surface-400'}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="${e.d}"/>
+                                    </svg>
+                                    <span class="text-[8px] font-bold leading-none ${isActive ? 'text-surface-900 dark:text-white' : 'text-surface-500 dark:text-surface-400'}">${e.label}</span>
                                 </button>
                             `;
                         }).join('')}
@@ -8209,12 +8213,12 @@
                     { value: 'word', label: 'Word' }
                 ];
                 return `
-                    <div class="flex gap-1 w-full bg-surface-100 dark:bg-surface-900/60 p-1 rounded-lg border border-surface-200 dark:border-surface-700/80 shadow-inner">
+                    <div class="flex gap-1 w-full bg-surface-100 dark:bg-surface-900/50 p-1 rounded-lg border border-surface-200 dark:border-surface-700/80 select-none">
                         ${options.map(o => {
                             const isActive = currentVal === o.value;
                             return `
                                 <button onclick="setClipEffect('${clipId}', '${keyName}', '${o.value}'); updateSidebarPanel();" 
-                                        class="flex-1 text-[9px] font-bold py-1 px-1.5 rounded transition-all text-center ${isActive ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm font-extrabold' : 'text-surface-500 hover:text-surface-800 dark:hover:text-surface-200'}">
+                                        class="flex-1 text-[9px] font-bold py-1 px-1.5 rounded-md transition-all duration-150 text-center ${isActive ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm font-extrabold border border-surface-200/50 dark:border-surface-600/50' : 'text-surface-500 hover:text-surface-800 dark:hover:text-surface-200'}">
                                     ${o.label}
                                 </button>
                             `;
@@ -8228,24 +8232,34 @@
             const tabLoopActive = State.activeAnimTab === 'loop';
             const tabCustomActive = State.activeAnimTab === 'custom';
 
-            const activeTabClass = "flex-1 py-1.5 px-2 rounded-md text-[9px] font-extrabold text-center bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm border border-surface-200/50 dark:border-surface-600/50";
-            const inactiveTabClass = "flex-1 py-1.5 px-2 rounded-md text-[9px] font-bold text-center text-surface-500 hover:text-surface-800 dark:hover:text-surface-200 transition-colors";
+            const activeTabClass = "flex-1 py-1.5 px-1.5 rounded-md text-[9px] font-extrabold flex items-center justify-center gap-1 bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm border border-surface-200/50 dark:border-surface-600/50";
+            const inactiveTabClass = "flex-1 py-1.5 px-1.5 rounded-md text-[9px] font-bold flex items-center justify-center gap-1 text-surface-500 hover:text-surface-800 dark:hover:text-surface-200 hover:bg-white/60 dark:hover:bg-surface-800/60 transition-colors";
 
             const animTabsHtml = `
                 <div class="flex items-center gap-1 bg-surface-100 dark:bg-surface-900/60 p-1 rounded-lg border border-surface-200 dark:border-surface-700/80 shadow-inner w-full shrink-0">
-                    <button onclick="setAnimTab('in')" class="${tabInActive ? activeTabClass : inactiveTabClass}">In</button>
-                    <button onclick="setAnimTab('out')" class="${tabOutActive ? activeTabClass : inactiveTabClass}">Out</button>
-                    <button onclick="setAnimTab('loop')" class="${tabLoopActive ? activeTabClass : inactiveTabClass}">Loop</button>
-                    <button onclick="setAnimTab('custom')" class="${tabCustomActive ? activeTabClass : inactiveTabClass}">Custom</button>
+                    <button onclick="setAnimTab('in')" class="${tabInActive ? activeTabClass : inactiveTabClass}" title="Entrance">
+                        <i data-lucide="log-in" class="w-3 h-3 ${tabInActive ? 'text-brand-500' : ''}"></i> In
+                    </button>
+                    <button onclick="setAnimTab('out')" class="${tabOutActive ? activeTabClass : inactiveTabClass}" title="Exit">
+                        <i data-lucide="log-out" class="w-3 h-3 ${tabOutActive ? 'text-brand-500' : ''}"></i> Out
+                    </button>
+                    <button onclick="setAnimTab('loop')" class="${tabLoopActive ? activeTabClass : inactiveTabClass}" title="Loop">
+                        <i data-lucide="refresh-cw" class="w-3 h-3 ${tabLoopActive ? 'text-brand-500' : ''}"></i> Loop
+                    </button>
+                    <button onclick="setAnimTab('custom')" class="${tabCustomActive ? activeTabClass : inactiveTabClass}" title="Custom Keyframes">
+                        <i data-lucide="key" class="w-3 h-3 ${tabCustomActive ? 'text-brand-500' : ''}"></i> Custom
+                    </button>
                 </div>
             `;
 
             
             const createGridCard = (icon, title, innerHTML) => `
-                <div class="flex flex-col gap-2 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 shadow-sm rounded-lg p-2.5 w-full shrink-0 transition-all">
-                    <div class="flex items-center gap-1.5 border-b border-surface-200 dark:border-surface-700 pb-1.5 shrink-0">
-                        <i data-lucide="${icon}" class="w-3.5 h-3.5 text-brand-500"></i>
-                        <span class="text-xs font-bold text-surface-800 dark:text-surface-200">${title}</span>
+                <div class="flex flex-col gap-2.5 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700/80 shadow-sm rounded-xl p-3 w-full shrink-0 transition-all hover:shadow-md">
+                    <div class="flex items-center gap-2 border-b border-surface-100 dark:border-surface-700/60 pb-2 shrink-0">
+                        <div class="w-6 h-6 rounded-md bg-brand-50 dark:bg-brand-500/15 flex items-center justify-center shrink-0">
+                            <i data-lucide="${icon}" class="w-3.5 h-3.5 text-brand-500"></i>
+                        </div>
+                        <span class="text-xs font-extrabold text-surface-800 dark:text-surface-200 tracking-tight">${title}</span>
                     </div>
                     <div class="w-full">
                         ${innerHTML}
@@ -8260,66 +8274,77 @@
             const clipLoopCard = createGridCard('refresh-cw', 'Clip Loop Behavior', renderPresetGrid(clip.id, 'animLoop', animLoop, loopOptions, false));
             const textLoopCard = createGridCard('type', 'Text Loop Behavior', renderPresetGrid(clip.id, 'animTextLoop', animTextLoop, textLoopOptions, true));
 
-            const createPropGroup = (title, innerHTML) => `
-                <div class="flex flex-col gap-1 bg-surface-100 dark:bg-surface-900/60 p-2 rounded-md border border-surface-200 dark:border-surface-700/80 shadow-inner">
-                    <span class="text-[10px] font-bold text-surface-800 dark:text-surface-200 mb-1 border-b border-surface-200/50 dark:border-surface-700/50 pb-1">${title}</span>
-                    <div class="flex flex-col gap-2">
-                        ${innerHTML}
+            const createPropGroup = (title, groupKey, innerHTML) => {
+                const isOpen = State.animGroupOpen[groupKey] !== false;
+                return `
+                    <div class="flex flex-col bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700/80 shadow-sm rounded-xl w-full overflow-hidden">
+                        <button onclick="toggleAnimGroup('${groupKey}')" aria-expanded="${isOpen}" class="flex items-center justify-between w-full px-3 py-2 hover:bg-surface-50 dark:hover:bg-surface-700/40 transition-colors cursor-pointer" title="${isOpen ? 'Collapse' : 'Expand'}">
+                            <div class="flex items-center gap-1.5 min-w-0">
+                                <span class="w-1 h-3.5 rounded-full bg-brand-500 shrink-0"></span>
+                                <span class="text-[10px] font-extrabold uppercase tracking-widest text-surface-800 dark:text-surface-200 truncate">${title}</span>
+                            </div>
+                            <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-surface-400 dark:text-surface-500 transition-transform duration-200 shrink-0 ${isOpen ? '' : '-rotate-90'}"></i>
+                        </button>
+                        <div class="${isOpen ? 'flex flex-col gap-2.5 p-3 border-t border-surface-100 dark:border-surface-700/60' : 'hidden'}">
+                            ${innerHTML}
+                        </div>
                     </div>
-                </div>
-            `;
+                `;
+            };
+            
+            const renderAnimPropGroup = (title, groupKey, innerHTML) => createPropGroup(title, groupKey, innerHTML);
             
             let propertiesHtml = '';
 
             if (tabInActive) {
                 if (animIn !== 'none') {
-                    propertiesHtml += createPropGroup('Entrance', `
+                    propertiesHtml += renderAnimPropGroup('Transform Animation', 'transform', `
                         <div class="flex justify-between items-center">
-                            <span class="text-[9px] font-bold text-surface-500 dark:text-surface-400 uppercase">Duration</span>
-                            <span class="text-[9px] font-bold text-surface-700 dark:text-surface-300">${animInDur}s</span>
+                            <span class="text-[9px] font-extrabold text-surface-500 dark:text-surface-400 uppercase tracking-wider">Duration</span>
+                            <span class="text-[10px] font-mono font-bold text-surface-800 dark:text-surface-100 bg-surface-100 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 px-1.5 py-0.5 rounded-md min-w-[36px] text-center shadow-sm">${animInDur}s</span>
                         </div>
                         <input type="range" min="0.1" max="5.0" step="0.1" value="${animInDur}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'animInDur', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = this.value + 's'; this.style.background = 'linear-gradient(to right, ${sliderFill} ' + (this.value/this.max)*100 + '%, ${sliderBg} ' + (this.value/this.max)*100 + '%)'">
-                        <div class="flex flex-col gap-1 mt-1">
-                            <span class="text-[9px] font-bold text-surface-500 dark:text-surface-400 uppercase">Easing</span>
+                        <div class="flex flex-col gap-1.5 mt-1">
+                            <span class="text-[9px] font-extrabold text-surface-500 dark:text-surface-400 uppercase tracking-wider">Easing</span>
                             ${renderEasingSelector(clip.id, 'animEase', animEase)}
                         </div>
-                        <div class="flex flex-col gap-1 mt-1">
+                        <div class="flex flex-col gap-1.5 mt-1">
                             <div class="flex justify-between items-center">
-                                <span class="text-[9px] font-bold text-surface-500 dark:text-surface-400 uppercase">Delay</span>
-                                <span class="text-[9px] font-bold text-surface-700 dark:text-surface-300">${animInDelay}s</span>
+                                <span class="text-[9px] font-extrabold text-surface-500 dark:text-surface-400 uppercase tracking-wider">Delay</span>
+                                <span class="text-[10px] font-mono font-bold text-surface-800 dark:text-surface-100 bg-surface-100 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 px-1.5 py-0.5 rounded-md min-w-[36px] text-center shadow-sm">${animInDelay}s</span>
                             </div>
                             <input type="range" min="0" max="2.0" step="0.1" value="${animInDelay}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'animInDelay', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = this.value + 's'; drawCanvas();">
                         </div>
                         ${animIn === 'puzzle' ? `
-                            <div class="flex flex-col gap-1 mt-1 pt-2 border-t border-surface-200 dark:border-surface-700">
-                                <span class="text-[9px] font-bold text-surface-500 dark:text-surface-400 uppercase">Puzzle Direction</span>
-                                <div class="grid grid-cols-3 gap-1 w-full bg-surface-100 dark:bg-surface-900/60 p-1 rounded-lg border border-surface-200 dark:border-surface-700/80 shadow-inner">
+                            <div class="flex flex-col gap-1.5 mt-1 pt-2.5 border-t border-surface-100 dark:border-surface-700/60">
+                                <span class="text-[9px] font-extrabold text-surface-500 dark:text-surface-400 uppercase tracking-wider">Puzzle Direction</span>
+                                <div class="grid grid-cols-3 gap-1 w-full select-none">
                                     ${[['random','Random'],['top','Top'],['bottom','Bottom'],['left','Left'],['right','Right']].map(([pv, pl]) => `
                                         <button onclick="setClipEffect('${clip.id}', 'animPuzzleDir', '${pv}'); updateSidebarPanel();" 
-                                                class="text-[9px] font-bold py-1 px-0.5 rounded transition-all text-center truncate ${animPuzzleDir === pv ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm font-extrabold border border-surface-200/50 dark:border-surface-600/50' : 'text-surface-500 hover:text-surface-800 dark:hover:text-surface-200'}"
+                                                class="text-[9px] font-bold py-1.5 px-0.5 rounded-lg border transition-all duration-150 text-center truncate ${animPuzzleDir === pv ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm font-extrabold border-brand-400/70 dark:border-brand-500/60 ring-1 ring-brand-500/20' : 'bg-surface-100 dark:bg-surface-900/50 text-surface-500 dark:text-surface-400 border-transparent hover:border-surface-300 dark:hover:border-surface-600 hover:bg-white dark:hover:bg-surface-800'}"
                                                 title="Blocks assemble from ${pl}">
                                             ${pl}
                                         </button>
                                     `).join('')}
                                 </div>
                             </div>
-                            <div class="flex flex-col gap-1 mt-1">
+                            <div class="flex flex-col gap-1.5 mt-1">
                                 <div class="flex justify-between items-center">
-                                    <span class="text-[9px] font-bold text-surface-500 dark:text-surface-400 uppercase">Blocks</span>
-                                    <span class="text-[9px] font-bold text-surface-700 dark:text-surface-300">${animPuzzleSize}</span>
+                                    <span class="text-[9px] font-extrabold text-surface-500 dark:text-surface-400 uppercase tracking-wider">Blocks</span>
+                                    <span class="text-[10px] font-mono font-bold text-surface-800 dark:text-surface-100 bg-surface-100 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 px-1.5 py-0.5 rounded-md min-w-[36px] text-center shadow-sm">${animPuzzleSize}</span>
                                 </div>
                                 <input type="range" min="4" max="20" step="1" value="${animPuzzleSize}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'animPuzzleSize', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = this.value; drawCanvas();">
                             </div>
-                            <div class="flex flex-col gap-1 mt-1">
-                                <span class="text-[9px] font-bold text-surface-500 dark:text-surface-400 uppercase">Block Style</span>
-                                <div class="flex gap-1 w-full bg-surface-100 dark:bg-surface-900/60 p-1 rounded-lg border border-surface-200 dark:border-surface-700/80 shadow-inner">
+                            <div class="flex flex-col gap-1.5 mt-1">
+                                <span class="text-[9px] font-extrabold text-surface-500 dark:text-surface-400 uppercase tracking-wider">Block Style</span>
+                                <div class="flex gap-1 w-full bg-surface-100 dark:bg-surface-900/50 p-1 rounded-lg border border-surface-200 dark:border-surface-700/80 select-none">
                                     <button onclick="setClipEffect('${clip.id}', 'animPuzzleSnap', false); updateSidebarPanel(); drawCanvas();" 
-                                            class="flex-1 text-[9px] font-bold py-1 px-0.5 rounded transition-all text-center truncate ${!animPuzzleSnap ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm font-extrabold border border-surface-200/50 dark:border-surface-600/50' : 'text-surface-500 hover:text-surface-800 dark:hover:text-surface-200'}"
+                                            class="flex-1 text-[9px] font-bold py-1 px-0.5 rounded-md transition-all text-center truncate ${!animPuzzleSnap ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm font-extrabold border border-surface-200/50 dark:border-surface-600/50' : 'text-surface-500 hover:text-surface-800 dark:hover:text-surface-200'}"
                                             title="Blocks pop in with a small scale/fade">
                                         Pop
                                     </button>
                                     <button onclick="setClipEffect('${clip.id}', 'animPuzzleSnap', true); updateSidebarPanel(); drawCanvas();" 
-                                            class="flex-1 text-[9px] font-bold py-1 px-0.5 rounded transition-all text-center truncate ${animPuzzleSnap ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm font-extrabold border border-surface-200/50 dark:border-surface-600/50' : 'text-surface-500 hover:text-surface-800 dark:hover:text-surface-200'}"
+                                            class="flex-1 text-[9px] font-bold py-1 px-0.5 rounded-md transition-all text-center truncate ${animPuzzleSnap ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm font-extrabold border border-surface-200/50 dark:border-surface-600/50' : 'text-surface-500 hover:text-surface-800 dark:hover:text-surface-200'}"
                                             title="Blocks snap into place instantly (no pop/fade)">
                                         Snap
                                     </button>
@@ -8329,25 +8354,25 @@
                     `);
                 }
                 if (isText && animTextIn !== 'none') {
-                    propertiesHtml += createPropGroup('Text Stagger', `
+                    propertiesHtml += renderAnimPropGroup('Text Animation', 'text', `
                         <div class="flex justify-between items-center">
-                            <span class="text-[9px] font-bold text-surface-500 dark:text-surface-400 uppercase">Duration</span>
-                            <span class="text-[9px] font-bold text-surface-700 dark:text-surface-300">${animTextInDur}s</span>
+                            <span class="text-[9px] font-extrabold text-surface-500 dark:text-surface-400 uppercase tracking-wider">Duration</span>
+                            <span class="text-[10px] font-mono font-bold text-surface-800 dark:text-surface-100 bg-surface-100 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 px-1.5 py-0.5 rounded-md min-w-[36px] text-center shadow-sm">${animTextInDur}s</span>
                         </div>
                         <input type="range" min="0.1" max="5.0" step="0.1" value="${animTextInDur}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'animTextInDur', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = this.value + 's'; this.style.background = 'linear-gradient(to right, ${sliderFill} ' + (this.value/this.max)*100 + '%, ${sliderBg} ' + (this.value/this.max)*100 + '%)'">
-                        <div class="flex flex-col gap-1 mt-1">
-                            <span class="text-[9px] font-bold text-surface-500 dark:text-surface-400 uppercase">Stagger</span>
+                        <div class="flex flex-col gap-1.5 mt-1">
+                            <span class="text-[9px] font-extrabold text-surface-500 dark:text-surface-400 uppercase tracking-wider">Stagger</span>
                             ${renderStaggerSelector(clip.id, 'animTextStagger', animTextStagger)}
                         </div>
-                        <div class="flex flex-col gap-1 mt-1">
-                            <span class="text-[9px] font-bold text-surface-500 dark:text-surface-400 uppercase">Easing</span>
+                        <div class="flex flex-col gap-1.5 mt-1">
+                            <span class="text-[9px] font-extrabold text-surface-500 dark:text-surface-400 uppercase tracking-wider">Easing</span>
                             ${renderEasingSelector(clip.id, 'animTextEase', animTextEase)}
                         </div>
                         ${animTextIn === 'fillFlash' ? `
-                            <div class="flex items-center justify-between mt-1 pt-1 border-t border-surface-200 dark:border-surface-700">
-                                <span class="text-[9px] font-bold text-surface-500 dark:text-surface-400 uppercase">Flash Color</span>
-                                <div class="relative w-5 h-5 rounded-md overflow-hidden border border-surface-300 dark:border-surface-600 shadow-sm shrink-0">
-                                    <input type="color" class="absolute -top-2 -left-2 w-8 h-8 cursor-pointer" value="${flashColor}" onchange="setClipEffect('${clip.id}', 'flashColor', this.value); drawCanvas();">
+                            <div class="flex items-center justify-between mt-1 pt-2 border-t border-surface-100 dark:border-surface-700/60">
+                                <span class="text-[9px] font-extrabold text-surface-500 dark:text-surface-400 uppercase tracking-wider">Flash Color</span>
+                                <div class="relative w-6 h-6 rounded-md overflow-hidden border border-surface-300 dark:border-surface-600 shadow-sm shrink-0 ring-1 ring-surface-200/60 dark:ring-surface-700/60">
+                                    <input type="color" class="absolute -top-2 -left-2 w-10 h-10 cursor-pointer" value="${flashColor}" onchange="setClipEffect('${clip.id}', 'flashColor', this.value); drawCanvas();">
                                 </div>
                             </div>
                         ` : ''}
@@ -8355,30 +8380,30 @@
                 }
             } else if (tabOutActive) {
                 if (animOut !== 'none') {
-                    propertiesHtml += createPropGroup('Exit', `
+                    propertiesHtml += renderAnimPropGroup('Transform Animation', 'transform', `
                         <div class="flex justify-between items-center">
-                            <span class="text-[9px] font-bold text-surface-500 dark:text-surface-400 uppercase">Duration</span>
-                            <span class="text-[9px] font-bold text-surface-700 dark:text-surface-300">${animOutDur}s</span>
+                            <span class="text-[9px] font-extrabold text-surface-500 dark:text-surface-400 uppercase tracking-wider">Duration</span>
+                            <span class="text-[10px] font-mono font-bold text-surface-800 dark:text-surface-100 bg-surface-100 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 px-1.5 py-0.5 rounded-md min-w-[36px] text-center shadow-sm">${animOutDur}s</span>
                         </div>
                         <input type="range" min="0.1" max="5.0" step="0.1" value="${animOutDur}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'animOutDur', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = this.value + 's'; this.style.background = 'linear-gradient(to right, ${sliderFill} ' + (this.value/this.max)*100 + '%, ${sliderBg} ' + (this.value/this.max)*100 + '%)'">
-                        <div class="flex flex-col gap-1 mt-1">
+                        <div class="flex flex-col gap-1.5 mt-1">
                             <div class="flex justify-between items-center">
-                                <span class="text-[9px] font-bold text-surface-500 dark:text-surface-400 uppercase">Delay</span>
-                                <span class="text-[9px] font-bold text-surface-700 dark:text-surface-300">${animOutDelay}s</span>
+                                <span class="text-[9px] font-extrabold text-surface-500 dark:text-surface-400 uppercase tracking-wider">Delay</span>
+                                <span class="text-[10px] font-mono font-bold text-surface-800 dark:text-surface-100 bg-surface-100 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 px-1.5 py-0.5 rounded-md min-w-[36px] text-center shadow-sm">${animOutDelay}s</span>
                             </div>
                             <input type="range" min="0" max="2.0" step="0.1" value="${animOutDelay}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'animOutDelay', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = this.value + 's'; drawCanvas();">
                         </div>
                     `);
                 }
                 if (isText && animTextOut !== 'none') {
-                    propertiesHtml += createPropGroup('Text Exit Stagger', `
+                    propertiesHtml += renderAnimPropGroup('Text Animation', 'text', `
                         <div class="flex justify-between items-center">
-                            <span class="text-[9px] font-bold text-surface-500 dark:text-surface-400 uppercase">Duration</span>
-                            <span class="text-[9px] font-bold text-surface-700 dark:text-surface-300">${animTextOutDur}s</span>
+                            <span class="text-[9px] font-extrabold text-surface-500 dark:text-surface-400 uppercase tracking-wider">Duration</span>
+                            <span class="text-[10px] font-mono font-bold text-surface-800 dark:text-surface-100 bg-surface-100 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 px-1.5 py-0.5 rounded-md min-w-[36px] text-center shadow-sm">${animTextOutDur}s</span>
                         </div>
                         <input type="range" min="0.1" max="5.0" step="0.1" value="${animTextOutDur}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'animTextOutDur', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = this.value + 's'; this.style.background = 'linear-gradient(to right, ${sliderFill} ' + (this.value/this.max)*100 + '%, ${sliderBg} ' + (this.value/this.max)*100 + '%)'">
-                        <div class="flex flex-col gap-1 mt-1">
-                            <span class="text-[9px] font-bold text-surface-500 dark:text-surface-400 uppercase">Stagger</span>
+                        <div class="flex flex-col gap-1.5 mt-1">
+                            <span class="text-[9px] font-extrabold text-surface-500 dark:text-surface-400 uppercase tracking-wider">Stagger</span>
                             ${renderStaggerSelector(clip.id, 'animTextStagger', animTextStagger)}
                         </div>
                     `);
@@ -8387,18 +8412,41 @@
 
             if (!propertiesHtml) {
                 propertiesHtml = `
-                    <div class="flex-1 flex flex-col items-center justify-center text-center opacity-50 p-4">
-                        <i data-lucide="sliders" class="w-6 h-6 mb-2"></i>
-                        <span class="text-[10px] font-bold uppercase tracking-wider">No Animation Selected</span>
+                    <div class="flex-1 flex flex-col items-center justify-center text-center p-6 border-2 border-dashed border-surface-200 dark:border-surface-700/60 rounded-xl bg-surface-50/50 dark:bg-surface-900/20">
+                        <div class="w-10 h-10 rounded-full bg-surface-100 dark:bg-surface-800 flex items-center justify-center mb-2">
+                            <i data-lucide="sliders-horizontal" class="w-4 h-4 text-surface-400 dark:text-surface-500"></i>
+                        </div>
+                        <span class="text-[10px] font-extrabold uppercase tracking-wider text-surface-400 dark:text-surface-500">No animation selected</span>
+                        <span class="text-[9px] text-surface-400 dark:text-surface-500 mt-0.5 opacity-70">Pick a preset from the grid above</span>
                     </div>
                 `;
             }
 
+            // Active animation label for the properties header
+            let activeAnimLabel = '';
+            if (tabInActive) {
+                const found = inOptions.find(o => o.value === animIn);
+                if (found && found.value !== 'none') activeAnimLabel = found.label;
+            } else if (tabOutActive) {
+                const found = outOptions.find(o => o.value === animOut);
+                if (found && found.value !== 'none') activeAnimLabel = found.label;
+            } else if (tabLoopActive) {
+                const found = loopOptions.find(o => o.value === animLoop);
+                if (found && found.value !== 'none') activeAnimLabel = found.label;
+            }
+
             let propertiesPanel = `
-                <div class="${isHorizontal ? 'w-[260px]' : 'w-full mt-2 border-t pt-3'} shrink-0 flex flex-col gap-3 overflow-y-auto ${isHorizontal ? 'border-l pl-4' : ''} border-surface-200 dark:border-surface-700 min-w-[200px] h-full no-scrollbar">
-                    <div class="flex items-center gap-1.5 shrink-0">
-                        <i data-lucide="settings-2" class="w-3.5 h-3.5 text-surface-500"></i>
-                        <span class="text-xs font-bold text-surface-800 dark:text-surface-200">Properties</span>
+                <div class="${isHorizontal ? 'w-[270px]' : 'w-full mt-2.5 border-t pt-3'} ${isHorizontal ? 'shrink-0' : ''} flex flex-col ${isHorizontal ? 'gap-3 overflow-y-auto border-l pl-4' : 'gap-2.5'} border-surface-200 dark:border-surface-700 min-w-[210px] ${isHorizontal ? 'h-full' : 'h-auto'} no-scrollbar">
+                    <div class="flex items-center justify-between shrink-0 px-0.5">
+                        <div class="flex items-center gap-1.5">
+                            <div class="w-6 h-6 rounded-md bg-surface-100 dark:bg-surface-800 flex items-center justify-center">
+                                <i data-lucide="settings-2" class="w-3.5 h-3.5 text-surface-500"></i>
+                            </div>
+                            <span class="text-xs font-extrabold text-surface-800 dark:text-surface-200 tracking-tight">Properties</span>
+                        </div>
+                        ${activeAnimLabel ? `
+                            <span class="text-[9px] font-extrabold uppercase tracking-wider text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-500/15 border border-brand-200/60 dark:border-brand-500/30 px-2 py-0.5 rounded-full shrink-0 ml-2">${activeAnimLabel}</span>
+                        ` : ''}
                     </div>
                     ${propertiesHtml}
                 </div>
@@ -8406,21 +8454,25 @@
 
 
             const leftNavHtml = `
-                <div id="animLayoutNav" class="w-32 bg-surface-100 dark:bg-surface-900 border-r border-surface-200 dark:border-surface-700 flex flex-col gap-1 p-2 shrink-0 overflow-y-auto no-scrollbar">
-                    <button onclick="setAnimTab('in')" class="text-left text-[10px] font-bold border border-transparent ${tabInActive ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm font-extrabold border-surface-200/50 dark:border-surface-600/50' : 'text-surface-500 hover:text-surface-900 dark:hover:text-surface-100'} px-2.5 py-1.5 rounded transition-colors flex items-center gap-1.5 w-full" title="Entrance">
-                        <i data-lucide="log-in" class="w-3.5 h-3.5 shrink-0 opacity-70"></i>
-                        <span class="truncate">Entrance (In)</span>
+                <div id="animLayoutNav" class="w-36 bg-surface-100 dark:bg-surface-900 border-r border-surface-200 dark:border-surface-700 flex flex-col gap-1 p-2 shrink-0 overflow-y-auto no-scrollbar">
+                    <div class="flex items-center gap-1.5 px-2.5 pt-1 pb-1.5 shrink-0">
+                        <i data-lucide="zap" class="w-3 h-3 text-brand-500"></i>
+                        <span class="text-[9px] font-extrabold uppercase tracking-widest text-surface-400 dark:text-surface-500">Animation</span>
+                    </div>
+                    <button onclick="setAnimTab('in')" class="text-left text-[10px] font-bold border border-transparent ${tabInActive ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm font-extrabold border-brand-400/50 dark:border-brand-500/50' : 'text-surface-500 hover:text-surface-900 dark:hover:text-surface-100 hover:bg-white/60 dark:hover:bg-surface-800/60'} px-2.5 py-1.5 rounded-md transition-all flex items-center gap-1.5 w-full" title="Entrance">
+                        <i data-lucide="log-in" class="w-3.5 h-3.5 shrink-0 ${tabInActive ? 'text-brand-500' : 'opacity-60'}"></i>
+                        <span class="truncate">Entrance</span>
                     </button>
-                    <button onclick="setAnimTab('out')" class="text-left text-[10px] font-bold border border-transparent ${tabOutActive ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm font-extrabold border-surface-200/50 dark:border-surface-600/50' : 'text-surface-500 hover:text-surface-900 dark:hover:text-surface-100'} px-2.5 py-1.5 rounded transition-colors flex items-center gap-1.5 w-full" title="Exit">
-                        <i data-lucide="log-out" class="w-3.5 h-3.5 shrink-0 opacity-70"></i>
-                        <span class="truncate">Exit (Out)</span>
+                    <button onclick="setAnimTab('out')" class="text-left text-[10px] font-bold border border-transparent ${tabOutActive ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm font-extrabold border-brand-400/50 dark:border-brand-500/50' : 'text-surface-500 hover:text-surface-900 dark:hover:text-surface-100 hover:bg-white/60 dark:hover:bg-surface-800/60'} px-2.5 py-1.5 rounded-md transition-all flex items-center gap-1.5 w-full" title="Exit">
+                        <i data-lucide="log-out" class="w-3.5 h-3.5 shrink-0 ${tabOutActive ? 'text-brand-500' : 'opacity-60'}"></i>
+                        <span class="truncate">Exit</span>
                     </button>
-                    <button onclick="setAnimTab('loop')" class="text-left text-[10px] font-bold border border-transparent ${tabLoopActive ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm font-extrabold border-surface-200/50 dark:border-surface-600/50' : 'text-surface-500 hover:text-surface-900 dark:hover:text-surface-100'} px-2.5 py-1.5 rounded transition-colors flex items-center gap-1.5 w-full" title="Loop">
-                        <i data-lucide="refresh-cw" class="w-3.5 h-3.5 shrink-0 opacity-70"></i>
+                    <button onclick="setAnimTab('loop')" class="text-left text-[10px] font-bold border border-transparent ${tabLoopActive ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm font-extrabold border-brand-400/50 dark:border-brand-500/50' : 'text-surface-500 hover:text-surface-900 dark:hover:text-surface-100 hover:bg-white/60 dark:hover:bg-surface-800/60'} px-2.5 py-1.5 rounded-md transition-all flex items-center gap-1.5 w-full" title="Loop">
+                        <i data-lucide="refresh-cw" class="w-3.5 h-3.5 shrink-0 ${tabLoopActive ? 'text-brand-500' : 'opacity-60'}"></i>
                         <span class="truncate">Loop</span>
                     </button>
-                    <button onclick="setAnimTab('custom')" class="text-left text-[10px] font-bold border border-transparent ${tabCustomActive ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm font-extrabold border-surface-200/50 dark:border-surface-600/50' : 'text-surface-500 hover:text-surface-900 dark:hover:text-surface-100'} px-2.5 py-1.5 rounded transition-colors flex items-center gap-1.5 w-full" title="Custom Keyframes">
-                        <i data-lucide="key" class="w-3.5 h-3.5 shrink-0 opacity-70"></i>
+                    <button onclick="setAnimTab('custom')" class="text-left text-[10px] font-bold border border-transparent ${tabCustomActive ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm font-extrabold border-brand-400/50 dark:border-brand-500/50' : 'text-surface-500 hover:text-surface-900 dark:hover:text-surface-100 hover:bg-white/60 dark:hover:bg-surface-800/60'} px-2.5 py-1.5 rounded-md transition-all flex items-center gap-1.5 w-full" title="Custom Keyframes">
+                        <i data-lucide="key" class="w-3.5 h-3.5 shrink-0 ${tabCustomActive ? 'text-brand-500' : 'opacity-60'}"></i>
                         <span class="truncate">Custom</span>
                     </button>
                 </div>
@@ -8430,8 +8482,8 @@
             
             let animHTML = isHorizontal ? `
                 ${leftNavHtml}
-                <div id="animCardContainer" class="p-3 flex flex-row flex-wrap gap-4 min-w-0 flex-1 overflow-y-auto no-scrollbar items-start bg-surface-50 dark:bg-surface-950">
-                    <div class="flex-1 flex flex-col gap-4 min-w-[300px]">
+                <div id="animCardContainer" class="p-3 flex flex-row flex-wrap gap-3 min-w-0 flex-1 overflow-y-auto items-start content-start bg-surface-50 dark:bg-surface-950" style="scrollbar-gutter: stable;">
+                    <div class="flex-1 flex flex-col gap-3 min-w-[280px] max-w-full">
                         ${tabInActive ? `
                             ${clipInCard}
                             ${isText ? textInCard : ''}
@@ -8451,26 +8503,28 @@
                     ${tabCustomActive ? '' : propertiesPanel}
                 </div>
             ` : `
-                ${animTabsHtml}
-                <div id="animCardContainer" class="p-3 flex flex-row flex-wrap gap-4 min-w-0 flex-1 overflow-y-auto no-scrollbar items-start">
-                    <div class="flex-1 flex flex-col gap-4 min-w-[300px]">
-                        ${tabInActive ? `
-                            ${clipInCard}
-                            ${isText ? textInCard : ''}
-                        ` : ''}
-                        ${tabOutActive ? `
-                            ${clipOutCard}
-                            ${isText ? textOutCard : ''}
-                        ` : ''}
-                        ${tabLoopActive ? `
-                            ${clipLoopCard}
-                            ${isText ? textLoopCard : ''}
-                        ` : ''}
-                        ${tabCustomActive ? `
-                            ${renderCustomKeyframeEditor(clip)}
-                        ` : ''}
+                <div class="p-3 flex flex-col gap-3 min-h-0 flex-1 overflow-hidden">
+                    ${animTabsHtml}
+                    <div id="animCardContainer" class="flex flex-col gap-3 min-w-0 items-stretch w-full flex-1 min-h-0 overflow-y-auto" style="scrollbar-gutter: stable;">
+                        <div class="flex flex-col gap-3 w-full min-w-0">
+                            ${tabInActive ? `
+                                ${clipInCard}
+                                ${isText ? textInCard : ''}
+                            ` : ''}
+                            ${tabOutActive ? `
+                                ${clipOutCard}
+                                ${isText ? textOutCard : ''}
+                            ` : ''}
+                            ${tabLoopActive ? `
+                                ${clipLoopCard}
+                                ${isText ? textLoopCard : ''}
+                            ` : ''}
+                            ${tabCustomActive ? `
+                                ${renderCustomKeyframeEditor(clip)}
+                            ` : ''}
+                        </div>
+                        ${tabCustomActive ? '' : propertiesPanel}
                     </div>
-                    ${tabCustomActive ? '' : propertiesPanel}
                 </div>
             `;
 
@@ -8561,7 +8615,7 @@
                 if (isHorizontal) {
                     sidebarContent.className = "flex overflow-hidden bg-surface-50 dark:bg-surface-900 w-full flex-1 min-h-0 flex-row";
                 } else {
-                    sidebarContent.className = "flex flex-col gap-3 p-3 w-full h-full min-h-0 overflow-hidden bg-surface-50 dark:bg-surface-900";
+                    sidebarContent.className = "flex flex-col w-full h-full min-h-0 overflow-hidden bg-surface-50 dark:bg-surface-900";
                 }
                 sidebarContent.innerHTML = animHTML;
             } else {
@@ -8818,6 +8872,11 @@
 
         window.setAnimTab = function(tab) {
             State.activeAnimTab = tab;
+            updateSidebarPanel();
+        };
+
+        window.toggleAnimGroup = function(key) {
+            State.animGroupOpen[key] = !(State.animGroupOpen[key] !== false);
             updateSidebarPanel();
         };
 
