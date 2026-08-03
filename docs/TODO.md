@@ -27,6 +27,9 @@ analysis of editor and comparison with remotion
 
 - for markdown style - add more script presets - one with math element - also add styles for it in styles sub tab 
 - captions animtions like kalakar.io - each text pop up - 
+- Subtitle timeing config sync - forward backward - 
+
+Add ability to use audio for specifi text - shape - image - math - elment 
 
 ## Suggestions
 

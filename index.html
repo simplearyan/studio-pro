@@ -11937,8 +11937,24 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             const active = subs.filter(s => time >= s.startTime && time < s.endTime);
             if (!active.length) return;
 
-            // We only show the first active subtitle (no overlapping captions)
-            const sub = active[0];
+            // Resolve overlapping captions by z-order, mirroring how regular clips
+            // overlap: the clip on the top-most track (lowest track index) wins,
+            // and within the same track the later-added subtitle wins (drawn on top).
+            // A subtitle without a timeline clip (no syncSubtitlesToClips yet) is
+            // treated as bottom-most (999) so synced captions take precedence.
+            const trackIdxOf = {};
+            State.tracks.forEach((t, i) => { trackIdxOf[t.id] = i; });
+            let sub = active[0];
+            let bestKey = null;
+            active.forEach(s => {
+                const clip = State.clips.find(c => c.subtitleId === s.id);
+                const ti = (clip && trackIdxOf[clip.trackId] !== undefined) ? trackIdxOf[clip.trackId] : 999;
+                const arr = subs.indexOf(s);
+                if (bestKey === null || ti < bestKey.ti || (ti === bestKey.ti && arr > bestKey.arr)) {
+                    bestKey = { ti, arr };
+                    sub = s;
+                }
+            });
             const ef = { ...cfg, ...sub.effects };
 
             // Calculate animation
