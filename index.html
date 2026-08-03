@@ -873,7 +873,9 @@
                 headingAnimIn: 'fadeIn',
                 textAnimIn: 'slideUp',
                 imageAnimIn: 'fadeIn',
-                trackMode: 'auto' // 'auto' (by type) | 'script' (by script order)
+                trackMode: 'auto', // 'auto' (by type) | 'script' (by script order)
+                startAt: 'playhead', // 'playhead' | 'zero' | '30' | '60' | 'custom'
+                startAtCustom: 0 // seconds when startAt === 'custom'
             },
             subtitleEditingId: null,
             markdownText: '',
@@ -1842,6 +1844,7 @@
             loadCustomFonts();
             loadGoogleFonts();
             loadSubtitlesFromStorage();
+            loadMarkdownConfig();
             
             // Handle headphone plug/unplug in real-time
             if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
@@ -10393,6 +10396,19 @@ const isVis = !clip.hidden;
             } catch(e){}
         }
 
+        // ── Markdown config persistence ────────────────────────────────────────────
+        function saveMarkdownConfig() {
+            try {
+                localStorage.setItem('studiopro_markdownConfig', JSON.stringify(State.markdownConfig));
+            } catch(e){}
+        }
+        function loadMarkdownConfig() {
+            try {
+                const c = localStorage.getItem('studiopro_markdownConfig');
+                if (c) State.markdownConfig = { ...State.markdownConfig, ...JSON.parse(c) };
+            } catch(e){}
+        }
+
         // ── Format seconds for display ────────────────────────────────────────────
         window.formatSubTime = function(seconds) {
             const m = Math.floor(seconds / 60);
@@ -11322,6 +11338,7 @@ const isVis = !clip.hidden;
                     clip.effects.offsetY = ip.offsetY;
                 }
             });
+            saveMarkdownConfig();
             drawCanvas();
         }
 
@@ -11588,6 +11605,7 @@ Every **algorithm**, **bridge** and **smartphone** is built on mathematics. It i
             if (State.clips.some(c => c._mdGenerated)) {
                 parseMarkdownToClips();
             }
+            saveMarkdownConfig();
         };
 
         window.setMdSlideDuration = function(v) {
@@ -11600,6 +11618,7 @@ Every **algorithm**, **bridge** and **smartphone** is built on mathematics. It i
             if (State.clips.some(c => c._mdGenerated)) {
                 parseMarkdownToClips();
             }
+            saveMarkdownConfig();
         };
 
         window.setMdTextDelay = function(v) {
@@ -11612,6 +11631,17 @@ Every **algorithm**, **bridge** and **smartphone** is built on mathematics. It i
             if (State.clips.some(c => c._mdGenerated)) {
                 parseMarkdownToClips();
             }
+            saveMarkdownConfig();
+        };
+
+        window.setMdStartAt = function(mode) {
+            State.markdownConfig.startAt = mode;
+            renderMarkdownPanel();
+            // If clips are already generated, regenerate instantly so the new start time applies
+            if (State.clips.some(c => c._mdGenerated)) {
+                parseMarkdownToClips();
+            }
+            saveMarkdownConfig();
         };
 
         window.renderMarkdownPanel = function() {
@@ -11795,6 +11825,22 @@ Every **algorithm**, **bridge** and **smartphone** is built on mathematics. It i
                                     <button type="button" onclick="setMdSlideDuration(5)" class="flex-1 py-1 text-[10px] font-bold rounded-md transition-all ` + (cfg.slideDuration === 5 ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm' : 'text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-white') + `">5s</button>
                                     <button type="button" onclick="setMdSlideDuration(8)" class="flex-1 py-1 text-[10px] font-bold rounded-md transition-all ` + (cfg.slideDuration === 8 ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm' : 'text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-white') + `">8s</button>
                                     <button type="button" onclick="setMdSlideDuration(10)" class="flex-1 py-1 text-[10px] font-bold rounded-md transition-all ` + (cfg.slideDuration === 10 ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm' : 'text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-white') + `">10s</button>
+                                </div>
+                            </div>
+                            <div class="border-t border-surface-200 dark:border-surface-700 pt-3">
+                                <label class="text-[9px] font-semibold text-surface-400 dark:text-surface-500 mb-1.5 block">Start At</label>
+                                <div class="flex gap-1 bg-surface-100 dark:bg-surface-900 p-1 rounded-lg">
+                                    <button type="button" onclick="setMdStartAt('playhead')" class="flex-1 py-1 text-[10px] font-bold rounded-md transition-all ` + ((cfg.startAt || 'playhead') === 'playhead' ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm' : 'text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-white') + `" title="Start generating from the playhead's current position">
+                                        <i data-lucide="triangle" class="w-3 h-3 inline-block mr-1 align-middle"></i>Playhead
+                                    </button>
+                                    <button type="button" onclick="setMdStartAt('zero')" class="flex-1 py-1 text-[10px] font-bold rounded-md transition-all ` + (cfg.startAt === 'zero' ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm' : 'text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-white') + `" title="Start from 00:00">0</button>
+                                    <button type="button" onclick="setMdStartAt('30')" class="flex-1 py-1 text-[10px] font-bold rounded-md transition-all ` + (cfg.startAt === '30' ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm' : 'text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-white') + `" title="Start from 00:30">30s</button>
+                                    <button type="button" onclick="setMdStartAt('60')" class="flex-1 py-1 text-[10px] font-bold rounded-md transition-all ` + (cfg.startAt === '60' ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm' : 'text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-white') + `" title="Start from 01:00">1m</button>
+                                </div>
+                                <div class="flex items-center gap-1 mt-1.5">
+                                    <button type="button" onclick="setMdStartAt('custom')" class="flex-1 py-1 text-[10px] font-bold rounded-md transition-all ` + (cfg.startAt === 'custom' ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm' : 'text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-white') + `">Custom</button>
+                                    <input type="number" min="0" step="0.5" value="` + (cfg.startAtCustom || 0) + `" onchange="State.markdownConfig.startAt='custom'; State.markdownConfig.startAtCustom=Math.max(0,parseFloat(this.value)||0); saveMarkdownConfig(); renderMarkdownPanel();" class="w-16 text-center text-[11px] font-bold p-1 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 text-surface-900 dark:text-white focus:outline-none focus:border-brand-500" placeholder="sec">
+                                    <span class="text-[9px] font-bold text-surface-400 dark:text-surface-500">sec</span>
                                 </div>
                             </div>
                         </div>
@@ -12276,9 +12322,16 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             if (!slides.length) return;
             
             // Create clips on timeline
-            let currentTime = State.currentTime;
             const cfg = State.markdownConfig;
             const slideDuration = cfg.slideDuration || 5;
+            // Start position — playhead (current) or a fixed time (0 / 30s / 60s / custom)
+            const startAt = cfg.startAt || 'playhead';
+            let currentTime = State.currentTime;
+            if (startAt === 'zero') currentTime = 0;
+            else if (startAt === '30') currentTime = 30;
+            else if (startAt === '60') currentTime = 60;
+            else if (startAt === 'custom') currentTime = Math.max(0, parseFloat(cfg.startAtCustom) || 0);
+            // else 'playhead' keeps State.currentTime
             
             // Dedicated image lanes — one per "position from the end" of a block's image
             // list. The LAST image in a block sits on the bottom 'Images' lane (background);
@@ -13012,6 +13065,21 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     if (c.audioNodes) applyAudioEffects(c);
                 });
             }
+        };
+
+        window.selectAllClipsOnTrack = (trackId) => {
+            const track = State.tracks.find(t => t.id === trackId);
+            if (track && track.locked) return;
+            const sc = State.activeSceneId || null;
+            const ids = State.clips
+                .filter(c => c.trackId === trackId && (c.sceneId || null) === sc)
+                .map(c => c.id);
+            if (!ids.length) return;
+            State.multiSelectedClipIds = ids;
+            State.selectedClipId = ids[0];
+            renderClips();
+            updatePropertiesPanel();
+            drawCanvas();
         };
 
         window.toggleLock = (trackId) => {
@@ -14363,6 +14431,9 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                                 </button>
                             </div>
                             <div class="flex gap-1">
+                                <button onclick="selectAllClipsOnTrack('${track.id}')" class="w-5 h-5 rounded hover:bg-indigo-100 dark:hover:bg-indigo-900/30 text-surface-500 hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center justify-center" title="Select all clips on this track (then drag/move them together)">
+                                    <i data-lucide="mouse-pointer-click" class="w-3 h-3"></i>
+                                </button>
                                 <button onclick="deleteTrack('${track.id}')" class="w-5 h-5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-surface-500 hover:text-red-500 flex items-center justify-center" title="Delete Track">
                                     <i data-lucide="trash-2" class="w-3 h-3"></i>
                                 </button>
