@@ -825,8 +825,8 @@
                 headingFontSize: 60,
                 headingFontWeight: 700,
                 headingColor: '#ffffff',
-                headingPosition: 'top', // 'center' | 'top' | 'bottom'
-                headingOffset: 0, // fine-tune Y position (-300 to 300)
+                headingPosition: 'top', // 'center' | 'top' | 'bottom' | 'left' | 'right'
+                headingOffset: 0, // fine-tune position (%) along the chosen axis
                 headingFxTab: 'style', // sub-tab inside Heading Style accordion: 'style' | 'effects'
                 headingStrokeEnable: true,
                 headingStrokeColor: '#000000',
@@ -860,6 +860,15 @@
                 textExtrudeDepth: 3,
                 imageScale: 1,
                 imageBorderRadius: 0,
+                imagePosition: 'center', // 'center' | 'top' | 'bottom' | 'left' | 'right'
+                imageOffset: 0, // fine-tune position (%) along the chosen axis
+                textPosition: 'center', // 'center' | 'top' | 'bottom' | 'left' | 'right'
+                textOffset: 0,
+                mathPosition: 'center', // 'center' | 'top' | 'bottom' | 'left' | 'right'
+                mathOffset: 0,
+                mathFontSize: 56,
+                mathColor: '#ffffff',
+                mathAnimIn: 'fadeIn',
                 slideDuration: 5,
                 headingAnimIn: 'fadeIn',
                 textAnimIn: 'slideUp',
@@ -11240,9 +11249,16 @@ const isVis = !clip.hidden;
         }
 
         // ── Markdown Panel ────────────────────────────────────────────────────────
+        function mdPosOffsets(pos, offset) {
+            const off = offset || 0;
+            if (pos === 'top') return { offsetX: 0, offsetY: -30 + off };
+            if (pos === 'bottom') return { offsetX: 0, offsetY: 30 + off };
+            if (pos === 'left') return { offsetX: -38 + off, offsetY: 0 };
+            if (pos === 'right') return { offsetX: 38 + off, offsetY: 0 };
+            return { offsetX: 0, offsetY: 0 + off };
+        }
         function applyMarkdownStyle() {
             const cfg = State.markdownConfig;
-            const offset = cfg.headingOffset || 0;
             State.clips.filter(c => c._mdGenerated).forEach(clip => {
                 if (clip.type === 'text' && clip.id && clip.id.endsWith('_heading')) {
                     clip.effects.fontFamily = cfg.headingFontFamily || 'Rubik';
@@ -11263,8 +11279,9 @@ const isVis = !clip.hidden;
                     clip.effects.extrudeColor = cfg.headingExtrudeColor || '#000000';
                     clip.effects.extrudeDir = cfg.headingExtrudeDir || 'br';
                     clip.effects.extrudeDepth = cfg.headingExtrudeDepth || 5;
-                    const baseY = cfg.headingPosition === 'top' ? -30 : cfg.headingPosition === 'bottom' ? 30 : 0;
-                    clip.effects.offsetY = baseY + offset;
+                    const hp = mdPosOffsets(clip._mdPos || cfg.headingPosition || 'top', cfg.headingOffset || 0);
+                    clip.effects.offsetX = hp.offsetX;
+                    clip.effects.offsetY = hp.offsetY;
                 } else if (clip.type === 'text' && clip.id && clip.id.endsWith('_text')) {
                     clip.effects.fontFamily = cfg.textFontFamily || 'Inter';
                     clip.effects.fontSize = cfg.textFontSize || 32;
@@ -11284,11 +11301,25 @@ const isVis = !clip.hidden;
                     clip.effects.extrudeColor = cfg.textExtrudeColor || '#000000';
                     clip.effects.extrudeDir = cfg.textExtrudeDir || 'br';
                     clip.effects.extrudeDepth = cfg.textExtrudeDepth || 3;
+                    const tp = mdPosOffsets(clip._mdPos || cfg.textPosition || 'center', cfg.textOffset || 0);
+                    clip.effects.offsetX = tp.offsetX;
+                    clip.effects.offsetY = tp.offsetY;
+                }
+                if (clip.type === 'text' && clip._mdMath) {
+                    clip.effects.fillColor = cfg.mathColor || '#ffffff';
+                    clip.effects.fontSize = cfg.mathFontSize || 56;
+                    clip.effects.animIn = cfg.mathAnimIn || 'fadeIn';
+                    const mp = mdPosOffsets(clip._mdPos || cfg.mathPosition || 'center', cfg.mathOffset || 0);
+                    clip.effects.offsetX = mp.offsetX;
+                    clip.effects.offsetY = mp.offsetY;
                 }
                 if (clip.type === 'image') {
                     clip.effects.scale = cfg.imageScale || 1;
                     clip.effects.borderRadius = cfg.imageBorderRadius || 0;
                     clip.effects.animIn = cfg.imageAnimIn || 'fadeIn';
+                    const ip = mdPosOffsets(clip._mdPos || cfg.imagePosition || 'center', cfg.imageOffset || 0);
+                    clip.effects.offsetX = ip.offsetX;
+                    clip.effects.offsetY = ip.offsetY;
                 }
             });
             drawCanvas();
@@ -11433,7 +11464,82 @@ Emperor penguins are the tallest and heaviest of all penguin species, standing n
 
 From the smallest butterfly to the mightiest T-Rex, every creature plays a unique role in the tapestry of life on Earth. Let's protect and cherish our planet's incredible biodiversity!`;
 
-        const MARKDOWN_HELP_TEXT = 'Write **Markdown** with `## Heading` for titles, `![alt](url)` for images (multiple per slide supported), and text for paragraphs. Use `---` to separate slides.';
+        const MARKDOWN_PRESET_MATH = `# 📐 The Beauty of Mathematics
+
+**Mathematics** is the language of the universe — pure, logical and endlessly beautiful.
+
+---
+
+## 🔢 Numbers & Patterns
+
+**Numbers** hide everywhere: from the **spiral of a shell** to the rhythm of the stars. **Patterns** are the fingerprints of nature.
+
+![Math Chalkboard](https://images.pexels.com/photos/1329711/pexels-photo-1329711.jpeg?auto=compress&cs=tinysrgb&w=800)
+
+---
+
+## ⚡ The Quadratic Formula
+
+When a quadratic equation cannot be factored, this **powerful formula** solves it every time.
+
+$$x = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}$$
+
+---
+
+## 📐 Pythagorean Theorem
+
+In any **right triangle**, the square of the hypotenuse equals the sum of the squares of the other two sides.
+
+![Geometry](https://images.pexels.com/photos/256541/pexels-photo-256541.jpeg?auto=compress&cs=tinysrgb&w=800) [right]
+
+$$a^2 + b^2 = c^2$$ [left]
+
+---
+
+## π The Circle Constant
+
+The ratio of a circle's circumference to its diameter is **approximately 3.14159** — an irrational number that never repeats.
+
+$$\\pi = \\frac{C}{d} \\approx 3.14159265$$
+
+---
+
+## 🚀 Euler's Identity
+
+Often called the **most beautiful equation** in mathematics, it links five fundamental constants.
+
+![Equation Chalk](https://images.pexels.com/photos/1169754/pexels-photo-1169754.jpeg?auto=compress&cs=tinysrgb&w=800) [left]
+
+$$e^{i\\pi} + 1 = 0$$ [right]
+
+---
+
+## 📈 Calculus in Action
+
+The **derivative** measures how fast things change; the **integral** adds up infinitely small pieces.
+
+$$\\frac{d}{dx} x^n = n \\cdot x^{n-1}$$
+
+---
+
+## 🌌 Math in Nature
+
+From the **Fibonacci sequence** in sunflowers to **fractals** in snowflakes, mathematics shapes the world around us.
+
+![Earth & Space](https://images.pexels.com/photos/356040/pexels-photo-356040.jpeg?auto=compress&cs=tinysrgb&w=800)
+
+---
+
+## 🏆 Why Math Matters
+
+Every **algorithm**, **bridge** and **smartphone** is built on mathematics. It is the ultimate tool of **human curiosity** — and it is for everyone.`;
+
+        const MARKDOWN_PRESETS = {
+            animals: MARKDOWN_PRESET_ANIMALS,
+            math: MARKDOWN_PRESET_MATH
+        };
+
+        const MARKDOWN_HELP_TEXT = 'Write **Markdown** with `## Heading` for titles, `![alt](url)` for images (multiple per slide supported), `$$latex$$` for image-based math equations, and text for paragraphs. Add `[left]`, `[right]`, `[top]` or `[bottom]` at the end of any heading / image / math / text line to position it on the slide. Use `---` to separate slides.';
 
         window.setMarkdownSubTab = function(tab) {
             State.markdownSubTab = tab;
@@ -11736,10 +11842,12 @@ From the smallest butterfly to the mightiest T-Rex, every creature plays a uniqu
                                         <option value="center" ${cfg.headingPosition==='center'?'selected':''}>Center</option>
                                         <option value="top" ${cfg.headingPosition==='top'?'selected':''}>Top</option>
                                         <option value="bottom" ${cfg.headingPosition==='bottom'?'selected':''}>Bottom</option>
+                                        <option value="left" ${cfg.headingPosition==='left'?'selected':''}>Left</option>
+                                        <option value="right" ${cfg.headingPosition==='right'?'selected':''}>Right</option>
                                     </select>
                                 </div>
                                 <div>
-                                    <label class="text-[9px] font-semibold text-surface-400 dark:text-surface-500">Y Offset</label>
+                                    <label class="text-[9px] font-semibold text-surface-400 dark:text-surface-500">Offset</label>
                                     <div class="flex items-center gap-1">
                                         <span class="text-[9px] text-surface-400 w-8 text-right font-mono">` + (cfg.headingOffset || 0) + `</span>
                                         <input type="range" min="-40" max="40" value="` + (cfg.headingOffset || 0) + `" class="flex-1 custom-slider" oninput="State.markdownConfig.headingOffset=parseInt(this.value); this.previousElementSibling.textContent=this.value+'%'; applyMarkdownStyle();">
@@ -11816,6 +11924,25 @@ From the smallest butterfly to the mightiest T-Rex, every creature plays a uniqu
                                     </select>
                                 </div>
                             </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="text-[9px] font-semibold text-surface-400 dark:text-surface-500">Position</label>
+                                    <select class="w-full text-xs p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 focus:outline-none focus:border-brand-500 font-bold text-surface-800 dark:text-surface-200" onchange="State.markdownConfig.textPosition=this.value;applyMarkdownStyle();">
+                                        <option value="center" ${cfg.textPosition==='center'?'selected':''}>Center</option>
+                                        <option value="top" ${cfg.textPosition==='top'?'selected':''}>Top</option>
+                                        <option value="bottom" ${cfg.textPosition==='bottom'?'selected':''}>Bottom</option>
+                                        <option value="left" ${cfg.textPosition==='left'?'selected':''}>Left</option>
+                                        <option value="right" ${cfg.textPosition==='right'?'selected':''}>Right</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="text-[9px] font-semibold text-surface-400 dark:text-surface-500">Offset</label>
+                                    <div class="flex items-center gap-1">
+                                        <span class="text-[9px] text-surface-400 w-8 text-right font-mono">` + (cfg.textOffset || 0) + `</span>
+                                        <input type="range" min="-40" max="40" value="` + (cfg.textOffset || 0) + `" class="flex-1 custom-slider" oninput="State.markdownConfig.textOffset=parseInt(this.value); this.previousElementSibling.textContent=this.value+'%'; applyMarkdownStyle();">
+                                    </div>
+                                </div>
+                            </div>
                             <div>
                                 <label class="text-[9px] font-semibold text-surface-400 dark:text-surface-500">Animation</label>
                                 <select class="w-full text-xs p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 focus:outline-none focus:border-brand-500 font-bold text-surface-800 dark:text-surface-200" onchange="State.markdownConfig.textAnimIn=this.value;applyMarkdownStyle();">
@@ -11862,6 +11989,25 @@ From the smallest butterfly to the mightiest T-Rex, every creature plays a uniqu
                                     <input type="range" min="0" max="50" value="` + (cfg.imageBorderRadius||0) + `" class="w-full custom-slider" oninput="State.markdownConfig.imageBorderRadius=parseInt(this.value);applyMarkdownStyle();">
                                 </div>
                             </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="text-[9px] font-semibold text-surface-400 dark:text-surface-500">Position</label>
+                                    <select class="w-full text-xs p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 focus:outline-none focus:border-brand-500 font-bold text-surface-800 dark:text-surface-200" onchange="State.markdownConfig.imagePosition=this.value;applyMarkdownStyle();">
+                                        <option value="center" ${cfg.imagePosition==='center'?'selected':''}>Center</option>
+                                        <option value="top" ${cfg.imagePosition==='top'?'selected':''}>Top</option>
+                                        <option value="bottom" ${cfg.imagePosition==='bottom'?'selected':''}>Bottom</option>
+                                        <option value="left" ${cfg.imagePosition==='left'?'selected':''}>Left</option>
+                                        <option value="right" ${cfg.imagePosition==='right'?'selected':''}>Right</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="text-[9px] font-semibold text-surface-400 dark:text-surface-500">Offset</label>
+                                    <div class="flex items-center gap-1">
+                                        <span class="text-[9px] text-surface-400 w-8 text-right font-mono">` + (cfg.imageOffset || 0) + `</span>
+                                        <input type="range" min="-40" max="40" value="` + (cfg.imageOffset || 0) + `" class="flex-1 custom-slider" oninput="State.markdownConfig.imageOffset=parseInt(this.value); this.previousElementSibling.textContent=this.value+'%'; applyMarkdownStyle();">
+                                    </div>
+                                </div>
+                            </div>
                             <div>
                                 <label class="text-[9px] font-semibold text-surface-400 dark:text-surface-500">Animation</label>
                                 <select class="w-full text-xs p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 focus:outline-none focus:border-brand-500 font-bold text-surface-800 dark:text-surface-200" onchange="State.markdownConfig.imageAnimIn=this.value;applyMarkdownStyle();">
@@ -11873,14 +12019,68 @@ From the smallest butterfly to the mightiest T-Rex, every creature plays a uniqu
                             </div>
                         </div>
                     </details>
+                    <details class="group bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0" open>
+                        <summary class="flex items-center justify-between p-3 cursor-pointer list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700">
+                            <span class="text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest flex items-center gap-1.5"><i data-lucide="sigma" class="w-3.5 h-3.5"></i>Math Style</span>
+                            <i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>
+                        </summary>
+                        <div class="p-3 flex flex-col gap-3">
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="text-[9px] font-semibold text-surface-400 dark:text-surface-500">Formula Size</label>
+                                    <div class="flex items-center gap-1">
+                                        <span class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">` + (cfg.mathFontSize || 56) + `</span>
+                                        <input type="range" min="24" max="160" value="` + (cfg.mathFontSize || 56) + `" class="flex-1 custom-slider" oninput="State.markdownConfig.mathFontSize=parseInt(this.value); this.previousElementSibling.textContent=this.value; applyMarkdownStyle();">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="text-[9px] font-semibold text-surface-400 dark:text-surface-500">Color</label>
+                                    <div class="relative h-7 rounded border border-surface-200 dark:border-surface-700 overflow-hidden">
+                                        <input type="color" value="` + (cfg.mathColor||'#ffffff') + `" class="absolute inset-0 w-full h-full cursor-pointer" oninput="State.markdownConfig.mathColor=this.value;applyMarkdownStyle();">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="text-[9px] font-semibold text-surface-400 dark:text-surface-500">Position</label>
+                                    <select class="w-full text-xs p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 focus:outline-none focus:border-brand-500 font-bold text-surface-800 dark:text-surface-200" onchange="State.markdownConfig.mathPosition=this.value;applyMarkdownStyle();">
+                                        <option value="center" ${cfg.mathPosition==='center'?'selected':''}>Center</option>
+                                        <option value="top" ${cfg.mathPosition==='top'?'selected':''}>Top</option>
+                                        <option value="bottom" ${cfg.mathPosition==='bottom'?'selected':''}>Bottom</option>
+                                        <option value="left" ${cfg.mathPosition==='left'?'selected':''}>Left</option>
+                                        <option value="right" ${cfg.mathPosition==='right'?'selected':''}>Right</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="text-[9px] font-semibold text-surface-400 dark:text-surface-500">Offset</label>
+                                    <div class="flex items-center gap-1">
+                                        <span class="text-[9px] text-surface-400 w-8 text-right font-mono">` + (cfg.mathOffset || 0) + `</span>
+                                        <input type="range" min="-40" max="40" value="` + (cfg.mathOffset || 0) + `" class="flex-1 custom-slider" oninput="State.markdownConfig.mathOffset=parseInt(this.value); this.previousElementSibling.textContent=this.value+'%'; applyMarkdownStyle();">
+                                    </div>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="text-[9px] font-semibold text-surface-400 dark:text-surface-500">Animation</label>
+                                <select class="w-full text-xs p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 focus:outline-none focus:border-brand-500 font-bold text-surface-800 dark:text-surface-200" onchange="State.markdownConfig.mathAnimIn=this.value;applyMarkdownStyle();">
+                                    <option value="fadeIn" ${cfg.mathAnimIn==='fadeIn'?'selected':''}>Fade In</option>
+                                    <option value="zoomIn" ${cfg.mathAnimIn==='zoomIn'?'selected':''}>Zoom In</option>
+                                    <option value="slideUp" ${cfg.mathAnimIn==='slideUp'?'selected':''}>Slide Up</option>
+                                    <option value="none" ${cfg.mathAnimIn==='none'?'selected':''}>None</option>
+                                </select>
+                            </div>
+                        </div>
+                    </details>
                 </div>
             `;
             
             const contentHtml = `
                 <div class="flex-1 overflow-y-auto p-3 flex flex-col gap-3">
                     <div class="flex items-center gap-2 shrink-0">
-                        <button onclick="loadMarkdownPreset()" class="flex-1 py-2 px-3 bg-indigo-500 hover:bg-indigo-400 text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-sm">
-                            <i data-lucide="sparkles" class="w-3.5 h-3.5"></i> Load Preset
+                        <button onclick="loadMarkdownPreset('animals')" class="flex-1 py-2 px-3 bg-indigo-500 hover:bg-indigo-400 text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-sm" title="Load the Animals & Dinosaurs example script">
+                            <i data-lucide="sparkles" class="w-3.5 h-3.5"></i> Animals
+                        </button>
+                        <button onclick="loadMarkdownPreset('math')" class="flex-1 py-2 px-3 bg-violet-500 hover:bg-violet-400 text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-sm" title="Load the Mathematics example script with image-based math equations">
+                            <i data-lucide="sigma" class="w-3.5 h-3.5"></i> Math
                         </button>
                         <button onclick="parseMarkdownToClips()" class="flex-1 py-2 px-3 bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-sm">
                             <i data-lucide="play" class="w-3.5 h-3.5"></i> Generate
@@ -11937,8 +12137,8 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             }
         };
 
-        window.loadMarkdownPreset = function() {
-            State.markdownText = MARKDOWN_PRESET_ANIMALS;
+        window.loadMarkdownPreset = function(name) {
+            State.markdownText = MARKDOWN_PRESETS[name || 'animals'] || MARKDOWN_PRESET_ANIMALS;
             renderMarkdownPanel();
             // Auto-set textarea value after render
             setTimeout(() => {
@@ -11979,52 +12179,97 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             // Parse markdown into slides/blocks
             const lines = md.split('\n');
             const slides = [];
-            let currentSlide = { heading: '', text: '', images: [], elements: [] };
+            let currentSlide = { heading: '', text: '', images: [], maths: [], elements: [] };
+            // Position tag regex — `[left]`, `[right]`, `[top]`, `[bottom]`, `[center]` at end of a line
+            const POS_RE = /\s*\[(left|right|top|bottom|center)\]\s*$/;
             
             for (let i = 0; i < lines.length; i++) {
-                const line = lines[i].trim();
+                const rawLine = lines[i];
+                const line = rawLine.trim();
                 
                 // Separator = new slide
                 if (line === '---' || line === '___' || line === '***') {
-                    if (currentSlide.heading || currentSlide.text || currentSlide.images.length) {
+                    if (currentSlide.heading || currentSlide.text || currentSlide.images.length || currentSlide.maths.length) {
                         slides.push(currentSlide);
                     }
-                    currentSlide = { heading: '', text: '', images: [], elements: [] };
+                    currentSlide = { heading: '', text: '', images: [], maths: [], elements: [] };
+                    continue;
+                }
+                
+                // Math: $$ latex $$ — image-based math element (MathJax rendered)
+                // Also supports a position tag: $$ x^2 $$ [right]
+                const mathMatch = line.match(/^\$\$(.+?)\$\$/);
+                if (mathMatch) {
+                    const posMatch = line.slice(mathMatch[0].length).match(POS_RE);
+                    const pos = posMatch ? posMatch[1] : null;
+                    const latex = mathMatch[1].trim();
+                    if (latex) {
+                        const mIdx = currentSlide.maths.length;
+                        currentSlide.maths.push({ latex, pos, idx: mIdx });
+                        currentSlide.elements.push({ kind: 'math', latex, pos, idx: mIdx });
+                    }
                     continue;
                 }
                 
                 // Image: ![alt](url) — collect ALL images in script order
+                // Also supports a position tag: ![alt](url) [left]
                 const imgMatch = line.match(/^!\[([^\]]*)\]\s*\(([^)]+)\)/);
                 if (imgMatch) {
-                    currentSlide.images.push({ url: imgMatch[2], alt: imgMatch[1] || '' });
-                    currentSlide.elements.push({ kind: 'image', url: imgMatch[2], alt: imgMatch[1] || '' });
+                    const posMatch = line.slice(imgMatch[0].length).match(POS_RE);
+                    const pos = posMatch ? posMatch[1] : null;
+                    currentSlide.images.push({ url: imgMatch[2], alt: imgMatch[1] || '', pos });
+                    currentSlide.elements.push({ kind: 'image', url: imgMatch[2], alt: imgMatch[1] || '', pos });
                     continue;
                 }
                 
-                // Heading: # text or ## text
+                // Heading: # text or ## text — also supports a position tag: ## Title [top]
                 const headingMatch = line.match(/^#{1,2}\s+(.+)/);
                 if (headingMatch) {
-                    if (currentSlide.heading || currentSlide.text || currentSlide.images.length) {
+                    if (currentSlide.heading || currentSlide.text || currentSlide.images.length || currentSlide.maths.length) {
                         slides.push(currentSlide);
-                        currentSlide = { heading: '', text: '', images: [], elements: [] };
+                        currentSlide = { heading: '', text: '', images: [], maths: [], elements: [] };
                     }
-                    currentSlide.heading = headingMatch[1].trim();
-                    currentSlide.elements.push({ kind: 'heading' });
+                    let headingText = headingMatch[1].trim();
+                    const hPosMatch = headingText.match(POS_RE);
+                    let headingPos = null;
+                    if (hPosMatch) {
+                        headingPos = hPosMatch[1];
+                        headingText = headingText.slice(0, hPosMatch.index).trim();
+                    }
+                    currentSlide.heading = headingText;
+                    currentSlide.headingPos = headingPos;
+                    currentSlide.elements.push({ kind: 'heading', pos: headingPos });
                     continue;
                 }
                 
                 // Regular text (skip empty lines and headings that are just #)
                 if (line && !line.startsWith('#')) {
-                    if (currentSlide.text) currentSlide.text += '\n' + line;
-                    else currentSlide.text = line;
+                    let textLine = line;
+                    const tPosMatch = textLine.match(POS_RE);
+                    let tPos = null;
+                    if (tPosMatch && textLine !== '---' && textLine !== '___' && textLine !== '***') {
+                        tPos = tPosMatch[1];
+                        textLine = textLine.slice(0, tPosMatch.index).trim();
+                    }
+                    if (!textLine) continue;
+                    if (currentSlide.text) currentSlide.text += '\n' + textLine;
+                    else currentSlide.text = textLine;
                     // Track contiguous text runs as a single 'text' element (per-run text) for script-order mode
                     const lastEl = currentSlide.elements[currentSlide.elements.length - 1];
-                    if (lastEl && lastEl.kind === 'text') lastEl.text += (lastEl.text ? '\n' : '') + line;
-                    else currentSlide.elements.push({ kind: 'text', text: line });
+                    if (lastEl && lastEl.kind === 'text') {
+                        lastEl.text += (lastEl.text ? '\n' : '') + textLine;
+                        // Keep a position tag found on any later line of the same paragraph
+                        if (tPos && !lastEl.pos) lastEl.pos = tPos;
+                    }
+                    else {
+                        currentSlide.elements.push({ kind: 'text', text: textLine, pos: tPos });
+                        // Remember the run's position for auto-track mode (uses the slide-level text)
+                        if (!currentSlide.textPos) currentSlide.textPos = tPos;
+                    }
                 }
             }
             // Push the last slide
-            if (currentSlide.heading || currentSlide.text || currentSlide.images.length) {
+            if (currentSlide.heading || currentSlide.text || currentSlide.images.length || currentSlide.maths.length) {
                 slides.push(currentSlide);
             }
             
@@ -12071,6 +12316,31 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 return lane.id;
             }
             
+            // Dedicated math lane — image-based LaTeX equations get their own track so a
+            // heading + formula on the same slide don't overlap on the timeline. Reused
+            // across generations, placed right below the heading track (like image lanes).
+            let mdMathLaneId = null;
+            function getMdMathLane(anchorTrackId) {
+                if (mdMathLaneId) return mdMathLaneId;
+                const sc = State.activeSceneId || null;
+                const existing = State.tracks.find(t => t.id.startsWith('mdmath_') && (t.sceneId || null) === sc);
+                if (existing) { mdMathLaneId = existing.id; return existing.id; }
+                const lane = {
+                    id: 'mdmath_' + Date.now(),
+                    type: 'video',
+                    name: 'Math',
+                    height: TRACK_SIZES[currentTrackSize] ? TRACK_SIZES[currentTrackSize].height : 90,
+                    colorIndex: State.tracks.length % PALETTES.length,
+                    muted: false,
+                    sceneId: sc
+                };
+                const anchorIdx = State.tracks.findIndex(t => t.id === anchorTrackId);
+                if (anchorIdx === -1) State.tracks.push(lane);
+                else State.tracks.splice(anchorIdx + 1, 0, lane);
+                mdMathLaneId = lane.id;
+                return lane.id;
+            }
+
             // Script-order lanes — one per element POSITION in a block, shared across ALL
             // blocks. Block A's 2nd element (an image) and Block B's 2nd element (text)
             // land on the same lane, mirroring the order elements appear in the script.
@@ -12114,6 +12384,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             }
 
             // ── Shared clip builders (identical output in both track modes) ───────────
+            // Note: mdPosOffsets is defined at module level (used by applyMarkdownStyle too).
             function mdHeadingClip(slide, index, id, start, dur, trackId, colorIndex) {
                 return {
                     id: id + '_heading',
@@ -12128,8 +12399,10 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     sourceOffset: 0,
                     maxDuration: 3600,
                     _mdGenerated: true,
+                    _mdPos: slide.headingPos || cfg.headingPosition || 'top',
                     effects: {
-                        scale: 1, rotate: 0, offsetX: 0, offsetY: (cfg.headingPosition === 'top' ? -30 : cfg.headingPosition === 'bottom' ? 30 : 0) + (cfg.headingOffset || 0),
+                        scale: 1, rotate: 0, offsetX: 0, offsetY: 0,
+                        ...mdPosOffsets(slide.headingPos || cfg.headingPosition || 'top', cfg.headingOffset || 0),
                         fontFamily: cfg.headingFontFamily || 'Rubik', fontSize: cfg.headingFontSize || 60, fontWeight: cfg.headingFontWeight || 700, fillColor: cfg.headingColor || '#ffffff',
                         strokeEnable: cfg.headingStrokeEnable !== undefined ? cfg.headingStrokeEnable : true, strokeColor: cfg.headingStrokeColor || '#000000', strokeWidth: cfg.headingStrokeWidth || 4,
                         shadowEnable: cfg.headingShadowEnable !== undefined ? cfg.headingShadowEnable : true, shadowColor: cfg.headingShadowColor || '#000000', shadowBlur: cfg.headingShadowBlur || 20, shadowX: cfg.headingShadowX || 0, shadowY: cfg.headingShadowY || 10,
@@ -12139,28 +12412,100 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     }
                 };
             }
-            function mdTextClip(slide, index, id, start, dur, trackId, colorIndex) {
+            function mdTextClip(slide, index, id, start, dur, trackId, colorIndex, elPos) {
+                const raw = slide.text || '';
+                // Bold support: **word** inside a paragraph is kept as the plain text and
+                // turned into per-word fontWeight overrides (uses the letter-style system)
+                const mdWords = [];
+                let plainText = raw;
+                const boldRe = /\*\*([^*]+)\*\*/g;
+                if (boldRe.test(raw)) {
+                    // Build segments: [text, bold]
+                    const segs = [];
+                    let last = 0, m;
+                    boldRe.lastIndex = 0;
+                    while ((m = boldRe.exec(raw)) !== null) {
+                        if (m.index > last) segs.push({ t: raw.slice(last, m.index), b: false });
+                        segs.push({ t: m[1], b: true });
+                        last = m.index + m[0].length;
+                    }
+                    if (last < raw.length) segs.push({ t: raw.slice(last), b: false });
+                    plainText = segs.map(s => s.t).join('');
+                    // Global word index across wrapped lines, matching the letter-style tokenizer
+                    let gwi = 0;
+                    const wrappedLines = wrapMdText(plainText, 45).split('\n');
+                    const segWords = [];
+                    segs.forEach(s => {
+                        (s.t.split(/\s+/).filter(Boolean)).forEach(() => segWords.push(s.b));
+                    });
+                    let si = 0;
+                    wrappedLines.forEach(line => {
+                        line.split(/\s+/).filter(Boolean).forEach(() => {
+                            if (segWords[si] === true) mdWords.push(gwi);
+                            si++; gwi++;
+                        });
+                    });
+                    // Rebuild wrapped plain text for the clip
+                    plainText = wrappedLines.join('\n');
+                } else {
+                    plainText = wrapMdText(raw, 45);
+                }
+                const wordOverrides = {};
+                mdWords.forEach(wi => { wordOverrides[wi] = { fontWeight: 700 }; });
                 return {
                     id: id + '_text',
                     sceneId: State.activeSceneId || null,
                     trackId: trackId,
                     colorIndex: colorIndex,
                     type: 'text',
-                    title: (slide.text || '').substring(0, 30),
-                    text: wrapMdText(slide.text || '', 45),
+                    title: raw.replace(/\*\*/g, '').substring(0, 30),
+                    text: plainText,
                     start: start,
                     duration: dur,
                     sourceOffset: 0,
                     maxDuration: 3600,
                     _mdGenerated: true,
+                    _mdPos: elPos || cfg.textPosition || 'center',
                     effects: {
                         scale: 1, rotate: 0, offsetX: 0, offsetY: 0,
+                        ...mdPosOffsets(elPos || cfg.textPosition || 'center', cfg.textOffset || 0),
                         fontFamily: cfg.textFontFamily || 'Inter', fontSize: cfg.textFontSize || 32, fontWeight: cfg.textFontWeight || 400, fillColor: cfg.textColor || '#eeeeee',
                         strokeEnable: cfg.textStrokeEnable !== undefined ? cfg.textStrokeEnable : true, strokeColor: cfg.textStrokeColor || '#000000', strokeWidth: cfg.textStrokeWidth || 2,
                         shadowEnable: cfg.textShadowEnable !== undefined ? cfg.textShadowEnable : true, shadowColor: cfg.textShadowColor || '#000000', shadowBlur: cfg.textShadowBlur || 10, shadowX: cfg.textShadowX || 0, shadowY: cfg.textShadowY || 4,
                         extrudeEnable: !!cfg.textExtrudeEnable, extrudeDepth: cfg.textExtrudeDepth || 3, extrudeColor: cfg.textExtrudeColor || '#000000', extrudeDir: cfg.textExtrudeDir || 'br',
                         animIn: cfg.textAnimIn || 'slideUp', animOut: 'none', animLoop: 'none', animInDur: 0.4, animOutDur: 0.3, animEase: 'easeOut',
-                        animTextIn: 'none', animTextOut: 'none', animTextLoop: 'none', animTextEase: 'easeOut', animTextStagger: 'word', animTextInDur: 0.3, animTextOutDur: 0.3, flashColor: '#ffe600'
+                        animTextIn: 'none', animTextOut: 'none', animTextLoop: 'none', animTextEase: 'easeOut', animTextStagger: 'word', animTextInDur: 0.3, animTextOutDur: 0.3, flashColor: '#ffe600',
+                        wordOverrides: Object.keys(wordOverrides).length ? wordOverrides : undefined
+                    }
+                };
+            }
+            function mdMathClip(el, index, id, start, dur, trackId, colorIndex) {
+                return {
+                    id: id + '_math' + (el.idx !== undefined ? el.idx : ''),
+                    sceneId: State.activeSceneId || null,
+                    trackId: trackId,
+                    colorIndex: colorIndex,
+                    type: 'text',
+                    title: 'Math',
+                    text: el.latex || '',
+                    start: start,
+                    duration: dur,
+                    sourceOffset: 0,
+                    maxDuration: 3600,
+                    _mdGenerated: true,
+                    _mdMath: true,
+                    _mdPos: el.pos || cfg.mathPosition || 'center',
+                    effects: {
+                        scale: 1, rotate: 0, offsetX: 0, offsetY: 0,
+                        ...mdPosOffsets(el.pos || cfg.mathPosition || 'center', cfg.mathOffset || 0),
+                        fontFamily: 'Rubik', fontWeight: 700, fillColor: cfg.mathColor || '#ffffff',
+                        renderAsMath: true,
+                        fontSize: cfg.mathFontSize || 56,
+                        strokeEnable: false, strokeColor: '#ffffff', strokeWidth: 4,
+                        shadowEnable: false, shadowColor: '#000000', shadowBlur: 20, shadowX: 0, shadowY: 10,
+                        extrudeEnable: false, extrudeDepth: 5, extrudeColor: '#000000',
+                        animIn: cfg.mathAnimIn || 'fadeIn', animOut: 'none', animLoop: 'none', animInDur: 0.5, animOutDur: 0.3, animEase: 'easeOut',
+                        animTextIn: 'none', animTextOut: 'none', animTextLoop: 'none', animTextEase: 'easeOut', animTextStagger: 'letter', animTextInDur: 1.0, animTextOutDur: 1.0, flashColor: '#ffe600'
                     }
                 };
             }
@@ -12183,8 +12528,10 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     fileUrl: img.url,
                     imageEl: imgEl,
                     _mdGenerated: true,
+                    _mdPos: img.pos || cfg.imagePosition || 'center',
                     effects: {
                         scale: cfg.imageScale || 1, rotate: 0, borderRadius: cfg.imageBorderRadius || 0, offsetX: 0, offsetY: 0,
+                        ...mdPosOffsets(img.pos || cfg.imagePosition || 'center', cfg.imageOffset || 0),
                         strokeEnable: false, strokeColor: '#ffffff', strokeWidth: 4,
                         shadowEnable: false, shadowColor: '#000000', shadowBlur: 20, shadowX: 0, shadowY: 10,
                         animIn: cfg.imageAnimIn || 'fadeIn', animOut: 'none', animLoop: 'none', animInDur: 0.5, animOutDur: 0.3, animEase: 'easeOut',
@@ -12213,11 +12560,15 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                             // Use this run's own text so text split by images stays independent
                             const runSlide = Object.assign({}, slide, { text: el.text || slide.text || '' });
                             const { tStart, tDur } = mdTextTiming(clipStart, slideDuration);
-                            State.clips.push(mdTextClip(runSlide, index, id, tStart, tDur, trackId, colorIndex));
+                            State.clips.push(mdTextClip(runSlide, index, id, tStart, tDur, trackId, colorIndex, el.pos));
                         } else if (el.kind === 'image') {
                             State.clips.push(mdImageClip(el, index, pos, id, clipStart, slideDuration, trackId, colorIndex));
+                        } else if (el.kind === 'math') {
+                            State.clips.push(mdMathClip(el, index, id, clipStart, slideDuration, trackId, colorIndex));
                         }
                     });
+                    // Warm math images so the first paint shows the formula (no flicker)
+                    State.clips.filter(c => c._mdGenerated && c._mdMath).forEach(c => warmMathImage(c));
                     return;
                 }
                 
@@ -12238,7 +12589,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     let textTrack = State.tracks.find(t => t.id === textTrackId);
                     let textColor = (textTrack ? (textTrack.colorIndex + 2 + index) % PALETTES.length : 0);
                     const { tStart, tDur } = mdTextTiming(clipStart, slideDuration);
-                    State.clips.push(mdTextClip(slide, index, id, tStart, tDur, textTrackId, textColor));
+                    State.clips.push(mdTextClip(slide, index, id, tStart, tDur, textTrackId, textColor, slide.textPos));
                 }
                 
                 // Create image clips — one per image in script order. The LAST image of the
@@ -12252,6 +12603,18 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         const imgTrack = State.tracks.find(t => t.id === imgTrackId);
                         const imgColor = (imgTrack ? (imgTrack.colorIndex + 3 + imgIdx) % PALETTES.length : 0);
                         State.clips.push(mdImageClip(img, index, imgIdx, id, clipStart, slideDuration, imgTrackId, imgColor));
+                    });
+                }
+                
+                // Create math clips — image-based LaTeX on their own dedicated Math lane
+                if (slide.maths && slide.maths.length) {
+                    const mathTrackId = getMdMathLane(slideTrackId);
+                    const mathTrack = State.tracks.find(t => t.id === mathTrackId);
+                    const mathColor = (mathTrack ? (mathTrack.colorIndex + 4 + index) % PALETTES.length : 0);
+                    slide.maths.forEach((m, mIdx) => {
+                        const mathClip = mdMathClip(m, index, id, clipStart, slideDuration, mathTrackId, mathColor);
+                        State.clips.push(mathClip);
+                        warmMathImage(mathClip);
                     });
                 }
             });
