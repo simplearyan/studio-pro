@@ -2871,6 +2871,10 @@
             const cols = Math.max(2, Math.round(blockCount || 8));
             const rows = Math.max(2, Math.round(cols * H / Math.max(1, W)));
             const cw = W / cols, ch = H / rows;
+            // 1px bleed on each cell hides the antialiasing hairline seams that appear
+            // between adjacent blocks when cell sizes are fractional (W/cols). Each cell
+            // is drawn slightly larger and overlaps its neighbours, so no gap shows.
+            const bleed = 1;
             const rand = mulberry32(seed || 12345);
             // The offscreen must be centered on the clip origin (the same placement the
             // callers' plain drawImage uses), so cells are drawn relative to -W/2, -H/2.
@@ -2888,10 +2892,13 @@
                     else order = rand();
                     order = Math.min(1, Math.max(0, order + (rand() - 0.5) * 0.15));
                     const sx = c * cw, sy = r * ch;
+                    // Clamp bleed to the canvas edge so the last column/row doesn't stretch
+                    const bCw = Math.min(cw + bleed, W - sx);
+                    const bCh = Math.min(ch + bleed, H - sy);
                     if (snap) {
                         if (level < order) continue;
                         ctx.save();
-                        ctx.drawImage(offCanvas, sx, sy, cw, ch, sx, sy, cw, ch);
+                        ctx.drawImage(offCanvas, sx, sy, bCw, bCh, sx, sy, bCw, bCh);
                         ctx.restore();
                         continue;
                     }
@@ -2902,7 +2909,7 @@
                     const popScale = 0.5 + 0.5 * local;
                     ctx.translate(sx + cw / 2, sy + ch / 2);
                     ctx.scale(popScale, popScale);
-                    ctx.drawImage(offCanvas, sx, sy, cw, ch, -cw / 2, -ch / 2, cw, ch);
+                    ctx.drawImage(offCanvas, sx, sy, bCw, bCh, -bCw / 2, -bCh / 2, bCw, bCh);
                     ctx.restore();
                 }
             }
