@@ -12347,30 +12347,38 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             // The lane stack is built top-to-bottom (position 0 = first element) and the
             // lanes are reused across generations so re-running doesn't duplicate tracks.
             const mdScriptLanes = {};
+            let mdScriptNewLanes = 0; // number of new lanes created this run, for V-numbering
             function getMdScriptLane(pos) {
                 if (mdScriptLanes[pos]) return mdScriptLanes[pos];
                 const sc = State.activeSceneId || null;
                 const prefix = 'mdscr_' + pos + '_';
                 const existing = State.tracks.find(t => t.id.startsWith(prefix) && (t.sceneId || null) === sc);
                 if (existing) { mdScriptLanes[pos] = existing.id; return existing.id; }
+                // Reuse an existing plain video track (V1, V2, ...) instead of spawning a
+                // dedicated "Row N" lane, so script-order clips land on the same tracks
+                // the user already has in the timeline (matching Auto mode's behaviour).
+                const plainVids = State.tracks.filter(t => t.type === 'video' && (t.sceneId || null) === sc && !t.id.startsWith('mdimg_') && !t.id.startsWith('mdscr_') && !t.id.startsWith('mdmath_'));
+                if (plainVids[pos]) {
+                    mdScriptLanes[pos] = plainVids[pos].id;
+                    return plainVids[pos].id;
+                }
+                const plainVideoCount = State.tracks.filter(t => t.type === 'video' && !t.id.startsWith('mdimg_') && !t.id.startsWith('mdscr_') && !t.id.startsWith('mdmath_')).length;
                 const lane = {
                     id: prefix + Date.now(),
                     type: 'video',
-                    name: 'Row ' + (pos + 1),
+                    name: 'V' + (plainVideoCount + mdScriptNewLanes + 1),
                     height: TRACK_SIZES[currentTrackSize] ? TRACK_SIZES[currentTrackSize].height : 90,
                     colorIndex: State.tracks.length % PALETTES.length,
                     muted: false,
                     sceneId: sc
                 };
-                if (pos === 0) {
-                    // Position 0 lane goes at the very top
-                    State.tracks.unshift(lane);
-                } else {
-                    // Each new lane stacks directly below the previous script-order lane
-                    const prevIdx = State.tracks.findIndex(t => t.id === mdScriptLanes[pos - 1]);
-                    if (prevIdx === -1) State.tracks.push(lane);
-                    else State.tracks.splice(prevIdx + 1, 0, lane);
-                }
+                mdScriptNewLanes++;
+                // Each new lane stacks directly below the previous script-order lane
+                // (or the reused plain track it maps to) so ordering stays intuitive.
+                const prevId = mdScriptLanes[pos - 1];
+                const prevIdx = prevId ? State.tracks.findIndex(t => t.id === prevId) : -1;
+                if (prevIdx === -1) State.tracks.push(lane);
+                else State.tracks.splice(prevIdx + 1, 0, lane);
                 mdScriptLanes[pos] = lane.id;
                 return lane.id;
             }
