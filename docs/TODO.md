@@ -25,16 +25,18 @@ analysis of editor and comparison with remotion
 ✅ add background and cutmize border radius and background color - stroke - drop shadow and 3d extrude for that background for text element 
 ✅ add texture for shape - text - background - like thumb maker 
 
-- for markdown style - add more script presets - one with math element - also add styles for it in styles sub tab 
-- captions animtions like kalakar.io - each text pop up - 
-- Subtitle timeing config sync - forward backward - 
+✅ for markdown style - add more script presets - one with math element - also add styles for it in styles sub tab 
+✅ captions animtions like kalakar.io - each text pop up - 
+✅ Subtitle timeing config sync - forward backward - 
 
 - cutom animtion - tab - add ability to seek to keyframe with arrow icons - add reset icon for property to default 
 
-- for slide up animtion - add 
+✅ for slide up animtion - add 
+✅ the slide up animtion for markdown style animtions - is no more working fix this 
 
-- the slide up animtion for markdown style animtions - is no more working fix this 
-
+- add finzar subtitle animtions for text and captions - Add sinzar styel sase in out option - advanced ease in out more options - 
+- add more finzar type transfrom such as character animtions styles 
+- make caption animtion word by word stay fro whole clip duration - add option for it 
 - add ability select empty space between clips on a track a delte it and move clips like premier pro - add a toggle icon in header for that 
 - add ability to select one clip and when user move it also move
 
