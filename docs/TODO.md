@@ -33,6 +33,8 @@ analysis of editor and comparison with remotion
 
 - for slide up animtion - add 
 
+- the slide up animtion for markdown style animtions - is no more working fix this 
+
 - add ability select empty space between clips on a track a delte it and move clips like premier pro - add a toggle icon in header for that 
 - add ability to select one clip and when user move it also move
 
