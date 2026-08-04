@@ -927,6 +927,8 @@
                 animPuzzleDir: 'random',
                 animPuzzleSize: 8,
                 animPuzzleSnap: false,
+                animSlideDir: 'up',
+                animSlideOffCanvas: true,
                 animPreset: 'none',
                 position: 'bottom',
                 bottomOffset: 60,
@@ -1673,9 +1675,9 @@
                         scale: 1, rotate: 0, borderRadius: 0, offsetX: 0, offsetY: 0, 
                         strokeEnable: false, strokeColor: '#ffffff', strokeWidth: 4, 
                         shadowEnable: false, shadowColor: '#000000', shadowBlur: 20, shadowX: 0, shadowY: 10, 
-                        animIn: 'none', animOut: 'none', animLoop: 'none', 
-                        animInDur: 1.0, animOutDur: 1.0, animEase: 'easeOut', animInDelay: 0, animOutDelay: 0, animPuzzleDir: 'random', animPuzzleSize: 8, animPuzzleSnap: false,
-                        cropLeft: 0, cropRight: 0, cropTop: 0, cropBottom: 0, 
+                    animIn: 'none', animOut: 'none', animLoop: 'none', 
+                    animInDur: 1.0, animOutDur: 1.0, animEase: 'easeOut', animInDelay: 0, animOutDelay: 0, animPuzzleDir: 'random', animPuzzleSize: 8, animPuzzleSnap: false, animSlideDir: 'up', animSlideOffCanvas: true,
+                    cropLeft: 0, cropRight: 0, cropTop: 0, cropBottom: 0, 
                         maskingZoom: 100, frameZoom: 100, framingPanX: 0, framingPanY: 0, 
                         maskType: 'none', maskWidth: 50, maskHeight: 50, maskX: 0, maskY: 0, maskFeather: 0, maskInvert: false 
                     }
@@ -2604,7 +2606,7 @@
                     scale: 1, rotate: 0, opacity: 100, blendMode: 'source-over',
                     opaqueBg: false,
                     bgColor: null,
-                    animIn: 'none', animOut: 'none', animLoop: 'none', animInDur: 1.0, animOutDur: 1.0, animEase: 'easeOut', animInDelay: 0, animOutDelay: 0, animPuzzleDir: 'random', animPuzzleSize: 8, animPuzzleSnap: false
+                    animIn: 'none', animOut: 'none', animLoop: 'none', animInDur: 1.0, animOutDur: 1.0, animEase: 'easeOut', animInDelay: 0, animOutDelay: 0, animPuzzleDir: 'random', animPuzzleSize: 8, animPuzzleSnap: false, animSlideDir: 'up', animSlideOffCanvas: true
                 }
             };
 
@@ -2802,6 +2804,21 @@
                     if (type === 'slideDown') animY -= invP * (h / 2 + 100);
                     if (type === 'slideLeft') animX -= invP * (w / 2 + 100);
                     if (type === 'slideRight') animX += invP * (w / 2 + 100);
+                    if (type === 'slide') {
+                        const slideDir = clip.effects.animSlideDir || 'up';
+                        const offCanvas = clip.effects.animSlideOffCanvas !== false;
+                        const offXPx = (clip.effects.offsetX || 0) * w / 100;
+                        const offYPx = (clip.effects.offsetY || 0) * h / 100;
+                        const offsetMult = offCanvas ? 1.0 : 0.3;
+                        // Add clip offset to the slide distance so it always starts from off-screen
+                        // relative to the clip's actual canvas position, not just the center
+                        const baseY = h / 2 + 100 + Math.abs(offYPx);
+                        const baseX = w / 2 + 100 + Math.abs(offXPx);
+                        if (slideDir === 'up') animY += invP * baseY * offsetMult;
+                        if (slideDir === 'down') animY -= invP * baseY * offsetMult;
+                        if (slideDir === 'left') animX -= invP * baseX * offsetMult;
+                        if (slideDir === 'right') animX += invP * baseX * offsetMult;
+                    }
                     if (type === 'zoomIn') animScale *= p;
                     if (type === 'pop') animScale *= p + (Math.sin(p * Math.PI) * 0.2);
                     if (type === 'spinIn') { animRot -= invP * Math.PI * 2; animScale *= p; }
@@ -2824,6 +2841,19 @@
                     if (type === 'slideDown') animY += invP * (h / 2 + 100);
                     if (type === 'slideLeft') animX -= invP * (w / 2 + 100);
                     if (type === 'slideRight') animX += invP * (w / 2 + 100);
+                    if (type === 'slide') {
+                        const slideDir = clip.effects.animSlideDir || 'up';
+                        const offCanvas = clip.effects.animSlideOffCanvas !== false;
+                        const offXPx = (clip.effects.offsetX || 0) * w / 100;
+                        const offYPx = (clip.effects.offsetY || 0) * h / 100;
+                        const offsetMult = offCanvas ? 1.0 : 0.3;
+                        const baseY = h / 2 + 100 + Math.abs(offYPx);
+                        const baseX = w / 2 + 100 + Math.abs(offXPx);
+                        if (slideDir === 'up') animY -= invP * baseY * offsetMult;
+                        if (slideDir === 'down') animY += invP * baseY * offsetMult;
+                        if (slideDir === 'left') animX -= invP * baseX * offsetMult;
+                        if (slideDir === 'right') animX += invP * baseX * offsetMult;
+                    }
                     if (type === 'zoomOut') animScale *= Math.max(0.01, p);
                     if (type === 'shrink') { animRot += invP * Math.PI; animScale *= Math.max(0.01, p); }
                     if (type === 'mosaic') mosaicLevel = Math.max(mosaicLevel, invP);
@@ -6645,6 +6675,8 @@
             const animPuzzleDir = fx.animPuzzleDir || 'random';
             const animPuzzleSize = fx.animPuzzleSize !== undefined ? fx.animPuzzleSize : 8;
             const animPuzzleSnap = fx.animPuzzleSnap !== undefined ? fx.animPuzzleSnap : false;
+            const animSlideDir = fx.animSlideDir || 'up';
+            const animSlideOffCanvas = fx.animSlideOffCanvas !== false;
             const animTextIn = fx.animTextIn || 'none';
             const animTextOut = fx.animTextOut || 'none';
             const animTextLoop = fx.animTextLoop || 'none';
@@ -8082,6 +8114,7 @@
                 { value: 'slideDown', label: 'Slide Down', icon: 'arrow-down', previewClass: 'preview-slide-down' },
                 { value: 'slideLeft', label: 'Slide Left', icon: 'arrow-left', previewClass: 'preview-slide-left' },
                 { value: 'slideRight', label: 'Slide Right', icon: 'arrow-right', previewClass: 'preview-slide-right' },
+                { value: 'slide', label: 'Slide', icon: 'move', previewClass: 'preview-slide-up' },
                 { value: 'zoomIn', label: 'Zoom In', icon: 'zoom-in', previewClass: 'preview-zoom-in' },
                 { value: 'pop', label: 'Pop', icon: 'expand', previewClass: 'preview-pop' },
                 { value: 'spinIn', label: 'Spin In', icon: 'rotate-cw', previewClass: 'preview-spin-in' },
@@ -8096,6 +8129,7 @@
                 { value: 'slideUp', label: 'Slide Up', icon: 'arrow-up', previewClass: 'preview-slide-up-exit' },
                 { value: 'slideLeft', label: 'Slide Left', icon: 'arrow-left', previewClass: 'preview-slide-left-exit' },
                 { value: 'slideRight', label: 'Slide Right', icon: 'arrow-right', previewClass: 'preview-slide-right-exit' },
+                { value: 'slide', label: 'Slide', icon: 'move', previewClass: 'preview-slide-down-exit' },
                 { value: 'zoomOut', label: 'Zoom Out', icon: 'zoom-out', previewClass: 'preview-zoom-out' },
                 { value: 'shrink', label: 'Shrink', icon: 'rotate-ccw', previewClass: 'preview-shrink-spin' },
                 { value: 'mosaic', label: 'Mosaic', icon: 'grid', previewClass: 'preview-mosaic' },
@@ -8350,6 +8384,34 @@
                         </div>
                         <input type="range" min="0" max="2.0" step="0.1" value="${animInDelay}" class="w-full custom-slider h-1.5" oninput="setClipEffect('${clip.id}', 'animInDelay', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = parseFloat(this.value).toFixed(1) + 's'; drawCanvas();">
                     </div>
+                    ${animIn === 'slide' ? `
+                        <div class="border-t border-surface-100 dark:border-surface-700/60 pt-3 flex flex-col gap-3">
+                            <div class="flex flex-col gap-1">
+                                <span class="text-xs font-medium text-surface-600 dark:text-surface-400">Direction</span>
+                                <div class="grid grid-cols-2 gap-1 w-full select-none">
+                                    ${[['up','Up'],['down','Down'],['left','Left'],['right','Right']].map(([dv, dl]) => `
+                                        <button onclick="setClipEffect('${clip.id}', 'animSlideDir', '${dv}'); updateSidebarPanel(); drawCanvas();" 
+                                                class="text-[10px] font-semibold py-1.5 px-1 rounded-lg border transition-all duration-150 text-center truncate ${animSlideDir === dv ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm border-brand-400/70 dark:border-brand-500/60 ring-1 ring-brand-500/20' : 'bg-surface-100 dark:bg-surface-900/50 text-surface-500 dark:text-surface-400 border-transparent hover:border-surface-300 dark:hover:border-surface-600 hover:bg-white dark:hover:bg-surface-800'}">
+                                            ${dl}
+                                        </button>
+                                    `).join('')}
+                                </div>
+                            </div>
+                            <div class="flex flex-col gap-1">
+                                <span class="text-xs font-medium text-surface-600 dark:text-surface-400">Start Position</span>
+                                <div class="flex gap-1 w-full bg-surface-100 dark:bg-surface-900/50 p-1 rounded-lg border border-surface-200 dark:border-surface-700/80 select-none">
+                                    <button onclick="setClipEffect('${clip.id}', 'animSlideOffCanvas', true); updateSidebarPanel(); drawCanvas();" 
+                                            class="flex-1 text-[10px] font-semibold py-1.5 px-1 rounded-md transition-all text-center truncate ${animSlideOffCanvas ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm border border-surface-200/50 dark:border-surface-600/50' : 'text-surface-500 hover:text-surface-800 dark:hover:text-surface-200'}"${!animSlideOffCanvas ? '' : ''}>
+                                        Off Canvas
+                                    </button>
+                                    <button onclick="setClipEffect('${clip.id}', 'animSlideOffCanvas', false); updateSidebarPanel(); drawCanvas();" 
+                                            class="flex-1 text-[10px] font-semibold py-1.5 px-1 rounded-md transition-all text-center truncate ${!animSlideOffCanvas ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm border border-surface-200/50 dark:border-surface-600/50' : 'text-surface-500 hover:text-surface-800 dark:hover:text-surface-200'}">
+                                        From Center
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    ` : ''}
                     ${animIn === 'puzzle' ? `
                         <div class="border-t border-surface-100 dark:border-surface-700/60 pt-3 flex flex-col gap-3">
                             <div class="flex flex-col gap-1">
@@ -8402,6 +8464,34 @@
                         </div>
                         <input type="range" min="0" max="2.0" step="0.1" value="${animOutDelay}" class="w-full custom-slider h-1.5" oninput="setClipEffect('${clip.id}', 'animOutDelay', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = parseFloat(this.value).toFixed(1) + 's'; drawCanvas();">
                     </div>
+                    ${animOut === 'slide' ? `
+                        <div class="border-t border-surface-100 dark:border-surface-700/60 pt-3 flex flex-col gap-3">
+                            <div class="flex flex-col gap-1">
+                                <span class="text-xs font-medium text-surface-600 dark:text-surface-400">Direction</span>
+                                <div class="grid grid-cols-2 gap-1 w-full select-none">
+                                    ${[['up','Up'],['down','Down'],['left','Left'],['right','Right']].map(([dv, dl]) => `
+                                        <button onclick="setClipEffect('${clip.id}', 'animSlideDir', '${dv}'); updateSidebarPanel(); drawCanvas();" 
+                                                class="text-[10px] font-semibold py-1.5 px-1 rounded-lg border transition-all duration-150 text-center truncate ${animSlideDir === dv ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm border-brand-400/70 dark:border-brand-500/60 ring-1 ring-brand-500/20' : 'bg-surface-100 dark:bg-surface-900/50 text-surface-500 dark:text-surface-400 border-transparent hover:border-surface-300 dark:hover:border-surface-600 hover:bg-white dark:hover:bg-surface-800'}">
+                                            ${dl}
+                                        </button>
+                                    `).join('')}
+                                </div>
+                            </div>
+                            <div class="flex flex-col gap-1">
+                                <span class="text-xs font-medium text-surface-600 dark:text-surface-400">Start Position</span>
+                                <div class="flex gap-1 w-full bg-surface-100 dark:bg-surface-900/50 p-1 rounded-lg border border-surface-200 dark:border-surface-700/80 select-none">
+                                    <button onclick="setClipEffect('${clip.id}', 'animSlideOffCanvas', true); updateSidebarPanel(); drawCanvas();" 
+                                            class="flex-1 text-[10px] font-semibold py-1.5 px-1 rounded-md transition-all text-center truncate ${animSlideOffCanvas ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm border border-surface-200/50 dark:border-surface-600/50' : 'text-surface-500 hover:text-surface-800 dark:hover:text-surface-200'}">
+                                        Off Canvas
+                                    </button>
+                                    <button onclick="setClipEffect('${clip.id}', 'animSlideOffCanvas', false); updateSidebarPanel(); drawCanvas();" 
+                                            class="flex-1 text-[10px] font-semibold py-1.5 px-1 rounded-md transition-all text-center truncate ${!animSlideOffCanvas ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm border border-surface-200/50 dark:border-surface-600/50' : 'text-surface-500 hover:text-surface-800 dark:hover:text-surface-200'}">
+                                        From Center
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    ` : ''}
                 `);
             } else if (subTabLoopActive && animLoop !== 'none') {
                 transformPropertiesHtml += renderAnimPropGroup('Properties', 'transform', `
