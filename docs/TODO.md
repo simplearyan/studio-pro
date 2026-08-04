@@ -29,6 +29,13 @@ analysis of editor and comparison with remotion
 - captions animtions like kalakar.io - each text pop up - 
 - Subtitle timeing config sync - forward backward - 
 
+- cutom animtion - tab - add ability to seek to keyframe with arrow icons - add reset icon for property to default 
+
+- for slide up animtion - add 
+
+- add ability select empty space between clips on a track a delte it and move clips like premier pro - add a toggle icon in header for that 
+- add ability to select one clip and when user move it also move
+
 Add ability to use audio for specifi text - shape - image - math - elment 
 
 ## Suggestions

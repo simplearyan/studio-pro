@@ -807,7 +807,8 @@
             activePropertyTab: 'volume',
             sidebarTab: 'properties', // 'properties', 'animations', 'audio_library', 'presets', 'subtitles', 'markdown'
             audioSubTab: 'library', // 'library', 'mixer'
-            activeAnimTab: 'in',
+            activeAnimMainTab: 'transform',
+            activeAnimSubTab: 'in',
             animGroupOpen: { transform: true, text: true },
             audioLibrary: [],
             selectedAudioLibId: null,
@@ -8227,65 +8228,97 @@
                 `;
             }
 
-            const tabInActive = State.activeAnimTab === 'in';
-            const tabOutActive = State.activeAnimTab === 'out';
-            const tabLoopActive = State.activeAnimTab === 'loop';
-            const tabCustomActive = State.activeAnimTab === 'custom';
+            // Auto-switch to Transform if Text tab is active on a non-text clip
+            if (State.activeAnimMainTab === 'text' && !isText) {
+                State.activeAnimMainTab = 'transform';
+            }
 
-            const activeTabClass = "flex-1 py-1.5 px-1.5 rounded-md text-[9px] font-extrabold flex items-center justify-center gap-1 bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm border border-surface-200/50 dark:border-surface-600/50";
-            const inactiveTabClass = "flex-1 py-1.5 px-1.5 rounded-md text-[9px] font-bold flex items-center justify-center gap-1 text-surface-500 hover:text-surface-800 dark:hover:text-surface-200 hover:bg-white/60 dark:hover:bg-surface-800/60 transition-colors";
+            const tabTransformActive = State.activeAnimMainTab === 'transform';
+            const tabTextActive = State.activeAnimMainTab === 'text';
+            const tabCustomActive = State.activeAnimMainTab === 'custom';
+            const subTabInActive = State.activeAnimSubTab === 'in';
+            const subTabOutActive = State.activeAnimSubTab === 'out';
+            const subTabLoopActive = State.activeAnimSubTab === 'loop';
+
+            const activeMainTabClass = "flex-1 py-1.5 px-1.5 rounded-md text-[9px] font-extrabold flex items-center justify-center gap-1 bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm border border-surface-200/50 dark:border-surface-600/50";
+            const inactiveMainTabClass = "flex-1 py-1.5 px-1.5 rounded-md text-[9px] font-bold flex items-center justify-center gap-1 text-surface-500 hover:text-surface-800 dark:hover:text-surface-200 hover:bg-white/60 dark:hover:bg-surface-800/60 transition-colors";
+            const activeSubTabClass = "flex-1 py-1.5 px-3 rounded-md text-[11px] font-extrabold flex items-center justify-center gap-1.5 bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm border border-surface-200/50 dark:border-surface-600/50 ring-1 ring-brand-500/20";
+            const inactiveSubTabClass = "flex-1 py-1.5 px-3 rounded-md text-[11px] font-bold flex items-center justify-center gap-1.5 text-surface-500 hover:text-surface-800 dark:hover:text-surface-200 hover:bg-white/60 dark:hover:bg-surface-800/60 transition-colors";
 
             const animTabsHtml = `
                 <div class="flex items-center gap-1 bg-surface-100 dark:bg-surface-900/60 p-1 rounded-lg border border-surface-200 dark:border-surface-700/80 shadow-inner w-full shrink-0">
-                    <button onclick="setAnimTab('in')" class="${tabInActive ? activeTabClass : inactiveTabClass}" title="Entrance">
-                        <i data-lucide="log-in" class="w-3 h-3 ${tabInActive ? 'text-brand-500' : ''}"></i> In
+                    <button onclick="setAnimMainTab('transform')" class="${tabTransformActive ? activeMainTabClass : inactiveMainTabClass}" title="Transform (whole-clip & text animations)">
+                        <i data-lucide="move" class="w-3 h-3 ${tabTransformActive ? 'text-brand-500' : ''}"></i> Transform
                     </button>
-                    <button onclick="setAnimTab('out')" class="${tabOutActive ? activeTabClass : inactiveTabClass}" title="Exit">
-                        <i data-lucide="log-out" class="w-3 h-3 ${tabOutActive ? 'text-brand-500' : ''}"></i> Out
+                    <button onclick="setAnimMainTab('text')" class="${isText ? (tabTextActive ? activeMainTabClass : inactiveMainTabClass) : 'flex-1 py-1.5 px-1.5 rounded-md text-[9px] font-bold flex items-center justify-center gap-1 text-surface-300 dark:text-surface-600 cursor-not-allowed'}" title="${isText ? 'Text animations (per-letter stagger)' : 'Only available for text clips'}" ${isText ? '' : 'disabled'}>
+                        <i data-lucide="type" class="w-3 h-3 ${isText ? (tabTextActive ? 'text-brand-500' : '') : 'text-surface-300 dark:text-surface-600'}"></i> Text
                     </button>
-                    <button onclick="setAnimTab('loop')" class="${tabLoopActive ? activeTabClass : inactiveTabClass}" title="Loop">
-                        <i data-lucide="refresh-cw" class="w-3 h-3 ${tabLoopActive ? 'text-brand-500' : ''}"></i> Loop
-                    </button>
-                    <button onclick="setAnimTab('custom')" class="${tabCustomActive ? activeTabClass : inactiveTabClass}" title="Custom Keyframes">
+                    <button onclick="setAnimMainTab('custom')" class="${tabCustomActive ? activeMainTabClass : inactiveMainTabClass}" title="Custom Keyframes">
                         <i data-lucide="key" class="w-3 h-3 ${tabCustomActive ? 'text-brand-500' : ''}"></i> Custom
                     </button>
                 </div>
             `;
 
-            
-            const createGridCard = (icon, title, innerHTML) => `
-                <div class="flex flex-col gap-2.5 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700/80 shadow-sm rounded-xl p-3 w-full shrink-0 transition-all hover:shadow-md">
-                    <div class="flex items-center gap-2 border-b border-surface-100 dark:border-surface-700/60 pb-2 shrink-0">
-                        <div class="w-6 h-6 rounded-md bg-brand-50 dark:bg-brand-500/15 flex items-center justify-center shrink-0">
-                            <i data-lucide="${icon}" class="w-3.5 h-3.5 text-brand-500"></i>
-                        </div>
-                        <span class="text-xs font-extrabold text-surface-800 dark:text-surface-200 tracking-tight">${title}</span>
-                    </div>
+            const subTabSwitcher = (prefix, inVal, outVal, loopVal) => `
+                <div class="flex items-center gap-1 bg-surface-100 dark:bg-surface-900/60 p-1 rounded-xl border border-surface-200 dark:border-surface-700/80 w-full shrink-0 shadow-inner">
+                    <button onclick="setAnimSubTab('in')" class="${subTabInActive ? activeSubTabClass : inactiveSubTabClass}" title="Entrance">
+                        <svg class="w-3.5 h-3.5 ${subTabInActive ? 'text-brand-500' : 'text-surface-400 dark:text-surface-500'}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+                        In
+                    </button>
+                    <button onclick="setAnimSubTab('out')" class="${subTabOutActive ? activeSubTabClass : inactiveSubTabClass}" title="Exit">
+                        <svg class="w-3.5 h-3.5 ${subTabOutActive ? 'text-brand-500' : 'text-surface-400 dark:text-surface-500'}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                        Out
+                    </button>
+                    <button onclick="setAnimSubTab('loop')" class="${subTabLoopActive ? activeSubTabClass : inactiveSubTabClass}" title="Loop">
+                        <svg class="w-3.5 h-3.5 ${subTabLoopActive ? 'text-brand-500' : 'text-surface-400 dark:text-surface-500'}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                        Loop
+                    </button>
+                </div>
+            `;
+
+            // Transform card titles and current values based on sub-tab
+            let clipCardHtml = '';
+            let clipActiveVal = 'none';
+            let clipCardTitle = 'Entrance';
+            if (subTabInActive) { clipCardHtml = renderPresetGrid(clip.id, 'animIn', animIn, inOptions, false); clipActiveVal = animIn; clipCardTitle = 'Entrance'; }
+            else if (subTabOutActive) { clipCardHtml = renderPresetGrid(clip.id, 'animOut', animOut, outOptions, false); clipActiveVal = animOut; clipCardTitle = 'Exit'; }
+            else if (subTabLoopActive) { clipCardHtml = renderPresetGrid(clip.id, 'animLoop', animLoop, loopOptions, false); clipActiveVal = animLoop; clipCardTitle = 'Loop'; }
+
+            // Text card titles and current values
+            let textCardHtml = '';
+            if (subTabInActive) { textCardHtml = isText ? renderPresetGrid(clip.id, 'animTextIn', animTextIn, textInOptions, true) : ''; }
+            else if (subTabOutActive) { textCardHtml = isText ? renderPresetGrid(clip.id, 'animTextOut', animTextOut, textOutOptions, true) : ''; }
+            else if (subTabLoopActive) { textCardHtml = isText ? renderPresetGrid(clip.id, 'animTextLoop', animTextLoop, textLoopOptions, true) : ''; }
+
+            // Transform card with sub-tab switcher embedded (no header title — clean Material style)
+            const transformCard = `
+                <div class="flex flex-col gap-3 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700/80 shadow-sm rounded-xl p-3 w-full shrink-0 transition-all hover:shadow-md">
+                    ${subTabSwitcher('anim', animIn, animOut, animLoop)}
                     <div class="w-full">
-                        ${innerHTML}
+                        ${clipCardHtml}
                     </div>
                 </div>
             `;
 
-            const clipInCard = createGridCard('log-in', 'Entrance (Whole Clip)', renderPresetGrid(clip.id, 'animIn', animIn, inOptions, false));
-            const textInCard = createGridCard('type', 'Text Entrance (Stagger)', renderPresetGrid(clip.id, 'animTextIn', animTextIn, textInOptions, true));
-            const clipOutCard = createGridCard('log-out', 'Exit (Whole Clip)', renderPresetGrid(clip.id, 'animOut', animOut, outOptions, false));
-            const textOutCard = createGridCard('type', 'Text Exit (Stagger)', renderPresetGrid(clip.id, 'animTextOut', animTextOut, textOutOptions, true));
-            const clipLoopCard = createGridCard('refresh-cw', 'Clip Loop Behavior', renderPresetGrid(clip.id, 'animLoop', animLoop, loopOptions, false));
-            const textLoopCard = createGridCard('type', 'Text Loop Behavior', renderPresetGrid(clip.id, 'animTextLoop', animTextLoop, textLoopOptions, true));
+            // Text card with sub-tab switcher (only if text clip)
+            const textCard = isText ? `
+                <div class="flex flex-col gap-3 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700/80 shadow-sm rounded-xl p-3 w-full shrink-0 transition-all hover:shadow-md">
+                    ${subTabSwitcher('animText', animTextIn, animTextOut, animTextLoop)}
+                    <div class="w-full">
+                        ${textCardHtml}
+                    </div>
+                </div>
+            ` : '';
 
             const createPropGroup = (title, groupKey, innerHTML) => {
                 const isOpen = State.animGroupOpen[groupKey] !== false;
                 return `
                     <div class="flex flex-col bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700/80 shadow-sm rounded-xl w-full overflow-hidden">
-                        <button onclick="toggleAnimGroup('${groupKey}')" aria-expanded="${isOpen}" class="flex items-center justify-between w-full px-3 py-2 hover:bg-surface-50 dark:hover:bg-surface-700/40 transition-colors cursor-pointer" title="${isOpen ? 'Collapse' : 'Expand'}">
-                            <div class="flex items-center gap-1.5 min-w-0">
-                                <span class="w-1 h-3.5 rounded-full bg-brand-500 shrink-0"></span>
-                                <span class="text-[10px] font-extrabold uppercase tracking-widest text-surface-800 dark:text-surface-200 truncate">${title}</span>
-                            </div>
-                            <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-surface-400 dark:text-surface-500 transition-transform duration-200 shrink-0 ${isOpen ? '' : '-rotate-90'}"></i>
+                        <button onclick="toggleAnimGroup('${groupKey}')" aria-expanded="${isOpen}" class="flex items-center justify-between w-full px-3 py-2.5 hover:bg-surface-50 dark:hover:bg-surface-700/30 transition-colors cursor-pointer group">
+                            <span class="text-[11px] font-bold text-surface-600 dark:text-surface-400 tracking-tight group-hover:text-surface-900 dark:group-hover:text-surface-100 transition-colors">${title}</span>
+                            <svg class="w-3.5 h-3.5 text-surface-400 dark:text-surface-500 transition-transform duration-200 ${isOpen ? '' : '-rotate-90'}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
                         </button>
-                        <div class="${isOpen ? 'flex flex-col gap-2.5 p-3 border-t border-surface-100 dark:border-surface-700/60' : 'hidden'}">
+                        <div class="${isOpen ? 'flex flex-col gap-3 px-3 pb-3' : 'hidden'}">
                             ${innerHTML}
                         </div>
                     </div>
@@ -8293,185 +8326,197 @@
             };
             
             const renderAnimPropGroup = (title, groupKey, innerHTML) => createPropGroup(title, groupKey, innerHTML);
-            
-            let propertiesHtml = '';
 
-            if (tabInActive) {
-                if (animIn !== 'none') {
-                    propertiesHtml += renderAnimPropGroup('Transform Animation', 'transform', `
+            // ── Build transform properties HTML ──────────────────────────────
+            // Material-style: inline label + value on same row, no uppercase, no heavy chips
+            let transformPropertiesHtml = '';
+            if (subTabInActive && animIn !== 'none') {
+                transformPropertiesHtml += renderAnimPropGroup('Properties', 'transform', `
+                    <div class="flex flex-col gap-1">
                         <div class="flex justify-between items-center">
-                            <span class="text-[9px] font-extrabold text-surface-500 dark:text-surface-400 uppercase tracking-wider">Duration</span>
-                            <span class="text-[10px] font-mono font-bold text-surface-800 dark:text-surface-100 bg-surface-100 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 px-1.5 py-0.5 rounded-md min-w-[36px] text-center shadow-sm">${animInDur}s</span>
+                            <span class="text-xs font-medium text-surface-600 dark:text-surface-400">Duration</span>
+                            <span class="text-xs font-semibold text-surface-800 dark:text-surface-100 tabular-nums">${animInDur}s</span>
                         </div>
-                        <input type="range" min="0.1" max="5.0" step="0.1" value="${animInDur}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'animInDur', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = this.value + 's'; this.style.background = 'linear-gradient(to right, ${sliderFill} ' + (this.value/this.max)*100 + '%, ${sliderBg} ' + (this.value/this.max)*100 + '%)'">
-                        <div class="flex flex-col gap-1.5 mt-1">
-                            <span class="text-[9px] font-extrabold text-surface-500 dark:text-surface-400 uppercase tracking-wider">Easing</span>
-                            ${renderEasingSelector(clip.id, 'animEase', animEase)}
+                        <input type="range" min="0.1" max="5.0" step="0.1" value="${animInDur}" class="w-full custom-slider h-1.5" oninput="setClipEffect('${clip.id}', 'animInDur', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = parseFloat(this.value).toFixed(1) + 's'; this.style.background = 'linear-gradient(to right, ${sliderFill} ' + (this.value/this.max)*100 + '%, ${sliderBg} ' + (this.value/this.max)*100 + '%)'">
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <span class="text-xs font-medium text-surface-600 dark:text-surface-400">Easing</span>
+                        ${renderEasingSelector(clip.id, 'animEase', animEase)}
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <div class="flex justify-between items-center">
+                            <span class="text-xs font-medium text-surface-600 dark:text-surface-400">Delay</span>
+                            <span class="text-xs font-semibold text-surface-800 dark:text-surface-100 tabular-nums">${animInDelay}s</span>
                         </div>
-                        <div class="flex flex-col gap-1.5 mt-1">
-                            <div class="flex justify-between items-center">
-                                <span class="text-[9px] font-extrabold text-surface-500 dark:text-surface-400 uppercase tracking-wider">Delay</span>
-                                <span class="text-[10px] font-mono font-bold text-surface-800 dark:text-surface-100 bg-surface-100 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 px-1.5 py-0.5 rounded-md min-w-[36px] text-center shadow-sm">${animInDelay}s</span>
-                            </div>
-                            <input type="range" min="0" max="2.0" step="0.1" value="${animInDelay}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'animInDelay', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = this.value + 's'; drawCanvas();">
-                        </div>
-                        ${animIn === 'puzzle' ? `
-                            <div class="flex flex-col gap-1.5 mt-1 pt-2.5 border-t border-surface-100 dark:border-surface-700/60">
-                                <span class="text-[9px] font-extrabold text-surface-500 dark:text-surface-400 uppercase tracking-wider">Puzzle Direction</span>
+                        <input type="range" min="0" max="2.0" step="0.1" value="${animInDelay}" class="w-full custom-slider h-1.5" oninput="setClipEffect('${clip.id}', 'animInDelay', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = parseFloat(this.value).toFixed(1) + 's'; drawCanvas();">
+                    </div>
+                    ${animIn === 'puzzle' ? `
+                        <div class="border-t border-surface-100 dark:border-surface-700/60 pt-3 flex flex-col gap-3">
+                            <div class="flex flex-col gap-1">
+                                <span class="text-xs font-medium text-surface-600 dark:text-surface-400">Direction</span>
                                 <div class="grid grid-cols-3 gap-1 w-full select-none">
                                     ${[['random','Random'],['top','Top'],['bottom','Bottom'],['left','Left'],['right','Right']].map(([pv, pl]) => `
                                         <button onclick="setClipEffect('${clip.id}', 'animPuzzleDir', '${pv}'); updateSidebarPanel();" 
-                                                class="text-[9px] font-bold py-1.5 px-0.5 rounded-lg border transition-all duration-150 text-center truncate ${animPuzzleDir === pv ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm font-extrabold border-brand-400/70 dark:border-brand-500/60 ring-1 ring-brand-500/20' : 'bg-surface-100 dark:bg-surface-900/50 text-surface-500 dark:text-surface-400 border-transparent hover:border-surface-300 dark:hover:border-surface-600 hover:bg-white dark:hover:bg-surface-800'}"
-                                                title="Blocks assemble from ${pl}">
+                                                class="text-[10px] font-semibold py-1.5 px-1 rounded-lg border transition-all duration-150 text-center truncate ${animPuzzleDir === pv ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm border-brand-400/70 dark:border-brand-500/60 ring-1 ring-brand-500/20' : 'bg-surface-100 dark:bg-surface-900/50 text-surface-500 dark:text-surface-400 border-transparent hover:border-surface-300 dark:hover:border-surface-600 hover:bg-white dark:hover:bg-surface-800'}">
                                             ${pl}
                                         </button>
                                     `).join('')}
                                 </div>
                             </div>
-                            <div class="flex flex-col gap-1.5 mt-1">
+                            <div class="flex flex-col gap-1">
                                 <div class="flex justify-between items-center">
-                                    <span class="text-[9px] font-extrabold text-surface-500 dark:text-surface-400 uppercase tracking-wider">Blocks</span>
-                                    <span class="text-[10px] font-mono font-bold text-surface-800 dark:text-surface-100 bg-surface-100 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 px-1.5 py-0.5 rounded-md min-w-[36px] text-center shadow-sm">${animPuzzleSize}</span>
+                                    <span class="text-xs font-medium text-surface-600 dark:text-surface-400">Blocks</span>
+                                    <span class="text-xs font-semibold text-surface-800 dark:text-surface-100 tabular-nums">${animPuzzleSize}</span>
                                 </div>
-                                <input type="range" min="4" max="20" step="1" value="${animPuzzleSize}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'animPuzzleSize', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = this.value; drawCanvas();">
+                                <input type="range" min="4" max="20" step="1" value="${animPuzzleSize}" class="w-full custom-slider h-1.5" oninput="setClipEffect('${clip.id}', 'animPuzzleSize', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = this.value; drawCanvas();">
                             </div>
-                            <div class="flex flex-col gap-1.5 mt-1">
-                                <span class="text-[9px] font-extrabold text-surface-500 dark:text-surface-400 uppercase tracking-wider">Block Style</span>
+                            <div class="flex flex-col gap-1">
+                                <span class="text-xs font-medium text-surface-600 dark:text-surface-400">Block Style</span>
                                 <div class="flex gap-1 w-full bg-surface-100 dark:bg-surface-900/50 p-1 rounded-lg border border-surface-200 dark:border-surface-700/80 select-none">
                                     <button onclick="setClipEffect('${clip.id}', 'animPuzzleSnap', false); updateSidebarPanel(); drawCanvas();" 
-                                            class="flex-1 text-[9px] font-bold py-1 px-0.5 rounded-md transition-all text-center truncate ${!animPuzzleSnap ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm font-extrabold border border-surface-200/50 dark:border-surface-600/50' : 'text-surface-500 hover:text-surface-800 dark:hover:text-surface-200'}"
-                                            title="Blocks pop in with a small scale/fade">
+                                            class="flex-1 text-[10px] font-semibold py-1.5 px-1 rounded-md transition-all text-center truncate ${!animPuzzleSnap ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm border border-surface-200/50 dark:border-surface-600/50' : 'text-surface-500 hover:text-surface-800 dark:hover:text-surface-200'}">
                                         Pop
                                     </button>
                                     <button onclick="setClipEffect('${clip.id}', 'animPuzzleSnap', true); updateSidebarPanel(); drawCanvas();" 
-                                            class="flex-1 text-[9px] font-bold py-1 px-0.5 rounded-md transition-all text-center truncate ${animPuzzleSnap ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm font-extrabold border border-surface-200/50 dark:border-surface-600/50' : 'text-surface-500 hover:text-surface-800 dark:hover:text-surface-200'}"
-                                            title="Blocks snap into place instantly (no pop/fade)">
+                                            class="flex-1 text-[10px] font-semibold py-1.5 px-1 rounded-md transition-all text-center truncate ${animPuzzleSnap ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm border border-surface-200/50 dark:border-surface-600/50' : 'text-surface-500 hover:text-surface-800 dark:hover:text-surface-200'}">
                                         Snap
                                     </button>
                                 </div>
                             </div>
-                        ` : ''}
-                    `);
-                }
-                if (isText && animTextIn !== 'none') {
-                    propertiesHtml += renderAnimPropGroup('Text Animation', 'text', `
+                        </div>
+                    ` : ''}
+                `);
+            } else if (subTabOutActive && animOut !== 'none') {
+                transformPropertiesHtml += renderAnimPropGroup('Properties', 'transform', `
+                    <div class="flex flex-col gap-1">
                         <div class="flex justify-between items-center">
-                            <span class="text-[9px] font-extrabold text-surface-500 dark:text-surface-400 uppercase tracking-wider">Duration</span>
-                            <span class="text-[10px] font-mono font-bold text-surface-800 dark:text-surface-100 bg-surface-100 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 px-1.5 py-0.5 rounded-md min-w-[36px] text-center shadow-sm">${animTextInDur}s</span>
+                            <span class="text-xs font-medium text-surface-600 dark:text-surface-400">Duration</span>
+                            <span class="text-xs font-semibold text-surface-800 dark:text-surface-100 tabular-nums">${animOutDur}s</span>
                         </div>
-                        <input type="range" min="0.1" max="5.0" step="0.1" value="${animTextInDur}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'animTextInDur', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = this.value + 's'; this.style.background = 'linear-gradient(to right, ${sliderFill} ' + (this.value/this.max)*100 + '%, ${sliderBg} ' + (this.value/this.max)*100 + '%)'">
-                        <div class="flex flex-col gap-1.5 mt-1">
-                            <span class="text-[9px] font-extrabold text-surface-500 dark:text-surface-400 uppercase tracking-wider">Stagger</span>
-                            ${renderStaggerSelector(clip.id, 'animTextStagger', animTextStagger)}
-                        </div>
-                        <div class="flex flex-col gap-1.5 mt-1">
-                            <span class="text-[9px] font-extrabold text-surface-500 dark:text-surface-400 uppercase tracking-wider">Easing</span>
-                            ${renderEasingSelector(clip.id, 'animTextEase', animTextEase)}
-                        </div>
-                        ${animTextIn === 'fillFlash' ? `
-                            <div class="flex items-center justify-between mt-1 pt-2 border-t border-surface-100 dark:border-surface-700/60">
-                                <span class="text-[9px] font-extrabold text-surface-500 dark:text-surface-400 uppercase tracking-wider">Flash Color</span>
-                                <div class="relative w-6 h-6 rounded-md overflow-hidden border border-surface-300 dark:border-surface-600 shadow-sm shrink-0 ring-1 ring-surface-200/60 dark:ring-surface-700/60">
-                                    <input type="color" class="absolute -top-2 -left-2 w-10 h-10 cursor-pointer" value="${flashColor}" onchange="setClipEffect('${clip.id}', 'flashColor', this.value); drawCanvas();">
-                                </div>
-                            </div>
-                        ` : ''}
-                    `);
-                }
-            } else if (tabOutActive) {
-                if (animOut !== 'none') {
-                    propertiesHtml += renderAnimPropGroup('Transform Animation', 'transform', `
-                        <div class="flex justify-between items-center">
-                            <span class="text-[9px] font-extrabold text-surface-500 dark:text-surface-400 uppercase tracking-wider">Duration</span>
-                            <span class="text-[10px] font-mono font-bold text-surface-800 dark:text-surface-100 bg-surface-100 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 px-1.5 py-0.5 rounded-md min-w-[36px] text-center shadow-sm">${animOutDur}s</span>
-                        </div>
-                        <input type="range" min="0.1" max="5.0" step="0.1" value="${animOutDur}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'animOutDur', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = this.value + 's'; this.style.background = 'linear-gradient(to right, ${sliderFill} ' + (this.value/this.max)*100 + '%, ${sliderBg} ' + (this.value/this.max)*100 + '%)'">
-                        <div class="flex flex-col gap-1.5 mt-1">
-                            <div class="flex justify-between items-center">
-                                <span class="text-[9px] font-extrabold text-surface-500 dark:text-surface-400 uppercase tracking-wider">Delay</span>
-                                <span class="text-[10px] font-mono font-bold text-surface-800 dark:text-surface-100 bg-surface-100 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 px-1.5 py-0.5 rounded-md min-w-[36px] text-center shadow-sm">${animOutDelay}s</span>
-                            </div>
-                            <input type="range" min="0" max="2.0" step="0.1" value="${animOutDelay}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'animOutDelay', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = this.value + 's'; drawCanvas();">
-                        </div>
-                    `);
-                }
-                if (isText && animTextOut !== 'none') {
-                    propertiesHtml += renderAnimPropGroup('Text Animation', 'text', `
-                        <div class="flex justify-between items-center">
-                            <span class="text-[9px] font-extrabold text-surface-500 dark:text-surface-400 uppercase tracking-wider">Duration</span>
-                            <span class="text-[10px] font-mono font-bold text-surface-800 dark:text-surface-100 bg-surface-100 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 px-1.5 py-0.5 rounded-md min-w-[36px] text-center shadow-sm">${animTextOutDur}s</span>
-                        </div>
-                        <input type="range" min="0.1" max="5.0" step="0.1" value="${animTextOutDur}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'animTextOutDur', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = this.value + 's'; this.style.background = 'linear-gradient(to right, ${sliderFill} ' + (this.value/this.max)*100 + '%, ${sliderBg} ' + (this.value/this.max)*100 + '%)'">
-                        <div class="flex flex-col gap-1.5 mt-1">
-                            <span class="text-[9px] font-extrabold text-surface-500 dark:text-surface-400 uppercase tracking-wider">Stagger</span>
-                            ${renderStaggerSelector(clip.id, 'animTextStagger', animTextStagger)}
-                        </div>
-                    `);
-                }
-            }
-
-            if (!propertiesHtml) {
-                propertiesHtml = `
-                    <div class="flex-1 flex flex-col items-center justify-center text-center p-6 border-2 border-dashed border-surface-200 dark:border-surface-700/60 rounded-xl bg-surface-50/50 dark:bg-surface-900/20">
-                        <div class="w-10 h-10 rounded-full bg-surface-100 dark:bg-surface-800 flex items-center justify-center mb-2">
-                            <i data-lucide="sliders-horizontal" class="w-4 h-4 text-surface-400 dark:text-surface-500"></i>
-                        </div>
-                        <span class="text-[10px] font-extrabold uppercase tracking-wider text-surface-400 dark:text-surface-500">No animation selected</span>
-                        <span class="text-[9px] text-surface-400 dark:text-surface-500 mt-0.5 opacity-70">Pick a preset from the grid above</span>
+                        <input type="range" min="0.1" max="5.0" step="0.1" value="${animOutDur}" class="w-full custom-slider h-1.5" oninput="setClipEffect('${clip.id}', 'animOutDur', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = parseFloat(this.value).toFixed(1) + 's'; this.style.background = 'linear-gradient(to right, ${sliderFill} ' + (this.value/this.max)*100 + '%, ${sliderBg} ' + (this.value/this.max)*100 + '%)'">
                     </div>
-                `;
+                    <div class="flex flex-col gap-1">
+                        <div class="flex justify-between items-center">
+                            <span class="text-xs font-medium text-surface-600 dark:text-surface-400">Delay</span>
+                            <span class="text-xs font-semibold text-surface-800 dark:text-surface-100 tabular-nums">${animOutDelay}s</span>
+                        </div>
+                        <input type="range" min="0" max="2.0" step="0.1" value="${animOutDelay}" class="w-full custom-slider h-1.5" oninput="setClipEffect('${clip.id}', 'animOutDelay', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = parseFloat(this.value).toFixed(1) + 's'; drawCanvas();">
+                    </div>
+                `);
+            } else if (subTabLoopActive && animLoop !== 'none') {
+                transformPropertiesHtml += renderAnimPropGroup('Properties', 'transform', `
+                    <div class="flex flex-col gap-1">
+                        <div class="flex justify-between items-center">
+                            <span class="text-xs font-medium text-surface-600 dark:text-surface-400">Duration</span>
+                            <span class="text-xs font-semibold text-surface-800 dark:text-surface-100 tabular-nums">${animLoopDur || 1}s</span>
+                        </div>
+                        <input type="range" min="0.1" max="10" step="0.1" value="${animLoopDur || 1}" class="w-full custom-slider h-1.5" oninput="setClipEffect('${clip.id}', 'animLoopDur', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = parseFloat(this.value).toFixed(1) + 's'; this.style.background = 'linear-gradient(to right, ${sliderFill} ' + (this.value/this.max)*100 + '%, ${sliderBg} ' + (this.value/this.max)*100 + '%)'">
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <span class="text-xs font-medium text-surface-600 dark:text-surface-400">Easing</span>
+                        ${renderEasingSelector(clip.id, 'animLoopEase', animLoopEase || 'linear')}
+                    </div>
+                `);
             }
 
-            // Active animation label for the properties header
+            // ── Build text properties HTML ──────────────────────────────────
+            let textPropertiesHtml = '';
+            if (subTabInActive && isText && animTextIn !== 'none') {
+                textPropertiesHtml += renderAnimPropGroup('Properties', 'text', `
+                    <div class="flex flex-col gap-1">
+                        <div class="flex justify-between items-center">
+                            <span class="text-xs font-medium text-surface-600 dark:text-surface-400">Duration</span>
+                            <span class="text-xs font-semibold text-surface-800 dark:text-surface-100 tabular-nums">${animTextInDur}s</span>
+                        </div>
+                        <input type="range" min="0.1" max="5.0" step="0.1" value="${animTextInDur}" class="w-full custom-slider h-1.5" oninput="setClipEffect('${clip.id}', 'animTextInDur', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = parseFloat(this.value).toFixed(1) + 's'; this.style.background = 'linear-gradient(to right, ${sliderFill} ' + (this.value/this.max)*100 + '%, ${sliderBg} ' + (this.value/this.max)*100 + '%)'">
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <span class="text-xs font-medium text-surface-600 dark:text-surface-400">Stagger</span>
+                        ${renderStaggerSelector(clip.id, 'animTextStagger', animTextStagger)}
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <span class="text-xs font-medium text-surface-600 dark:text-surface-400">Easing</span>
+                        ${renderEasingSelector(clip.id, 'animTextEase', animTextEase)}
+                    </div>
+                    ${animTextIn === 'fillFlash' ? `
+                        <div class="flex items-center justify-between border-t border-surface-100 dark:border-surface-700/60 pt-3">
+                            <span class="text-xs font-medium text-surface-600 dark:text-surface-400">Flash Color</span>
+                            <div class="relative w-6 h-6 rounded-md overflow-hidden border border-surface-300 dark:border-surface-600 shadow-sm shrink-0 ring-1 ring-surface-200/60 dark:ring-surface-700/60">
+                                <input type="color" class="absolute -top-2 -left-2 w-10 h-10 cursor-pointer" value="${flashColor}" onchange="setClipEffect('${clip.id}', 'flashColor', this.value); drawCanvas();">
+                            </div>
+                        </div>
+                    ` : ''}
+                `);
+            } else if (subTabOutActive && isText && animTextOut !== 'none') {
+                textPropertiesHtml += renderAnimPropGroup('Properties', 'text', `
+                    <div class="flex flex-col gap-1">
+                        <div class="flex justify-between items-center">
+                            <span class="text-xs font-medium text-surface-600 dark:text-surface-400">Duration</span>
+                            <span class="text-xs font-semibold text-surface-800 dark:text-surface-100 tabular-nums">${animTextOutDur}s</span>
+                        </div>
+                        <input type="range" min="0.1" max="5.0" step="0.1" value="${animTextOutDur}" class="w-full custom-slider h-1.5" oninput="setClipEffect('${clip.id}', 'animTextOutDur', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = parseFloat(this.value).toFixed(1) + 's'; this.style.background = 'linear-gradient(to right, ${sliderFill} ' + (this.value/this.max)*100 + '%, ${sliderBg} ' + (this.value/this.max)*100 + '%)'">
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <span class="text-xs font-medium text-surface-600 dark:text-surface-400">Stagger</span>
+                        ${renderStaggerSelector(clip.id, 'animTextStagger', animTextStagger)}
+                    </div>
+                `);
+            }
+
+            // Combined properties HTML with "none" fallback per section
+            let showTransformProps = (subTabInActive && animIn !== 'none') || (subTabOutActive && animOut !== 'none') || (subTabLoopActive && animLoop !== 'none');
+            let showTextProps = (subTabInActive && isText && animTextIn !== 'none') || (subTabOutActive && isText && animTextOut !== 'none');
+
             let activeAnimLabel = '';
-            if (tabInActive) {
+            if (subTabInActive) {
                 const found = inOptions.find(o => o.value === animIn);
                 if (found && found.value !== 'none') activeAnimLabel = found.label;
-            } else if (tabOutActive) {
+            } else if (subTabOutActive) {
                 const found = outOptions.find(o => o.value === animOut);
                 if (found && found.value !== 'none') activeAnimLabel = found.label;
-            } else if (tabLoopActive) {
+            } else if (subTabLoopActive) {
                 const found = loopOptions.find(o => o.value === animLoop);
                 if (found && found.value !== 'none') activeAnimLabel = found.label;
             }
 
-            let propertiesPanel = `
-                <div class="${isHorizontal ? 'w-[270px]' : 'w-full mt-2.5 border-t pt-3'} ${isHorizontal ? 'shrink-0' : ''} flex flex-col ${isHorizontal ? 'gap-3 overflow-y-auto border-l pl-4' : 'gap-2.5'} border-surface-200 dark:border-surface-700 min-w-[210px] ${isHorizontal ? 'h-full' : 'h-auto'} no-scrollbar">
-                    <div class="flex items-center justify-between shrink-0 px-0.5">
-                        <div class="flex items-center gap-1.5">
-                            <div class="w-6 h-6 rounded-md bg-surface-100 dark:bg-surface-800 flex items-center justify-center">
-                                <i data-lucide="settings-2" class="w-3.5 h-3.5 text-surface-500"></i>
-                            </div>
-                            <span class="text-xs font-extrabold text-surface-800 dark:text-surface-200 tracking-tight">Properties</span>
-                        </div>
-                        ${activeAnimLabel ? `
-                            <span class="text-[9px] font-extrabold uppercase tracking-wider text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-500/15 border border-brand-200/60 dark:border-brand-500/30 px-2 py-0.5 rounded-full shrink-0 ml-2">${activeAnimLabel}</span>
-                        ` : ''}
-                    </div>
-                    ${propertiesHtml}
+            let transformPropertiesPanel = showTransformProps ? `
+                <div class="flex flex-col gap-2.5 w-full">
+                    ${transformPropertiesHtml}
+                </div>
+            ` : `
+                <div class="flex items-center justify-center gap-2 py-4 px-4 border-2 border-dashed border-surface-200 dark:border-surface-700/60 rounded-xl bg-surface-50/50 dark:bg-surface-900/20 w-full">
+                    <svg class="w-4 h-4 text-surface-400 dark:text-surface-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                    <span class="text-xs font-medium text-surface-400 dark:text-surface-500">Select an animation preset above</span>
                 </div>
             `;
 
+            let textPropertiesPanel = showTextProps ? `
+                <div class="flex flex-col gap-2.5 w-full">
+                    ${textPropertiesHtml}
+                </div>
+            ` : (isText ? `
+                <div class="flex items-center justify-center gap-2 py-4 px-4 border-2 border-dashed border-surface-200 dark:border-surface-700/60 rounded-xl bg-surface-50/50 dark:bg-surface-900/20 w-full">
+                    <svg class="w-4 h-4 text-surface-400 dark:text-surface-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                    <span class="text-xs font-medium text-surface-400 dark:text-surface-500">Select a text animation above</span>
+                </div>
+            ` : '');
 
+            // Left nav for horizontal dock
             const leftNavHtml = `
                 <div id="animLayoutNav" class="w-36 bg-surface-100 dark:bg-surface-900 border-r border-surface-200 dark:border-surface-700 flex flex-col gap-1 p-2 shrink-0 overflow-y-auto no-scrollbar">
                     <div class="flex items-center gap-1.5 px-2.5 pt-1 pb-1.5 shrink-0">
                         <i data-lucide="zap" class="w-3 h-3 text-brand-500"></i>
                         <span class="text-[9px] font-extrabold uppercase tracking-widest text-surface-400 dark:text-surface-500">Animation</span>
                     </div>
-                    <button onclick="setAnimTab('in')" class="text-left text-[10px] font-bold border border-transparent ${tabInActive ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm font-extrabold border-brand-400/50 dark:border-brand-500/50' : 'text-surface-500 hover:text-surface-900 dark:hover:text-surface-100 hover:bg-white/60 dark:hover:bg-surface-800/60'} px-2.5 py-1.5 rounded-md transition-all flex items-center gap-1.5 w-full" title="Entrance">
-                        <i data-lucide="log-in" class="w-3.5 h-3.5 shrink-0 ${tabInActive ? 'text-brand-500' : 'opacity-60'}"></i>
-                        <span class="truncate">Entrance</span>
+                    <button onclick="setAnimMainTab('transform')" class="text-left text-[10px] font-bold border border-transparent ${tabTransformActive ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm font-extrabold border-brand-400/50 dark:border-brand-500/50' : 'text-surface-500 hover:text-surface-900 dark:hover:text-surface-100 hover:bg-white/60 dark:hover:bg-surface-800/60'} px-2.5 py-1.5 rounded-md transition-all flex items-center gap-1.5 w-full" title="Transform animations">
+                        <i data-lucide="move" class="w-3.5 h-3.5 shrink-0 ${tabTransformActive ? 'text-brand-500' : 'opacity-60'}"></i>
+                        <span class="truncate">Transform</span>
                     </button>
-                    <button onclick="setAnimTab('out')" class="text-left text-[10px] font-bold border border-transparent ${tabOutActive ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm font-extrabold border-brand-400/50 dark:border-brand-500/50' : 'text-surface-500 hover:text-surface-900 dark:hover:text-surface-100 hover:bg-white/60 dark:hover:bg-surface-800/60'} px-2.5 py-1.5 rounded-md transition-all flex items-center gap-1.5 w-full" title="Exit">
-                        <i data-lucide="log-out" class="w-3.5 h-3.5 shrink-0 ${tabOutActive ? 'text-brand-500' : 'opacity-60'}"></i>
-                        <span class="truncate">Exit</span>
+                    <button onclick="setAnimMainTab('text')" class="text-left text-[10px] font-bold border border-transparent ${isText ? (tabTextActive ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm font-extrabold border-brand-400/50 dark:border-brand-500/50' : 'text-surface-500 hover:text-surface-900 dark:hover:text-surface-100 hover:bg-white/60 dark:hover:bg-surface-800/60') : 'text-surface-300 dark:text-surface-600 cursor-not-allowed'} px-2.5 py-1.5 rounded-md transition-all flex items-center gap-1.5 w-full" title="${isText ? 'Text animations' : 'Only available for text clips'}" ${isText ? '' : 'disabled'}>
+                        <i data-lucide="type" class="w-3.5 h-3.5 shrink-0 ${isText ? (tabTextActive ? 'text-brand-500' : 'opacity-60') : 'opacity-30'}"></i>
+                        <span class="truncate">Text</span>
                     </button>
-                    <button onclick="setAnimTab('loop')" class="text-left text-[10px] font-bold border border-transparent ${tabLoopActive ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm font-extrabold border-brand-400/50 dark:border-brand-500/50' : 'text-surface-500 hover:text-surface-900 dark:hover:text-surface-100 hover:bg-white/60 dark:hover:bg-surface-800/60'} px-2.5 py-1.5 rounded-md transition-all flex items-center gap-1.5 w-full" title="Loop">
-                        <i data-lucide="refresh-cw" class="w-3.5 h-3.5 shrink-0 ${tabLoopActive ? 'text-brand-500' : 'opacity-60'}"></i>
-                        <span class="truncate">Loop</span>
-                    </button>
-                    <button onclick="setAnimTab('custom')" class="text-left text-[10px] font-bold border border-transparent ${tabCustomActive ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm font-extrabold border-brand-400/50 dark:border-brand-500/50' : 'text-surface-500 hover:text-surface-900 dark:hover:text-surface-100 hover:bg-white/60 dark:hover:bg-surface-800/60'} px-2.5 py-1.5 rounded-md transition-all flex items-center gap-1.5 w-full" title="Custom Keyframes">
+                    <button onclick="setAnimMainTab('custom')" class="text-left text-[10px] font-bold border border-transparent ${tabCustomActive ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm font-extrabold border-brand-400/50 dark:border-brand-500/50' : 'text-surface-500 hover:text-surface-900 dark:hover:text-surface-100 hover:bg-white/60 dark:hover:bg-surface-800/60'} px-2.5 py-1.5 rounded-md transition-all flex items-center gap-1.5 w-full" title="Custom Keyframes">
                         <i data-lucide="key" class="w-3.5 h-3.5 shrink-0 ${tabCustomActive ? 'text-brand-500' : 'opacity-60'}"></i>
                         <span class="truncate">Custom</span>
                     </button>
@@ -8479,51 +8524,40 @@
             `;
 
             
-            
             let animHTML = isHorizontal ? `
                 ${leftNavHtml}
                 <div id="animCardContainer" class="p-3 flex flex-row flex-wrap gap-3 min-w-0 flex-1 overflow-y-auto items-start content-start bg-surface-50 dark:bg-surface-950" style="scrollbar-gutter: stable;">
-                    <div class="flex-1 flex flex-col gap-3 min-w-[280px] max-w-full">
-                        ${tabInActive ? `
-                            ${clipInCard}
-                            ${isText ? textInCard : ''}
+                    <div class="flex-1 flex flex-col gap-3 min-w-[280px] max-w-full">                            ${tabTransformActive ? `
+                            ${transformCard}
+                            ${transformPropertiesPanel}
                         ` : ''}
-                        ${tabOutActive ? `
-                            ${clipOutCard}
-                            ${isText ? textOutCard : ''}
-                        ` : ''}
-                        ${tabLoopActive ? `
-                            ${clipLoopCard}
-                            ${isText ? textLoopCard : ''}
+                        ${tabTextActive ? `
+                            ${isText ? textCard : ''}
+                            ${textPropertiesPanel}
                         ` : ''}
                         ${tabCustomActive ? `
                             ${renderCustomKeyframeEditor(clip)}
                         ` : ''}
                     </div>
-                    ${tabCustomActive ? '' : propertiesPanel}
                 </div>
             ` : `
                 <div class="p-3 flex flex-col gap-3 min-h-0 flex-1 overflow-hidden">
                     ${animTabsHtml}
                     <div id="animCardContainer" class="flex flex-col gap-3 min-w-0 items-stretch w-full flex-1 min-h-0 overflow-y-auto" style="scrollbar-gutter: stable;">
                         <div class="flex flex-col gap-3 w-full min-w-0">
-                            ${tabInActive ? `
-                                ${clipInCard}
-                                ${isText ? textInCard : ''}
+                            ${tabTransformActive ? `
+                                ${transformCard}
+                                ${transformPropertiesPanel}
                             ` : ''}
-                            ${tabOutActive ? `
-                                ${clipOutCard}
-                                ${isText ? textOutCard : ''}
-                            ` : ''}
-                            ${tabLoopActive ? `
-                                ${clipLoopCard}
-                                ${isText ? textLoopCard : ''}
+                            ${tabTextActive ? `
+                                ${isText ? textCard : ''}
+                                ${textPropertiesPanel}
                             ` : ''}
                             ${tabCustomActive ? `
                                 ${renderCustomKeyframeEditor(clip)}
+
                             ` : ''}
                         </div>
-                        ${tabCustomActive ? '' : propertiesPanel}
                     </div>
                 </div>
             `;
@@ -8871,7 +8905,15 @@
         }
 
         window.setAnimTab = function(tab) {
-            State.activeAnimTab = tab;
+            updateSidebarPanel();
+        }
+
+        window.setAnimMainTab = function(tab) {
+            State.activeAnimMainTab = tab;
+            updateSidebarPanel();
+        };
+        window.setAnimSubTab = function(tab) {
+            State.activeAnimSubTab = tab;
             updateSidebarPanel();
         };
 
