@@ -1,57 +1,79 @@
 # 🚦 Lighthouse Report Analysis & Performance Roadmap
 
-Analysis of a Lighthouse 13.3.0 run against **https://simplearyan.github.io/studio-pro/** (Chrome 150, mobile emulation, simulated throttling, 3,441 benchmark index).
+Latest run: **2026-08-05 · Lighthouse 13.3.0** against **https://simplearyan.github.io/studio-pro/** (Chrome 150, mobile emulation, simulated throttling, 3,478 benchmark index).
+
+> Previous run (2026-08-05, earlier) is at the bottom for comparison. This run reflects the deployed **Lucide pin + CDN preconnects** — the previous version was still shipping `lucide@latest` with a 302 redirect.
 
 ---
 
-## 📊 Current Scores (Summary)
+## 📊 Scores (Latest Run)
 
 | Category | Score | Verdict |
 |---|---|---|
-| **Performance** | ~94–96 | Good — a few targeted wins available |
-| **Accessibility** | ~96 | 3 real, easily-fixable issues |
-| **Best Practices** | ~98 | 1 non-app bug + source maps |
-| **SEO** | ~99 | Solid |
+| **Performance** | ~97–99 | Excellent — 1 big item left (MathJax) |
+| **Accessibility** | ~96–100 | 3 fixes committed (see below) — re-run to confirm |
+| **Best Practices** | ~98 | Only item: missing source maps |
+| **SEO** | ~100 | Full meta/OG/JSON-LD now shipped — re-run to confirm |
 
 ### Core Web Vitals
 
 | Metric | Value | Grade | Target |
 |---|---|---|---|
-| **LCP** (Largest Contentful Paint) | **1.51 s** | 🟢 Excellent | < 2.5 s |
-| **FCP** (First Contentful Paint) | **1.51 s** | 🟢 | < 1.8 s |
-| **Speed Index** | **1.51 s** | 🟢 | < 3.4 s |
+| **LCP** (Largest Contentful Paint) | **1.05 s** | 🟢 Excellent | < 2.5 s |
+| **FCP** (First Contentful Paint) | **1.05 s** | 🟢 | < 1.8 s |
+| **Speed Index** | **1.05 s** | 🟢 | < 3.4 s |
 | **TBT** (Total Blocking Time) | **40 ms** | 🟢 Excellent | < 200 ms |
-| **CLS** (Layout Shift) | **0.065** | 🟢 Excellent | < 0.1 |
-| **TTI** (Interactive) | **2.18 s** | 🟢 | — |
+| **CLS** (Layout Shift) | **0.024** | 🟢 Excellent | < 0.1 |
+| **TTI** (Interactive) | **1.74 s** | 🟢 | — |
 
-**Bottom line:** this is already a fast page. The metrics that cost the most points are **FCP (0.55 score)** and **LCP (0.80)** — both pinned at ~1.5 s by *network + script evaluation*, not by rendering. Everything else is green.
+**Bottom line:** the page is now *fast across the board*. Every Core Web Vital is green and LCP/FCP dropped **1.51 s → 1.05 s** (−31%) thanks to the pinned Lucide build (no 302) and the `unpkg` preconnect. The only meaningful performance lever left is **deferring MathJax**.
 
 ---
 
 ## 🔍 What's Actually Loading
 
-11 requests · **1.09 MB** total transfer:
+12 requests · **~992 KB** total transfer (was 1.09 MB):
 
 | Resource | Size (transfer) | Notes |
 |---|---|---|
-| Main document (`index.html`) | 193 KB / 1.12 MB raw | **#1 problem** — the entire app is one inline `<script>` |
-| MathJax `tex-svg.js` | **618 KB** (2.1 MB raw) | Loaded **eagerly** on every visit — 563 KB unused |
-| Lucide icons `lucide@latest` | 97 KB (414 KB raw) | **Unpinned** `@latest` + 302 redirect (extra RTT) |
-| Google Fonts (3 fonts) | 107 KB | Fine, preconnects already present |
-| `export-worker.js` | 55 KB | Lazy-loaded worker — good |
+| Main document (`index.html`) | 194 KB / 1.20 MB raw | The entire app is one inline `<script>` — **781 KB unused (70%)** per treemap |
+| MathJax `tex-svg.js` | **618 KB** (2.1 MB raw) | ✅ preconnected, but still **eager** on every visit — now the **#1 bottleneck** |
+| Lucide icons `lucide@1.28.0` | 97 KB (414 KB raw) | ✅ **Pinned + preconnected** — direct `dist/umd` URL, HTTP 200, **no redirect**, h3 |
+| Google Fonts (5 families, 3 woff2) | ~107 KB | Preconnects present; two families (`Google Sans`, `Gajraj One`) load dynamically |
+| `export-worker.js` | 0.2 KB (225 KB raw) | ✅ Lazy-loaded worker — good |
 | `main-*.js` / `.css` | 17 KB | Vite bundle — small |
 
-### The 3 performance bottlenecks
+### The bottlenecks that remain
 
-1. **Eager MathJax (618 KB).** `tex-svg.js` is fetched at startup even for users who never touch math. It also accounts for the 73 ms long task on load.
-2. **A 1.12 MB inline script.** Lighthouse flags **781 KB of unused JS** in the inline app script. This is the *398 ms long task* (the page's only real long task) that pushes TTI to 2.18 s and max-potential-FID to 400 ms.
-3. **TTFB 388 ms** (GitHub Pages cold start + first H2 request). Not controllable on GH Pages, but preconnects/early hints can hide it.
+1. **Eager MathJax (618 KB = 62% of all script bytes).** Fetched at startup even for users who never touch math. It also accounts for the **72 ms long task** at t≈1.67 s and ~44 ms of scripting in `bootup-time`.
+2. **A 1.2 MB inline script, 70% unused.** Still the single biggest raw payload. This is why the doc transfer is 194 KB for what is effectively a small app.
+3. **~190 ms third-party server latency** (fonts.googleapis, unpkg, GH Pages) — mostly masked now by preconnects; root document TTFB is a healthy **74 ms**.
 
 ---
 
 ## 🛠 Performance Fixes (ranked by impact ÷ effort)
 
-### P1 — Defer MathJax until it's needed ✅ High impact, 10 min
+### ✅ DONE — P2: Pin Lucide and drop the redirect
+
+```html
+<!-- WAS: 302 redirect on every load -->
+<script src="https://unpkg.com/lucide@latest"></script>
+<!-- NOW: direct file URL, HTTP 200, 1-year cache -->
+<script src="https://unpkg.com/lucide@1.28.0/dist/umd/lucide.min.js"></script>
+```
+
+Verified in this report's network log: `lucide@1.28.0/dist/umd/lucide.min.js` → **200, no redirects, h3**. Part of the FCP/LCP improvement.
+
+### ✅ DONE — P4: Preconnect to CDNs
+
+```html
+<link rel="preconnect" href="https://cdn.jsdelivr.net">   <!-- MathJax -->
+<link rel="preconnect" href="https://unpkg.com">          <!-- Lucide -->
+```
+
+Both visible in the head; jsdelivr now answers in ~41 ms server latency.
+
+### P1 — Defer MathJax until it's needed ✅ High impact, 10 min (still open)
 
 ```html
 <!-- BEFORE: fetched on every page load -->
@@ -73,54 +95,33 @@ Analysis of a Lighthouse 13.3.0 run against **https://simplearyan.github.io/stud
 </script>
 ```
 
-**Expected:** removes **618 KB** from the critical path and the 73 ms long task. LCP should drop well under 1.2 s.
+**Expected:** removes **618 KB (62% of script bytes)** from the critical path and the 72 ms MathJax long task. LCP should land near **~0.8 s** and transfer drops to **~370 KB**.
 
-### P2 — Pin Lucide and drop the redirect ✅ 5 min
-
-```html
-<!-- BEFORE -->
-<script src="https://unpkg.com/lucide@latest"></script>
-<!-- AFTER -->
-<script src="https://unpkg.com/lucide@1.28.0/dist/umd/lucide.min.js"></script>
-```
-
-Removes the `302 → 540 ms` redirect and a wasted RTT; guarantees reproducible builds.
-
-### P3 — Lazy-load the big feature scripts ✅ Medium effort
-
-The app is a single HTML file by design — the cleanest win without a rewrite is **route-by-interaction lazy loading**:
+### P3 — Lazy-load the big feature scripts (medium effort)
 
 - Load MathJax only for math (P1).
-- Vendor the huge inline app script into a **deferred module** (`<script type="module" src="app.js" defer>`) so the HTML shell paints instantly. Combined with a tiny skeleton in the canvas area, this would make FCP ≈ first paint (~50 ms instead of 1.5 s).
+- Move the giant inline app script into a **deferred module** (`<script type="module" src="app.js" defer>`) so the HTML shell paints instantly.
 - Split `export-worker.js` already happens — keep it.
-
-### P4 — Preconnect to CDNs (hide the 388 ms TTFB) ✅ 2 min
-
-```html
-<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-<link rel="preconnect" href="https://unpkg.com">
-```
 
 ### P5 — Trim unused JS (781 KB)
 
-Biggest structural item. Options, cheapest first:
-1. Move **preset/markdown script data** (the `MARKDOWN_PRESETS` strings) into a separate JSON fetched on demand — they're plain data, not logic.
-2. Remove dead config keys (`mockImageColor1/2`, `mockVideoColor1/2` are no longer read) and any long-unused helpers.
-3. Long-term: split the monolith into modules via Vite (`index.html` + `src/*.js`) — this is the same code, just organized, and Vite will tree-shake and code-split it.
+1. Move **preset/markdown script data** (`MARKDOWN_PRESETS`) into a separate JSON fetched on demand — plain data, not logic.
+2. Remove dead config keys and long-unused helpers.
+3. Long-term: split the monolith into Vite modules (`index.html` + `src/*.js`) — same code, but tree-shaken and code-split.
 
 ---
 
-## ♿ Accessibility Fixes (3 items — all quick)
+## ♿ Accessibility (3 fixes — ✅ committed, re-run to confirm)
 
-Lighthouse found exactly **3** real issues. All are one-liners:
+All three issues from the previous report were fixed in commit `b94f741` + the SEO pass:
 
-| Issue | Where | Fix |
-|---|---|---|
-| **Export button has no accessible name** (critical) | `index.html:511` — `<button onclick="openExportModal()" class="bg-surface-900…">` | Add `aria-label="Export"` and/or `title="Export"` |
-| **Playhead time popup contrast 4.46:1** | `index.html:747` — white text on `bg-brand-600` (`#6366f1`) at 9px | Use `bg-indigo-500` (`#6366f1` → **`#4f46e5`**) or bump to `text-brand-50` on `brand-700` — reach ≥ 4.5:1 |
-| **Canvas color picker has no label** | `index.html:466` — `<input type="color" id="canvasColorPicker" class="… opacity-0">` | Add `aria-label="Canvas background color"` + `role="button"` or a wrapping labelled element |
+| Issue | Fix (committed) |
+|---|---|
+| Export button has no accessible name | ✅ `aria-label="Export media"` + `title="Export"` |
+| Playhead time popup contrast 4.46:1 | ✅ `bg-brand-600` → `bg-indigo-700` (≈8.8:1 light / 6.7:1 dark — passes WCAG AA) |
+| Canvas color picker unlabeled | ✅ `aria-label` + Enter/Space `showPicker()` handler; removed `role="button"` (invalid on `<input>`) |
 
-Bonus a11y: the `opacity-0` color input is only 64×64 and invisible — wrap it in a labelled, focusable container so keyboard users can reach it.
+**Bonus in the SEO pass:** all `dark:text-surface-400/500` labels (2.9–4.2:1) bumped to `surface-300`, and light-theme `surface-400` labels to `surface-600` — the whole app now clears WCAG AA in **both** themes.
 
 ---
 
@@ -128,50 +129,64 @@ Bonus a11y: the `opacity-0` color input is only 64×64 and invisible — wrap it
 
 | Finding | Status | Action |
 |---|---|---|
-| **Console error** | 🟡 Not our bug | The single error is from a **Chrome extension** (`chrome-extension://ailcfipphnefalipkhikhojopgjmocil`), not the app. Retest in an incognito window to confirm a clean console. |
-| **Missing source maps** | 🟡 | The inline script ships no source map. If code is split into files (P5), enable `build.sourcemap` in Vite for dev debugging. |
-| **No CSP header** | 🟡 | GH Pages can't send custom headers — but a `<meta http-equiv="Content-Security-Policy">` works. A permissive-but-real policy (e.g. `default-src 'self'; script-src 'self' 'unsafe-inline' cdn.jsdelivr.net unpkg.com; img-src * data:; media-src * blob:; connect-src *`) removes the "High" severity flag. |
-| **COOP / clickjacking** | 🟡 | Also header-only on GH Pages; `X-Frame-Options` can't be set via meta. Acceptable for a static site. |
+| **Console errors** | ✅ **0 errors** — clean (previous extension error is gone) | — |
+| **Missing source maps** | 🟡 score 0 | Inline script ships no source map. If code is split (P5), enable Vite `build.sourcemap`. |
+| **No CSP header** | 🟡 High | GH Pages can't send custom headers — use `<meta http-equiv="Content-Security-Policy">` (permissive but real, e.g. `default-src 'self'; script-src 'self' 'unsafe-inline' cdn.jsdelivr.net unpkg.com; img-src * data:; media-src * blob:; connect-src *`). |
+| **COOP / clickjacking / Trusted Types / HSTS preload** | 🟡 | Header-only — not settable via meta on GH Pages. Acceptable for a static site. |
 
 ---
 
 ## ✅ What's Already Excellent
 
-- **CLS 0.065** — canvas wrapper is the only shift (font loading); nothing to do.
-- **TBT 40 ms** — main thread is almost never blocked.
-- **No deprecated APIs, no third-party cookies, HTTPS everywhere.**
-- **No image issues** — correct aspect ratios, no oversized images.
+- **CLS 0.024** — down from 0.065; only residual shift is the canvas wrapper during font load (0.024) plus a 0.00005 font swap.
+- **TBT 40 ms** — no task exceeds 100 ms (longest: 78 ms, unattributable).
+- **Zero console errors, no deprecated APIs, no third-party cookies, HTTPS everywhere.**
+- **No image issues** — correct aspect ratios, no oversized/unsized images.
 - **Worker-based export** keeps encoding off the main thread.
-- Page already has `preconnect` for Google Fonts.
+- Root document TTFB **74 ms**; server latency for GH Pages ~160 ms but hidden by preconnects.
 
 ---
 
-## 📈 Expected After Fixes
+## 📈 Expected After Remaining Fixes
 
-| Metric | Now | After P1–P4 |
+| Metric | Now | After P1 (defer MathJax) |
 |---|---|---|
-| FCP / LCP | 1.51 s | **~0.8–1.0 s** |
-| TTI | 2.18 s | **~1.5 s** |
-| Max-Potential-FID | 400 ms | **< 250 ms** |
-| Transfer size | 1.09 MB | **~470 KB** |
-| Performance score | ~95 | **~98–100** |
-| Accessibility | ~96 | **100** |
+| FCP / LCP | 1.05 s | **~0.8 s** |
+| TTI | 1.74 s | **~1.4 s** |
+| Max-Potential-FID | 72 ms | **< 60 ms** |
+| Transfer size | 992 KB | **~370 KB** |
+| Performance score | ~97–99 | **~99–100** |
+| Accessibility | fixes committed | **100** (confirm on re-run) |
 
 ---
 
 ## 🧪 How to Re-measure
 
-1. Run the site on the local server, then build and push to GH Pages (or use the live URL).
-2. Lighthouse → **Analyze page load** → Mobile, throttling `4x` (the report above used default simulated throttling).
+1. Build and push to GH Pages (or use the live URL) — the last SEO/a11y commit must be deployed for the a11y/SEO scores to show.
+2. Lighthouse → **Analyze page load** → Mobile, default simulated throttling.
 3. Or CLI:
    ```bash
    npx lighthouse https://simplearyan.github.io/studio-pro/ \
      --preset=perf --only-categories=performance,accessibility,best-practices --view
    ```
-4. Re-run in an **incognito window** to exclude extension noise from the console audit.
+4. Re-run in an **incognito window** to exclude extension noise.
 
 ---
 
 ## 🏁 TL;DR
 
-The app is already fast (LCP 1.5 s, TBT 40 ms, CLS 0.065). The **biggest single win is deferring MathJax** (−618 KB from the critical path), followed by pinning Lucide and preconnecting CDNs. Accessibility is 3 one-line fixes from a perfect 100. The only structural project — splitting the giant inline script — is optional and can be done gradually with Vite modules.
+The site is now **fast everywhere**: LCP 1.05 s, TBT 40 ms, CLS 0.024, zero console errors. The Lucide pin + preconnects already paid off (FCP/LCP −31%). **The single remaining high-impact fix is deferring MathJax** (−618 KB, the last long task). Everything else — the 70%-unused inline script, source maps, CSP — is polish or structural, and the accessibility/SEO fixes are committed and just need a post-deploy re-run to confirm 100s.
+
+---
+
+## 📋 Previous Run (for reference — 2026-08-05, pre-fix)
+
+| Metric | Then | Now |
+|---|---|---|
+| FCP / LCP | 1.51 s | **1.05 s** |
+| Speed Index | 1.51 s | **1.05 s** |
+| TBT | 40 ms | **40 ms** |
+| CLS | 0.065 | **0.024** |
+| TTI | 2.18 s | **1.74 s** |
+| Lucide | `@latest` + 302 | **pinned 1.28.0, 200** |
+| Console errors | 1 (extension) | **0** |
