@@ -9086,6 +9086,74 @@
                     `;
                 }
 
+                // ── Embedded SFX (sound attached to text / shape / image / math clips) ──
+                const canSfx = clip.type === 'text' || clip.type === 'shape' || clip.type === 'image';
+                let sfxHTML = '';
+                if (canSfx) {
+                    const sfx = clip.sfx;
+                    const sfxName = sfx ? sfx.name : '';
+                    const sfxDur = sfx ? sfx.duration : 0;
+                    const sfxVol = sfx ? (sfx.volume !== undefined ? sfx.volume : 1) : 1;
+                    const sfxExtracted = !!(sfx && clip.sfxExtractedClipId && State.clips.find(c => c.id === clip.sfxExtractedClipId));
+                    const sfxStatusHtml = sfx ? (sfxExtracted
+                        ? '<span class="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-1.5 py-0.5 rounded-sm border border-emerald-200 dark:border-emerald-700 inline-flex items-center gap-1"><i data-lucide="link" class="w-2.5 h-2.5"></i> Extracted · linked on timeline</span>'
+                        : '<span class="text-[9px] font-bold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-900/30 px-1.5 py-0.5 rounded-sm border border-brand-200 dark:border-brand-700 inline-flex items-center gap-1"><i data-lucide="music" class="w-2.5 h-2.5"></i> Embedded in element</span>'
+                    ) : '';
+                    sfxHTML = `
+                        <details id="cardSfx" class="group bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 shadow-sm rounded-lg shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'} overflow-hidden flex flex-col" ${sfx ? 'open' : ''}>
+                            <summary class="flex items-center justify-between p-3 ${isHorizontal ? '' : 'cursor-pointer'} list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700 " onclick="${isHorizontal ? 'event.preventDefault();' : ''}">
+                                <div class="text-sm font-bold text-surface-800 dark:text-surface-200 flex items-center gap-2"><i data-lucide="volume-2" class="w-4 h-4 text-surface-500 dark:text-surface-300"></i> Sound Effects (SFX)</div>
+                                ${isHorizontal ? '' : '<i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>'}
+                            </summary>
+                            <div class="p-3 flex flex-col gap-3 bg-surface-50 dark:bg-surface-900/50 flex-1">
+                                ${sfx ? `
+                                    <div class="flex items-center justify-between gap-2">
+                                        <div class="flex items-center gap-2 min-w-0">
+                                            <div class="w-7 h-7 rounded bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 flex items-center justify-center shrink-0">
+                                                <i data-lucide="music" class="w-3.5 h-3.5 text-emerald-500"></i>
+                                            </div>
+                                            <div class="min-w-0">
+                                                <span class="block text-xs font-bold text-surface-800 dark:text-surface-100 truncate">${sfxName}</span>
+                                                <span class="block text-[10px] font-mono text-surface-500 dark:text-surface-300">${sfxDur.toFixed(1)}s · ${Math.round(sfxVol * 100)}%</span>
+                                            </div>
+                                        </div>
+                                        <div class="flex items-center gap-1 shrink-0">
+                                            <button onclick="previewClipSfx('${clip.id}'); event.stopPropagation();" class="p-1.5 rounded-md text-surface-500 dark:text-surface-300 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-colors" title="Preview / Stop Preview">
+                                                <i data-lucide="play" class="w-3.5 h-3.5"></i>
+                                            </button>
+                                            <button onclick="removeClipSfx('${clip.id}'); event.stopPropagation();" class="p-1.5 rounded-md text-surface-500 dark:text-surface-300 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors" title="Remove SFX">
+                                                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    ${sfxStatusHtml}
+                                    <div>
+                                        <div class="flex justify-between items-center mb-1.5">
+                                            <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Volume</label>
+                                            <span class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${Math.round(sfxVol * 100)}%</span>
+                                        </div>
+                                        <input type="range" min="0" max="2" step="0.05" value="${sfxVol}" class="w-full custom-slider" oninput="setClipSfxVolume('${clip.id}', this.value); this.previousElementSibling.querySelector('span').textContent = Math.round(this.value * 100) + '%';">
+                                    </div>
+                                    ${sfxExtracted ? `
+                                        <div class="text-[10px] text-surface-500 dark:text-surface-300 leading-relaxed">Audio now plays from the extracted clip on the timeline — adjusting volume here syncs to it.</div>
+                                    ` : `
+                                        <button onclick="extractSfxToTimeline('${clip.id}'); event.stopPropagation();" class="bg-brand-500 hover:bg-brand-600 text-white px-3 py-2 rounded text-xs font-bold transition-colors flex items-center justify-center gap-2 shadow-sm">
+                                            <i data-lucide="scissors" class="w-3.5 h-3.5"></i> Extract to Timeline
+                                        </button>
+                                        <p class="text-[10px] text-surface-500 dark:text-surface-300 leading-relaxed">Adds this sound as an audio clip on the audio track, linked to this element — move, split or delete them together.</p>
+                                    `}
+                                ` : `
+                                    <label class="cursor-pointer bg-brand-500 hover:bg-brand-600 text-white px-3 py-2 rounded text-xs font-bold transition-colors flex items-center justify-center gap-2 shadow-sm">
+                                        <i data-lucide="upload" class="w-3.5 h-3.5"></i> Import Sound Effect
+                                        <input type="file" accept="audio/*" class="hidden" onchange="importClipSfx('${clip.id}', this.files)">
+                                    </label>
+                                    <p class="text-[10px] text-surface-500 dark:text-surface-300 leading-relaxed">Attach a sound effect to this element — it stays with the element when duplicated, and can be extracted to the timeline as a linked audio clip.</p>
+                                `}
+                            </div>
+                        </details>
+                    `;
+                }
+
                 // Compile navigation items for Properties tab
                 const navItems = [];
                 if (sceneHTML) navItems.push({ id: 'cardScene', name: 'Scene', icon: 'layers' });
@@ -9112,6 +9180,7 @@
                     if (systemFontsHTML) navItems.push({ id: 'cardSystemFonts', name: 'PC Fonts', icon: 'laptop' });
                     if (googleFontsHTML) navItems.push({ id: 'cardGoogleFonts', name: 'Google Fonts', icon: 'globe' });
                 }
+                if (sfxHTML) navItems.push({ id: 'cardSfx', name: 'Sound FX', icon: 'volume-2' });
                 if (navItems.length > 1) {
                     sidebarContent.className = "flex overflow-hidden bg-surface-50 dark:bg-surface-900 w-full flex-1 min-h-0 " + (isHorizontal ? "flex-row" : "flex-col");
                     
@@ -9161,6 +9230,7 @@
                             ${blendingHTML}
                             ${shadowHTML}
                             ${textureHTML}
+                            ${sfxHTML}
                             ${isText ? systemFontsHTML : ''}
                             ${isText ? googleFontsHTML : ''}
                         </div>
@@ -10948,6 +11018,172 @@
             renderClips();
             drawCanvas();
         }
+
+        // ─────────────────────────────────────────────────────────────────────────────
+        //  ELEMENT SFX — embedded sound on text / shape / image / math clips
+        //  The sound lives on the element (survives duplication). It can be extracted
+        //  to the timeline as an audio clip LINKED to the element, so moving, splitting
+        //  or deleting keeps them together (reuses the linkedClipIds machinery).
+        // ─────────────────────────────────────────────────────────────────────────────
+        let sfxPreviewSource = null;
+
+        function stopSfxPreview() {
+            if (sfxPreviewSource) {
+                try { sfxPreviewSource.stop(); } catch (e) {}
+                try { sfxPreviewSource.disconnect(); } catch (e) {}
+                sfxPreviewSource = null;
+            }
+        }
+
+        function stopClipSfxNodes(clip) {
+            if (clip.sfxIsPlaying && clip.sfxNode) {
+                try { clip.sfxNode.stop(); } catch (e) {}
+                try { clip.sfxNode.disconnect(); } catch (e) {}
+            }
+            clip.sfxNode = null;
+            clip.sfxIsPlaying = false;
+        }
+
+        window.importClipSfx = async function(clipId, files) {
+            const clip = State.clips.find(c => c.id === clipId);
+            if (!clip || !files || !files.length) return;
+            const file = files[0];
+            try {
+                ensureAudioContext();
+                const arrayBuffer = await file.arrayBuffer();
+                const buffer = await audioCtx.decodeAudioData(arrayBuffer);
+                stopClipSfxNodes(clip);
+                clip.sfx = {
+                    name: file.name.replace(/\.[^.]+$/, ''),
+                    url: URL.createObjectURL(file),
+                    buffer: buffer,
+                    duration: buffer.duration,
+                    volume: clip.sfx && clip.sfx.volume !== undefined ? clip.sfx.volume : 1
+                };
+                delete clip.sfxExtractedClipId;
+                updateSidebarPanel();
+                renderClips();
+            } catch (err) {
+                console.error("SFX import failed:", err);
+                alert("Could not decode that audio file. Try an MP3, WAV or OGG file.");
+            }
+        };
+
+        window.setClipSfxVolume = function(clipId, vol) {
+            const clip = State.clips.find(c => c.id === clipId);
+            if (!clip || !clip.sfx) return;
+            clip.sfx.volume = parseFloat(vol);
+            if (clip.sfxGain) clip.sfxGain.gain.value = clip.sfx.volume;
+            if (clip.sfxExtractedClipId) {
+                const extracted = State.clips.find(c => c.id === clip.sfxExtractedClipId);
+                if (extracted && extracted.effects) {
+                    extracted.effects.volume = clip.sfx.volume;
+                    if (extracted.audioNodes) applyAudioEffects(extracted);
+                }
+            }
+            updateSidebarPanel();
+        };
+
+        window.previewClipSfx = function(clipId) {
+            const clip = State.clips.find(c => c.id === clipId);
+            if (!clip || !clip.sfx || !clip.sfx.buffer) return;
+            ensureAudioContext();
+            if (sfxPreviewSource) stopSfxPreview();
+            const source = audioCtx.createBufferSource();
+            source.buffer = clip.sfx.buffer;
+            const gain = audioCtx.createGain();
+            gain.gain.value = clip.sfx.volume !== undefined ? clip.sfx.volume : 1;
+            source.connect(gain);
+            gain.connect(State.speakerNode || audioCtx.destination);
+            source.start(0, 0);
+            sfxPreviewSource = source;
+            source.onended = () => { if (sfxPreviewSource === source) sfxPreviewSource = null; };
+        };
+
+        window.removeClipSfx = function(clipId) {
+            const clip = State.clips.find(c => c.id === clipId);
+            if (!clip) return;
+            stopClipSfxNodes(clip);
+            // If an audio clip was extracted, break the link in BOTH directions so it
+            // stays on the timeline independently (no dangling link on the element)
+            if (clip.sfxExtractedClipId) {
+                const extracted = State.clips.find(c => c.id === clip.sfxExtractedClipId);
+                if (extracted && extracted.linkedClipIds) {
+                    extracted.linkedClipIds = extracted.linkedClipIds.filter(id => id !== clip.id);
+                }
+                if (clip.linkedClipIds) {
+                    clip.linkedClipIds = clip.linkedClipIds.filter(id => id !== clip.sfxExtractedClipId);
+                }
+            }
+            delete clip.sfx;
+            delete clip.sfxExtractedClipId;
+            updateSidebarPanel();
+            renderClips();
+            syncMediaElements();
+        };
+
+        window.extractSfxToTimeline = function(clipId) {
+            const clip = State.clips.find(c => c.id === clipId);
+            if (!clip || !clip.sfx || !clip.sfx.buffer) return;
+            if (clip.sfxExtractedClipId) {
+                const existing = State.clips.find(c => c.id === clip.sfxExtractedClipId);
+                if (existing) return; // already extracted & linked
+            }
+            stopSfxPreview();
+            ensureAudioContext();
+
+            const sfx = clip.sfx;
+            const duration = Math.max(0.1, Math.min(clip.duration, sfx.duration));
+            const audioTargetTrackId = getAvailableTrack('audio', clip.start, duration);
+            const targetTrack = State.tracks.find(t => t.id === audioTargetTrackId);
+
+            const audioEl = new Audio(sfx.url);
+            audioEl.crossOrigin = "anonymous";
+
+            const peaks = [];
+            const peaksPerSecond = 100;
+            const step = Math.floor(sfx.buffer.sampleRate / peaksPerSecond);
+            const data = sfx.buffer.getChannelData(0);
+            for (let i = 0; i < data.length; i += step) {
+                let max = 0, min = 0;
+                for (let j = 0; j < step && i + j < data.length; j++) {
+                    const val = data[i + j];
+                    if (val > max) max = val;
+                    if (val < min) min = val;
+                }
+                peaks.push({ max, min });
+            }
+
+            const newClip = {
+                id: 'clip_' + Math.random().toString(36).substr(2, 9),
+                type: 'audio',
+                title: sfx.name + ' (SFX)',
+                duration: duration,
+                start: clip.start,
+                sourceOffset: 0,
+                trackId: audioTargetTrackId,
+                colorIndex: targetTrack ? targetTrack.colorIndex : 1,
+                audioEl: audioEl,
+                buffer: sfx.buffer,
+                maxDuration: sfx.duration,
+                peaksPerSecond: peaksPerSecond,
+                peaks: peaks,
+                effects: { volume: sfx.volume !== undefined ? sfx.volume : 1, echo: 0.5, echoEnable: false, cartoon: 0.5, cartoonEnable: false, cinematic: 0.5, cinematicEnable: false, robot: 0.5, robotEnable: false, noiseRed: 0.5, noiseRedEnable: false },
+                linkedClipIds: [clip.id]
+            };
+
+            clip.linkedClipIds = clip.linkedClipIds || [];
+            if (!clip.linkedClipIds.includes(newClip.id)) clip.linkedClipIds.push(newClip.id);
+            clip.sfxExtractedClipId = newClip.id;
+
+            buildAudioGraph(newClip);
+            State.clips.push(newClip);
+            calcOverlaps();
+            renderClips();
+            updateSidebarPanel();
+            syncMediaElements();
+            drawCanvas();
+        };
 
         // --- Quick Action Handlers ---
         function handleScaleUp() {
@@ -14705,6 +14941,12 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 effects: JSON.parse(JSON.stringify(originalClip.effects || {}))
             };
             delete copy.linkedClipIds;
+            // A duplicated element keeps its embedded SFX (shared buffer), but must not
+            // keep the original's live audio nodes or its extracted-clip link
+            delete copy.sfxExtractedClipId;
+            copy.sfxNode = null;
+            copy.sfxGain = null;
+            copy.sfxIsPlaying = false;
             if (copy.title) {
                 if (copy.title.toLowerCase().startsWith('new ')) {
                     copy.title = 'Copy ' + copy.title.substring(4);
@@ -15867,6 +16109,9 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 const linkIconHtml = isLinked ? `
                     <i data-lucide="link" class="w-2.5 h-2.5 shrink-0" style="color: #f59e0b"></i>
                 ` : '';
+                const sfxIconHtml = clip.sfx ? `
+                    <i data-lucide="volume-2" class="w-2.5 h-2.5 shrink-0" style="color: #34d399"></i>
+                ` : '';
 
                 let headerContent = '';
                 if (showHeader) {
@@ -15877,6 +16122,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                                 <i data-lucide="${icon}" class="w-3.5 h-3.5 shrink-0" style="color: ${palette.text}"></i>
                                 <span class="text-[10px] font-semibold truncate" style="color: ${palette.text}">${headerTitle}</span>
                                 ${linkIconHtml}
+                                ${sfxIconHtml}
                             </div>
                             <button onclick="openBeatDetection('${clip.id}'); event.stopPropagation();" class="p-0.5 rounded hover:bg-black/20 dark:hover:bg-white/20 transition-all pointer-events-auto flex items-center justify-center shrink-0 cursor-pointer" title="Beat Detection">
                                 <i data-lucide="sparkles" class="w-3.5 h-3.5 shrink-0" style="color: ${palette.text}"></i>
@@ -15889,6 +16135,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                             <i data-lucide="${icon}" class="w-3.5 h-3.5 shrink-0" style="color: ${palette.text}"></i>
                             <span class="text-[10px] font-semibold truncate" style="color: ${palette.text}">${headerTitle}</span>
                             ${linkIconHtml}
+                            ${sfxIconHtml}
                         </div>
                         `;
                     }
@@ -17948,6 +18195,38 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 const shouldPlay = State.isPlaying && State.currentTime >= clip.start && State.currentTime <= clip.start + clip.duration;
                 const isUpcoming = State.isPlaying && State.currentTime < clip.start && (clip.start - State.currentTime) < 0.5;
                 
+                // Embedded SFX on element clips (text / shape / image / math): play the
+                // attached sound while the playhead is inside the clip. Once extracted to
+                // the timeline, the extracted audio clip is the player, so stay silent here
+                // to avoid double audio.
+                if (clip.sfx && clip.sfx.buffer && !clip.sfxExtractedClipId && clip.type !== 'audio') {
+                    if (shouldPlay) {
+                        if (!clip.sfxIsPlaying || isJump) {
+                            if (clip.sfxIsPlaying && clip.sfxNode) {
+                                try { clip.sfxNode.stop(); clip.sfxNode.disconnect(); } catch (e) {}
+                            }
+                            clip.sfxNode = audioCtx.createBufferSource();
+                            clip.sfxNode.buffer = clip.sfx.buffer;
+                            if (!clip.sfxGain) {
+                                clip.sfxGain = audioCtx.createGain();
+                                clip.sfxGain.connect(State.speakerNode || audioCtx.destination);
+                            }
+                            clip.sfxGain.gain.value = clip.sfx.volume !== undefined ? clip.sfx.volume : 1;
+                            clip.sfxNode.connect(clip.sfxGain);
+                            const sfxOffset = Math.max(0, Math.min(State.currentTime - clip.start, Math.max(0, clip.sfx.duration - 0.01)));
+                            clip.sfxNode.start(0, sfxOffset);
+                            clip.sfxIsPlaying = true;
+                        }
+                    } else {
+                        if (clip.sfxIsPlaying && clip.sfxNode) {
+                            try { clip.sfxNode.stop(); clip.sfxNode.disconnect(); } catch (e) {}
+                            clip.sfxNode = null;
+                            clip.sfxIsPlaying = false;
+                        }
+                    }
+                    return;
+                }
+                
                 if (clip.buffer) {
                     if (shouldPlay) {
                         if (!clip.isPlaying || isJump) {
@@ -18064,6 +18343,16 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     }
                     clip.sourceNode = null;
                     clip.isPlaying = false;
+                }
+                if (clip.sfxIsPlaying && clip.sfxNode) {
+                    try {
+                        clip.sfxNode.stop();
+                        clip.sfxNode.disconnect();
+                    } catch (e) {
+                        // Ignore
+                    }
+                    clip.sfxNode = null;
+                    clip.sfxIsPlaying = false;
                 }
             });
         }
