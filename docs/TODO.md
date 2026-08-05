@@ -37,13 +37,15 @@ analysis of editor and comparison with remotion
 - add finzar subtitle animtions for text and captions - Add sinzar styel sase in out option - advanced ease in out more options - 
 - add more finzar type transfrom such as character animtions styles 
 - make caption animtion word by word stay fro whole clip duration - add option for it 
-- add ability select empty space between clips on a track a delte it and move clips like premier pro - add a toggle icon in header for that 
+✅ add ability select empty space between clips on a track a delte it and move clips like premier pro - add a toggle icon in header for that 
 - add ability to select one clip and when user move it also move
 
 Add ability to use audio for specifi text - shape - image - math - elment 
 
 - the hold option is not working for opacity property - fix this 
 - overhauled preset - like thumb maker - store webp images 
+
+- for markdown style - add mock video and mock image - with alt text - for markdown add more porsition options - like top left - cenrter left - bottom left - and similar for right - also add ability - lets say two text are at left center - add gap between them - 
 
 ## Suggestions
 
@@ -60,6 +62,12 @@ Add ability to use audio for specifi text - shape - image - math - elment
 
 
 - Wire the Puzzle animation into the Markdown tab's global heading/text/image style so generated slides automatically get the puzzle block reveal without per-clip setup.
+
+- Add a second action to the gap toggle: a 'close all gaps' button that ripple-closes every gap across all tracks in one click.
+- Save the Gap Select mode toggle state to localStorage so it stays on/off across sessions, like the other timeline tool toggles.
+- Add a right-click context menu on selected gaps with actions like 'Close Gap', 'Close All Gaps on Track', and 'Close All Gaps in Sequence' (premiere-style ripple).
+
+
 
 
 
