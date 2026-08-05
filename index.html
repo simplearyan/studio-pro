@@ -14588,10 +14588,58 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             return newClip;
         }
 
+        // When a scene clip is split, carry its children into the right half so the new
+        // half isn't an empty scene. Children use times RELATIVE to the scene start, and
+        // the right half starts at the cut — so each duplicated child gets:
+        //   start      = max(0, cutRel - child.start)        (relative to the new half)
+        //   sourceOffset advanced when the child spanned the cut
+        // Left-half copies spanning the cut are trimmed to end at the cut; children that
+        // fell entirely after the cut are removed from the left half. Created right-half
+        // children are pushed into `createdOut` (for frame-ready preview refresh).
+        function splitSceneChildren(sceneLeft, sceneRight, cutTime, createdOut) {
+            const cutRel = cutTime - sceneLeft.start;
+            const removeFromLeft = [];
+            State.clips.filter(c => c.sceneId === sceneLeft.id).forEach(child => {
+                const relStart = child.start;
+                const relEnd = child.start + child.duration;
+                if (relEnd <= cutRel + 0.001) return; // entirely inside the left half
+
+                let rightStart, rightDur;
+                if (relStart >= cutRel - 0.001) {
+                    // Child begins after the cut — position inside the right half is preserved
+                    rightStart = relStart - cutRel;
+                    rightDur = relEnd - relStart;
+                    removeFromLeft.push(child.id); // no longer part of the left half
+                } else {
+                    // Child spans the cut — right copy starts at the top of the right half
+                    rightStart = 0;
+                    rightDur = relEnd - cutRel;
+                    child.duration = cutRel - relStart; // trim the left copy at the cut
+                }
+                if (rightDur <= 0.001) return;
+
+                const dup = duplicateClip(child);
+                dup.id = 'c_' + Date.now() + Math.random().toString(36).substr(2, 5) + Math.random().toString(36).substr(2, 4);
+                dup.sceneId = sceneRight.id;
+                dup.start = rightStart;
+                dup.duration = rightDur;
+                dup.title = child.title; // keep the scene's internal labels clean
+                if (relStart < cutRel) {
+                    dup.sourceOffset = (child.sourceOffset || 0) + (cutRel - relStart);
+                }
+                State.clips.push(dup);
+                if (createdOut) createdOut.push(dup);
+            });
+            if (removeFromLeft.length > 0) {
+                State.clips = State.clips.filter(c => !removeFromLeft.includes(c.id));
+            }
+        }
+
         // Split at the playhead. Supports:
         //  • multi-select  — every selected clip (plus linked partners) that the playhead
         //    passes through gets split at the same time
         //  • linked groups — splitting a video also splits its linked audio (and vice versa)
+        //  • scene clips   — children are carried into the right half (not an empty scene)
         //  • fallback      — no selection: split the top-most unlocked clip under the playhead
         //    and its linked group
         function splitClipAtPlayhead() {
@@ -14658,6 +14706,14 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             State.multiSelectedClipIds = splitPairs.map(p => p.right.id);
             State.selectedClipId = splitPairs[0].right.id;
 
+            // Split scene clips: carry their children into the right half so it isn't empty
+            const createdSceneChildren = [];
+            splitPairs.forEach(p => {
+                if (p.parent.type === 'scene') {
+                    splitSceneChildren(p.parent, p.right, time, createdSceneChildren);
+                }
+            });
+
             calcOverlaps();
             renderClips();
             updatePropertiesPanel();
@@ -14666,7 +14722,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             // Don't paint the stale (pre-seek) frame — only draw once the fresh right-half
             // video elements have decoded the cut frame, so the preview is live and
             // flicker-free. If nothing needs a frame wait, update the canvas immediately.
-            const waiting = refreshFreshVideoPreview(splitPairs.map(p => p.right));
+            const waiting = refreshFreshVideoPreview([...splitPairs.map(p => p.right), ...createdSceneChildren]);
             if (!waiting) drawCanvas();
         }
 
@@ -17142,9 +17198,16 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             let waiting = false;
             clips.forEach(clip => {
                 if (!clip || clip.type !== 'video' || !clip.videoEl) return;
-                if (State.currentTime < clip.start || State.currentTime >= clip.start + clip.duration) return;
+                // Scene children store times RELATIVE to their scene — resolve to absolute
+                // timeline time so the playhead check and the seek target are correct.
+                let absStart = clip.start;
+                if (clip.sceneId) {
+                    const sc = State.clips.find(c => c.id === clip.sceneId && c.type === 'scene');
+                    if (sc) absStart = sc.start + clip.start;
+                }
+                if (State.currentTime < absStart || State.currentTime >= absStart + clip.duration) return;
                 const el = clip.videoEl;
-                const targetTime = clip.sourceOffset + (State.currentTime - clip.start);
+                const targetTime = clip.sourceOffset + (State.currentTime - absStart);
                 waiting = true;
                 if (el.readyState < 1) {
                     // Metadata not loaded yet (fresh element right after .load()) — wait for
