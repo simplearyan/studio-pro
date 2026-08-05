@@ -45,7 +45,7 @@ Add ability to use audio for specifi text - shape - image - math - elment
 - the hold option is not working for opacity property - fix this 
 - overhauled preset - like thumb maker - store webp images 
 
-- for markdown style - add mock video and mock image - with alt text - for markdown add more porsition options - like top left - cenrter left - bottom left - and similar for right - also add ability - lets say two text are at left center - add gap between them - 
+✅ for markdown style - add mock video and mock image - with alt text - for markdown add more porsition options - like top left - cenrter left - bottom left ✅ and similar for right - also add ability - lets say two text are at left center - add gap between them - 
 
 ## Suggestions
 
