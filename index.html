@@ -332,6 +332,27 @@
                 flex-shrink: 0;
             }
 
+            /* ── Blade Tool (CapCut-style razor) ─────────────────────────── */
+            #tracksContent.blade-mode,
+            #tracksContent.blade-mode .clip,
+            #tracksContent.blade-mode .trim-handle {
+                /* Children (clips/trim handles) set their own cursor, which would
+                   override the blade cursor — force the scissors everywhere. */
+                cursor: url('data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="%23e11d48" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"%3E%3Ccircle cx="6" cy="6" r="3"/%3E%3Ccircle cx="6" cy="18" r="3"/%3E%3Cline x1="20" y1="4" x2="8.12" y2="15.88"/%3E%3Cline x1="14.47" y1="14.48" x2="20" y2="20"/%3E%3Cline x1="8.12" y1="8.12" x2="12" y2="12"/%3E%3C/svg%3E') 12 12, crosshair !important;
+            }
+            #hoverPlayhead.blade-active {
+                background: #f43f5e !important;
+                width: 2px !important;
+                box-shadow: 0 0 6px rgba(244, 63, 94, 0.7);
+            }
+            #hoverPlayhead.blade-active #hoverPlayheadTime {
+                background: #e11d48 !important;
+                border-color: rgba(255,255,255,0.4) !important;
+                display: flex;
+                align-items: center;
+                gap: 3px;
+            }
+
             /* ── Tab-based accent color system ──────────────────────────── */
             /* CRITICAL: All selectors use `.peer:checked ~` so they ONLY    */
             /* apply when the radio input IS checked. Without this, the      */
@@ -649,6 +670,13 @@
                             <button id="btnGapSelect" class="w-8 h-8 flex items-center justify-center rounded-md hover:bg-surface-100 dark:hover:bg-surface-700 hover:text-brand-600 dark:hover:text-brand-400 text-surface-600 dark:text-surface-400" title="Gap Select (G) — click empty space between clips to select the gap, then press Delete to close it and pull clips together (Premiere-style)">
                                 <i data-lucide="arrow-left-right" class="w-4 h-4"></i>
                             </button>
+                            <button id="btnBlade" class="w-8 h-8 flex items-center justify-center rounded-md hover:bg-surface-100 dark:hover:bg-surface-700 hover:text-brand-600 dark:hover:text-brand-400 text-surface-600 dark:text-surface-400" title="Blade Tool (B) — click on the timeline to cut at that position. Scope: Clip / Linked / All (CapCut-style)">
+                                <i data-lucide="scissors" class="w-4 h-4"></i>
+                            </button>
+                            <div id="bladeScopeBar" class="hidden items-center gap-1 bg-surface-100 dark:bg-surface-800 px-1 py-1 rounded-lg border border-surface-200 dark:border-surface-700 shadow-sm">
+                                <button onclick="setBladeScope('clip'); event.stopPropagation();" data-blade-scope="clip" class="blade-scope-btn text-[10px] font-bold px-2 py-1 rounded-md transition-colors">Clip</button>
+                                <button onclick="setBladeScope('all'); event.stopPropagation();" data-blade-scope="all" class="blade-scope-btn text-[10px] font-bold px-2 py-1 rounded-md transition-colors">All</button>
+                            </div>
                         </div>
 
                         <div class="w-px h-6 bg-surface-200 dark:bg-surface-700 hidden sm:block"></div>
@@ -972,6 +1000,8 @@
             inspector: { visible: false, dock: 'left', fullWidth: false, width: 320 },
             hoverPlayheadEnabled: true,
             pushTrim: false,
+            bladeMode: false,
+            bladeScope: 'clip', // 'clip' (clip + linked partners) | 'all' — blade tool split scope
             gapSelectMode: false,
             selectedGap: null, // { trackId, start, end } — Premiere-style gap selection
             timelineSeekAnywhere: false,
@@ -2769,6 +2799,113 @@
             updateGapSelectBtn();
             renderClips();
             renderGapSelection();
+        }
+
+        // ── Blade Tool (CapCut/Premiere-style razor) ─────────────────────────
+        function updateBladeBtn() {
+            const btn = document.getElementById('btnBlade');
+            if (btn) {
+                if (State.bladeMode) {
+                    btn.classList.add('text-rose-600', 'dark:text-rose-400', 'bg-rose-50', 'dark:bg-rose-500/10');
+                    btn.classList.remove('text-surface-600', 'dark:text-surface-400');
+                } else {
+                    btn.classList.remove('text-rose-600', 'dark:text-rose-400', 'bg-rose-50', 'dark:bg-rose-500/10');
+                    btn.classList.add('text-surface-600', 'dark:text-surface-400');
+                }
+            }
+            const bar = document.getElementById('bladeScopeBar');
+            if (bar) {
+                if (State.bladeMode) {
+                    bar.classList.remove('hidden');
+                    bar.classList.add('flex');
+                } else {
+                    bar.classList.add('hidden');
+                    bar.classList.remove('flex');
+                }
+            }
+            const tc = document.getElementById('tracksContent');
+            if (tc) tc.classList.toggle('blade-mode', State.bladeMode);
+            updateBladeScopeBtns();
+        }
+
+        function updateBladeScopeBtns() {
+            document.querySelectorAll('.blade-scope-btn').forEach(b => {
+                const active = b.dataset.bladeScope === State.bladeScope;
+                b.className = 'blade-scope-btn text-[10px] font-bold px-2 py-1 rounded-md transition-colors ' +
+                    (active
+                        ? 'bg-rose-600 text-white shadow-sm'
+                        : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-700');
+            });
+        }
+
+        function toggleBlade() {
+            State.bladeMode = !State.bladeMode;
+            updateBladeBtn();
+            // Hide the hover blade marker when leaving the mode
+            if (!State.bladeMode) {
+                const hp = document.getElementById('hoverPlayhead');
+                if (hp) hp.classList.remove('blade-active');
+            }
+        }
+
+        function setBladeScope(scope) {
+            State.bladeScope = scope;
+            updateBladeScopeBtns();
+        }
+
+        // Blade split: cut at `time` using the configured scope.
+        //   'clip' — the exact clip the user clicked (or the visually top-most unlocked
+        //            clip under the cursor) PLUS its linked group, so e.g. video + audio
+        //            stay in sync. Top-most = lowest track index, matching the stacking.
+        //   'all'  — every unlocked clip (and linked partners) on all tracks
+        function collectSplitTargetsAtTime(time, scope, clickClipId, clickTrackId) {
+            if (scope === 'clip' && clickClipId) {
+                const clicked = State.clips.find(c => c.id === clickClipId);
+                if (clicked) {
+                    const t = State.tracks.find(tr => tr.id === clicked.trackId);
+                    if ((!t || !t.locked) && time > clicked.start + 0.05 && time < clicked.start + clicked.duration - 0.05) {
+                        return getLinkedClipsGroup(clicked);
+                    }
+                }
+            }
+
+            const unlocked = State.clips.filter(c => {
+                const t = State.tracks.find(tr => tr.id === c.trackId);
+                return (!t || !t.locked) && time > c.start + 0.05 && time < c.start + c.duration - 0.05;
+            });
+            if (unlocked.length === 0) return [];
+            if (scope === 'clip') {
+                let primary = null;
+                if (clickTrackId) {
+                    const onTrack = unlocked.filter(c => c.trackId === clickTrackId);
+                    if (onTrack.length > 0) primary = onTrack[onTrack.length - 1];
+                }
+                if (!primary) {
+                    // Visually top-most = lowest track array index (matches drawCanvas stacking)
+                    primary = unlocked[0];
+                    let topIdx = State.tracks.findIndex(t => t.id === primary.trackId);
+                    unlocked.slice(1).forEach(c => {
+                        const idx = State.tracks.findIndex(t => t.id === c.trackId);
+                        if (idx < topIdx) { primary = c; topIdx = idx; }
+                    });
+                }
+                return getLinkedClipsGroup(primary);
+            }
+            // 'all': every unlocked clip under the cursor, plus linked partners.
+            // Skip scene children (they carry relative times and are handled by
+            // splitSceneChildren when their parent scene is cut — including them here
+            // could double-split when a child's relative time matches the cursor).
+            const groupSet = new Set();
+            unlocked.forEach(c => {
+                if (c.sceneId) return;
+                getLinkedClipsGroup(c).forEach(g => groupSet.add(g.id));
+            });
+            return Array.from(groupSet).map(id => State.clips.find(x => x.id === id)).filter(Boolean);
+        }
+
+        function splitWithBlade(time, clickClipId, clickTrackId) {
+            const targets = collectSplitTargetsAtTime(time, State.bladeScope, clickClipId, clickTrackId);
+            executeSplit(targets, time);
         }
 
         function updateImageThumbsBtn() {
@@ -14670,6 +14807,13 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 }
             }
 
+            executeSplit(targets, time);
+        }
+
+        // Shared split pipeline: filters targets to those the playhead actually passes
+        // through on unlocked tracks, splits them, re-links per temporal half, carries
+        // scene children into the right halves, and refreshes the canvas live.
+        function executeSplit(targets, time) {
             // Keep only clips the playhead actually passes through on unlocked tracks
             const splittable = targets.filter(c => {
                 const t = State.tracks.find(tr => tr.id === c.trackId);
@@ -15756,6 +15900,9 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             if (btnPushTrim) btnPushTrim.addEventListener('click', togglePushTrim);
             const btnGapSelect = document.getElementById('btnGapSelect');
             if (btnGapSelect) btnGapSelect.addEventListener('click', toggleGapSelect);
+            const btnBlade = document.getElementById('btnBlade');
+            if (btnBlade) btnBlade.addEventListener('click', toggleBlade);
+            updateBladeBtn();
             const btnToggleImageThumbs = document.getElementById('btnToggleImageThumbs');
             if (btnToggleImageThumbs) {
                 btnToggleImageThumbs.addEventListener('click', toggleImageThumbs);
@@ -15920,6 +16067,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 else if (e.key === 'Delete' || e.key === 'Backspace') deleteSelectedClip();
                 else if (k === 'escape' && State.selectedGap) { e.preventDefault(); State.selectedGap = null; renderGapSelection(); }
                 else if (k === 'g' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) { e.preventDefault(); toggleGapSelect(); }
+                else if (k === 'b' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) { e.preventDefault(); toggleBlade(); }
                 else if (e.code === 'Space') { 
                     e.preventDefault(); 
                     if (e.shiftKey && State.sidebarTab === 'audio_library' && State.selectedAudioLibId) {
@@ -16291,6 +16439,29 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             });
 
             tracksContentContainer.addEventListener('mousedown', (e) => {
+                // ── Blade Tool mode (CapCut-style razor): click anywhere on the
+                // timeline to cut at that position using the configured scope ──
+                if (State.bladeMode) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const rect = tracksContentContainer.getBoundingClientRect();
+                    const xInVisibleContainer = e.clientX - rect.left;
+                    const absoluteX = timelineScrollArea.scrollLeft + xInVisibleContainer;
+                    const clickTime = Math.max(0, Math.min(absoluteX / State.pixelsPerSecond, State.duration));
+                    // The exact clip element under the cursor (if any) plus its track —
+                    // the 'clip' scope uses these so it cuts what the user actually
+                    // clicked (not the bottom-most audio clip).
+                    const clipEl = e.target.closest('.clip');
+                    const clickClipId = clipEl ? clipEl.dataset.clipId : null;
+                    const lane = e.target.closest('.track-lane');
+                    const clickTrackId = lane ? lane.dataset.trackId : null;
+                    State.currentTime = clickTime;
+                    updatePlayhead();
+                    syncMediaElements();
+                    splitWithBlade(clickTime, clickClipId, clickTrackId);
+                    return;
+                }
+
                 const diamondEl = e.target.closest('.keyframe-diamond');
                 if (diamondEl) {
                     e.stopPropagation();
@@ -16562,7 +16733,12 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 if (time < 0) return;
                 
                 hp.style.left = `${rawX}px`;
-                hpt.textContent = formatTime(time);
+                hp.classList.toggle('blade-active', !!State.bladeMode);
+                if (State.bladeMode) {
+                    hpt.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>${formatTime(time)}`;
+                } else {
+                    hpt.textContent = formatTime(time);
+                }
                 if (hptc) {
                     hptc.style.top = `${container.scrollTop + 4}px`;
                 }
