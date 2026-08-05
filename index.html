@@ -4957,90 +4957,77 @@
                             ctx.clip();
                         }
 
-                        const mcfg = State.markdownConfig || {};
+                        // Mock card uses the clip's TIMELINE THEME colors (PALETTES) so it
+                        // visually matches its clip in the timeline; text is the theme's dark
+                        // text color on its light pastel fill for clean, high-contrast type.
+                        const pal = PALETTES[clip.colorIndex % PALETTES.length] || PALETTES[0];
                         const isImageMock = clip.type === 'image';
-                        const c1 = isImageMock ? (mcfg.mockImageColor1 || '#ff7e5f') : (mcfg.mockVideoColor1 || '#6a11cb');
-                        const c2 = isImageMock ? (mcfg.mockImageColor2 || '#feb47b') : (mcfg.mockVideoColor2 || '#2575fc');
-                        const cardRadius = Math.max(borderRadius || 0, 16);
+                        const genericLabel = isImageMock ? 'MOCK IMAGE' : 'MOCK VIDEO';
+                        const cardRadius = 0; // square card — no border radius
                         const cardPath = (x, y, w2, h2, r) => { ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(x, y, w2, h2, r); else ctx.rect(x, y, w2, h2); };
 
-                        // Premium card: diagonal gradient + glossy shine + subtle inner edge
-                        const grad = ctx.createLinearGradient(-dw/2, -dh/2, dw/2, dh/2);
-                        grad.addColorStop(0, c1);
-                        grad.addColorStop(1, c2);
+                        // Themed card: clean solid pastel fill — no gradient, no border
                         cardPath(-dw/2, -dh/2, dw, dh, cardRadius);
-                        ctx.fillStyle = grad;
+                        ctx.fillStyle = pal.bg || '#e5e7eb';
                         ctx.fill();
-                        const shine = ctx.createLinearGradient(-dw/2, -dh/2, dw/2, dh/2);
-                        shine.addColorStop(0, 'rgba(255,255,255,0.30)');
-                        shine.addColorStop(0.45, 'rgba(255,255,255,0.06)');
-                        shine.addColorStop(1, 'rgba(255,255,255,0)');
-                        cardPath(-dw/2, -dh/2, dw, dh, cardRadius);
-                        ctx.fillStyle = shine;
-                        ctx.fill();
-                        ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-                        ctx.lineWidth = 1.5;
-                        ctx.beginPath();
-                        if (ctx.roundRect) ctx.roundRect(-dw/2 + 1, -dh/2 + 1, dw - 2, dh - 2, cardRadius - 1);
-                        else ctx.rect(-dw/2 + 1, -dh/2 + 1, dw - 2, dh - 2);
-                        ctx.stroke();
 
-                        // Type chip (top-left): MOCK IMAGE / MOCK VIDEO
-                        const genericLabel = isImageMock ? 'MOCK IMAGE' : 'MOCK VIDEO';
-                        ctx.font = 'bold 11px "Inter", sans-serif';
-                        const chipW = ctx.measureText(genericLabel).width + 22;
-                        ctx.fillStyle = 'rgba(0,0,0,0.42)';
-                        cardPath(-dw/2 + 14, -dh/2 + 12, chipW, 22, 11);
+                        const textC = pal.text || '#1f2937';
+
+                        // Type chip (top-left): MOCK IMAGE / MOCK VIDEO — dark pill + white text
+                        ctx.font = 'bold 14px "Inter", sans-serif';
+                        const chipW = ctx.measureText(genericLabel).width + 28;
+                        ctx.fillStyle = textC;
+                        cardPath(-dw/2 + 16, -dh/2 + 14, chipW, 30, 7);
                         ctx.fill();
-                        ctx.fillStyle = 'rgba(255,255,255,0.92)';
+                        ctx.fillStyle = '#ffffff';
                         ctx.textAlign = 'left';
                         ctx.textBaseline = 'middle';
-                        ctx.fillText(genericLabel, -dw/2 + 14 + 11, -dh/2 + 23);
+                        ctx.fillText(genericLabel, -dw/2 + 16 + 14, -dh/2 + 29);
 
-                        // Center icon: picture frame for images, play button for videos
+                        // Center icon: picture frame for images, play button for videos (theme color)
                         ctx.textAlign = 'center';
                         ctx.textBaseline = 'middle';
-                        const iconCy = -58;
-                        ctx.strokeStyle = 'rgba(255,255,255,0.95)';
-                        ctx.fillStyle = 'rgba(255,255,255,0.95)';
-                        ctx.lineWidth = 3;
+                        const iconCy = -66;
+                        ctx.strokeStyle = textC;
+                        ctx.fillStyle = textC;
+                        ctx.lineWidth = 3.5;
                         if (isImageMock) {
                             ctx.beginPath();
-                            if (ctx.roundRect) ctx.roundRect(-28, iconCy - 22, 56, 44, 8);
-                            else ctx.rect(-28, iconCy - 22, 56, 44);
+                            if (ctx.roundRect) ctx.roundRect(-32, iconCy - 25, 64, 50, 10);
+                            else ctx.rect(-32, iconCy - 25, 64, 50);
                             ctx.stroke();
                             ctx.beginPath();
-                            ctx.arc(-11, iconCy - 9, 5, 0, Math.PI * 2);
+                            ctx.arc(-13, iconCy - 10, 6, 0, Math.PI * 2);
                             ctx.fill();
                             ctx.beginPath();
-                            ctx.moveTo(-21, iconCy + 16);
-                            ctx.lineTo(-4, iconCy - 1);
-                            ctx.lineTo(9, iconCy + 9);
-                            ctx.lineTo(16, iconCy + 3);
-                            ctx.lineTo(23, iconCy + 16);
+                            ctx.moveTo(-24, iconCy + 18);
+                            ctx.lineTo(-5, iconCy - 1);
+                            ctx.lineTo(11, iconCy + 10);
+                            ctx.lineTo(19, iconCy + 4);
+                            ctx.lineTo(28, iconCy + 18);
                             ctx.closePath();
                             ctx.fill();
                         } else {
                             ctx.beginPath();
-                            if (ctx.roundRect) ctx.roundRect(-26, iconCy - 18, 52, 36, 10);
-                            else ctx.rect(-26, iconCy - 18, 52, 36);
+                            if (ctx.roundRect) ctx.roundRect(-30, iconCy - 21, 60, 42, 10);
+                            else ctx.rect(-30, iconCy - 21, 60, 42);
                             ctx.stroke();
                             ctx.beginPath();
-                            ctx.moveTo(-6, iconCy - 10);
-                            ctx.lineTo(14, iconCy);
-                            ctx.lineTo(-6, iconCy + 10);
+                            ctx.moveTo(-7, iconCy - 12);
+                            ctx.lineTo(17, iconCy);
+                            ctx.lineTo(-7, iconCy + 12);
                             ctx.closePath();
                             ctx.fill();
                         }
 
-                        // Alt text — big and clear, wrapped to two lines
+                        // Alt text — extra big and clear, wrapped to two lines (theme text color)
                         let labelText = genericLabel;
-                        if (clip._mdMedia && mcfg.mockShowAltText !== false) {
+                        if (clip._mdMedia && (State.markdownConfig || {}).mockShowAltText !== false) {
                             const alt = ((clip.title || '') + '').trim();
                             if (alt) labelText = alt;
                         }
-                        ctx.font = 'bold 26px "Inter", sans-serif';
-                        ctx.fillStyle = '#ffffff';
+                        ctx.font = 'bold 42px "Inter", sans-serif';
+                        ctx.fillStyle = textC;
                         const wrapMockText = (str, max) => {
                             const words = str.split(/\s+/).filter(Boolean);
                             const lines = []; let cur = '';
@@ -5059,21 +5046,15 @@
                                 return s;
                             });
                         };
-                        const altLines = labelText === genericLabel ? [labelText] : wrapMockText(labelText, 24);
-                        const altY0 = 10;
-                        altLines.forEach((ln, i) => {
-                            ctx.shadowColor = 'rgba(0,0,0,0.55)';
-                            ctx.shadowBlur = 8;
-                            ctx.fillText(ln, 0, altY0 + i * 30);
-                            ctx.shadowBlur = 0;
-                        });
+                        const altLines = labelText === genericLabel ? [labelText] : wrapMockText(labelText, 16);
+                        const altY0 = -14;
+                        const lineH = 42;
+                        altLines.forEach((ln, i) => ctx.fillText(ln, 0, altY0 + i * lineH));
 
-                        // Duration — big, clear mono timecode
-                        const durY = altY0 + altLines.length * 30 + 10;
-                        ctx.font = 'bold 17px "JetBrains Mono", "Courier New", monospace';
-                        ctx.fillStyle = 'rgba(255,255,255,0.95)';
-                        ctx.shadowColor = 'rgba(0,0,0,0.5)';
-                        ctx.shadowBlur = 6;
+                        // Duration — big, clear mono timecode (theme text color)
+                        const durY = altY0 + altLines.length * lineH + 16;
+                        ctx.font = 'bold 26px "JetBrains Mono", "Courier New", monospace';
+                        ctx.fillStyle = textC;
                         const formatClipTime = (seconds) => {
                             const mins = Math.floor(seconds / 60);
                             const secs = Math.floor(seconds % 60);
@@ -5082,12 +5063,12 @@
                         };
                         const tcStr = `${formatClipTime(Math.max(0, clipTime))} / ${formatClipTime(clip.duration)}`;
                         ctx.fillText(tcStr, 0, durY);
-                        ctx.shadowBlur = 0;
 
-                        ctx.font = 'italic 11px "Inter", sans-serif';
-                        ctx.fillStyle = 'rgba(255,255,255,0.75)';
-                        if (clip._mdMedia) ctx.fillText(clip._mdMock ? "Mock from markdown \u2014 edit alt text in script" : "Loading media \u2026", 0, durY + 26);
-                        else ctx.fillText("Replace source in Properties tab", 0, durY + 26);
+                        ctx.font = '600 18px "Inter", sans-serif';
+                        ctx.globalAlpha = aState.animAlpha * (opacity / 100) * 0.8;
+                        if (clip._mdMedia) ctx.fillText(clip._mdMock ? "Mock from markdown \u2014 edit alt text in script" : "Loading media \u2026", 0, durY + 34);
+                        else ctx.fillText("Replace source in Properties tab", 0, durY + 34);
+                        ctx.globalAlpha = aState.animAlpha * (opacity / 100);
 
                         if (clip.effects.strokeEnable) {
                             ctx.strokeStyle = clip.effects.strokeColor || '#ffffff';
@@ -12997,33 +12978,8 @@ Paste any **video URL** \u2014 or use \`![alt](mock:video)\` while you design. I
                             <i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>
                         </summary>
                         <div class="p-3 flex flex-col gap-3">
-                            <div class="grid grid-cols-2 gap-2">
-                                <div>
-                                    <label class="text-[9px] font-semibold text-surface-400 dark:text-surface-500">Mock Image Color</label>
-                                    <div class="relative h-7 rounded border border-surface-200 dark:border-surface-700 overflow-hidden">
-                                        <input type="color" value="` + (cfg.mockImageColor1||'#ff7e5f') + `" class="absolute inset-0 w-full h-full cursor-pointer" oninput="State.markdownConfig.mockImageColor1=this.value;drawCanvas();">
-                                    </div>
-                                </div>
-                                <div>
-                                    <label class="text-[9px] font-semibold text-surface-400 dark:text-surface-500">Mock Image Accent</label>
-                                    <div class="relative h-7 rounded border border-surface-200 dark:border-surface-700 overflow-hidden">
-                                        <input type="color" value="` + (cfg.mockImageColor2||'#feb47b') + `" class="absolute inset-0 w-full h-full cursor-pointer" oninput="State.markdownConfig.mockImageColor2=this.value;drawCanvas();">
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="grid grid-cols-2 gap-2">
-                                <div>
-                                    <label class="text-[9px] font-semibold text-surface-400 dark:text-surface-500">Mock Video Color</label>
-                                    <div class="relative h-7 rounded border border-surface-200 dark:border-surface-700 overflow-hidden">
-                                        <input type="color" value="` + (cfg.mockVideoColor1||'#6a11cb') + `" class="absolute inset-0 w-full h-full cursor-pointer" oninput="State.markdownConfig.mockVideoColor1=this.value;drawCanvas();">
-                                    </div>
-                                </div>
-                                <div>
-                                    <label class="text-[9px] font-semibold text-surface-400 dark:text-surface-500">Mock Video Accent</label>
-                                    <div class="relative h-7 rounded border border-surface-200 dark:border-surface-700 overflow-hidden">
-                                        <input type="color" value="` + (cfg.mockVideoColor2||'#2575fc') + `" class="absolute inset-0 w-full h-full cursor-pointer" oninput="State.markdownConfig.mockVideoColor2=this.value;drawCanvas();">
-                                    </div>
-                                </div>
+                            <div class="text-[9px] text-surface-400 dark:text-surface-500 leading-snug bg-surface-50 dark:bg-surface-900/50 rounded-lg p-2 border border-surface-200 dark:border-surface-700">
+                                <b>Theme colors:</b> mock media automatically uses each clip's <b>timeline theme color</b> (the pastel fill, dark text and accent border of its clip in the timeline) for clean contrast.
                             </div>
                             <label class="flex items-center gap-2 cursor-pointer select-none">
                                 <input type="checkbox" ` + (cfg.mockShowAltText !== false ? 'checked' : '') + ` onchange="State.markdownConfig.mockShowAltText=this.checked;drawCanvas();" class="accent-brand-500">
