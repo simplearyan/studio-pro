@@ -162,9 +162,18 @@ Open the app, then try the **Showcase** preset in the Markdown tab and hit **Gen
 
 - **Vite** — instant dev server & builds
 - **Tailwind CSS 4** — utility-first styling, dark mode
-- **MediaBunny** — WebCodecs encoding for fast MP4/WebM export
+- **MediaBunny** — WebCodecs encoding for fast MP4/WebM export ([site](https://mediabunny.dev/) · [GitHub](https://github.com/Vanilagy/mediabunny) · MPL-2.0, used unmodified)
 - **MathJax** — LaTeX rendering for image-based math
 - Vanilla JS single-page app — no framework, no backend, no telemetry
+
+---
+
+## 📖 Docs & Contributing
+
+- [Contributing guide](CONTRIBUTING.md) — how to set up, code conventions, and testing checklist
+- [Commercial licensing strategy](LICENSE_STRATEGY_COMMERCIAL.md) — how we plan to fund the editor (ads, preset marketplace, subscriptions) and the license that makes it possible
+- [License deep-dive](LICENSE_RECOMMENDATION.md) — how MediaBunny's MPL-2.0 license works with our own
+- [Lighthouse report & performance roadmap](LIGHTHOUSE_REPORT.md) — our Core Web Vitals and how we keep them green
 
 ---
 
