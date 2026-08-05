@@ -4948,8 +4948,8 @@
                         ctx.rotate((rotate * Math.PI / 180) + aState.animRot);
                         ctx.scale(finalScale * (clip.effects.flipH ? -1 : 1), finalScale * (clip.effects.flipV ? -1 : 1));
 
-                        const dw = 640;
-                        const dh = 360;
+                        const dw = MD_MOCK_W;
+                        const dh = MD_MOCK_H;
 
                         if (borderRadius > 0 && ctx.roundRect) {
                             ctx.beginPath();
@@ -4958,42 +4958,122 @@
                         }
 
                         const mcfg = State.markdownConfig || {};
-                        const grad = ctx.createLinearGradient(-dw/2, -dh/2, dw/2, dh/2);
-                        if (clip.type === 'image') {
-                            grad.addColorStop(0, mcfg.mockImageColor1 || '#ff7e5f');
-                            grad.addColorStop(1, mcfg.mockImageColor2 || '#feb47b');
-                        } else {
-                            grad.addColorStop(0, mcfg.mockVideoColor1 || '#6a11cb');
-                            grad.addColorStop(1, mcfg.mockVideoColor2 || '#2575fc');
-                        }
-                        ctx.fillStyle = grad;
-                        ctx.fillRect(-dw/2, -dh/2, dw, dh);
+                        const isImageMock = clip.type === 'image';
+                        const c1 = isImageMock ? (mcfg.mockImageColor1 || '#ff7e5f') : (mcfg.mockVideoColor1 || '#6a11cb');
+                        const c2 = isImageMock ? (mcfg.mockImageColor2 || '#feb47b') : (mcfg.mockVideoColor2 || '#2575fc');
+                        const cardRadius = Math.max(borderRadius || 0, 16);
+                        const cardPath = (x, y, w2, h2, r) => { ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(x, y, w2, h2, r); else ctx.rect(x, y, w2, h2); };
 
-                        ctx.fillStyle = '#ffffff';
+                        // Premium card: diagonal gradient + glossy shine + subtle inner edge
+                        const grad = ctx.createLinearGradient(-dw/2, -dh/2, dw/2, dh/2);
+                        grad.addColorStop(0, c1);
+                        grad.addColorStop(1, c2);
+                        cardPath(-dw/2, -dh/2, dw, dh, cardRadius);
+                        ctx.fillStyle = grad;
+                        ctx.fill();
+                        const shine = ctx.createLinearGradient(-dw/2, -dh/2, dw/2, dh/2);
+                        shine.addColorStop(0, 'rgba(255,255,255,0.30)');
+                        shine.addColorStop(0.45, 'rgba(255,255,255,0.06)');
+                        shine.addColorStop(1, 'rgba(255,255,255,0)');
+                        cardPath(-dw/2, -dh/2, dw, dh, cardRadius);
+                        ctx.fillStyle = shine;
+                        ctx.fill();
+                        ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+                        ctx.lineWidth = 1.5;
+                        ctx.beginPath();
+                        if (ctx.roundRect) ctx.roundRect(-dw/2 + 1, -dh/2 + 1, dw - 2, dh - 2, cardRadius - 1);
+                        else ctx.rect(-dw/2 + 1, -dh/2 + 1, dw - 2, dh - 2);
+                        ctx.stroke();
+
+                        // Type chip (top-left): MOCK IMAGE / MOCK VIDEO
+                        const genericLabel = isImageMock ? 'MOCK IMAGE' : 'MOCK VIDEO';
+                        ctx.font = 'bold 11px "Inter", sans-serif';
+                        const chipW = ctx.measureText(genericLabel).width + 22;
+                        ctx.fillStyle = 'rgba(0,0,0,0.42)';
+                        cardPath(-dw/2 + 14, -dh/2 + 12, chipW, 22, 11);
+                        ctx.fill();
+                        ctx.fillStyle = 'rgba(255,255,255,0.92)';
+                        ctx.textAlign = 'left';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText(genericLabel, -dw/2 + 14 + 11, -dh/2 + 23);
+
+                        // Center icon: picture frame for images, play button for videos
                         ctx.textAlign = 'center';
                         ctx.textBaseline = 'middle';
-                        // Markdown media shows its alt text on the mock (when enabled);
-                        // otherwise fall back to the generic MOCK IMAGE / MOCK VIDEO label
-                        const genericLabel = clip.type === 'image' ? 'MOCK IMAGE' : 'MOCK VIDEO';
+                        const iconCy = -58;
+                        ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+                        ctx.fillStyle = 'rgba(255,255,255,0.95)';
+                        ctx.lineWidth = 3;
+                        if (isImageMock) {
+                            ctx.beginPath();
+                            if (ctx.roundRect) ctx.roundRect(-28, iconCy - 22, 56, 44, 8);
+                            else ctx.rect(-28, iconCy - 22, 56, 44);
+                            ctx.stroke();
+                            ctx.beginPath();
+                            ctx.arc(-11, iconCy - 9, 5, 0, Math.PI * 2);
+                            ctx.fill();
+                            ctx.beginPath();
+                            ctx.moveTo(-21, iconCy + 16);
+                            ctx.lineTo(-4, iconCy - 1);
+                            ctx.lineTo(9, iconCy + 9);
+                            ctx.lineTo(16, iconCy + 3);
+                            ctx.lineTo(23, iconCy + 16);
+                            ctx.closePath();
+                            ctx.fill();
+                        } else {
+                            ctx.beginPath();
+                            if (ctx.roundRect) ctx.roundRect(-26, iconCy - 18, 52, 36, 10);
+                            else ctx.rect(-26, iconCy - 18, 52, 36);
+                            ctx.stroke();
+                            ctx.beginPath();
+                            ctx.moveTo(-6, iconCy - 10);
+                            ctx.lineTo(14, iconCy);
+                            ctx.lineTo(-6, iconCy + 10);
+                            ctx.closePath();
+                            ctx.fill();
+                        }
+
+                        // Alt text — big and clear, wrapped to two lines
                         let labelText = genericLabel;
                         if (clip._mdMedia && mcfg.mockShowAltText !== false) {
                             const alt = ((clip.title || '') + '').trim();
-                            if (alt) labelText = alt.length > 34 ? alt.slice(0, 33) + '…' : alt;
+                            if (alt) labelText = alt;
                         }
-                        ctx.font = 'bold 24px "Inter", sans-serif';
-                        const altPillW = Math.min(dw - 40, ctx.measureText(labelText).width + 36);
-                        if (clip._mdMedia && labelText !== genericLabel) {
-                            ctx.fillStyle = 'rgba(0,0,0,0.35)';
-                            ctx.beginPath();
-                            if (ctx.roundRect) ctx.roundRect(-altPillW/2, -52, altPillW, 40, 20);
-                            else ctx.rect(-altPillW/2, -52, altPillW, 40);
-                            ctx.fill();
-                            ctx.fillStyle = '#ffffff';
-                        }
-                        ctx.fillText(labelText, 0, -30);
+                        ctx.font = 'bold 26px "Inter", sans-serif';
+                        ctx.fillStyle = '#ffffff';
+                        const wrapMockText = (str, max) => {
+                            const words = str.split(/\s+/).filter(Boolean);
+                            const lines = []; let cur = '';
+                            for (const wd of words) {
+                                if ((cur + ' ' + wd).trim().length > max && cur) { lines.push(cur); cur = wd; }
+                                else cur = (cur ? cur + ' ' : '') + wd;
+                            }
+                            if (cur) lines.push(cur);
+                            // Hard-clamp: no rendered line wider than the card (handles long
+                            // unbroken words like URLs) — measured, then ellipsized if needed
+                            const maxW = MD_MOCK_W - 56;
+                            return lines.slice(0, 2).map(ln => {
+                                let s = ln;
+                                while (s.length > 1 && ctx.measureText(s).width > maxW) s = s.slice(0, -1);
+                                if (ctx.measureText(s).width > maxW) s = s.slice(0, Math.max(1, s.length - 3)) + '…';
+                                return s;
+                            });
+                        };
+                        const altLines = labelText === genericLabel ? [labelText] : wrapMockText(labelText, 24);
+                        const altY0 = 10;
+                        altLines.forEach((ln, i) => {
+                            ctx.shadowColor = 'rgba(0,0,0,0.55)';
+                            ctx.shadowBlur = 8;
+                            ctx.fillText(ln, 0, altY0 + i * 30);
+                            ctx.shadowBlur = 0;
+                        });
 
-                        ctx.font = '16px "Courier New", monospace';
-                        ctx.fillStyle = 'rgba(255,255,255,0.9)';
+                        // Duration — big, clear mono timecode
+                        const durY = altY0 + altLines.length * 30 + 10;
+                        ctx.font = 'bold 17px "JetBrains Mono", "Courier New", monospace';
+                        ctx.fillStyle = 'rgba(255,255,255,0.95)';
+                        ctx.shadowColor = 'rgba(0,0,0,0.5)';
+                        ctx.shadowBlur = 6;
                         const formatClipTime = (seconds) => {
                             const mins = Math.floor(seconds / 60);
                             const secs = Math.floor(seconds % 60);
@@ -5001,17 +5081,21 @@
                             return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${ms.toString().padStart(2, '0')}`;
                         };
                         const tcStr = `${formatClipTime(Math.max(0, clipTime))} / ${formatClipTime(clip.duration)}`;
-                        ctx.fillText(tcStr, 0, 18);
+                        ctx.fillText(tcStr, 0, durY);
+                        ctx.shadowBlur = 0;
 
-                        ctx.font = 'italic 12px "Inter", sans-serif';
-                        ctx.fillStyle = 'rgba(255,255,255,0.7)';
-                        if (clip._mdMedia) ctx.fillText(clip._mdMock ? "Mock from markdown \u2014 edit alt text in script" : "Loading media \u2026", 0, 50);
-                        else ctx.fillText("Replace source in Properties tab", 0, 50);
+                        ctx.font = 'italic 11px "Inter", sans-serif';
+                        ctx.fillStyle = 'rgba(255,255,255,0.75)';
+                        if (clip._mdMedia) ctx.fillText(clip._mdMock ? "Mock from markdown \u2014 edit alt text in script" : "Loading media \u2026", 0, durY + 26);
+                        else ctx.fillText("Replace source in Properties tab", 0, durY + 26);
 
                         if (clip.effects.strokeEnable) {
                             ctx.strokeStyle = clip.effects.strokeColor || '#ffffff';
                             ctx.lineWidth = (clip.effects.strokeWidth || 4) * 2;
-                            ctx.strokeRect(-dw/2, -dh/2, dw, dh);
+                            ctx.beginPath();
+                            if (ctx.roundRect) ctx.roundRect(-dw/2, -dh/2, dw, dh, cardRadius);
+                            else ctx.rect(-dw/2, -dh/2, dw, dh);
+                            ctx.stroke();
                         }
 
                         ctx.restore();
@@ -5107,6 +5191,18 @@
                         const zFrame = frameZoom / 100;
                         dw = dw * zFrame;
                         dh = dh * zFrame;
+
+                        // Replaced markdown mocks keep the mock's card footprint (MD_MOCK_W x
+                        // MD_MOCK_H, aspect-fit) instead of filling the canvas — no size jump
+                        // on replace.
+                        if (clip._mdKeepMockSize) {
+                            if (!isNaN(cropRatio) && cropRatio > 0) {
+                                if (cropRatio > MD_MOCK_W / MD_MOCK_H) { dh = MD_MOCK_H; dw = MD_MOCK_H * cropRatio; }
+                                else { dw = MD_MOCK_W; dh = MD_MOCK_W / cropRatio; }
+                            } else { dw = MD_MOCK_W; dh = MD_MOCK_H; }
+                            dw = dw * zFrame;
+                            dh = dh * zFrame;
+                        }
 
                         const borderRadius = clip.effects.borderRadius !== undefined ? clip.effects.borderRadius : 0;
 
@@ -10147,8 +10243,12 @@
             // clip: drop the mock flags so the canvas placeholder no longer flashes the
             // mock while the fresh element loads/seeks (the _mdLoaded latch only exists
             // on elements created by mdVideoClip, not on replaceClipSource's new element).
+            const wasMdMock = !!clip._mdMock;
             clip._mdMock = false;
             clip._mdMedia = false;
+            // Keep the card-sized footprint the mock had, so the preview doesn't jump to a
+            // full-canvas size the moment the source is replaced (see drawCanvas sizing).
+            if (wasMdMock) clip._mdKeepMockSize = true;
 
             const file = files[0];
             const objectUrl = URL.createObjectURL(file);
@@ -11914,6 +12014,11 @@ const isVis = !clip.hidden;
         }
 
         // ── Markdown Panel ────────────────────────────────────────────────────────
+        // Shared card footprint for markdown mock placeholders and for replaced mock
+        // media (kept at the mock's size) — used by drawCanvas AND the canvas hit-test
+        // so the clickable area always matches the drawn card.
+        const MD_MOCK_W = 640, MD_MOCK_H = 360;
+
         function mdPosOffsets(pos, offset) {
             const off = offset || 0;
             if (pos === 'top') return { offsetX: 0, offsetY: -30 + off };
@@ -16554,6 +16659,15 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         const zFrame = frameZoom / 100;
                         dw = dw * zFrame;
                         dh = dh * zFrame;
+
+                        // Match the drawn card size for replaced markdown mocks so the
+                        // clickable region equals the visible media (mirrors drawCanvas).
+                        if (clip._mdKeepMockSize) {
+                            if (!isNaN(cropRatio) && cropRatio > 0) {
+                                if (cropRatio > MD_MOCK_W / MD_MOCK_H) { dh = MD_MOCK_H; dw = MD_MOCK_H * cropRatio; }
+                                else { dw = MD_MOCK_W; dh = MD_MOCK_W / cropRatio; }
+                            } else { dw = MD_MOCK_W; dh = MD_MOCK_H; }
+                        }
                     }
 
                     const scale = clip.effects.scale !== undefined ? clip.effects.scale : 1;
