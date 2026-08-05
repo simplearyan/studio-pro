@@ -858,7 +858,7 @@
                 headingFontSize: 60,
                 headingFontWeight: 700,
                 headingColor: '#ffffff',
-                headingPosition: 'top', // 'center' | 'top' | 'bottom' | 'left' | 'right'
+                headingPosition: 'top', // 'center' | 'top' | 'bottom' | 'left' | 'right' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'center-left' | 'center-right'
                 headingOffset: 0, // fine-tune position (%) along the chosen axis
                 headingFxTab: 'style', // sub-tab inside Heading Style accordion: 'style' | 'effects'
                 headingStrokeEnable: true,
@@ -893,12 +893,18 @@
                 textExtrudeDepth: 3,
                 imageScale: 1,
                 imageBorderRadius: 0,
-                imagePosition: 'center', // 'center' | 'top' | 'bottom' | 'left' | 'right'
+                imagePosition: 'center', // 'center' | 'top' | 'bottom' | 'left' | 'right' | corners
                 imageOffset: 0, // fine-tune position (%) along the chosen axis
-                textPosition: 'center', // 'center' | 'top' | 'bottom' | 'left' | 'right'
+                textPosition: 'center', // 'center' | 'top' | 'bottom' | 'left' | 'right' | corners
                 textOffset: 0,
-                mathPosition: 'center', // 'center' | 'top' | 'bottom' | 'left' | 'right'
+                mathPosition: 'center', // 'center' | 'top' | 'bottom' | 'left' | 'right' | corners
                 mathOffset: 0,
+                mdGap: 8, // % spacing between elements stacked on the same side/position
+                mockShowAltText: true, // show the markdown alt text on mock image/video placeholders
+                mockImageColor1: '#ff7e5f',
+                mockImageColor2: '#feb47b',
+                mockVideoColor1: '#6a11cb',
+                mockVideoColor2: '#2575fc',
                 mathFontSize: 56,
                 mathColor: '#ffffff',
                 mathAnimIn: 'fadeIn',
@@ -4924,7 +4930,7 @@
                         }
                         ctx.restore();
                     } else {
-                    if (clip.isPlaceholder || (clip.type === 'image' && (!clip.imageEl || !clip.imageEl.complete || clip.imageEl.naturalWidth === 0)) || (clip.type === 'video' && !clip.videoEl)) {
+                    if (clip.isPlaceholder || (clip.type === 'image' && (!clip.imageEl || !clip.imageEl.complete || clip.imageEl.naturalWidth === 0)) || (clip.type === 'video' && (!clip.videoEl || (clip._mdMedia && !clip.videoEl._mdLoaded && clip.videoEl.readyState < 2)))) {
                         const borderRadius = clip.effects.borderRadius !== undefined ? clip.effects.borderRadius : 0;
 
                         const clipTime = State.currentTime - clip.start;
@@ -4951,13 +4957,14 @@
                             ctx.clip();
                         }
 
+                        const mcfg = State.markdownConfig || {};
                         const grad = ctx.createLinearGradient(-dw/2, -dh/2, dw/2, dh/2);
                         if (clip.type === 'image') {
-                            grad.addColorStop(0, '#ff7e5f');
-                            grad.addColorStop(1, '#feb47b');
+                            grad.addColorStop(0, mcfg.mockImageColor1 || '#ff7e5f');
+                            grad.addColorStop(1, mcfg.mockImageColor2 || '#feb47b');
                         } else {
-                            grad.addColorStop(0, '#6a11cb');
-                            grad.addColorStop(1, '#2575fc');
+                            grad.addColorStop(0, mcfg.mockVideoColor1 || '#6a11cb');
+                            grad.addColorStop(1, mcfg.mockVideoColor2 || '#2575fc');
                         }
                         ctx.fillStyle = grad;
                         ctx.fillRect(-dw/2, -dh/2, dw, dh);
@@ -4965,9 +4972,25 @@
                         ctx.fillStyle = '#ffffff';
                         ctx.textAlign = 'center';
                         ctx.textBaseline = 'middle';
+                        // Markdown media shows its alt text on the mock (when enabled);
+                        // otherwise fall back to the generic MOCK IMAGE / MOCK VIDEO label
+                        const genericLabel = clip.type === 'image' ? 'MOCK IMAGE' : 'MOCK VIDEO';
+                        let labelText = genericLabel;
+                        if (clip._mdMedia && mcfg.mockShowAltText !== false) {
+                            const alt = ((clip.title || '') + '').trim();
+                            if (alt) labelText = alt.length > 34 ? alt.slice(0, 33) + '…' : alt;
+                        }
                         ctx.font = 'bold 24px "Inter", sans-serif';
-                        const labelText = clip.type === 'image' ? 'MOCK IMAGE' : 'MOCK VIDEO';
-                        ctx.fillText(labelText, 0, -35);
+                        const altPillW = Math.min(dw - 40, ctx.measureText(labelText).width + 36);
+                        if (clip._mdMedia && labelText !== genericLabel) {
+                            ctx.fillStyle = 'rgba(0,0,0,0.35)';
+                            ctx.beginPath();
+                            if (ctx.roundRect) ctx.roundRect(-altPillW/2, -52, altPillW, 40, 20);
+                            else ctx.rect(-altPillW/2, -52, altPillW, 40);
+                            ctx.fill();
+                            ctx.fillStyle = '#ffffff';
+                        }
+                        ctx.fillText(labelText, 0, -30);
 
                         ctx.font = '16px "Courier New", monospace';
                         ctx.fillStyle = 'rgba(255,255,255,0.9)';
@@ -4978,11 +5001,12 @@
                             return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${ms.toString().padStart(2, '0')}`;
                         };
                         const tcStr = `${formatClipTime(Math.max(0, clipTime))} / ${formatClipTime(clip.duration)}`;
-                        ctx.fillText(tcStr, 0, 10);
+                        ctx.fillText(tcStr, 0, 18);
 
                         ctx.font = 'italic 12px "Inter", sans-serif';
                         ctx.fillStyle = 'rgba(255,255,255,0.7)';
-                        ctx.fillText("Replace source in Properties tab", 0, 50);
+                        if (clip._mdMedia) ctx.fillText(clip._mdMock ? "Mock from markdown \u2014 edit alt text in script" : "Loading media \u2026", 0, 50);
+                        else ctx.fillText("Replace source in Properties tab", 0, 50);
 
                         if (clip.effects.strokeEnable) {
                             ctx.strokeStyle = clip.effects.strokeColor || '#ffffff';
@@ -10148,6 +10172,9 @@
                 clip.fileUrl = objectUrl;
                 clip.isPlaceholder = false;
                 clip.title = file.name;
+                // Fresh source — reset any give-up/retry state from a previous broken URL
+                clip._videoRetries = 0;
+                clip._videoGiveUpAt = 0;
             }
 
             calcOverlaps();
@@ -11884,9 +11911,29 @@ const isVis = !clip.hidden;
             const off = offset || 0;
             if (pos === 'top') return { offsetX: 0, offsetY: -30 + off };
             if (pos === 'bottom') return { offsetX: 0, offsetY: 30 + off };
-            if (pos === 'left') return { offsetX: -38 + off, offsetY: 0 };
-            if (pos === 'right') return { offsetX: 38 + off, offsetY: 0 };
+            if (pos === 'left' || pos === 'center-left') return { offsetX: -38 + off, offsetY: 0 };
+            if (pos === 'right' || pos === 'center-right') return { offsetX: 38 + off, offsetY: 0 };
+            if (pos === 'top-left') return { offsetX: -38 + off, offsetY: -30 };
+            if (pos === 'top-right') return { offsetX: 38 + off, offsetY: -30 };
+            if (pos === 'bottom-left') return { offsetX: -38 + off, offsetY: 30 };
+            if (pos === 'bottom-right') return { offsetX: 38 + off, offsetY: 30 };
             return { offsetX: 0, offsetY: 0 + off };
+        }
+        // Stacking for elements that share the same side/position (e.g. two text clips
+        // both at 'left'): each one after the first shifts by gap% along the stacking
+        // axis (vertical for left/right walls, horizontal for top/bottom, vertical for
+        // center), so they don't overlap instead of sitting exactly on top of each other.
+        function mdStackOffsets(pos, offset, gap, idx) {
+            const base = mdPosOffsets(pos, offset);
+            if (!gap || !idx) return base;
+            const g = gap * idx;
+            if (pos && (pos.includes('left') || pos.includes('right'))) {
+                return { offsetX: base.offsetX, offsetY: base.offsetY + g };
+            }
+            if (pos === 'top' || pos === 'bottom') {
+                return { offsetX: base.offsetX + g, offsetY: base.offsetY };
+            }
+            return { offsetX: base.offsetX, offsetY: base.offsetY + g };
         }
         function applyMarkdownStyle() {
             const cfg = State.markdownConfig;
@@ -11910,7 +11957,7 @@ const isVis = !clip.hidden;
                     clip.effects.extrudeColor = cfg.headingExtrudeColor || '#000000';
                     clip.effects.extrudeDir = cfg.headingExtrudeDir || 'br';
                     clip.effects.extrudeDepth = cfg.headingExtrudeDepth || 5;
-                    const hp = mdPosOffsets(clip._mdPos || cfg.headingPosition || 'top', cfg.headingOffset || 0);
+                    const hp = mdStackOffsets(clip._mdPos || cfg.headingPosition || 'top', cfg.headingOffset || 0, cfg.mdGap || 0, clip._mdStackIdx || 0);
                     clip.effects.offsetX = hp.offsetX;
                     clip.effects.offsetY = hp.offsetY;
                 } else if (clip.type === 'text' && clip.id && clip.id.endsWith('_text')) {
@@ -11932,7 +11979,7 @@ const isVis = !clip.hidden;
                     clip.effects.extrudeColor = cfg.textExtrudeColor || '#000000';
                     clip.effects.extrudeDir = cfg.textExtrudeDir || 'br';
                     clip.effects.extrudeDepth = cfg.textExtrudeDepth || 3;
-                    const tp = mdPosOffsets(clip._mdPos || cfg.textPosition || 'center', cfg.textOffset || 0);
+                    const tp = mdStackOffsets(clip._mdPos || cfg.textPosition || 'center', cfg.textOffset || 0, cfg.mdGap || 0, clip._mdStackIdx || 0);
                     clip.effects.offsetX = tp.offsetX;
                     clip.effects.offsetY = tp.offsetY;
                 }
@@ -11940,15 +11987,15 @@ const isVis = !clip.hidden;
                     clip.effects.fillColor = cfg.mathColor || '#ffffff';
                     clip.effects.fontSize = cfg.mathFontSize || 56;
                     clip.effects.animIn = cfg.mathAnimIn || 'fadeIn';
-                    const mp = mdPosOffsets(clip._mdPos || cfg.mathPosition || 'center', cfg.mathOffset || 0);
+                    const mp = mdStackOffsets(clip._mdPos || cfg.mathPosition || 'center', cfg.mathOffset || 0, cfg.mdGap || 0, clip._mdStackIdx || 0);
                     clip.effects.offsetX = mp.offsetX;
                     clip.effects.offsetY = mp.offsetY;
                 }
-                if (clip.type === 'image') {
+                if (clip.type === 'image' || (clip.type === 'video' && clip._mdGenerated)) {
                     clip.effects.scale = cfg.imageScale || 1;
                     clip.effects.borderRadius = cfg.imageBorderRadius || 0;
                     clip.effects.animIn = cfg.imageAnimIn || 'fadeIn';
-                    const ip = mdPosOffsets(clip._mdPos || cfg.imagePosition || 'center', cfg.imageOffset || 0);
+                    const ip = mdStackOffsets(clip._mdPos || cfg.imagePosition || 'center', cfg.imageOffset || 0, cfg.mdGap || 0, clip._mdStackIdx || 0);
                     clip.effects.offsetX = ip.offsetX;
                     clip.effects.offsetY = ip.offsetY;
                 }
@@ -12166,12 +12213,81 @@ From the **Fibonacci sequence** in sunflowers to **fractals** in snowflakes, mat
 
 Every **algorithm**, **bridge** and **smartphone** is built on mathematics. It is the ultimate tool of **human curiosity** — and it is for everyone.`;
 
+        const MARKDOWN_PRESET_SHOWCASE = `# 🎬 Studio Pro \u2014 Layout Showcase
+
+A tour of **positions**, **mock media** and **smart spacing**. Hit Generate and explore!
+
+---
+
+## 📐 Corners [top-left]
+
+Corner tags pin elements exactly where you want them.
+
+![Corner Art](mock) [bottom-right]
+
+Mock media shows its **alt text** \u2014 swap \`(mock)\` for any image URL later.
+
+---
+
+## ↔ Center Sides
+
+![Left Poster](mock) [center-left]
+
+![Right Reel](mock:video) [center-right]
+
+Two mock placeholders \u2014 one **center-left**, one **center-right** \u2014 no real URLs needed.
+
+---
+
+## 📚 Stacked Left [left]
+
+![Alpha](mock) [left]
+![Beta](mock) [left]
+![Gamma](mock) [left]
+
+Three mock images share the left wall and stack with the *Element Gap* slider.
+
+---
+
+## 🧱 Stacked Right
+
+![One](mock:video) [right]
+![Two](mock:video) [right]
+![Three](mock:video) [right]
+
+Mock videos stack on the right \u2014 tune the gap in Markdown \u2192 Style \u2192 Element Gap.
+
+---
+
+## 🧮 Math Corners [top-left]
+
+$$E = mc^2$$ [top-right]
+
+$$x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$$ [bottom-left]
+
+Math equations support **corner positions** too.
+
+---
+
+## 🌍 Real Video
+
+[Video](https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4)
+
+Paste any **video URL** \u2014 or use \`![alt](mock:video)\` while you design. If the source can\u2019t load, the **alt-text mock** takes over.
+
+---
+
+## 🏁 Wrap Up
+
+**10 positions**, **mock image & video** with alt text, and **one gap slider** for clean layouts.`;
+
         const MARKDOWN_PRESETS = {
             animals: MARKDOWN_PRESET_ANIMALS,
-            math: MARKDOWN_PRESET_MATH
+            math: MARKDOWN_PRESET_MATH,
+            showcase: MARKDOWN_PRESET_SHOWCASE
         };
 
-        const MARKDOWN_HELP_TEXT = 'Write **Markdown** with `## Heading` for titles, `![alt](url)` for images (multiple per slide supported), `$$latex$$` for image-based math equations, and text for paragraphs. Add `[left]`, `[right]`, `[top]` or `[bottom]` at the end of any heading / image / math / text line to position it on the slide. Use `---` to separate slides.';
+        const MARKDOWN_HELP_TEXT = 'Write **Markdown** with `## Heading` for titles, `![alt](url)` for images, `![alt](mock)` for mock image placeholders, `![alt](mock:video)` for mock video placeholders, `![alt](video.mp4)` or `[video](url)` for real videos, `$$latex$$` for image-based math equations, and text for paragraphs. Add a position tag at the end of any heading / image / video / math / text line: `[left]`, `[right]`, `[top]`, `[bottom]`, `[top-left]`, `[top-right]`, `[bottom-left]`, `[bottom-right]`, `[center-left]`, `[center-right]`. Elements sharing the same side stack with the Element Gap spacing. Use `---` to separate slides.';
 
         window.setMarkdownSubTab = function(tab) {
             State.markdownSubTab = tab;
@@ -12458,6 +12574,14 @@ Every **algorithm**, **bridge** and **smartphone** is built on mathematics. It i
                                     <span class="text-[9px] font-bold text-surface-400 dark:text-surface-500">sec</span>
                                 </div>
                             </div>
+                            <div class="border-t border-surface-200 dark:border-surface-700 pt-3">
+                                <div class="flex items-center justify-between">
+                                    <label class="text-[9px] font-semibold text-surface-400 dark:text-surface-500">Element Gap</label>
+                                    <span class="text-[9px] text-surface-400 font-mono">` + (cfg.mdGap || 8) + `%</span>
+                                </div>
+                                <input type="range" min="0" max="30" value="` + (cfg.mdGap || 8) + `" class="w-full custom-slider mt-1" oninput="State.markdownConfig.mdGap=parseInt(this.value); this.previousElementSibling.lastElementChild.textContent=this.value+'%'; applyMarkdownStyle();">
+                                <p class="text-[9px] text-surface-400 dark:text-surface-500 leading-snug mt-1">Space between elements stacked on the same side/position — e.g. two clips both at <b>Left</b> stack vertically with this gap instead of overlapping.</p>
+                            </div>
                         </div>
                     </details>
                     <details class="group bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0" open>
@@ -12502,9 +12626,15 @@ Every **algorithm**, **bridge** and **smartphone** is built on mathematics. It i
                                     <select class="w-full text-xs p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 focus:outline-none focus:border-brand-500 font-bold text-surface-800 dark:text-surface-200" onchange="State.markdownConfig.headingPosition=this.value;applyMarkdownStyle();">
                                         <option value="center" ${cfg.headingPosition==='center'?'selected':''}>Center</option>
                                         <option value="top" ${cfg.headingPosition==='top'?'selected':''}>Top</option>
+                                        <option value="top-left" ${cfg.headingPosition==='top-left'?'selected':''}>Top Left</option>
+                                        <option value="top-right" ${cfg.headingPosition==='top-right'?'selected':''}>Top Right</option>
                                         <option value="bottom" ${cfg.headingPosition==='bottom'?'selected':''}>Bottom</option>
+                                        <option value="bottom-left" ${cfg.headingPosition==='bottom-left'?'selected':''}>Bottom Left</option>
+                                        <option value="bottom-right" ${cfg.headingPosition==='bottom-right'?'selected':''}>Bottom Right</option>
                                         <option value="left" ${cfg.headingPosition==='left'?'selected':''}>Left</option>
+                                        <option value="center-left" ${cfg.headingPosition==='center-left'?'selected':''}>Center Left</option>
                                         <option value="right" ${cfg.headingPosition==='right'?'selected':''}>Right</option>
+                                        <option value="center-right" ${cfg.headingPosition==='center-right'?'selected':''}>Center Right</option>
                                     </select>
                                 </div>
                                 <div>
@@ -12591,9 +12721,15 @@ Every **algorithm**, **bridge** and **smartphone** is built on mathematics. It i
                                     <select class="w-full text-xs p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 focus:outline-none focus:border-brand-500 font-bold text-surface-800 dark:text-surface-200" onchange="State.markdownConfig.textPosition=this.value;applyMarkdownStyle();">
                                         <option value="center" ${cfg.textPosition==='center'?'selected':''}>Center</option>
                                         <option value="top" ${cfg.textPosition==='top'?'selected':''}>Top</option>
+                                        <option value="top-left" ${cfg.textPosition==='top-left'?'selected':''}>Top Left</option>
+                                        <option value="top-right" ${cfg.textPosition==='top-right'?'selected':''}>Top Right</option>
                                         <option value="bottom" ${cfg.textPosition==='bottom'?'selected':''}>Bottom</option>
+                                        <option value="bottom-left" ${cfg.textPosition==='bottom-left'?'selected':''}>Bottom Left</option>
+                                        <option value="bottom-right" ${cfg.textPosition==='bottom-right'?'selected':''}>Bottom Right</option>
                                         <option value="left" ${cfg.textPosition==='left'?'selected':''}>Left</option>
+                                        <option value="center-left" ${cfg.textPosition==='center-left'?'selected':''}>Center Left</option>
                                         <option value="right" ${cfg.textPosition==='right'?'selected':''}>Right</option>
+                                        <option value="center-right" ${cfg.textPosition==='center-right'?'selected':''}>Center Right</option>
                                     </select>
                                 </div>
                                 <div>
@@ -12656,9 +12792,15 @@ Every **algorithm**, **bridge** and **smartphone** is built on mathematics. It i
                                     <select class="w-full text-xs p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 focus:outline-none focus:border-brand-500 font-bold text-surface-800 dark:text-surface-200" onchange="State.markdownConfig.imagePosition=this.value;applyMarkdownStyle();">
                                         <option value="center" ${cfg.imagePosition==='center'?'selected':''}>Center</option>
                                         <option value="top" ${cfg.imagePosition==='top'?'selected':''}>Top</option>
+                                        <option value="top-left" ${cfg.imagePosition==='top-left'?'selected':''}>Top Left</option>
+                                        <option value="top-right" ${cfg.imagePosition==='top-right'?'selected':''}>Top Right</option>
                                         <option value="bottom" ${cfg.imagePosition==='bottom'?'selected':''}>Bottom</option>
+                                        <option value="bottom-left" ${cfg.imagePosition==='bottom-left'?'selected':''}>Bottom Left</option>
+                                        <option value="bottom-right" ${cfg.imagePosition==='bottom-right'?'selected':''}>Bottom Right</option>
                                         <option value="left" ${cfg.imagePosition==='left'?'selected':''}>Left</option>
+                                        <option value="center-left" ${cfg.imagePosition==='center-left'?'selected':''}>Center Left</option>
                                         <option value="right" ${cfg.imagePosition==='right'?'selected':''}>Right</option>
+                                        <option value="center-right" ${cfg.imagePosition==='center-right'?'selected':''}>Center Right</option>
                                     </select>
                                 </div>
                                 <div>
@@ -12707,9 +12849,15 @@ Every **algorithm**, **bridge** and **smartphone** is built on mathematics. It i
                                     <select class="w-full text-xs p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 focus:outline-none focus:border-brand-500 font-bold text-surface-800 dark:text-surface-200" onchange="State.markdownConfig.mathPosition=this.value;applyMarkdownStyle();">
                                         <option value="center" ${cfg.mathPosition==='center'?'selected':''}>Center</option>
                                         <option value="top" ${cfg.mathPosition==='top'?'selected':''}>Top</option>
+                                        <option value="top-left" ${cfg.mathPosition==='top-left'?'selected':''}>Top Left</option>
+                                        <option value="top-right" ${cfg.mathPosition==='top-right'?'selected':''}>Top Right</option>
                                         <option value="bottom" ${cfg.mathPosition==='bottom'?'selected':''}>Bottom</option>
+                                        <option value="bottom-left" ${cfg.mathPosition==='bottom-left'?'selected':''}>Bottom Left</option>
+                                        <option value="bottom-right" ${cfg.mathPosition==='bottom-right'?'selected':''}>Bottom Right</option>
                                         <option value="left" ${cfg.mathPosition==='left'?'selected':''}>Left</option>
+                                        <option value="center-left" ${cfg.mathPosition==='center-left'?'selected':''}>Center Left</option>
                                         <option value="right" ${cfg.mathPosition==='right'?'selected':''}>Right</option>
+                                        <option value="center-right" ${cfg.mathPosition==='center-right'?'selected':''}>Center Right</option>
                                     </select>
                                 </div>
                                 <div>
@@ -12731,6 +12879,50 @@ Every **algorithm**, **bridge** and **smartphone** is built on mathematics. It i
                             </div>
                         </div>
                     </details>
+                    <details class="group bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0" open>
+                        <summary class="flex items-center justify-between p-3 cursor-pointer list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700">
+                            <span class="text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-widest flex items-center gap-1.5"><i data-lucide="clapperboard" class="w-3.5 h-3.5"></i>Media &amp; Mock</span>
+                            <i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>
+                        </summary>
+                        <div class="p-3 flex flex-col gap-3">
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="text-[9px] font-semibold text-surface-400 dark:text-surface-500">Mock Image Color</label>
+                                    <div class="relative h-7 rounded border border-surface-200 dark:border-surface-700 overflow-hidden">
+                                        <input type="color" value="` + (cfg.mockImageColor1||'#ff7e5f') + `" class="absolute inset-0 w-full h-full cursor-pointer" oninput="State.markdownConfig.mockImageColor1=this.value;drawCanvas();">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="text-[9px] font-semibold text-surface-400 dark:text-surface-500">Mock Image Accent</label>
+                                    <div class="relative h-7 rounded border border-surface-200 dark:border-surface-700 overflow-hidden">
+                                        <input type="color" value="` + (cfg.mockImageColor2||'#feb47b') + `" class="absolute inset-0 w-full h-full cursor-pointer" oninput="State.markdownConfig.mockImageColor2=this.value;drawCanvas();">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="text-[9px] font-semibold text-surface-400 dark:text-surface-500">Mock Video Color</label>
+                                    <div class="relative h-7 rounded border border-surface-200 dark:border-surface-700 overflow-hidden">
+                                        <input type="color" value="` + (cfg.mockVideoColor1||'#6a11cb') + `" class="absolute inset-0 w-full h-full cursor-pointer" oninput="State.markdownConfig.mockVideoColor1=this.value;drawCanvas();">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="text-[9px] font-semibold text-surface-400 dark:text-surface-500">Mock Video Accent</label>
+                                    <div class="relative h-7 rounded border border-surface-200 dark:border-surface-700 overflow-hidden">
+                                        <input type="color" value="` + (cfg.mockVideoColor2||'#2575fc') + `" class="absolute inset-0 w-full h-full cursor-pointer" oninput="State.markdownConfig.mockVideoColor2=this.value;drawCanvas();">
+                                    </div>
+                                </div>
+                            </div>
+                            <label class="flex items-center gap-2 cursor-pointer select-none">
+                                <input type="checkbox" ` + (cfg.mockShowAltText !== false ? 'checked' : '') + ` onchange="State.markdownConfig.mockShowAltText=this.checked;drawCanvas();" class="accent-brand-500">
+                                <span class="text-[10px] font-semibold text-surface-700 dark:text-surface-300">Show alt text on mock media</span>
+                            </label>
+                            <div class="text-[9px] text-surface-400 dark:text-surface-500 leading-snug bg-surface-50 dark:bg-surface-900/50 rounded-lg p-2 border border-surface-200 dark:border-surface-700">
+                                <b>Mock media:</b> use <code>![alt](mock)</code> or <code>![alt](mock:video)</code> in the script to place styled placeholders that show the alt text.<br>
+                                <b>Real videos:</b> use a video URL (<code>.mp4</code>, <code>.webm</code>…) or <code>[video](url)</code> — it becomes a video clip; while it loads, a mock with the alt text is shown.
+                            </div>
+                        </div>
+                    </details>
                 </div>
             `;
             
@@ -12742,6 +12934,9 @@ Every **algorithm**, **bridge** and **smartphone** is built on mathematics. It i
                         </button>
                         <button onclick="loadMarkdownPreset('math')" class="flex-1 py-2 px-3 bg-violet-500 hover:bg-violet-400 text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-sm" title="Load the Mathematics example script with image-based math equations">
                             <i data-lucide="sigma" class="w-3.5 h-3.5"></i> Math
+                        </button>
+                        <button onclick="loadMarkdownPreset('showcase')" class="flex-1 py-2 px-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-sm" title="Load the Showcase script — corner positions, mock image/video with alt text, element gap stacking and real video URLs">
+                            <i data-lucide="sparkles" class="w-3.5 h-3.5"></i> Showcase
                         </button>
                         <button onclick="parseMarkdownToClips()" class="flex-1 py-2 px-3 bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-sm">
                             <i data-lucide="play" class="w-3.5 h-3.5"></i> Generate
@@ -12840,9 +13035,19 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             // Parse markdown into slides/blocks
             const lines = md.split('\n');
             const slides = [];
-            let currentSlide = { heading: '', text: '', images: [], maths: [], elements: [] };
-            // Position tag regex — `[left]`, `[right]`, `[top]`, `[bottom]`, `[center]` at end of a line
-            const POS_RE = /\s*\[(left|right|top|bottom|center)\]\s*$/;
+            let currentSlide = { heading: '', text: '', images: [], videos: [], maths: [], elements: [] };
+            // Position tag regex — `[left]`, `[right]`, `[top]`, `[bottom]`, `[center]`, plus
+            // corner variants like `[top-left]`, `[bottom-right]` at the end of a line
+            const POS_RE = /\s*\[(top-left|top-right|bottom-left|bottom-right|center-left|center-right|left|right|top|bottom|center)\]\s*$/;
+            // Video URLs (by extension) and mock media (`mock`, `mock:image`, `mock:video`)
+            const VIDEO_EXT_RE = /\.(mp4|webm|mov|m4v|ogv|ogg|mkv)([?#].*)?$/i;
+            function classifyMediaUrl(url) {
+                const u = (url || '').trim().toLowerCase();
+                if (u === 'mock' || u === 'mock:image') return 'mock-image';
+                if (u === 'mock:video') return 'mock-video';
+                if (VIDEO_EXT_RE.test(u)) return 'video';
+                return 'image';
+            }
             
             for (let i = 0; i < lines.length; i++) {
                 const rawLine = lines[i];
@@ -12850,10 +13055,10 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 
                 // Separator = new slide
                 if (line === '---' || line === '___' || line === '***') {
-                    if (currentSlide.heading || currentSlide.text || currentSlide.images.length || currentSlide.maths.length) {
+                    if (currentSlide.heading || currentSlide.text || currentSlide.images.length || currentSlide.videos.length || currentSlide.maths.length) {
                         slides.push(currentSlide);
                     }
-                    currentSlide = { heading: '', text: '', images: [], maths: [], elements: [] };
+                    currentSlide = { heading: '', text: '', images: [], videos: [], maths: [], elements: [] };
                     continue;
                 }
                 
@@ -12872,23 +13077,48 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     continue;
                 }
                 
-                // Image: ![alt](url) — collect ALL images in script order
+                // Video: [video](url) — explicit video syntax with optional position tag
+                const vidMatch = line.match(/^\[video\]\s*\(([^)]+)\)/i);
+                if (vidMatch) {
+                    const posMatch = line.slice(vidMatch[0].length).match(POS_RE);
+                    const pos = posMatch ? posMatch[1] : null;
+                    const vIdx = currentSlide.videos.length;
+                    const v = { url: vidMatch[1].trim(), alt: '', pos, idx: vIdx, mock: false };
+                    currentSlide.videos.push(v);
+                    currentSlide.elements.push({ kind: 'video', ...v });
+                    continue;
+                }
+
+                // Image: ![alt](url) — collect ALL images in script order. A video URL
+                // (mp4/webm/mov/...) becomes a video clip; `mock` / `mock:image` /
+                // `mock:video` create mock placeholders (styled box + alt text).
                 // Also supports a position tag: ![alt](url) [left]
                 const imgMatch = line.match(/^!\[([^\]]*)\]\s*\(([^)]+)\)/);
                 if (imgMatch) {
                     const posMatch = line.slice(imgMatch[0].length).match(POS_RE);
                     const pos = posMatch ? posMatch[1] : null;
-                    currentSlide.images.push({ url: imgMatch[2], alt: imgMatch[1] || '', pos });
-                    currentSlide.elements.push({ kind: 'image', url: imgMatch[2], alt: imgMatch[1] || '', pos });
+                    const rawUrl = imgMatch[2].trim();
+                    const alt = imgMatch[1] || '';
+                    const mediaKind = classifyMediaUrl(rawUrl);
+                    if (mediaKind === 'video' || mediaKind === 'mock-video') {
+                        const vIdx = currentSlide.videos.length;
+                        const v = { url: mediaKind === 'mock-video' ? '' : rawUrl, alt, pos, idx: vIdx, mock: mediaKind === 'mock-video' };
+                        currentSlide.videos.push(v);
+                        currentSlide.elements.push({ kind: 'video', ...v });
+                    } else {
+                        const img = { url: mediaKind === 'mock-image' ? '' : rawUrl, alt, pos, mock: mediaKind === 'mock-image' };
+                        currentSlide.images.push(img);
+                        currentSlide.elements.push({ kind: 'image', ...img });
+                    }
                     continue;
                 }
                 
                 // Heading: # text or ## text — also supports a position tag: ## Title [top]
                 const headingMatch = line.match(/^#{1,2}\s+(.+)/);
                 if (headingMatch) {
-                    if (currentSlide.heading || currentSlide.text || currentSlide.images.length || currentSlide.maths.length) {
+                    if (currentSlide.heading || currentSlide.text || currentSlide.images.length || currentSlide.videos.length || currentSlide.maths.length) {
                         slides.push(currentSlide);
-                        currentSlide = { heading: '', text: '', images: [], maths: [], elements: [] };
+                        currentSlide = { heading: '', text: '', images: [], videos: [], maths: [], elements: [] };
                     }
                     let headingText = headingMatch[1].trim();
                     const hPosMatch = headingText.match(POS_RE);
@@ -12916,21 +13146,24 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     if (currentSlide.text) currentSlide.text += '\n' + textLine;
                     else currentSlide.text = textLine;
                     // Track contiguous text runs as a single 'text' element (per-run text) for script-order mode
-                    const lastEl = currentSlide.elements[currentSlide.elements.length - 1];
+                    let lastEl = currentSlide.elements[currentSlide.elements.length - 1];
                     if (lastEl && lastEl.kind === 'text') {
                         lastEl.text += (lastEl.text ? '\n' : '') + textLine;
                         // Keep a position tag found on any later line of the same paragraph
                         if (tPos && !lastEl.pos) lastEl.pos = tPos;
                     }
                     else {
-                        currentSlide.elements.push({ kind: 'text', text: textLine, pos: tPos });
-                        // Remember the run's position for auto-track mode (uses the slide-level text)
-                        if (!currentSlide.textPos) currentSlide.textPos = tPos;
+                        lastEl = { kind: 'text', text: textLine, pos: tPos };
+                        currentSlide.elements.push(lastEl);
                     }
+                    // Sync the slide-level position (used by auto-track mode) with the run
+                    // so a tag on any line of the paragraph positions the whole text clip
+                    if (tPos) currentSlide.textPos = tPos;
+                    else if (!currentSlide.textPos && lastEl.pos) currentSlide.textPos = lastEl.pos;
                 }
             }
             // Push the last slide
-            if (currentSlide.heading || currentSlide.text || currentSlide.images.length || currentSlide.maths.length) {
+            if (currentSlide.heading || currentSlide.text || currentSlide.images.length || currentSlide.videos.length || currentSlide.maths.length) {
                 slides.push(currentSlide);
             }
             
@@ -12963,7 +13196,8 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 const lane = {
                     id: prefix + Date.now(),
                     type: 'video',
-                    name: posFromEnd === 0 ? 'Images' : 'Images ' + (posFromEnd + 1),
+                    // Videos and images share these lanes, so call them 'Media'
+                    name: posFromEnd === 0 ? 'Media' : 'Media ' + (posFromEnd + 1),
                     height: TRACK_SIZES[currentTrackSize] ? TRACK_SIZES[currentTrackSize].height : 90,
                     colorIndex: State.tracks.length % PALETTES.length,
                     muted: false,
@@ -13076,9 +13310,10 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     maxDuration: 3600,
                     _mdGenerated: true,
                     _mdPos: slide.headingPos || cfg.headingPosition || 'top',
+                    _mdStackIdx: slide._headingStackIdx || 0,
                     effects: {
                         scale: 1, rotate: 0, offsetX: 0, offsetY: 0,
-                        ...mdPosOffsets(slide.headingPos || cfg.headingPosition || 'top', cfg.headingOffset || 0),
+                        ...mdStackOffsets(slide.headingPos || cfg.headingPosition || 'top', cfg.headingOffset || 0, cfg.mdGap || 0, slide._headingStackIdx || 0),
                         fontFamily: cfg.headingFontFamily || 'Rubik', fontSize: cfg.headingFontSize || 60, fontWeight: cfg.headingFontWeight || 700, fillColor: cfg.headingColor || '#ffffff',
                         strokeEnable: cfg.headingStrokeEnable !== undefined ? cfg.headingStrokeEnable : true, strokeColor: cfg.headingStrokeColor || '#000000', strokeWidth: cfg.headingStrokeWidth || 4,
                         shadowEnable: cfg.headingShadowEnable !== undefined ? cfg.headingShadowEnable : true, shadowColor: cfg.headingShadowColor || '#000000', shadowBlur: cfg.headingShadowBlur || 20, shadowX: cfg.headingShadowX || 0, shadowY: cfg.headingShadowY || 10,
@@ -13142,9 +13377,10 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     maxDuration: 3600,
                     _mdGenerated: true,
                     _mdPos: elPos || cfg.textPosition || 'center',
+                    _mdStackIdx: slide._textStackIdx || 0,
                     effects: {
                         scale: 1, rotate: 0, offsetX: 0, offsetY: 0,
-                        ...mdPosOffsets(elPos || cfg.textPosition || 'center', cfg.textOffset || 0),
+                        ...mdStackOffsets(elPos || cfg.textPosition || 'center', cfg.textOffset || 0, cfg.mdGap || 0, slide._textStackIdx || 0),
                         fontFamily: cfg.textFontFamily || 'Inter', fontSize: cfg.textFontSize || 32, fontWeight: cfg.textFontWeight || 400, fillColor: cfg.textColor || '#eeeeee',
                         strokeEnable: cfg.textStrokeEnable !== undefined ? cfg.textStrokeEnable : true, strokeColor: cfg.textStrokeColor || '#000000', strokeWidth: cfg.textStrokeWidth || 2,
                         shadowEnable: cfg.textShadowEnable !== undefined ? cfg.textShadowEnable : true, shadowColor: cfg.textShadowColor || '#000000', shadowBlur: cfg.textShadowBlur || 10, shadowX: cfg.textShadowX || 0, shadowY: cfg.textShadowY || 4,
@@ -13171,9 +13407,10 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     _mdGenerated: true,
                     _mdMath: true,
                     _mdPos: el.pos || cfg.mathPosition || 'center',
+                    _mdStackIdx: el._stackIdx || 0,
                     effects: {
                         scale: 1, rotate: 0, offsetX: 0, offsetY: 0,
-                        ...mdPosOffsets(el.pos || cfg.mathPosition || 'center', cfg.mathOffset || 0),
+                        ...mdStackOffsets(el.pos || cfg.mathPosition || 'center', cfg.mathOffset || 0, cfg.mdGap || 0, el._stackIdx || 0),
                         fontFamily: 'Rubik', fontWeight: 700, fillColor: cfg.mathColor || '#ffffff',
                         renderAsMath: true,
                         fontSize: cfg.mathFontSize || 56,
@@ -13186,10 +13423,13 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 };
             }
             function mdImageClip(img, index, imgIdx, id, start, dur, trackId, colorIndex) {
-                const imgEl = new Image();
-                imgEl.crossOrigin = 'anonymous';
-                imgEl.onerror = function(){};
-                imgEl.src = img.url;
+                const isMock = !!img.mock;
+                const imgEl = isMock ? null : new Image();
+                if (!isMock) {
+                    imgEl.crossOrigin = 'anonymous';
+                    imgEl.onerror = function(){};
+                    imgEl.src = img.url;
+                }
                 return {
                     id: id + '_image' + imgIdx,
                     sceneId: State.activeSceneId || null,
@@ -13201,13 +13441,16 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     duration: dur,
                     sourceOffset: 0,
                     maxDuration: 3600,
-                    fileUrl: img.url,
+                    fileUrl: isMock ? null : img.url,
                     imageEl: imgEl,
                     _mdGenerated: true,
+                    _mdMedia: true,
+                    _mdMock: isMock,
                     _mdPos: img.pos || cfg.imagePosition || 'center',
+                    _mdStackIdx: img._stackIdx || 0,
                     effects: {
                         scale: cfg.imageScale || 1, rotate: 0, borderRadius: cfg.imageBorderRadius || 0, offsetX: 0, offsetY: 0,
-                        ...mdPosOffsets(img.pos || cfg.imagePosition || 'center', cfg.imageOffset || 0),
+                        ...mdStackOffsets(img.pos || cfg.imagePosition || 'center', cfg.imageOffset || 0, cfg.mdGap || 0, img._stackIdx || 0),
                         strokeEnable: false, strokeColor: '#ffffff', strokeWidth: 4,
                         shadowEnable: false, shadowColor: '#000000', shadowBlur: 20, shadowX: 0, shadowY: 10,
                         animIn: cfg.imageAnimIn || 'fadeIn', animOut: 'none', animLoop: 'none', animInDur: 0.5, animOutDur: 0.3, animEase: 'easeOut',
@@ -13215,6 +13458,55 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         maskingZoom: 100, frameZoom: 100, framingPanX: 0, framingPanY: 0,
                         maskType: 'none', maskWidth: 50, maskHeight: 50, maskX: 0, maskY: 0, maskFeather: 0, maskInvert: false,
                         opacity: 100, blendMode: 'source-over'
+                    }
+                };
+            }
+            function mdVideoClip(v, index, vIdx, id, start, dur, trackId, colorIndex) {
+                const isMock = !!v.mock;
+                let videoEl = null;
+                if (!isMock && v.url) {
+                    videoEl = document.createElement('video');
+                    videoEl.crossOrigin = 'anonymous';
+                    videoEl.preload = 'auto';
+                    videoEl.playsInline = true;
+                    videoEl.muted = true; // preview only — avoid autoplay-policy issues
+                    videoEl.src = v.url;
+                    videoEl.onerror = function(){};
+                    // Latch once the first frame decodes — the mock placeholder only shows
+                    // BEFORE first data, never again during later buffering stalls
+                    videoEl._mdLoaded = false;
+                    videoEl.addEventListener('loadeddata', () => { videoEl._mdLoaded = true; drawCanvas(); });
+                    videoEl.addEventListener('seeked', () => { videoEl._mdLoaded = true; });
+                }
+                return {
+                    id: id + '_video' + (v.idx !== undefined ? v.idx : vIdx),
+                    sceneId: State.activeSceneId || null,
+                    trackId: trackId,
+                    colorIndex: colorIndex,
+                    type: 'video',
+                    title: v.alt || 'Video ' + (index + 1),
+                    start: start,
+                    duration: dur,
+                    sourceOffset: 0,
+                    maxDuration: 3600,
+                    fileUrl: isMock ? null : (v.url || null),
+                    videoEl: videoEl,
+                    _mdGenerated: true,
+                    _mdMedia: true,
+                    _mdMock: isMock,
+                    _mdPos: v.pos || cfg.imagePosition || 'center',
+                    _mdStackIdx: v._stackIdx || 0,
+                    effects: {
+                        scale: cfg.imageScale || 1, rotate: 0, borderRadius: cfg.imageBorderRadius || 0, offsetX: 0, offsetY: 0,
+                        ...mdStackOffsets(v.pos || cfg.imagePosition || 'center', cfg.imageOffset || 0, cfg.mdGap || 0, v._stackIdx || 0),
+                        strokeEnable: false, strokeColor: '#ffffff', strokeWidth: 4,
+                        shadowEnable: false, shadowColor: '#000000', shadowBlur: 20, shadowX: 0, shadowY: 10,
+                        animIn: cfg.imageAnimIn || 'fadeIn', animOut: 'none', animLoop: 'none', animInDur: 0.5, animOutDur: 0.3, animEase: 'easeOut',
+                        cropLeft: 0, cropRight: 0, cropTop: 0, cropBottom: 0,
+                        maskingZoom: 100, frameZoom: 100, framingPanX: 0, framingPanY: 0,
+                        maskType: 'none', maskWidth: 50, maskHeight: 50, maskX: 0, maskY: 0, maskFeather: 0, maskInvert: false,
+                        opacity: 100, blendMode: 'source-over',
+                        volume: 100, mute: false
                     }
                 };
             }
@@ -13227,18 +13519,34 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 //    blocks — image & text from different blocks can share a lane when
                 //    they appear at the same spot in the script. Full slide duration.
                 if (cfg.trackMode === 'script') {
+                    // Stamp per-position stack indices so same-side elements get spaced apart
+                    const posCounts = {};
+                    const effPosOf = (el) => el.kind === 'heading' ? (el.pos || cfg.headingPosition || 'top')
+                        : el.kind === 'text' ? (el.pos || cfg.textPosition || 'center')
+                        : el.kind === 'math' ? (el.pos || cfg.mathPosition || 'center')
+                        : (el.pos || cfg.imagePosition || 'center');
+                    (slide.elements || []).forEach((el) => {
+                        const p = effPosOf(el);
+                        const i = posCounts[p] || 0;
+                        posCounts[p] = i + 1;
+                        el._stackIdx = i;
+                    });
                     (slide.elements || []).forEach((el, pos) => {
                         const trackId = getMdScriptLane(pos);
                         const colorIndex = (pos + 1) % PALETTES.length;
                         if (el.kind === 'heading') {
+                            slide._headingStackIdx = el._stackIdx;
                             State.clips.push(mdHeadingClip(slide, index, id, clipStart, slideDuration, trackId, colorIndex));
                         } else if (el.kind === 'text') {
                             // Use this run's own text so text split by images stays independent
                             const runSlide = Object.assign({}, slide, { text: el.text || slide.text || '' });
+                            runSlide._textStackIdx = el._stackIdx;
                             const { tStart, tDur } = mdTextTiming(clipStart, slideDuration);
                             State.clips.push(mdTextClip(runSlide, index, id, tStart, tDur, trackId, colorIndex, el.pos));
                         } else if (el.kind === 'image') {
                             State.clips.push(mdImageClip(el, index, pos, id, clipStart, slideDuration, trackId, colorIndex));
+                        } else if (el.kind === 'video') {
+                            State.clips.push(mdVideoClip(el, index, pos, id, clipStart, slideDuration, trackId, colorIndex));
                         } else if (el.kind === 'math') {
                             State.clips.push(mdMathClip(el, index, id, clipStart, slideDuration, trackId, colorIndex));
                         }
@@ -13254,13 +13562,19 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 let targetTrack = State.tracks.find(t => t.id === slideTrackId);
                 let clipColor = (targetTrack ? (targetTrack.colorIndex + 1 + index) % PALETTES.length : 0);
                 
+                // Per-slide stack counters — elements sharing the same side get spaced apart
+                const mdStackCounts = {};
+                const mdNextStack = (p) => { const i = mdStackCounts[p] || 0; mdStackCounts[p] = i + 1; return i; };
+
                 // Create text clip for heading
                 if (slide.heading) {
+                    slide._headingStackIdx = mdNextStack(slide.headingPos || cfg.headingPosition || 'top');
                     State.clips.push(mdHeadingClip(slide, index, id, clipStart, slideDuration, slideTrackId, clipColor));
                 }
                 
                 // If there's additional text, create a sub-text clip on the next track
                 if (slide.text) {
+                    slide._textStackIdx = mdNextStack(slide.textPos || cfg.textPosition || 'center');
                     let textTrackId = getAvailableTrack('video', clipStart, slideDuration);
                     let textTrack = State.tracks.find(t => t.id === textTrackId);
                     let textColor = (textTrack ? (textTrack.colorIndex + 2 + index) % PALETTES.length : 0);
@@ -13268,17 +13582,20 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     State.clips.push(mdTextClip(slide, index, id, tStart, tDur, textTrackId, textColor, slide.textPos));
                 }
                 
-                // Create image clips — one per image in script order. The LAST image of the
-                // block goes on the bottom 'Images' lane; earlier images sit on secondary
-                // lanes just below the heading track, so both images stay visible at once.
-                if (slide.images && slide.images.length) {
-                    const imgCount = slide.images.length;
-                    slide.images.forEach((img, imgIdx) => {
-                        const posFromEnd = imgCount - 1 - imgIdx;
-                        const imgTrackId = getMdImageLane(posFromEnd, slideTrackId);
-                        const imgTrack = State.tracks.find(t => t.id === imgTrackId);
-                        const imgColor = (imgTrack ? (imgTrack.colorIndex + 3 + imgIdx) % PALETTES.length : 0);
-                        State.clips.push(mdImageClip(img, index, imgIdx, id, clipStart, slideDuration, imgTrackId, imgColor));
+                // Create media clips (images + videos) in script order. The LAST media of the
+                // block goes on the bottom 'Media' lane; earlier ones sit on secondary lanes
+                // just below the heading track, so everything stays visible at once.
+                const mdMediaList = (slide.elements || []).filter(el => el.kind === 'image' || el.kind === 'video');
+                if (mdMediaList.length) {
+                    const mediaCount = mdMediaList.length;
+                    mdMediaList.forEach((el, mIdx) => {
+                        el._stackIdx = mdNextStack(el.pos || cfg.imagePosition || 'center');
+                        const posFromEnd = mediaCount - 1 - mIdx;
+                        const mediaTrackId = getMdImageLane(posFromEnd, slideTrackId);
+                        const mediaTrack = State.tracks.find(t => t.id === mediaTrackId);
+                        const mColor = (mediaTrack ? (mediaTrack.colorIndex + 3 + mIdx) % PALETTES.length : 0);
+                        if (el.kind === 'video') State.clips.push(mdVideoClip(el, index, mIdx, id, clipStart, slideDuration, mediaTrackId, mColor));
+                        else State.clips.push(mdImageClip(el, index, mIdx, id, clipStart, slideDuration, mediaTrackId, mColor));
                     });
                 }
                 
@@ -13288,6 +13605,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     const mathTrack = State.tracks.find(t => t.id === mathTrackId);
                     const mathColor = (mathTrack ? (mathTrack.colorIndex + 4 + index) % PALETTES.length : 0);
                     slide.maths.forEach((m, mIdx) => {
+                        m._stackIdx = mdNextStack(m.pos || cfg.mathPosition || 'center');
                         const mathClip = mdMathClip(m, index, id, clipStart, slideDuration, mathTrackId, mathColor);
                         State.clips.push(mathClip);
                         warmMathImage(mathClip);
@@ -16194,9 +16512,10 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         dh = clip.effects.shapeHeight || 200;
                     } else {
                         let source = clip.type === 'image' ? clip.imageEl : clip.videoEl;
-                        if (!source) continue;
-                        const srcW = (source.naturalWidth || source.videoWidth) || 100;
-                        const srcH = (source.naturalHeight || source.videoHeight) || 100;
+                        // Mock media have no source element but should stay click-selectable
+                        if (!source && !clip._mdMock) continue;
+                        const srcW = source ? ((source.naturalWidth || source.videoWidth) || 100) : 640;
+                        const srcH = source ? ((source.naturalHeight || source.videoHeight) || 100) : 360;
                         
                         const cropEnable = clip.effects.cropEnable !== undefined ? clip.effects.cropEnable : true;
                         const cropLeft = cropEnable ? (clip.effects.cropLeft || 0) : 0;
@@ -17470,6 +17789,19 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             State.clips.forEach(clip => {
                 const track = State.tracks.find(t => t.id === clip.trackId);
                 let el = clip.audioEl || clip.videoEl;
+
+                // Cooldown re-attempt: a video that gave up on a broken URL gets one fresh
+                // load per 10s, so transient failures self-heal without spamming the network
+                if (!el && clip.fileUrl && clip._videoGiveUpAt && Date.now() - clip._videoGiveUpAt > 10000) {
+                    clip._videoGiveUpAt = 0;
+                    const retryVideo = document.createElement('video');
+                    retryVideo.src = clip.fileUrl;
+                    retryVideo.preload = 'auto';
+                    retryVideo.crossOrigin = 'anonymous';
+                    retryVideo.muted = true;
+                    clip.videoEl = retryVideo;
+                    el = retryVideo;
+                }
                 
                 if (track && track.hidden) {
                     if (el && !el.paused) {
@@ -17525,21 +17857,37 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 }
 
                 if (el) {
-                    // Recover video elements that entered error state from repeated seeking
+                    // Recover video elements that entered error state from repeated seeking,
+                    // but cap the retries — a dead URL (e.g. 403) must not recreate the
+                    // element every frame (syncMediaElements runs per-frame while playing,
+                    // which would spam network errors and console warnings endlessly).
                     if (clip.videoEl && clip.videoEl.error && clip.fileUrl) {
-                        console.warn('Video element in error state, recreating:', clip.title);
-                        const newVideo = document.createElement('video');
-                        newVideo.src = clip.fileUrl;
-                        newVideo.preload = 'auto';
-                        newVideo.crossOrigin = 'anonymous';
-                        newVideo.muted = clip.videoEl.muted;
-                        newVideo.volume = clip.videoEl.volume;
-                        // Attempt to set scrub position immediately (may throw if
-                        // metadata not yet loaded; next sync cycle will retry)
-                        const seekTarget = clip.sourceOffset + (State.currentTime - clip.start);
-                        try { newVideo.currentTime = Math.max(0, seekTarget); } catch (_) {}
-                        clip.videoEl = newVideo;
-                        el = newVideo;
+                        const retries = clip._videoRetries || 0;
+                        if (retries < 3) {
+                            clip._videoRetries = retries + 1;
+                            if (retries === 0) console.warn('Video element in error state, recreating:', clip.title);
+                            const newVideo = document.createElement('video');
+                            newVideo.src = clip.fileUrl;
+                            newVideo.preload = 'auto';
+                            newVideo.crossOrigin = 'anonymous';
+                            newVideo.muted = clip.videoEl.muted;
+                            newVideo.volume = clip.videoEl.volume;
+                            // Attempt to set scrub position immediately (may throw if
+                            // metadata not yet loaded; next sync cycle will retry)
+                            const seekTarget = clip.sourceOffset + (State.currentTime - clip.start);
+                            try { newVideo.currentTime = Math.max(0, seekTarget); } catch (_) {}
+                            clip.videoEl = newVideo;
+                            el = newVideo;
+                        } else {
+                            // Retries exhausted — drop the element so we stop hammering the
+                            // network every frame. The placeholder / mock (with alt text for
+                            // markdown media) takes over in drawCanvas. A fresh attempt is
+                            // allowed again after the 10s cooldown (see re-attempt above).
+                            try { clip.videoEl.remove(); } catch (_) {}
+                            clip.videoEl = null;
+                            clip._videoGiveUpAt = Date.now();
+                            clip._videoRetries = 0;
+                        }
                     }
                     
                     if (shouldPlay) {
