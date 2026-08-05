@@ -14537,62 +14537,119 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             closeBeatDetectionModal();
         }
 
-        function splitClipAtPlayhead() {
-            const time = State.currentTime;
-            let targetClip = null;
-            
-            if (State.selectedClipId) {
-                const c = State.clips.find(c => c.id === State.selectedClipId);
-                const t = c ? State.tracks.find(tr => tr.id === c.trackId) : null;
-                if (c && (!t || !t.locked) && time > c.start + 0.05 && time < c.start + c.duration - 0.05) {
-                    targetClip = c;
-                }
-            }
-            
-            if (!targetClip) {
-                const clipsUnderPlayhead = State.clips.filter(c => {
-                    const t = State.tracks.find(tr => tr.id === c.trackId);
-                    return (!t || !t.locked) && time > c.start + 0.05 && time < c.start + c.duration - 0.05;
-                });
-                if (clipsUnderPlayhead.length > 0) {
-                    targetClip = clipsUnderPlayhead[clipsUnderPlayhead.length - 1]; 
-                }
-            }
-            
-            if (!targetClip) return;
-            
-            const leftDuration = time - targetClip.start;
-            const rightDuration = targetClip.duration - leftDuration;
-            
-            const newAudioEl = targetClip.audioEl ? new Audio(targetClip.fileUrl) : null;
+        // Split a single clip at `time` (must fall strictly inside the clip). Truncates the
+        // original to the left half and returns a NEW right-half clip (with fresh media
+        // elements). Returns null when the time is outside the clip. Linked IDs are NOT
+        // touched here — the caller re-links the group afterwards.
+        function splitClipAtTime(clip, time) {
+            if (time <= clip.start + 0.05 || time >= clip.start + clip.duration - 0.05) return null;
+
+            const leftDuration = time - clip.start;
+            const rightDuration = clip.duration - leftDuration;
+
+            const newAudioEl = clip.audioEl ? new Audio(clip.fileUrl) : null;
             if (newAudioEl) newAudioEl.crossOrigin = "anonymous";
-            
-            const newVideoEl = targetClip.videoEl ? document.createElement('video') : null;
+
+            const newVideoEl = clip.videoEl ? document.createElement('video') : null;
             if (newVideoEl) {
-                newVideoEl.src = targetClip.fileUrl;
+                newVideoEl.src = clip.fileUrl;
                 newVideoEl.crossOrigin = "anonymous";
                 newVideoEl.muted = true;
                 newVideoEl.load();
             }
 
             const newClip = {
-                ...targetClip,
+                ...clip,
                 id: 'c_' + Date.now() + Math.random().toString(36).substr(2, 5),
                 start: time,
-                sourceOffset: targetClip.sourceOffset + leftDuration,
+                sourceOffset: clip.sourceOffset + leftDuration,
                 duration: rightDuration,
                 audioEl: newAudioEl,
                 videoEl: newVideoEl,
-                effects: JSON.parse(JSON.stringify(targetClip.effects)), 
-                audioNodes: null 
+                effects: JSON.parse(JSON.stringify(clip.effects)),
+                audioNodes: null,
+                // Clone (don't share) the linked list — otherwise mutating the right
+                // half's links would leak into the left half via the shared reference.
+                linkedClipIds: clip.linkedClipIds ? clip.linkedClipIds.slice() : []
             };
-            
+
             if (newClip.audioEl) buildAudioGraph(newClip);
 
-            targetClip.duration = leftDuration;
+            clip.duration = leftDuration;
             State.clips.push(newClip);
-            State.selectedClipId = newClip.id; 
-            
+            return newClip;
+        }
+
+        // Split at the playhead. Supports:
+        //  • multi-select  — every selected clip (plus linked partners) that the playhead
+        //    passes through gets split at the same time
+        //  • linked groups — splitting a video also splits its linked audio (and vice versa)
+        //  • fallback      — no selection: split the top-most unlocked clip under the playhead
+        //    and its linked group
+        function splitClipAtPlayhead() {
+            const time = State.currentTime;
+            let targets = [];
+
+            if (State.multiSelectedClipIds && State.multiSelectedClipIds.length > 0) {
+                const selected = State.multiSelectedClipIds.map(id => State.clips.find(c => c.id === id)).filter(Boolean);
+                const groupSet = new Set();
+                selected.forEach(c => getLinkedClipsGroup(c).forEach(g => groupSet.add(g.id)));
+                groupSet.forEach(id => {
+                    const c = State.clips.find(x => x.id === id);
+                    if (c) targets.push(c);
+                });
+            } else if (State.selectedClipId) {
+                const c = State.clips.find(c => c.id === State.selectedClipId);
+                if (c) targets = targets.concat(getLinkedClipsGroup(c));
+            }
+
+            if (targets.length === 0) {
+                // Fallback: top-most unlocked clip under the playhead (plus its linked group)
+                const clipsUnderPlayhead = State.clips.filter(c => {
+                    const t = State.tracks.find(tr => tr.id === c.trackId);
+                    return (!t || !t.locked) && time > c.start + 0.05 && time < c.start + c.duration - 0.05;
+                });
+                if (clipsUnderPlayhead.length > 0) {
+                    targets = getLinkedClipsGroup(clipsUnderPlayhead[clipsUnderPlayhead.length - 1]);
+                }
+            }
+
+            // Keep only clips the playhead actually passes through on unlocked tracks
+            const splittable = targets.filter(c => {
+                const t = State.tracks.find(tr => tr.id === c.trackId);
+                return (!t || !t.locked) && time > c.start + 0.05 && time < c.start + c.duration - 0.05;
+            });
+            if (splittable.length === 0) return;
+
+            const splitPairs = []; // { parent, right }
+            splittable.forEach(c => {
+                const nc = splitClipAtTime(c, time);
+                if (nc) splitPairs.push({ parent: c, right: nc });
+            });
+            if (splitPairs.length === 0) return;
+
+            // Re-link per temporal half — NOT all-to-all:
+            //  • Left halves keep their ids, so their original inter-links are preserved
+            //    automatically (V-left ↔ A-left, truncated in place).
+            //  • Each right half links ONLY to the right halves of the clips its parent
+            //    was originally linked to (V-right ↔ A-right).
+            // The two temporal halves of the same clip are deliberately NOT linked — after
+            // a split they are independent clips that can be moved/trimmed separately.
+            const rightOf = new Map();
+            splitPairs.forEach(p => rightOf.set(p.parent.id, p.right));
+            splitPairs.forEach(p => {
+                const partners = (p.parent.linkedClipIds || []).map(id => rightOf.get(id)).filter(Boolean);
+                p.right.linkedClipIds = partners.map(pr => pr.id);
+                partners.forEach(pr => {
+                    if (!pr.linkedClipIds) pr.linkedClipIds = [];
+                    if (!pr.linkedClipIds.includes(p.right.id)) pr.linkedClipIds.push(p.right.id);
+                });
+            });
+
+            // Select the newly created right halves
+            State.multiSelectedClipIds = splitPairs.map(p => p.right.id);
+            State.selectedClipId = splitPairs[0].right.id;
+
             calcOverlaps();
             renderClips();
             updatePropertiesPanel();
@@ -14618,7 +14675,9 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 audioEl: newAudioEl,
                 videoEl: newVideoEl,
                 effects: JSON.parse(JSON.stringify(originalClip.effects || [])),
-                audioNodes: null
+                audioNodes: null,
+                // Clone (don't share) the linked list — see splitClipAtTime
+                linkedClipIds: originalClip.linkedClipIds ? originalClip.linkedClipIds.slice() : []
             };
             if (newClip.audioEl) buildAudioGraph(newClip);
             return newClip;
