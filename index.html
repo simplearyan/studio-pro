@@ -10143,6 +10143,13 @@
             const clip = State.clips.find(c => c.id === clipId);
             if (!clip) return;
 
+            // Replacing the source turns a markdown mock (image/video) into a real media
+            // clip: drop the mock flags so the canvas placeholder no longer flashes the
+            // mock while the fresh element loads/seeks (the _mdLoaded latch only exists
+            // on elements created by mdVideoClip, not on replaceClipSource's new element).
+            clip._mdMock = false;
+            clip._mdMedia = false;
+
             const file = files[0];
             const objectUrl = URL.createObjectURL(file);
             clip.fileName = file.name;
