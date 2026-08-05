@@ -999,6 +999,7 @@
             layout: { isSideBySide: false },
             inspector: { visible: false, dock: 'left', fullWidth: false, width: 320 },
             hoverPlayheadEnabled: true,
+            hoverPlayheadTime: null,
             pushTrim: false,
             bladeMode: false,
             bladeScope: 'clip', // 'clip' (clip + linked partners) | 'all' — blade tool split scope
@@ -16144,6 +16145,17 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     e.preventDefault();
                     togglePushTrim();
                 }
+                else if (k === 'e' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+                    // Jump the playhead to the hover playhead — preview on canvas what
+                    // you're about to split without clicking (then press S / Ctrl+B to cut)
+                    if (State.hoverPlayheadTime != null && State.hoverPlayheadEnabled) {
+                        e.preventDefault();
+                        State.currentTime = Math.max(0, Math.min(State.hoverPlayheadTime, State.duration));
+                        updatePlayhead();
+                        syncMediaElements();
+                        drawCanvas();
+                    }
+                }
                 else if (e.key === '\\') handleToggleVis();
             });
 
@@ -16725,12 +16737,14 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             container.addEventListener('mousemove', (e) => {
                 if (!State.hoverPlayheadEnabled || State.drag.active || State.trackResizing) {
                     hp.classList.add('hidden');
+                    State.hoverPlayheadTime = null;
                     return;
                 }
                 const rect = container.getBoundingClientRect();
                 const rawX = e.clientX - rect.left + container.scrollLeft;
-                const time = rawX / State.pixelsPerSecond;
-                if (time < 0) return;
+                const time = Math.max(0, Math.min(rawX / State.pixelsPerSecond, State.duration));
+                if (rawX < 0) { State.hoverPlayheadTime = null; return; }
+                State.hoverPlayheadTime = time;
                 
                 hp.style.left = `${rawX}px`;
                 hp.classList.toggle('blade-active', !!State.bladeMode);
@@ -16747,6 +16761,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             
             container.addEventListener('mouseleave', () => {
                 hp.classList.add('hidden');
+                State.hoverPlayheadTime = null;
             });
         }
 
