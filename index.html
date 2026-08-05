@@ -646,6 +646,9 @@
                             <button id="btnPushTrim" class="w-8 h-8 flex items-center justify-center rounded-md hover:bg-surface-100 dark:hover:bg-surface-700 hover:text-brand-600 dark:hover:text-brand-400 text-surface-600 dark:text-surface-400" title="Push Trim (P) — move following clips on the track">
                                 <i data-lucide="move-right" class="w-4 h-4"></i>
                             </button>
+                            <button id="btnGapSelect" class="w-8 h-8 flex items-center justify-center rounded-md hover:bg-surface-100 dark:hover:bg-surface-700 hover:text-brand-600 dark:hover:text-brand-400 text-surface-600 dark:text-surface-400" title="Gap Select (G) — click empty space between clips to select the gap, then press Delete to close it and pull clips together (Premiere-style)">
+                                <i data-lucide="arrow-left-right" class="w-4 h-4"></i>
+                            </button>
                         </div>
 
                         <div class="w-px h-6 bg-surface-200 dark:bg-surface-700 hidden sm:block"></div>
@@ -969,6 +972,8 @@
             inspector: { visible: false, dock: 'left', fullWidth: false, width: 320 },
             hoverPlayheadEnabled: true,
             pushTrim: false,
+            gapSelectMode: false,
+            selectedGap: null, // { trackId, start, end } — Premiere-style gap selection
             timelineSeekAnywhere: false,
             activeWordToken: null,
             activeLetterToken: null,
@@ -2743,6 +2748,28 @@
                     indicator.className = "w-2 h-2 rounded-full bg-surface-300 dark:bg-surface-600";
                 }
             }        }
+
+        function updateGapSelectBtn() {
+            const btn = document.getElementById('btnGapSelect');
+            if (!btn) return;
+            if (State.gapSelectMode) {
+                btn.classList.add('text-brand-600', 'dark:text-brand-400', 'bg-brand-50', 'dark:bg-brand-500/10');
+                btn.classList.remove('text-surface-600', 'dark:text-surface-400');
+            } else {
+                btn.classList.remove('text-brand-600', 'dark:text-brand-400', 'bg-brand-50', 'dark:bg-brand-500/10');
+                btn.classList.add('text-surface-600', 'dark:text-surface-400');
+            }
+        }
+
+        function toggleGapSelect() {
+            State.gapSelectMode = !State.gapSelectMode;
+            if (!State.gapSelectMode) {
+                State.selectedGap = null;
+            }
+            updateGapSelectBtn();
+            renderClips();
+            renderGapSelection();
+        }
 
         function updateImageThumbsBtn() {
             const btn = document.getElementById('btnToggleImageThumbs');
@@ -9441,7 +9468,7 @@
             const sliderBg = State.darkMode ? '#374151' : '#e5e7eb';
             
             let html = `
-                <div class="flex flex-col gap-3 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700/80 shadow-sm rounded-xl p-3 w-full shrink-0">
+                <div class="flex flex-col gap-3 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700/80 shadow-sm rounded-xl p-3 w-full flex-1 min-h-0">
                     <div class="flex items-center justify-between shrink-0">
                         <div class="flex items-center gap-2">
                             <svg class="w-4 h-4 text-brand-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
@@ -9452,7 +9479,7 @@
                         </button>
                     </div>
                     
-                    <div class="flex flex-col gap-2 max-h-[350px] overflow-y-auto pr-0.5">
+                    <div class="flex flex-col gap-2 flex-1 min-h-0 overflow-y-auto pr-0.5">
             `;
             
             props.forEach(p => {
@@ -14057,6 +14084,8 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
         // --- Editing Tools (Split & Delete) ---
         
         function deleteSelectedClip() {
+            // Gap Select mode: Delete closes the selected gap (ripple) instead of deleting clips
+            if (State.selectedGap) { closeGap(); return; }
             const idsToDeleteRaw = State.multiSelectedClipIds && State.multiSelectedClipIds.length > 0 ? [...State.multiSelectedClipIds] : (State.selectedClipId ? [State.selectedClipId] : []);
             const idsToDelete = idsToDeleteRaw.filter(id => {
                 const c = State.clips.find(x => x.id === id);
@@ -15215,6 +15244,127 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             });
             lucide.createIcons();
             drawAllWaveforms();
+            renderGapSelection();
+        }
+
+        // ── Gap Select (Premiere-style): faint overlays over every selectable gap while the
+        // mode is on; the currently selected gap gets a strong highlighted overlay. ──
+        function renderGapSelection() {
+            document.querySelectorAll('.gap-overlay').forEach(el => el.remove());
+            if (!State.gapSelectMode) return;
+
+            const currentSceneId = State.activeSceneId || null;
+            const perTrack = {};
+            State.clips.filter(c => (c.sceneId || null) === currentSceneId).forEach(c => {
+                if (!perTrack[c.trackId]) perTrack[c.trackId] = [];
+                perTrack[c.trackId].push(c);
+            });
+
+            const selected = State.selectedGap;
+            const selectedTrack = selected ? State.tracks.find(t => t.id === selected.trackId) : null;
+            const selectedClips = selected ? (perTrack[selected.trackId] || []).slice().sort((a, b) => a.start - b.start) : [];
+            // Clips of the selected track AFTER the gap — used to validate the selection is still real
+            let selectedEnd = selected ? selected.end : 0;
+
+            Object.keys(perTrack).forEach(trackId => {
+                const lane = tracksContentContainer.querySelector(`.track-lane[data-track-id="${trackId}"]`);
+                if (!lane) return;
+                const clips = perTrack[trackId].slice().sort((a, b) => a.start - b.start);
+                const gaps = [];
+                let prevEnd = 0;
+                clips.forEach(c => {
+                    if (c.start > prevEnd + 0.05) {
+                        gaps.push({ start: prevEnd, end: c.start });
+                    }
+                    prevEnd = Math.max(prevEnd, c.start + c.duration);
+                });
+
+                gaps.forEach(g => {
+                    const el = document.createElement('div');
+                    const isSelected = selected && selected.trackId === trackId
+                        && Math.abs(g.start - selected.start) < 0.01 && Math.abs(g.end - selected.end) < 0.01;
+                    el.className = 'gap-overlay absolute top-0 bottom-0 pointer-events-none z-10';
+                    el.style.left = `${g.start * State.pixelsPerSecond}px`;
+                    el.style.width = `${(g.end - g.start) * State.pixelsPerSecond}px`;
+                    if (isSelected) {
+                        el.style.background = 'repeating-linear-gradient(45deg, rgba(244,63,94,0.35) 0px, rgba(244,63,94,0.35) 6px, rgba(244,63,94,0.18) 6px, rgba(244,63,94,0.18) 12px)';
+                        el.style.boxShadow = 'inset 0 0 0 1.5px rgba(244,63,94,0.9)';
+                        if ((g.end - g.start) * State.pixelsPerSecond >= 80) {
+                            const label = document.createElement('div');
+                            label.className = 'absolute top-1/2 -translate-y-1/2 left-1 whitespace-nowrap text-[8px] font-bold uppercase tracking-wider text-white bg-rose-500/90 px-1.5 py-0.5 rounded shadow-md pointer-events-none select-none';
+                            label.textContent = `Gap ${(g.end - g.start).toFixed(2)}s · Del to close`;
+                            el.appendChild(label);
+                        }
+                    } else {
+                        el.style.background = 'repeating-linear-gradient(45deg, rgba(100,116,139,0.10) 0px, rgba(100,116,139,0.10) 5px, rgba(100,116,139,0.04) 5px, rgba(100,116,139,0.04) 10px)';
+                    }
+                    lane.appendChild(el);
+                });
+            });
+        }
+
+        // Close the selected gap: pull every clip that starts at/after the gap leftward so the
+        // empty region disappears (ripple). Linked groups move together; subtitle timing follows.
+        function closeGap() {
+            const gap = State.selectedGap;
+            if (!gap) return;
+            const track = State.tracks.find(t => t.id === gap.trackId);
+            const gapDuration = gap.end - gap.start;
+            if (!track || track.locked || gapDuration <= 0.001) {
+                State.selectedGap = null;
+                renderGapSelection();
+                return;
+            }
+
+            const currentSceneId = State.activeSceneId || null;
+            const shifted = new Set();
+            const shiftedGroups = new Set();
+            State.clips
+                .filter(c => c.trackId === gap.trackId && (c.sceneId || null) === currentSceneId && c.start >= gap.end - 0.001)
+                .sort((a, b) => a.start - b.start)
+                .forEach(c => {
+                    const group = getLinkedClipsGroup(c);
+                    const groupKey = group.map(g => g.id).sort().join('|');
+                    if (shiftedGroups.has(groupKey)) return;
+                    shiftedGroups.add(groupKey);
+                    group.forEach(g => {
+                        g.start = Math.max(0, g.start - gapDuration);
+                        shifted.add(g.id);
+                    });
+                });
+
+            // Keep subtitle timings in sync for shifted caption clips
+            let anySubChanged = false;
+            shifted.forEach(id => {
+                const clip = State.clips.find(c => c.id === id);
+                if (clip && clip.subtitleId) {
+                    const sub = State.subtitles.find(s => s.id === clip.subtitleId);
+                    if (sub) {
+                        sub.startTime = clip.start;
+                        sub.endTime = clip.start + clip.duration;
+                        anySubChanged = true;
+                    }
+                }
+            });
+            if (anySubChanged) {
+                saveSubtitlesToStorage();
+                if (State.sidebarTab === 'subtitles') renderSubtitlesPanel();
+            }
+
+            State.selectedGap = null;
+            calcOverlaps();
+            renderClips();
+            renderGapSelection();
+            syncMediaElements();
+            drawCanvas();
+
+            // Shrink the timeline if the tail got shorter
+            let maxEnd = 0;
+            State.clips.forEach(c => { if (c.start + c.duration > maxEnd) maxEnd = c.start + c.duration; });
+            if (maxEnd + 10 < State.duration) {
+                State.duration = Math.ceil(maxEnd + 10);
+                updateTimelineWidth();
+            }
         }
 
         function generatePseudoPeaks(duration, peaksPerSecond) {
@@ -15475,6 +15625,8 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             btnDelete.addEventListener('click', deleteSelectedClip);
             const btnPushTrim = document.getElementById('btnPushTrim');
             if (btnPushTrim) btnPushTrim.addEventListener('click', togglePushTrim);
+            const btnGapSelect = document.getElementById('btnGapSelect');
+            if (btnGapSelect) btnGapSelect.addEventListener('click', toggleGapSelect);
             const btnToggleImageThumbs = document.getElementById('btnToggleImageThumbs');
             if (btnToggleImageThumbs) {
                 btnToggleImageThumbs.addEventListener('click', toggleImageThumbs);
@@ -15637,6 +15789,8 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 if ((k === 's' && e.altKey) || (e.ctrlKey && k === 'b')) splitClipAtPlayhead();
                 else if (k === 'd' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); duplicateSelectedClip(); }
                 else if (e.key === 'Delete' || e.key === 'Backspace') deleteSelectedClip();
+                else if (k === 'escape' && State.selectedGap) { e.preventDefault(); State.selectedGap = null; renderGapSelection(); }
+                else if (k === 'g' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) { e.preventDefault(); toggleGapSelect(); }
                 else if (e.code === 'Space') { 
                     e.preventDefault(); 
                     if (e.shiftKey && State.sidebarTab === 'audio_library' && State.selectedAudioLibId) {
@@ -16032,6 +16186,70 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         startX: e.clientX
                     };
                     return;
+                }
+
+                // ── Gap Select mode (Premiere-style): click empty space on a track to
+                // select the gap between clips, then Delete closes it (ripple). ──
+                if (State.gapSelectMode) {
+                    State.selectedGap = null; // clicking a clip always clears the gap
+                    if (!e.target.closest('.clip')) {
+                        const lane = e.target.closest('.track-lane');
+                        if (lane) {
+                            e.preventDefault();
+                            const trackId = lane.dataset.trackId;
+                            const rect = tracksContentContainer.getBoundingClientRect();
+                            const xInVisibleContainer = e.clientX - rect.left;
+                            const absoluteX = timelineScrollArea.scrollLeft + xInVisibleContainer;
+                            const clickTime = Math.max(0, absoluteX / State.pixelsPerSecond);
+                            const currentSceneId = State.activeSceneId || null;
+                            const trackClips = State.clips
+                                .filter(c => c.trackId === trackId && (c.sceneId || null) === currentSceneId)
+                                .sort((a, b) => a.start - b.start);
+
+                            let gapStart = 0;
+                            let gapEnd = Infinity;
+                            let covered = false;
+                            trackClips.forEach(c => {
+                                if (clickTime >= c.start - 0.001 && clickTime <= c.start + c.duration + 0.001) {
+                                    covered = true;
+                                }
+                                if (!covered) {
+                                    if (c.start > clickTime) {
+                                        if (gapEnd === Infinity) gapEnd = c.start;
+                                    } else {
+                                        gapStart = Math.max(gapStart, c.start + c.duration);
+                                    }
+                                }
+                            });
+                            if (gapEnd === Infinity) {
+                                // Clicked after the last clip — trailing space has nothing to close
+                                State.selectedClipId = null;
+                                State.multiSelectedClipIds = [];
+                                renderClips();
+                                renderGapSelection();
+                                return;
+                            }
+
+                            State.selectedClipId = null;
+                            State.multiSelectedClipIds = [];
+                            renderClips();
+                            if (covered || gapEnd - gapStart <= 0.001) {
+                                // Clicked inside a clip's time range or on a sliver — treat as plain deselect
+                                renderGapSelection();
+                                return;
+                            }
+                            State.selectedGap = { trackId, start: gapStart, end: gapEnd };
+                            State.currentTime = clickTime;
+                            updatePlayhead();
+                            syncMediaElements();
+                            drawCanvas();
+                            renderGapSelection();
+                            return;
+                        }
+                    } else {
+                        // Clicked a clip in gap mode — clear any gap highlight, keep normal clip handling
+                        renderGapSelection();
+                    }
                 }
 
                 if (State.timelineSeekAnywhere) {
@@ -16668,6 +16886,8 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             
             if (State.drag.type === 'move' || State.drag.type === 'trimLeft' || State.drag.type === 'trimRight') {
                 drawCanvas();
+                // Keep gap overlays in sync while clips move / get trimmed
+                renderGapSelection();
             }
         }
 

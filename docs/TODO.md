@@ -42,6 +42,9 @@ analysis of editor and comparison with remotion
 
 Add ability to use audio for specifi text - shape - image - math - elment 
 
+- the hold option is not working for opacity property - fix this 
+- overhauled preset - like thumb maker - store webp images 
+
 ## Suggestions
 
 - The text background works great for regular text clips. Can we add the same Background controls to the Markdown style tab (global heading style + text style) so markdown-generated clips can get an auto background box?
