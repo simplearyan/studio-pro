@@ -13827,6 +13827,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             btnImport.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>`;
             lucide.createIcons();
 
+            const createdVideoClips = [];
             await Promise.all(files.map(async (file) => {
                 const isVideo = file.type.startsWith('video/');
                 const isImage = file.type.startsWith('image/');
@@ -13963,6 +13964,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                                 effects: { scale: 1, rotate: 0, borderRadius: 0, offsetX: 0, offsetY: 0, strokeEnable: false, strokeColor: '#ffffff', strokeWidth: 4, shadowEnable: false, shadowColor: '#000000', shadowBlur: 20, shadowX: 0, shadowY: 10, animIn: 'none', animOut: 'none', animLoop: 'none', animInDur: 1.0, animOutDur: 1.0, animEase: 'easeOut', cropLeft: 0, cropRight: 0, cropTop: 0, cropBottom: 0, maskingZoom: 100, frameZoom: 100, framingPanX: 0, framingPanY: 0, maskType: 'none', maskWidth: 50, maskHeight: 50, maskX: 0, maskY: 0, maskFeather: 0, maskInvert: false }
                             };
                             State.clips.push(newVideoClip);
+                            createdVideoClips.push(newVideoClip);
                         }
                         
                         let audioTargetTrackId = getAvailableTrack('audio', State.currentTime, duration);
@@ -14001,7 +14003,12 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             
             calcOverlaps();
             renderClips();
-            drawCanvas();
+            syncMediaElements();
+
+            // Show the freshly-imported video frame live on the canvas the moment it
+            // decodes, without painting the stale first frame first.
+            const waiting = refreshFreshVideoPreview(createdVideoClips);
+            if (!waiting) drawCanvas();
             mediaInput.value = ''; 
         });
 
@@ -14177,6 +14184,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             calcOverlaps();
             renderClips();
             updatePropertiesPanel();
+            syncMediaElements();
             drawCanvas();
         }
 
@@ -14653,7 +14661,13 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             calcOverlaps();
             renderClips();
             updatePropertiesPanel();
-            drawCanvas();
+            syncMediaElements();
+
+            // Don't paint the stale (pre-seek) frame — only draw once the fresh right-half
+            // video elements have decoded the cut frame, so the preview is live and
+            // flicker-free. If nothing needs a frame wait, update the canvas immediately.
+            const waiting = refreshFreshVideoPreview(splitPairs.map(p => p.right));
+            if (!waiting) drawCanvas();
         }
 
         function createSplitClipData(originalClip, startTimeline, startSource, duration) {
@@ -17090,6 +17104,109 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
 
         // --- Audio Synchronization Engine ---
         let lastSyncTime = 0;
+
+        // Seek a media element to `targetTime` and redraw the canvas only once the
+        // browser has actually decoded that frame. Setting `currentTime` is async —
+        // drawing immediately after would still show the old frame, which is why the
+        // preview stayed stale after split until the user nudged the playhead.
+        // Falls back to a short timeout in case 'seeked' never fires.
+        function drawWhenFrameReady(el, targetTime) {
+            if (!el) return;
+            const want = Math.max(0, targetTime);
+            const finish = () => {
+                el.removeEventListener('seeked', finish);
+                clearTimeout(finish._t);
+                drawCanvas();
+            };
+            try {
+                if (Math.abs(el.currentTime - want) > 0.05) {
+                    el.currentTime = want;
+                    el.addEventListener('seeked', finish);
+                    finish._t = setTimeout(finish, 400);
+                } else {
+                    finish();
+                }
+            } catch (_) {
+                finish();
+            }
+        }
+
+        // After creating fresh video elements (split, import, duplicate), make the canvas
+        // show the correct frame at the playhead the moment it decodes — WITHOUT painting
+        // the stale pre-seek frame first (which causes flicker). Returns true when a frame
+        // wait was registered, in which case the caller should NOT draw immediately.
+        // Self-sufficient: handles both ready and not-yet-loaded elements. (It cannot rely
+        // on seekMediaEl for these — video clips carry `clip.buffer` (decoded audio), which
+        // makes syncMediaElements return early in its buffer branch before seeking videoEl.)
+        function refreshFreshVideoPreview(clips) {
+            let waiting = false;
+            clips.forEach(clip => {
+                if (!clip || clip.type !== 'video' || !clip.videoEl) return;
+                if (State.currentTime < clip.start || State.currentTime >= clip.start + clip.duration) return;
+                const el = clip.videoEl;
+                const targetTime = clip.sourceOffset + (State.currentTime - clip.start);
+                waiting = true;
+                if (el.readyState < 1) {
+                    // Metadata not loaded yet (fresh element right after .load()) — wait for
+                    // it, then seek and draw the decoded frame.
+                    const onMeta = () => {
+                        el.removeEventListener('loadedmetadata', onMeta);
+                        el.removeEventListener('error', onErr);
+                        drawWhenFrameReady(el, targetTime);
+                    };
+                    const onErr = () => {
+                        el.removeEventListener('loadedmetadata', onMeta);
+                        el.removeEventListener('error', onErr);
+                        drawCanvas();
+                    };
+                    el.addEventListener('loadedmetadata', onMeta);
+                    el.addEventListener('error', onErr);
+                } else {
+                    drawWhenFrameReady(el, targetTime);
+                }
+            });
+            return waiting;
+        }
+
+        // Seek a media element to `targetTime`. Handles fresh elements whose metadata
+        // hasn't loaded yet (created by split/duplicate) — for those, wait for
+        // 'loadedmetadata', then seek once and redraw. This makes the canvas preview
+        // show the correct frame immediately after a split, without the user having
+        // to nudge the playhead back and forth.
+        function seekMediaEl(el, targetTime, threshold) {
+            if (!el) return;
+            const thresh = threshold !== undefined ? threshold : 0.1;
+            if (el.readyState < 1) {
+                if (Math.abs((el._pendingSeek === undefined ? -1 : el._pendingSeek) - targetTime) > thresh) {
+                    // Replace any previously-registered wait (playhead moved before load)
+                    if (el._pendingSeekFn) el.removeEventListener('loadedmetadata', el._pendingSeekFn);
+                    if (el._pendingErrFn) el.removeEventListener('error', el._pendingErrFn);
+                    el._pendingSeek = targetTime;
+                    el._pendingSeekFn = () => {
+                        el.removeEventListener('loadedmetadata', el._pendingSeekFn);
+                        el.removeEventListener('error', el._pendingErrFn);
+                        delete el._pendingSeek;
+                        delete el._pendingSeekFn;
+                        delete el._pendingErrFn;
+                        drawWhenFrameReady(el, targetTime);
+                    };
+                    el._pendingErrFn = () => {
+                        el.removeEventListener('loadedmetadata', el._pendingSeekFn);
+                        el.removeEventListener('error', el._pendingErrFn);
+                        delete el._pendingSeek;
+                        delete el._pendingSeekFn;
+                        delete el._pendingErrFn;
+                    };
+                    el.addEventListener('loadedmetadata', el._pendingSeekFn);
+                    el.addEventListener('error', el._pendingErrFn);
+                }
+                return;
+            }
+            if (!el.seeking && Math.abs(el.currentTime - targetTime) > thresh) {
+                try { el.currentTime = targetTime; } catch (_) {}
+            }
+        }
+
         function syncMediaElements() {
             if (!audioCtx) ensureAudioContext();
             
@@ -17176,9 +17293,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         
                         const targetTime = clip.sourceOffset + (State.currentTime - clip.start);
                         
-                        if (!el.seeking && Math.abs(el.currentTime - targetTime) > 0.25) {
-                            el.currentTime = targetTime;
-                        }
+                        seekMediaEl(el, targetTime, 0.25);
                         
                         if (el.paused) {
                             const p = el.play();
@@ -17193,14 +17308,10 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                             else { el.pause(); }
                         }
                         if (isUpcoming) {
-                            if (!el.seeking && Math.abs(el.currentTime - clip.sourceOffset) > 0.1) {
-                                el.currentTime = clip.sourceOffset;
-                            }
+                            seekMediaEl(el, clip.sourceOffset);
                         } else if (!State.isPlaying && State.currentTime >= clip.start && State.currentTime <= clip.start + clip.duration) {
                             const targetTime = clip.sourceOffset + (State.currentTime - clip.start);
-                            if (!el.seeking && Math.abs(el.currentTime - targetTime) > 0.1) {
-                                el.currentTime = targetTime;
-                            }
+                            seekMediaEl(el, targetTime);
                         }
                     }
                 }
