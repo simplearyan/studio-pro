@@ -9094,6 +9094,9 @@
                     const sfxName = sfx ? sfx.name : '';
                     const sfxDur = sfx ? sfx.duration : 0;
                     const sfxVol = sfx ? (sfx.volume !== undefined ? sfx.volume : 1) : 1;
+                    const sfxFadeIn = sfx ? (sfx.fadeIn !== undefined ? sfx.fadeIn : 0) : 0;
+                    const sfxFadeOut = sfx ? (sfx.fadeOut !== undefined ? sfx.fadeOut : 0) : 0;
+                    const sfxFadeMax = sfx ? Math.min(2, Math.max(0.1, sfx.duration || 0)) : 2;
                     const sfxExtracted = !!(sfx && clip.sfxExtractedClipId && State.clips.find(c => c.id === clip.sfxExtractedClipId));
                     const sfxStatusHtml = sfx ? (sfxExtracted
                         ? '<span class="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-1.5 py-0.5 rounded-sm border border-emerald-200 dark:border-emerald-700 inline-flex items-center gap-1"><i data-lucide="link" class="w-2.5 h-2.5"></i> Extracted · linked on timeline</span>'
@@ -9134,6 +9137,22 @@
                                         </div>
                                         <input type="range" min="0" max="2" step="0.05" value="${sfxVol}" class="w-full custom-slider" oninput="setClipSfxVolume('${clip.id}', this.value); this.previousElementSibling.querySelector('span').textContent = Math.round(this.value * 100) + '%';">
                                     </div>
+                                    ${!sfxExtracted ? `
+                                    <div>
+                                        <div class="flex justify-between items-center mb-1.5">
+                                            <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Fade In</label>
+                                            <span class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${sfxFadeIn.toFixed(1)}s</span>
+                                        </div>
+                                        <input type="range" min="0" max="${sfxFadeMax}" step="0.05" value="${sfxFadeIn}" class="w-full custom-slider" oninput="setClipSfxFade('${clip.id}', 'in', this.value); this.previousElementSibling.querySelector('span').textContent = parseFloat(this.value).toFixed(1) + 's';" onchange="setClipSfxFade('${clip.id}', 'in', this.value, true);">
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between items-center mb-1.5">
+                                            <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Fade Out</label>
+                                            <span class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${sfxFadeOut.toFixed(1)}s</span>
+                                        </div>
+                                        <input type="range" min="0" max="${sfxFadeMax}" step="0.05" value="${sfxFadeOut}" class="w-full custom-slider" oninput="setClipSfxFade('${clip.id}', 'out', this.value); this.previousElementSibling.querySelector('span').textContent = parseFloat(this.value).toFixed(1) + 's';" onchange="setClipSfxFade('${clip.id}', 'out', this.value, true);">
+                                    </div>
+                                    ` : ''}
                                     ${sfxExtracted ? `
                                         <div class="text-[10px] text-surface-500 dark:text-surface-300 leading-relaxed">Audio now plays from the extracted clip on the timeline — adjusting volume here syncs to it.</div>
                                     ` : `
@@ -11043,6 +11062,47 @@
             }
         }
 
+        // Apply the fade-in / fade-out envelope to a playing SFX. Works for both the
+        // timeline element (clip.sfxNode, clip window ends at the playhead leaving the
+        // clip) and the standalone preview (pass a sourceNode + endAtOverride so the
+        // fade-out lands exactly on the buffer end). Falls back to constant volume if
+        // the automation can't be scheduled.
+        function scheduleSfxEnvelope(clip, sfxOffset, gainNode, sourceNode, endAtOverride) {
+            const gain = gainNode || clip.sfxGain;
+            if (!gain) return;
+            const vol = clip.sfx.volume !== undefined ? clip.sfx.volume : 1;
+            const dur = clip.sfx.duration || 0;
+            const fi = Math.max(0, Math.min(clip.sfx.fadeIn || 0, dur));
+            const fo = Math.max(0, Math.min(clip.sfx.fadeOut || 0, dur - fi));
+            const now = audioCtx.currentTime;
+            try {
+                gain.gain.cancelScheduledValues(now);
+                if (fi > 0) {
+                    gain.gain.setValueAtTime(0, now);
+                    gain.gain.linearRampToValueAtTime(vol, now + fi);
+                } else {
+                    gain.gain.setValueAtTime(vol, now);
+                }
+                const naturalEnd = now + Math.max(0, dur - sfxOffset);
+                const clipEnd = endAtOverride !== undefined
+                    ? endAtOverride
+                    : now + Math.max(0, (clip.start + clip.duration) - State.currentTime);
+                const audibleEnd = Math.min(naturalEnd, clipEnd);
+                if (fo > 0 && (audibleEnd - now - fi) > 0.01) {
+                    const foStart = Math.max(now + fi, audibleEnd - fo);
+                    gain.gain.setValueAtTime(vol, foStart);
+                    gain.gain.linearRampToValueAtTime(0, audibleEnd);
+                }
+                // Clip ends before the buffer: stop the source at the clip end so the
+                // fade-out tail isn't cut off mid-ramp by the playhead-leave cleanup.
+                if (sourceNode && clipEnd < naturalEnd - 0.02) {
+                    try { sourceNode.stop(clipEnd + 0.02); } catch (e) {}
+                }
+            } catch (e) {
+                try { gain.gain.cancelScheduledValues(audioCtx.currentTime); gain.gain.setValueAtTime(vol, audioCtx.currentTime); } catch (e2) {}
+            }
+        }
+
         function stopClipSfxNodes(clip) {
             if (clip.sfxIsPlaying && clip.sfxNode) {
                 try { clip.sfxNode.stop(); } catch (e) {}
@@ -11092,6 +11152,29 @@
             updateSidebarPanel();
         };
 
+        window.setClipSfxFade = function(clipId, which, value, restart) {
+            const clip = State.clips.find(c => c.id === clipId);
+            if (!clip || !clip.sfx) return;
+            const v = Math.max(0, parseFloat(value) || 0);
+            const dur = clip.sfx.duration || 0;
+            if (which === 'in') {
+                clip.sfx.fadeIn = Math.min(v, dur);
+            } else {
+                clip.sfx.fadeOut = Math.min(v, dur);
+            }
+            // Restart the live node + rebuild the panel only when the drag gesture
+            // ends (onchange), so the new envelope applies without stuttering the
+            // sound on every input tick.
+            if (restart) {
+                if (clip.sfxIsPlaying && clip.sfxNode) {
+                    try { clip.sfxNode.stop(); clip.sfxNode.disconnect(); } catch (e) {}
+                    clip.sfxNode = null;
+                    clip.sfxIsPlaying = false;
+                }
+                updateSidebarPanel();
+            }
+        };
+
         window.previewClipSfx = function(clipId) {
             const clip = State.clips.find(c => c.id === clipId);
             if (!clip || !clip.sfx || !clip.sfx.buffer) return;
@@ -11100,9 +11183,9 @@
             const source = audioCtx.createBufferSource();
             source.buffer = clip.sfx.buffer;
             const gain = audioCtx.createGain();
-            gain.gain.value = clip.sfx.volume !== undefined ? clip.sfx.volume : 1;
             source.connect(gain);
             gain.connect(State.speakerNode || audioCtx.destination);
+            scheduleSfxEnvelope(clip, 0, gain, source, audioCtx.currentTime + (clip.sfx.duration || 0));
             source.start(0, 0);
             sfxPreviewSource = source;
             source.onended = () => { if (sfxPreviewSource === source) sfxPreviewSource = null; };
@@ -18219,9 +18302,9 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                                 clip.sfxGain = audioCtx.createGain();
                                 clip.sfxGain.connect(State.speakerNode || audioCtx.destination);
                             }
-                            clip.sfxGain.gain.value = clip.sfx.volume !== undefined ? clip.sfx.volume : 1;
                             clip.sfxNode.connect(clip.sfxGain);
                             const sfxOffset = Math.max(0, Math.min(State.currentTime - clip.start, Math.max(0, clip.sfx.duration - 0.01)));
+                            scheduleSfxEnvelope(clip, sfxOffset, null, clip.sfxNode);
                             clip.sfxNode.start(0, sfxOffset);
                             clip.sfxIsPlaying = true;
                         }
@@ -19117,12 +19200,35 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         const vol = isSfx
                             ? (c.sfx.volume !== undefined ? c.sfx.volume : 1)
                             : ((track && track.volume !== undefined) ? track.volume : (c.volume || 1));
-                        gainNode.gain.value = vol;
+                        
+                        const startTimeInOffline = clipStart - startTime;
+                        if (isSfx) {
+                            // Apply the same fade-in/fade-out envelope the element uses
+                            // during playback: ramp up from 0 over fadeIn, then ramp down
+                            // to 0 over fadeOut ending when the audible portion ends (the
+                            // clip window or the buffer end, whichever comes first).
+                            const sfxDur = c.sfx.duration || 0;
+                            const fi = Math.max(0, Math.min(c.sfx.fadeIn || 0, sfxDur));
+                            const fo = Math.max(0, Math.min(c.sfx.fadeOut || 0, sfxDur - fi));
+                            const audibleEnd = Math.min(duration, Math.max(0, sfxDur - sourceOffset));
+                            gainNode.gain.setValueAtTime(0, startTimeInOffline);
+                            if (fi > 0) {
+                                gainNode.gain.linearRampToValueAtTime(vol, startTimeInOffline + fi);
+                            } else {
+                                gainNode.gain.setValueAtTime(vol, startTimeInOffline);
+                            }
+                            if (fo > 0 && (audibleEnd - fi) > 0.01) {
+                                const foStart = Math.max(fi, audibleEnd - fo);
+                                gainNode.gain.setValueAtTime(vol, startTimeInOffline + foStart);
+                                gainNode.gain.linearRampToValueAtTime(0, startTimeInOffline + audibleEnd);
+                            }
+                        } else {
+                            gainNode.gain.value = vol;
+                        }
                         
                         source.connect(gainNode);
                         gainNode.connect(masterGain);
                         
-                        const startTimeInOffline = clipStart - startTime;
                         source.start(startTimeInOffline, sourceOffset, duration);
                     });
                     

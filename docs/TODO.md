@@ -67,6 +67,8 @@ analysis of editor and comparison with remotion
 - Save the Gap Select mode toggle state to localStorage so it stays on/off across sessions, like the other timeline tool toggles.
 - Add a right-click context menu on selected gaps with actions like 'Close Gap', 'Close All Gaps on Track', and 'Close All Gaps in Sequence' (premiere-style ripple).
 
+- Make the standard MediaRecorder export also render embedded SFX by scheduling clip.sfx buffer sources in the live audio graph during its export loop.
+
 
 
 
