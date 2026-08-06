@@ -8272,6 +8272,7 @@
             const envFadeMax = Math.min(2, Math.max(0.1, envWindowLen || 0));
             const envFadeCurve = clip.fadeCurve === 'ease' ? 'ease' : 'linear';
             const envTrimmed = clip.trimStart !== undefined || clip.trimEnd !== undefined;
+            const autoCount = (clip.volumeAutomation || []).length;
 
             const audioHTML = 
                 `<details id="cardAudioAutoDuck" class="group bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 shadow-sm rounded-lg shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'} overflow-hidden flex flex-col" open>
@@ -8405,6 +8406,16 @@
                                 <button onclick="setClipFadeCurve('${clip.id}', 'linear'); event.stopPropagation();" class="flex-1 py-1 text-[10px] font-bold rounded-md transition-all duration-200 ${envFadeCurve === 'linear' ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm' : 'text-surface-500 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white'}">Linear</button>
                                 <button onclick="setClipFadeCurve('${clip.id}', 'ease'); event.stopPropagation();" class="flex-1 py-1 text-[10px] font-bold rounded-md transition-all duration-200 ${envFadeCurve === 'ease' ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm' : 'text-surface-500 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white'}">Ease</button>
                             </div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between items-center mb-1.5">
+                                <label class="text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Volume Automation</label>
+                                <span class="text-[10px] font-mono text-surface-500 dark:text-surface-300">${autoCount} keyframe${autoCount === 1 ? '' : 's'}</span>
+                            </div>
+                            <p class="text-[10px] text-surface-500 dark:text-surface-300 leading-relaxed mb-1.5">Click the rubber band on the timeline clip to add keyframes, drag diamonds to shape volume over time, double-click a diamond to delete. Applied live and to exports. Note: with automation on, clicking the clip body adds keyframes — drag the clip header to move it.</p>
+                            ${autoCount > 0
+                                ? `<button onclick="clearClipAutomation('${clip.id}'); event.stopPropagation();" class="text-[10px] font-bold text-brand-600 dark:text-brand-400 hover:underline">Clear automation</button>`
+                                : `<button onclick="enableClipAutomation('${clip.id}'); event.stopPropagation();" class="text-[10px] font-bold text-brand-600 dark:text-brand-400 hover:underline">Enable</button>`}
                         </div>
                         <p class="text-[10px] text-surface-500 dark:text-surface-300 leading-relaxed">Trim plays only the marked region of the sound file; fades ramp the volume smoothly in and out. Applied live during playback and to exports.</p>
                     </div>
@@ -11228,6 +11239,120 @@
         function clipHasEnvelope(clip) {
             return clip.trimStart !== undefined || clip.trimEnd !== undefined ||
                 (clip.fadeIn || 0) > 0 || (clip.fadeOut || 0) > 0;
+        }
+
+        // ── Rubber-band volume automation (keyframes over clip time) ──
+        // clip.volumeAutomation = [{ t, v }, ...] where t is seconds from clip start
+        // (0..clip.duration) and v is a linear volume multiplier 0..1. Rendered as a
+        // draggable polyline over the waveform, honored by playback and the export
+        // offline render through a dedicated autoGain node in series with the fade gain.
+        function hasVolumeAutomation(clip) {
+            return Array.isArray(clip.volumeAutomation) && clip.volumeAutomation.length > 0;
+        }
+
+        // Linear interpolation of the automation value at clip-local time t. Times are
+        // clamped to the first/last keyframe range (values hold outside it).
+        function volumeAutomationValueAt(pts, t) {
+            if (!pts || pts.length === 0) return 1;
+            const sorted = pts.slice().sort((a, b) => a.t - b.t);
+            if (t <= sorted[0].t) return sorted[0].v;
+            const last = sorted[sorted.length - 1];
+            if (t >= last.t) return last.v;
+            for (let i = 0; i < sorted.length - 1; i++) {
+                if (t >= sorted[i].t && t <= sorted[i + 1].t) {
+                    const span = sorted[i + 1].t - sorted[i].t;
+                    const f = span > 0 ? (t - sorted[i].t) / span : 0;
+                    return Math.max(0, Math.min(1, sorted[i].v + (sorted[i + 1].v - sorted[i].v) * f));
+                }
+            }
+            return last.v;
+        }
+
+        // Schedule ramps on a LIVE gain param from the current clip-local position
+        // (the playhead) to the end of the clip. Keyframe times are clip-relative.
+        function scheduleVolumeAutomationLive(gainParam, pts, clipLocalPos, now) {
+            if (!pts || pts.length === 0) return;
+            const sorted = pts.slice().sort((a, b) => a.t - b.t);
+            try {
+                gainParam.cancelScheduledValues(now);
+                gainParam.setValueAtTime(volumeAutomationValueAt(sorted, clipLocalPos), now);
+                for (let i = 0; i < sorted.length; i++) {
+                    const p = sorted[i];
+                    if (p.t > clipLocalPos) {
+                        gainParam.linearRampToValueAtTime(Math.max(0, Math.min(1, p.v)), now + (p.t - clipLocalPos));
+                    }
+                }
+            } catch (e) {}
+        }
+
+        // Schedule ramps on an OFFLINE gain param covering the rendered local range
+        // [localStart, localEnd], with t0 the offline time where localStart lands.
+        function scheduleVolumeAutomationOffline(gainParam, pts, localStart, localEnd, t0) {
+            if (!pts || pts.length === 0) return;
+            const sorted = pts.slice().sort((a, b) => a.t - b.t);
+            try {
+                gainParam.setValueAtTime(volumeAutomationValueAt(sorted, localStart), t0);
+                for (let i = 0; i < sorted.length; i++) {
+                    const p = sorted[i];
+                    if (p.t > localStart && p.t < localEnd) {
+                        gainParam.linearRampToValueAtTime(Math.max(0, Math.min(1, p.v)), t0 + (p.t - localStart));
+                    }
+                }
+                gainParam.linearRampToValueAtTime(volumeAutomationValueAt(sorted, localEnd), t0 + (localEnd - localStart));
+            } catch (e) {}
+        }
+
+        window.enableClipAutomation = function(clipId) {
+            const clip = State.clips.find(c => c.id === clipId);
+            if (!clip || clip.type !== 'audio') return;
+            if (!hasVolumeAutomation(clip)) {
+                clip.volumeAutomation = [
+                    { t: 0, v: 1 },
+                    { t: Math.max(0.05, clip.duration || 1), v: 1 }
+                ];
+            }
+            restartClipAudioNode(clip);
+            updateSidebarPanel();
+            renderClips();
+            drawAllWaveforms();
+        };
+
+        window.clearClipAutomation = function(clipId) {
+            const clip = State.clips.find(c => c.id === clipId);
+            if (!clip || clip.type !== 'audio') return;
+            delete clip.volumeAutomation;
+            restartClipAudioNode(clip);
+            updateSidebarPanel();
+            renderClips();
+            drawAllWaveforms();
+        };
+
+        window.deleteAutoPoint = function(clipId, index) {
+            const clip = State.clips.find(c => c.id === clipId);
+            if (!clip || !Array.isArray(clip.volumeAutomation)) return;
+            clip.volumeAutomation.splice(index, 1);
+            if (clip.volumeAutomation.length === 0) delete clip.volumeAutomation;
+            restartClipAudioNode(clip);
+            updateSidebarPanel();
+            renderClips();
+            drawAllWaveforms();
+        };
+
+        // Map an automation value (0..1) to a CSS Y offset within the clip element for
+        // the DOM keyframe diamonds. Mirrors the canvas polyline exactly: v=1 sits at
+        // the top of the waveform band (midY - maxAmplitude), v=0 at the bottom. The
+        // clip is inset 3px top/bottom so its CSS height is trackHeight - 6 while the
+        // canvas is drawn at trackHeight * dpr, hence the (trackHeight - 6)/trackHeight
+        // scale — dpr cancels out.
+        function autoBandCssY(v, trackHeight) {
+            const hv = Math.max(0, Math.min(1, v));
+            return Math.max(2, Math.min(trackHeight - 8, (trackHeight * (0.875 - 0.75 * hv) + 5) * (trackHeight - 6) / trackHeight));
+        }
+
+        // Inverse of autoBandCssY: viewport mouse Y → automation value.
+        function autoClickV(clientY, clipTop, trackHeight) {
+            const cssY = Math.max(0, Math.min(trackHeight - 6, clientY - clipTop));
+            return Math.max(0, Math.min(1, (0.875 + 5 / trackHeight - cssY / (trackHeight - 6)) / 0.75));
         }
 
         // Apply trim + fade envelope to a TIMELINE audio clip (e.g. an extracted SFX)
@@ -15363,6 +15488,9 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             copy.isPlaying = false;
             copy.sourceNode = null;
             copy.playPromise = null;
+            if (Array.isArray(originalClip.volumeAutomation)) {
+                copy.volumeAutomation = originalClip.volumeAutomation.map(p => ({ t: p.t, v: p.v }));
+            }
 
             if (originalClip.videoEl) {
                 const newVideoEl = document.createElement('video');
@@ -16575,10 +16703,54 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     }
                 }
 
+                // ── Visual fade + inner-trim handles for audio clips ──
+                // Fade handles sit at the fade boundaries (drag to edit the envelope
+                // fades). Inner-trim handles sit at the shaded cut boundaries and drag
+                // the envelope window [trimStart, trimEnd] inside the source.
+                let envelopeHandlesHtml = '';
+                if (isAudioClip && hasWaveform && clip.duration * State.pixelsPerSecond > 40) {
+                    const bufDur = clip.buffer ? clip.buffer.duration : (clip.maxDuration || clip.duration || 0);
+                    const winStart = clip.trimStart !== undefined ? clip.trimStart : (clip.sourceOffset || 0);
+                    const winEnd = Math.min(bufDur, clip.trimEnd !== undefined ? clip.trimEnd : winStart + clip.duration);
+                    const winLen = Math.max(0.05, winEnd - winStart);
+                    const fadeIn = Math.max(0, Math.min(clip.fadeIn || 0, winLen));
+                    const fadeOut = Math.max(0, Math.min(clip.fadeOut || 0, winLen));
+                    const clipW = clip.duration * State.pixelsPerSecond;
+                    const srcOff = clip.sourceOffset || 0;
+                    const shadeStartSec = winStart - srcOff;
+                    const shadeEndSec = winEnd - srcOff;
+                    const fInPx = Math.max(4, Math.min(fadeIn * State.pixelsPerSecond, Math.max(4, clipW - 4)));
+                    const fOutPx = Math.max(4, Math.min((clip.duration - fadeOut) * State.pixelsPerSecond, Math.max(4, clipW - 4)));
+                    envelopeHandlesHtml = `
+                        <div class="fade-handle fade-in ${fadeIn > 0.001 ? 'active' : ''}" data-clip-id="${clip.id}" data-side="in" style="left: ${fInPx}px" title="${fadeIn > 0.001 ? `Fade in ${fadeIn.toFixed(2)}s — drag to adjust` : 'Drag right to add a fade-in'}"></div>
+                        <div class="fade-handle fade-out ${fadeOut > 0.001 ? 'active' : ''}" data-clip-id="${clip.id}" data-side="out" style="left: ${fOutPx}px" title="${fadeOut > 0.001 ? `Fade out ${fadeOut.toFixed(2)}s — drag to adjust` : 'Drag left to add a fade-out'}"></div>
+                        ${shadeStartSec > 0.04 && winStart > srcOff + 0.001 ? `<div class="trim-inner-handle start" data-clip-id="${clip.id}" data-side="start" style="left: ${Math.max(4, Math.min(shadeStartSec * State.pixelsPerSecond, Math.max(4, clipW - 4)))}px" title="Trim start ${winStart.toFixed(2)}s — drag to move the envelope window"></div>` : ''}
+                        ${clip.duration - shadeEndSec > 0.04 && winEnd < srcOff + clip.duration - 0.001 ? `<div class="trim-inner-handle end" data-clip-id="${clip.id}" data-side="end" style="left: ${Math.max(4, Math.min(shadeEndSec * State.pixelsPerSecond, Math.max(4, clipW - 4)))}px" title="Trim end ${winEnd.toFixed(2)}s — drag to move the envelope window"></div>` : ''}
+                    `;
+                }
+
+                // ── Rubber-band volume automation: transparent band (click to add a
+                // keyframe) + draggable diamonds over the waveform, matching the canvas
+                // polyline. Only active once the clip has automation (card Enable button).
+                let autoHandlesHtml = '';
+                if (isAudioClip && hasVolumeAutomation(clip) && clip.duration * State.pixelsPerSecond > 20) {
+                    const trH = track.height;
+                    autoHandlesHtml = `
+                        <div class="auto-band" data-clip-id="${clip.id}" title="Click to add a volume keyframe — drag diamonds to shape volume, double-click to delete"></div>
+                        ${clip.volumeAutomation.map((p, i) => {
+                            const xPx = Math.max(4, Math.min(p.t * State.pixelsPerSecond, Math.max(4, clip.duration * State.pixelsPerSecond - 4)));
+                            const yPx = autoBandCssY(p.v, trH);
+                            return `<div class="auto-point" data-clip-id="${clip.id}" data-index="${i}" style="left:${xPx}px;top:${yPx}px" ondblclick="deleteAutoPoint('${clip.id}', ${i}); event.stopPropagation();" title="Volume ${Math.round(p.v * 100)}% at ${p.t.toFixed(2)}s — drag to move, double-click to delete"></div>`;
+                        }).join('')}
+                    `;
+                }
+
                 el.innerHTML = `
                     ${headerContent}
                     <div class="trim-handle left" data-action="trimLeft"></div>
                     <div class="trim-handle right" data-action="trimRight"></div>
+                    ${envelopeHandlesHtml}
+                    ${autoHandlesHtml}
                     ${textPreviewHtml}
                     ${shapePreviewHtml}
                     ${hasWaveform ? `<canvas class="waveform-canvas absolute top-0 bottom-0 z-10 opacity-90"></canvas>` : ''}
@@ -16842,6 +17014,132 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
 
                 ctx.closePath();
                 ctx.fill();
+
+                // ── Envelope overlay for audio clips: trim shading + fade wedges ──
+                // Shaded regions mark timeline audio that is cut away (outside the
+                // effective window); the wedges visualize fade-in / fade-out curves.
+                if (clip.type === 'audio' && (clipHasEnvelope(clip) || (clip.fadeIn > 0) || (clip.fadeOut > 0) || hasVolumeAutomation(clip))) {
+                    const isDark = document.documentElement.classList.contains('dark');
+                    const bufDur = clip.buffer ? clip.buffer.duration : (clip.maxDuration || clip.duration || 0);
+                    const winStart = clip.trimStart !== undefined ? clip.trimStart : (clip.sourceOffset || 0);
+                    const winEnd = Math.min(bufDur, clip.trimEnd !== undefined ? clip.trimEnd : winStart + clip.duration);
+                    const shadeStartSec = winStart - (clip.sourceOffset || 0);
+                    const shadeEndSec = winEnd - (clip.sourceOffset || 0);
+                    const fadeIn = Math.max(0, Math.min(clip.fadeIn || 0, Math.max(0, winEnd - winStart)));
+                    const fadeOut = Math.max(0, Math.min(clip.fadeOut || 0, Math.max(0, winEnd - winStart)));
+                    const toCv = (sec) => sec * State.pixelsPerSecond - leftOffset;
+                    // Trim shading: silent start / silent tail
+                    if (shadeStartSec > 0.01) {
+                        const x0 = Math.max(0, toCv(0));
+                        const x1 = Math.min(internalWidth, toCv(shadeStartSec));
+                        if (x1 > x0) {
+                            ctx.fillStyle = isDark ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.14)';
+                            ctx.fillRect(x0, 0, x1 - x0, internalHeight);
+                            ctx.fillStyle = isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.32)';
+                            ctx.fillRect(Math.max(0, x1 - 1), 0, 1, internalHeight);
+                        }
+                    }
+                    if (clip.duration - shadeEndSec > 0.01) {
+                        const x0 = Math.max(0, toCv(shadeEndSec));
+                        const x1 = Math.min(internalWidth, toCv(clip.duration));
+                        if (x1 > x0) {
+                            ctx.fillStyle = isDark ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.14)';
+                            ctx.fillRect(x0, 0, x1 - x0, internalHeight);
+                            ctx.fillStyle = isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.32)';
+                            ctx.fillRect(x0, 0, 1, internalHeight);
+                        }
+                    }
+                    // Fade wedges (drawn over the waveform): curve from the clip edge up
+                    // to full amplitude over fadeIn / fadeOut seconds.
+                    const ease = clip.fadeCurve === 'ease';
+                    const curveY = (t) => { const s = ease ? t * t * (3 - 2 * t) : t; return midY - (s * maxAmplitude); };
+                    const fadeColor = isDark ? 'rgba(86,68,221,0.45)' : 'rgba(86,68,221,0.3)';
+                    const fadeLine = isDark ? 'rgba(124,106,255,0.95)' : 'rgba(64,48,190,0.9)';
+                    // Draw a fade wedge segment visible within the canvas. t is derived
+                    // from ABSOLUTE clip-x (not canvas-x) so the curve stays correct even
+                    // when the clip is partially scrolled (leftOffset > 0).
+                    const clamp01 = (v) => Math.max(0, Math.min(1, v));
+                    const drawFade = (x0, x1, fadeStartPx, fadeSpanPx) => {
+                        const steps = Math.max(1, Math.ceil(x1 - x0));
+                        const tAt = (cvX) => clamp01(((cvX + leftOffset) - fadeStartPx) / Math.max(0.001, fadeSpanPx));
+                        const pts = [];
+                        for (let x = 0; x <= steps; x++) pts.push([x0 + x, curveY(tAt(x0 + x))]);
+                        ctx.fillStyle = fadeColor;
+                        ctx.beginPath();
+                        ctx.moveTo(pts[0][0], pts[0][1]);
+                        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+                        ctx.lineTo(x1, midY);
+                        ctx.lineTo(x0, midY);
+                        ctx.closePath();
+                        ctx.fill();
+                        ctx.strokeStyle = fadeLine;
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        ctx.moveTo(pts[0][0], pts[0][1]);
+                        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+                        ctx.stroke();
+                    };
+                    // Fade duration labels: read the value straight off the waveform.
+                    // Only drawn on tracks tall enough to keep the chip clear of the
+                    // clip header, and clamped to the visible canvas width.
+                    const envTrackH = (State.tracks.find(t => t.id === clip.trackId) || { height: 90 }).height || 90;
+                    const canLabel = envTrackH >= 60;
+                    const drawFadeLabel = (cx, cy, text) => {
+                        ctx.font = '600 9px "JetBrains Mono", monospace';
+                        const tw = ctx.measureText(text).width;
+                        const pad = 3, lh = 11;
+                        const lw = Math.max(1, Math.min(tw + pad * 2, internalWidth - 2));
+                        const lx = Math.max(1, Math.min(cx - lw / 2, internalWidth - lw - 1));
+                        const ly = Math.max(1, cy - lh - 2);
+                        ctx.fillStyle = isDark ? 'rgba(255,255,255,0.85)' : 'rgba(15,15,20,0.72)';
+                        if (ctx.roundRect) {
+                            ctx.beginPath();
+                            ctx.roundRect(lx, ly, lw, lh, 3);
+                            ctx.fill();
+                        } else {
+                            ctx.fillRect(lx, ly, lw, lh);
+                        }
+                        ctx.fillStyle = isDark ? 'rgba(15,15,20,0.95)' : '#ffffff';
+                        ctx.textAlign = 'left';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText(text, lx + pad, ly + lh / 2 + 0.5);
+                    };
+                    const labelY = midY - maxAmplitude - 5;
+                    if (fadeIn > 0.01) {
+                        const x0 = Math.max(0, toCv(0));
+                        const x1 = Math.min(internalWidth, toCv(fadeIn));
+                        if (x1 > x0) {
+                            drawFade(x0, x1, 0, fadeIn * State.pixelsPerSecond);
+                            if (canLabel && x1 - x0 >= 30) drawFadeLabel((x0 + x1) / 2, labelY, `${fadeIn.toFixed(2)}s`);
+                        }
+                    }
+                    if (fadeOut > 0.01) {
+                        const fadeOutStartPx = (clip.duration - fadeOut) * State.pixelsPerSecond;
+                        const x0 = Math.max(0, toCv(clip.duration - fadeOut));
+                        const x1 = Math.min(internalWidth, toCv(clip.duration));
+                        if (x1 > x0) {
+                            drawFade(x0, x1, fadeOutStartPx, fadeOut * State.pixelsPerSecond);
+                            if (canLabel && x1 - x0 >= 30) drawFadeLabel((x0 + x1) / 2, labelY, `${fadeOut.toFixed(2)}s`);
+                        }
+                    }
+                    // Rubber-band volume automation: a draggable polyline over the
+                    // waveform band (v = 1 at the top of the band, 0 at the bottom),
+                    // with keyframe diamonds rendered as interactive DOM handles.
+                    if (hasVolumeAutomation(clip)) {
+                        const autoPts = clip.volumeAutomation.slice().sort((a, b) => a.t - b.t);
+                        const autoColor = isDark ? 'rgba(74, 222, 128, 0.85)' : 'rgba(22, 163, 74, 0.8)';
+                        const yAt = (v) => midY + maxAmplitude - Math.max(0, Math.min(1, v)) * 2 * maxAmplitude;
+                        ctx.strokeStyle = autoColor;
+                        ctx.lineWidth = 1.5;
+                        ctx.beginPath();
+                        for (let x = 0; x <= internalWidth; x++) {
+                            const sec = (x + leftOffset) / State.pixelsPerSecond;
+                            const y = yAt(volumeAutomationValueAt(autoPts, sec));
+                            if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                        }
+                        ctx.stroke();
+                    }
+                }
             } else {
                 canvas.style.display = 'none';
             }
@@ -17866,6 +18164,10 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
         function handleMouseDown(e) {
             // Ignore trim handles when Ctrl/Cmd is held down to facilitate easy selection and dragging of small clips
             const trimHandle = (e.ctrlKey || e.metaKey) ? null : e.target.closest('.trim-handle');
+            const fadeHandle = (e.ctrlKey || e.metaKey || e.altKey) ? null : e.target.closest('.fade-handle');
+            const innerTrimHandle = (e.ctrlKey || e.metaKey || e.altKey) ? null : e.target.closest('.trim-inner-handle');
+            const autoPoint = (e.ctrlKey || e.metaKey || e.altKey) ? null : e.target.closest('.auto-point');
+            const autoBand = (e.ctrlKey || e.metaKey || e.altKey) ? null : e.target.closest('.auto-band');
             const clipEl = e.target.closest('.clip');
             if (!clipEl) return;
 
@@ -17963,7 +18265,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             State.clips.forEach(c => {
                 if (c.trackId === dragClip.trackId) State.drag.initialTrackStarts[c.id] = c.start;
             });
-            if (!trimHandle) {
+            if (!trimHandle && !fadeHandle && !innerTrimHandle && !autoPoint && !autoBand) {
                 const dragGroupIds = new Set();
                 if (State.multiSelectedClipIds.includes(dragClipId)) {
                     State.multiSelectedClipIds.forEach(id => {
@@ -17986,7 +18288,43 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 }
             }
 
-            if (trimHandle) {
+            if (fadeHandle) {
+                State.drag.type = fadeHandle.dataset.side === 'out' ? 'fadeOut' : 'fadeIn';
+                State.drag.initialFadeVal = (State.drag.type === 'fadeIn' ? clip.fadeIn : clip.fadeOut) || 0;
+            } else if (innerTrimHandle) {
+                State.drag.type = innerTrimHandle.dataset.side === 'end' ? 'envTrimEnd' : 'envTrimStart';
+                State.drag.initialTrimStart = clip.trimStart !== undefined ? clip.trimStart : (clip.sourceOffset || 0);
+                State.drag.initialTrimEnd = clip.trimEnd !== undefined ? clip.trimEnd : (clip.sourceOffset || 0) + clip.duration;
+            } else if (autoPoint) {
+                // Rubber-band keyframe: drag moves t (x) and v (y) of that diamond.
+                State.drag.type = 'autoPoint';
+                State.drag.autoIndex = parseInt(autoPoint.dataset.index, 10);
+                const trackH = (State.tracks.find(t => t.id === clip.trackId) || { height: 60 }).height;
+                // Re-query: the selection logic above re-renders when the clip was not
+                // already selected, which detaches clipEl (its rect would be zeros).
+                const liveEl = document.querySelector(`.clip[data-clip-id="${clipId}"]`) || clipEl;
+                State.drag.autoTrackH = trackH;
+                State.drag.autoClipLeft = liveEl.getBoundingClientRect().left;
+                State.drag.autoClipTop = liveEl.getBoundingClientRect().top;
+            } else if (autoBand) {
+                // Clicking the rubber band adds a keyframe at that spot and immediately
+                // starts dragging it (autoAdd → autoPoint so it moves with the cursor).
+                const trackH = (State.tracks.find(t => t.id === clip.trackId) || { height: 60 }).height;
+                const liveEl = document.querySelector(`.clip[data-clip-id="${clipId}"]`) || clipEl;
+                const rect = liveEl.getBoundingClientRect();
+                const t = Math.max(0, Math.min(clip.duration, (e.clientX - rect.left) / State.pixelsPerSecond));
+                const v = autoClickV(e.clientY, rect.top, trackH);
+                clip.volumeAutomation = clip.volumeAutomation || [];
+                clip.volumeAutomation.push({ t: Math.round(t * 1000) / 1000, v: Math.round(v * 1000) / 1000 });
+                State.drag.type = 'autoPoint';
+                State.drag.autoIndex = clip.volumeAutomation.length - 1;
+                State.drag.autoTrackH = trackH;
+                State.drag.autoClipLeft = rect.left;
+                State.drag.autoClipTop = rect.top;
+                // Re-render so the new diamond appears under the cursor immediately.
+                renderClips();
+                drawAllWaveforms();
+            } else if (trimHandle) {
                 State.drag.type = trimHandle.dataset.action;
             } else {
                 State.drag.type = 'move';
@@ -18296,6 +18634,112 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 dragTooltip.classList.remove('hidden');
 
                 drawCachedWaveform(clipEl.querySelector('.waveform-canvas'), clip, palette);
+            } else if (State.drag.type === 'fadeIn' || State.drag.type === 'fadeOut') {
+                // Visual fade editing: dragging the handle changes fadeIn/fadeOut live,
+                // rebuilds the playing node so the new envelope applies immediately,
+                // and redraws the waveform wedge overlay.
+                const bufDur = clip.buffer ? clip.buffer.duration : (clip.maxDuration || clip.duration || 0);
+                const winStart = clip.trimStart !== undefined ? clip.trimStart : (clip.sourceOffset || 0);
+                const winEnd = Math.min(bufDur, clip.trimEnd !== undefined ? clip.trimEnd : winStart + clip.duration);
+                const winLen = Math.max(0.05, winEnd - winStart);
+                const isIn = State.drag.type === 'fadeIn';
+                const other = isIn ? (clip.fadeOut || 0) : (clip.fadeIn || 0);
+                const maxFade = Math.max(0, Math.min(2, winLen - other));
+                const deltaTime = deltaX / State.pixelsPerSecond;
+                // Fade-in handle sits at the left edge (drag right = more); fade-out
+                // handle sits at the right edge (drag left = more).
+                const newVal = Math.max(0, Math.min(isIn ? State.drag.initialFadeVal + deltaTime : State.drag.initialFadeVal - deltaTime, maxFade));
+                if (isIn) clip.fadeIn = Math.round(newVal * 1000) / 1000;
+                else clip.fadeOut = Math.round(newVal * 1000) / 1000;
+                const fadeSec = isIn ? (clip.fadeIn || 0) : (clip.fadeOut || 0);
+                const clipW = clip.duration * State.pixelsPerSecond;
+                const handlePx = isIn
+                    ? Math.max(4, Math.min(fadeSec * State.pixelsPerSecond, Math.max(4, clipW - 4)))
+                    : Math.max(4, Math.min((clip.duration - fadeSec) * State.pixelsPerSecond, Math.max(4, clipW - 4)));
+                const handleEl = clipEl.querySelector(`.fade-handle.${isIn ? 'fade-in' : 'fade-out'}`);
+                if (handleEl) handleEl.style.left = `${handlePx}px`;
+                if (typeof restartClipAudioNode === 'function') restartClipAudioNode(clip);
+                drawCachedWaveform(clipEl.querySelector('.waveform-canvas'), clip, palette);
+                const dragTooltip = document.getElementById('dragTooltip');
+                dragTooltip.innerHTML = `${isIn ? 'Fade in' : 'Fade out'}: ${fadeSec.toFixed(2)}s`;
+                dragTooltip.style.left = `${handlePx - timelineScrollArea.scrollLeft + timelineScrollArea.getBoundingClientRect().left}px`;
+                dragTooltip.style.top = `${e.clientY - 30}px`;
+                dragTooltip.classList.remove('hidden');
+            } else if (State.drag.type === 'envTrimStart' || State.drag.type === 'envTrimEnd') {
+                // Inner envelope trim: dragging the shaded boundary moves the effective
+                // window [trimStart, trimEnd] within the source range.
+                const bufDur = clip.buffer ? clip.buffer.duration : (clip.maxDuration || clip.duration || 0);
+                const srcOff = clip.sourceOffset || 0;
+                const winStart = clip.trimStart !== undefined ? clip.trimStart : srcOff;
+                const winEnd = clip.trimEnd !== undefined ? clip.trimEnd : srcOff + clip.duration;
+                const MIN_LEN = Math.min(0.05, bufDur);
+                const isStart = State.drag.type === 'envTrimStart';
+                let ns = isStart
+                    ? Math.max(srcOff + 0.02, Math.min(State.drag.initialTrimStart + deltaTime, winEnd - MIN_LEN))
+                    : winStart;
+                let ne = isStart
+                    ? winEnd
+                    : Math.min(srcOff + clip.duration, Math.max(State.drag.initialTrimEnd + deltaTime, winStart + MIN_LEN));
+                clip.trimStart = Math.round(Math.max(0, Math.min(bufDur, ns)) * 1000) / 1000;
+                clip.trimEnd = Math.round(Math.max(0, Math.min(bufDur, ne)) * 1000) / 1000;
+                const clipW = clip.duration * State.pixelsPerSecond;
+                const handleSec = isStart ? (clip.trimStart - srcOff) : (clip.trimEnd - srcOff);
+                const handlePx = Math.max(4, Math.min(handleSec * State.pixelsPerSecond, Math.max(4, clipW - 4)));
+                const handleEl = clipEl.querySelector(`.trim-inner-handle.${isStart ? 'start' : 'end'}`);
+                if (handleEl) handleEl.style.left = `${handlePx}px`;
+                if (typeof restartClipAudioNode === 'function') restartClipAudioNode(clip);
+                drawCachedWaveform(clipEl.querySelector('.waveform-canvas'), clip, palette);
+                const dragTooltip = document.getElementById('dragTooltip');
+                dragTooltip.innerHTML = `Trim: ${clip.trimStart.toFixed(2)}s → ${clip.trimEnd.toFixed(2)}s`;
+                dragTooltip.style.left = `${handlePx - timelineScrollArea.scrollLeft + timelineScrollArea.getBoundingClientRect().left}px`;
+                dragTooltip.style.top = `${e.clientY - 30}px`;
+                dragTooltip.classList.remove('hidden');
+            } else if (State.drag.type === 'autoPoint') {
+                // Rubber-band volume keyframe drag: x → t (clip-relative seconds),
+                // y → v (0..1 across the waveform band).
+                const trackH = State.drag.autoTrackH || (State.tracks.find(t => t.id === clip.trackId) || { height: 60 }).height;
+                const rect = clipEl.getBoundingClientRect();
+                const left = rect.left || State.drag.autoClipLeft;
+                const top = rect.top || State.drag.autoClipTop;
+                const t = Math.max(0, Math.min(clip.duration, (e.clientX - left) / State.pixelsPerSecond));
+                const v = autoClickV(e.clientY, top, trackH);
+                const idx = State.drag.autoIndex;
+                if (Array.isArray(clip.volumeAutomation) && idx >= 0 && idx < clip.volumeAutomation.length) {
+                    clip.volumeAutomation[idx].t = Math.round(t * 1000) / 1000;
+                    clip.volumeAutomation[idx].v = Math.round(v * 1000) / 1000;
+                }
+                const clipW = clip.duration * State.pixelsPerSecond;
+                const ptEl = clipEl.querySelector(`.auto-point[data-index="${idx}"]`);
+                if (ptEl) {
+                    const xPx = Math.max(4, Math.min(t * State.pixelsPerSecond, Math.max(4, clipW - 4)));
+                    const yPx = autoBandCssY(v, trackH);
+                    ptEl.style.left = `${xPx}px`;
+                    ptEl.style.top = `${yPx}px`;
+                }
+                if (typeof restartClipAudioNode === 'function') restartClipAudioNode(clip);
+                drawCachedWaveform(clipEl.querySelector('.waveform-canvas'), clip, palette);
+                const dragTooltip = document.getElementById('dragTooltip');
+                dragTooltip.innerHTML = `Vol: ${Math.round(v * 100)}% @ ${t.toFixed(2)}s`;
+                dragTooltip.style.left = `${e.clientX + 14}px`;
+                dragTooltip.style.top = `${e.clientY - 30}px`;
+                dragTooltip.classList.remove('hidden');
+            }
+
+            // Keep the envelope trim window in lockstep with the source trim while they
+            // were in sync (e.g. extracted SFX where trimStart == sourceOffset), so the
+            // envelope stays exact after a timeline trim instead of drifting.
+            if ((State.drag.type === 'trimLeft' || State.drag.type === 'trimRight') && clip.type === 'audio' && clipHasEnvelope(clip)) {
+                const bufDur = clip.buffer ? clip.buffer.duration : Infinity;
+                const prevStart = State.drag.initialSourceOffset;
+                const prevEnd = State.drag.initialSourceOffset + State.drag.initialDuration;
+                const winStart = clip.trimStart !== undefined ? clip.trimStart : prevStart;
+                const winEnd = clip.trimEnd !== undefined ? clip.trimEnd : prevEnd;
+                if (Math.abs(winStart - prevStart) < 0.001) {
+                    clip.trimStart = Math.min(bufDur, Math.max(0, clip.sourceOffset));
+                    clip.trimEnd = Math.min(bufDur, Math.max(clip.trimStart || 0, clip.sourceOffset + clip.duration));
+                } else if (Math.abs(winEnd - prevEnd) < 0.001) {
+                    clip.trimEnd = Math.min(bufDur, Math.max(clip.trimStart !== undefined ? clip.trimStart : clip.sourceOffset, clip.sourceOffset + clip.duration));
+                }
             }
             
             calcOverlaps();
@@ -18376,6 +18820,12 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             } else {
                 const clipEl = document.querySelector(`.clip[data-clip-id="${State.drag.clipId}"]`);
                 if (clipEl) clipEl.classList.remove('dragging');
+            }
+
+            // Sync the properties card after envelope / trim drags (handle positions
+            // re-render with the clip below).
+            if (State.drag.type === 'fadeIn' || State.drag.type === 'fadeOut' || State.drag.type === 'envTrimStart' || State.drag.type === 'envTrimEnd' || State.drag.type === 'trimLeft' || State.drag.type === 'trimRight' || State.drag.type === 'autoPoint') {
+                updateSidebarPanel();
             }
             
             State.drag.active = false;
@@ -18645,7 +19095,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                             clip.sourceNode.buffer = clip.buffer;
                             const pos = Math.max(0, State.currentTime - clip.start);
                             const targetTime = clip.sourceOffset + pos;
-                            if (clipHasEnvelope(clip)) {
+                            if (clipHasEnvelope(clip) || hasVolumeAutomation(clip)) {
                                 // Trimmed + faded timeline audio (e.g. extracted SFX): bound
                                 // the source to trimEnd and shape the fades on a dedicated
                                 // envGain node between the source and the effect chain, so
@@ -18655,7 +19105,22 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                                     clip.envGain = audioCtx.createGain();
                                     clip.envGain.gain.value = 1;
                                 }
-                                clip.sourceNode.connect(clip.envGain);
+                                if (hasVolumeAutomation(clip)) {
+                                    // Rubber-band volume automation rides its own autoGain
+                                    // node in series (source → autoGain → envGain) so the
+                                    // keyframe ramps stack with the fade envelope instead of
+                                    // fighting it.
+                                    if (!clip.autoGain) {
+                                        clip.autoGain = audioCtx.createGain();
+                                        clip.autoGain.gain.value = 1;
+                                    }
+                                    clip.sourceNode.connect(clip.autoGain);
+                                    clip.autoGain.connect(clip.envGain);
+                                    const clipLocalPos = Math.max(0, State.currentTime - clip.start);
+                                    scheduleVolumeAutomationLive(clip.autoGain.gain, clip.volumeAutomation, clipLocalPos, audioCtx.currentTime);
+                                } else {
+                                    clip.sourceNode.connect(clip.envGain);
+                                }
                                 if (clip.audioNodes && clip.audioNodes.noiseRed) {
                                     clip.envGain.connect(clip.audioNodes.noiseRed);
                                 } else {
@@ -19582,7 +20047,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                                     gainNode.gain.linearRampToValueAtTime(0, startTimeInOffline + audibleEnd);
                                 }
                             }
-                        } else if (clipHasEnvelope(c)) {
+                        } else if (clipHasEnvelope(c) || hasVolumeAutomation(c)) {
                             // Timeline audio clip carrying trim + fade fields (e.g. an
                             // extracted SFX): apply the same envelope as element SFX —
                             // play only [trimStart, trimEnd] and ramp over the fades.
@@ -19620,7 +20085,16 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                             gainNode.gain.value = vol;
                         }
                         
-                        source.connect(gainNode);
+                        let chainOut = source;
+                        if (hasVolumeAutomation(c)) {
+                            const autoGain = offlineCtx.createGain();
+                            autoGain.gain.value = 1;
+                            source.connect(autoGain);
+                            chainOut = autoGain;
+                            const autoLocalStart = Math.max(0, clipStart - c.start);
+                            scheduleVolumeAutomationOffline(autoGain.gain, c.volumeAutomation, autoLocalStart, autoLocalStart + duration, startTimeInOffline);
+                        }
+                        chainOut.connect(gainNode);
                         gainNode.connect(masterGain);
                         
                         source.start(startTimeInOffline, sourceOffset, duration);
