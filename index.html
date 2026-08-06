@@ -9170,6 +9170,8 @@
                     const sfxFadeMax = sfx ? Math.min(2, Math.max(0.1, sfx.duration || 0)) : 2;
                     const sfxTrimStart = sfx ? (sfx.trimStart !== undefined ? sfx.trimStart : 0) : 0;
                     const sfxTrimEnd = sfx ? (sfx.trimEnd !== undefined ? sfx.trimEnd : sfxDur) : 0;
+                    const sfxTrimStartPct = sfxDur > 0 ? (sfxTrimStart / sfxDur) * 100 : 0;
+                    const sfxTrimEndPct = sfxDur > 0 ? (sfxTrimEnd / sfxDur) * 100 : 100;
                     const sfxFadeCurve = (sfx && sfx.fadeCurve === 'ease') ? 'ease' : 'linear';
                     const sfxTrimmed = sfx && (sfxTrimStart > 0.01 || sfxTrimEnd < sfxDur - 0.01);
                     const sfxAutoCount = Array.isArray(clip.volumeAutomation) ? clip.volumeAutomation.length : 0;
@@ -9236,16 +9238,16 @@
                                                 ${sfxTrimmed ? `<button onclick="resetClipSfxTrim('${clip.id}'); event.stopPropagation();" class="text-[10px] font-bold text-brand-600 dark:text-brand-400 hover:underline" title="Reset trim to the full sound">Reset</button>` : ''}
                                             </span>
                                         </div>
-                                        <div class="flex justify-between items-center mb-1.5">
-                                            <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Start</label>
-                                            <span class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${sfxTrimStart.toFixed(2)}s</span>
+                                        <div class="relative h-[60px] rounded-lg overflow-hidden border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-900/60 select-none touch-none cursor-ew-resize" data-sfx-vis="${clip.id}" onpointerdown="sfxTrimVisDown(event, '${clip.id}')" title="Drag the handles to trim · drag inside the window to slide it">
+                                            <canvas id="sfxTrimVis-${clip.id}" class="absolute inset-0 w-full h-full block pointer-events-none"></canvas>
+                                            <div class="absolute top-0 bottom-0 w-[9px] cursor-ew-resize rounded-sm bg-brand-500/90 hover:bg-brand-400 dark:bg-brand-400 dark:hover:bg-brand-300 shadow-sm z-10" style="left:calc(${sfxTrimStartPct}% - 4px)" data-sfx-handle="start" role="slider" tabindex="0" aria-label="Trim start" aria-valuemin="0" aria-valuemax="${sfxDur.toFixed(2)}" aria-valuenow="${sfxTrimStart.toFixed(2)}" aria-valuetext="${sfxTrimStart.toFixed(2)} seconds" onkeydown="sfxTrimVisKey('${clip.id}', 'start', event);"></div>
+                                            <div class="absolute top-0 bottom-0 w-[9px] cursor-ew-resize rounded-sm bg-brand-500/90 hover:bg-brand-400 dark:bg-brand-400 dark:hover:bg-brand-300 shadow-sm z-10" style="left:calc(${sfxTrimEndPct}% - 4px)" data-sfx-handle="end" role="slider" tabindex="0" aria-label="Trim end" aria-valuemin="0" aria-valuemax="${sfxDur.toFixed(2)}" aria-valuenow="${sfxTrimEnd.toFixed(2)}" aria-valuetext="${sfxTrimEnd.toFixed(2)} seconds" onkeydown="sfxTrimVisKey('${clip.id}', 'end', event);"></div>
                                         </div>
-                                        <input type="range" min="0" max="${sfxDur}" step="0.01" value="${sfxTrimStart}" class="w-full custom-slider" oninput="setClipSfxTrim('${clip.id}', 'start', this.value); this.previousElementSibling.querySelector('span').textContent = parseFloat(this.value).toFixed(2) + 's';" onchange="setClipSfxTrim('${clip.id}', 'start', this.value, true);">
-                                        <div class="flex justify-between items-center mb-1.5 mt-1.5">
-                                            <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">End</label>
-                                            <span class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${sfxTrimEnd.toFixed(2)}s</span>
+                                        <div class="flex justify-between items-center mt-1">
+                                            <span class="text-[9px] font-mono text-surface-400 dark:text-surface-500" id="sfxTrimInVal-${clip.id}">${sfxTrimStart.toFixed(2)}s</span>
+                                            <span class="text-[9px] font-bold text-surface-400 dark:text-surface-500">Drag handles to trim</span>
+                                            <span class="text-[9px] font-mono text-surface-400 dark:text-surface-500" id="sfxTrimOutVal-${clip.id}">${sfxTrimEnd.toFixed(2)}s</span>
                                         </div>
-                                        <input type="range" min="0" max="${sfxDur}" step="0.01" value="${sfxTrimEnd}" class="w-full custom-slider" oninput="setClipSfxTrim('${clip.id}', 'end', this.value); this.previousElementSibling.querySelector('span').textContent = parseFloat(this.value).toFixed(2) + 's';" onchange="setClipSfxTrim('${clip.id}', 'end', this.value, true);">
                                     </div>
                                     <div>
                                         <label class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">Fade Curve</label>
@@ -9479,6 +9481,11 @@
             }, 0);
 
             lucide.createIcons();
+            // Draw the SFX trim waveform visualizer once the card DOM is live
+            if (State.selectedClipId) {
+                const visClip = State.clips.find(c => c.id === State.selectedClipId);
+                if (visClip && visClip.sfx && visClip.type !== 'audio') drawSfxTrimVis(visClip.id);
+            }
             window.renderLetterTokens();
         }
 
@@ -11805,6 +11812,210 @@
             }
             updateSidebarPanel();
         };
+
+        // ── SFX trim waveform visualizer (drag handles instead of sliders) ──
+        // Element clips with embedded sound get a mini waveform editor in the SFX
+        // card: the whole sound's peaks are drawn, the trimmed window stays bright,
+        // the cut regions dim, and draggable in/out handles (plus dragging inside
+        // the window to slide it) edit clip.sfx.trimStart / trimEnd live.
+        window.sfxTrimVisDown = function (event, clipId) {
+            if (event.button !== 0) return;
+            const clip = State.clips.find(c => c.id === clipId);
+            if (!clip || !clip.sfx || !clip.sfx.duration) return;
+            const el = event.currentTarget;
+            const rect = el.getBoundingClientRect();
+            const dur = clip.sfx.duration;
+            const t = Math.max(0, Math.min(1, (event.clientX - rect.left) / Math.max(1, rect.width))) * dur;
+            const info = sfxTrimInfo(clip);
+            const handle = event.target && event.target.dataset ? event.target.dataset.sfxHandle : null;
+            let mode = handle;
+            if (mode !== 'start' && mode !== 'end') {
+                mode = t < info.trimStart ? 'start' : (t > info.trimEnd ? 'end' : 'pan');
+            }
+            State.sfxTrimDrag = { clipId, mode, startX: event.clientX, startT: t, trimStart: info.trimStart, trimEnd: info.trimEnd };
+            try { el.setPointerCapture(event.pointerId); } catch (e) {}
+            event.preventDefault();
+            el.addEventListener('pointermove', onSfxTrimVisMove);
+            el.addEventListener('pointerup', onSfxTrimVisUp);
+            el.addEventListener('pointercancel', onSfxTrimVisUp);
+        };
+        function onSfxTrimVisMove(event) {
+            const drag = State.sfxTrimDrag;
+            if (!drag) return;
+            const clip = State.clips.find(c => c.id === drag.clipId);
+            if (!clip || !clip.sfx || !clip.sfx.duration) return;
+            const el = event.currentTarget;
+            const rect = el.getBoundingClientRect();
+            const dur = clip.sfx.duration;
+            const t = Math.max(0, Math.min(1, (event.clientX - rect.left) / Math.max(1, rect.width))) * dur;
+            if (drag.mode === 'pan') {
+                const len = Math.max(0, drag.trimEnd - drag.trimStart);
+                let ns = Math.max(0, Math.min(dur - len, drag.trimStart + (t - drag.startT)));
+                ns = Math.round(ns * 1000) / 1000;
+                clip.sfx.trimStart = ns;
+                clip.sfx.trimEnd = Math.round(Math.min(dur, ns + len) * 1000) / 1000;
+            } else {
+                setClipSfxTrim(drag.clipId, drag.mode, t, false);
+            }
+            syncSfxTrimVis(drag.clipId);
+        }
+        function onSfxTrimVisUp(event) {
+            const drag = State.sfxTrimDrag;
+            if (!drag) return;
+            State.sfxTrimDrag = null;
+            const el = event.currentTarget;
+            el.removeEventListener('pointermove', onSfxTrimVisMove);
+            el.removeEventListener('pointerup', onSfxTrimVisUp);
+            el.removeEventListener('pointercancel', onSfxTrimVisUp);
+            try { el.releasePointerCapture(event.pointerId); } catch (e) {}
+            const clip = State.clips.find(c => c.id === drag.clipId);
+            if (clip) {
+                const isEnd = drag.mode === 'end';
+                setClipSfxTrim(drag.clipId, isEnd ? 'end' : 'start', isEnd ? clip.sfx.trimEnd : clip.sfx.trimStart, true);
+            }
+        }
+
+        // Keyboard trim nudging for keyboard / screen-reader users (the handle divs
+        // are role=slider: arrow keys step by 0.1s, Shift steps by 0.5s).
+        window.sfxTrimVisKey = function (clipId, which, event) {
+            const clip = State.clips.find(c => c.id === clipId);
+            if (!clip || !clip.sfx) return;
+            let dir = 0;
+            if (event.key === 'ArrowLeft') dir = -1;
+            else if (event.key === 'ArrowRight') dir = 1;
+            else return;
+            event.preventDefault();
+            event.stopPropagation();
+            const step = event.shiftKey ? 0.5 : 0.1;
+            const info = sfxTrimInfo(clip);
+            const val = (which === 'start' ? info.trimStart : info.trimEnd) + dir * step;
+            setClipSfxTrim(clipId, which, val, false);
+            syncSfxTrimVis(clipId);
+            setClipSfxTrim(clipId, which, which === 'end' ? clip.sfx.trimEnd : clip.sfx.trimStart, true);
+        };
+
+        // Redraw the card visualizer and live-update the timeline trim shading.
+        window.syncSfxTrimVis = function (clipId) {
+            const clip = State.clips.find(c => c.id === clipId);
+            if (!clip || !clip.sfx) return;
+            const el = document.querySelector('[data-sfx-vis="' + clipId + '"]');
+            if (el) {
+                const dur = clip.sfx.duration || 0;
+                const info = sfxTrimInfo(clip);
+                el.querySelectorAll('[data-sfx-handle]').forEach(h => {
+                    const isStart = h.dataset.sfxHandle === 'start';
+                    const val = isStart ? info.trimStart : info.trimEnd;
+                    h.style.left = 'calc(' + (dur > 0 ? (val / dur) * 100 : 0) + '% - 4px)';
+                    if (h.hasAttribute('aria-valuenow')) {
+                        h.setAttribute('aria-valuenow', val.toFixed(2));
+                        h.setAttribute('aria-valuetext', val.toFixed(2) + ' seconds');
+                    }
+                });
+                const inVal = document.getElementById('sfxTrimInVal-' + clipId);
+                const outVal = document.getElementById('sfxTrimOutVal-' + clipId);
+                if (inVal) inVal.textContent = info.trimStart.toFixed(2) + 's';
+                if (outVal) outVal.textContent = info.trimEnd.toFixed(2) + 's';
+            }
+            drawSfxTrimVis(clipId);
+            // Live timeline shading: redraw just this clip's waveform canvas; if the
+            // clip has no canvas yet (first envelope edit on a fresh SFX), render the
+            // timeline once so the band + shading appear immediately.
+            const clipEl = document.querySelector('.clip[data-clip-id="' + clipId + '"]');
+            if (clipEl) {
+                const cvs = clipEl.querySelector('.waveform-canvas');
+                if (cvs) {
+                    const palette = PALETTES[clip.colorIndex];
+                    drawCachedWaveform(cvs, clip, palette);
+                } else if (typeof renderClips === 'function') {
+                    renderClips();
+                }
+            }
+        };
+
+        // Draw the full-sound waveform with the trimmed window highlighted, cut
+        // regions dimmed, boundary lines at the edges, and fade wedges inside.
+        window.drawSfxTrimVis = function (clipId) {
+            const clip = State.clips.find(c => c.id === clipId);
+            if (!clip || !clip.sfx) return;
+            const canvas = document.getElementById('sfxTrimVis-' + clipId);
+            if (!canvas) return;
+            const parent = canvas.parentElement;
+            const w = parent.clientWidth || 280;
+            const h = parent.clientHeight || 60;
+            const dpr = window.devicePixelRatio || 1;
+            if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+                canvas.width = Math.round(w * dpr);
+                canvas.height = Math.round(h * dpr);
+            }
+            const ctx = canvas.getContext('2d');
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            ctx.clearRect(0, 0, w, h);
+            const dur = clip.sfx.duration || 0;
+            if (dur <= 0) return;
+            if (!clip.peaks || !clip.peaks.length) refreshSfxPeaks(clip);
+            const peaks = clip.peaks || [];
+            const info = sfxTrimInfo(clip);
+            const isDark = document.documentElement.classList.contains('dark');
+            const midY = h / 2;
+            const amp = Math.max(4, midY - 4);
+            const xAt = (t) => (t / dur) * w;
+            const tStart = info.trimStart;
+            const tEnd = info.trimEnd;
+            // Full waveform
+            ctx.strokeStyle = isDark ? 'rgba(148, 130, 255, 0.95)' : 'rgba(86, 68, 221, 0.85)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            const n = peaks.length;
+            for (let x = 0; x < w; x++) {
+                const p = peaks[Math.min(n - 1, Math.floor((x / w) * n))] || { max: 0, min: 0 };
+                ctx.moveTo(x, midY - p.max * amp);
+                ctx.lineTo(x, midY - p.min * amp);
+            }
+            ctx.stroke();
+            // Dim the cut regions; bright boundary lines at the trim edges
+            const x0 = xAt(tStart);
+            const x1 = xAt(tEnd);
+            if (x0 > 0.5) {
+                ctx.fillStyle = isDark ? 'rgba(0,0,0,0.5)' : 'rgba(0,0,0,0.22)';
+                ctx.fillRect(0, 0, x0, h);
+            }
+            if (x1 < w - 0.5) {
+                ctx.fillStyle = isDark ? 'rgba(0,0,0,0.5)' : 'rgba(0,0,0,0.22)';
+                ctx.fillRect(x1, 0, w - x1, h);
+            }
+            ctx.fillStyle = isDark ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.8)';
+            ctx.fillRect(Math.round(x0) - 0.5, 0, 1, h);
+            ctx.fillRect(Math.round(x1) - 0.5, 0, 1, h);
+            // Fade wedges inside the audible window (mirror of the timeline overlay)
+            const fi = Math.max(0, Math.min(clip.sfx.fadeIn || 0, tEnd - tStart));
+            const fo = Math.max(0, Math.min(clip.sfx.fadeOut || 0, tEnd - tStart));
+            const ease = clip.sfx.fadeCurve === 'ease';
+            if (fi > 0.001) drawSfxFadeWedge(ctx, xAt(tStart), xAt(tStart + fi), midY, amp, ease, isDark, true);
+            if (fo > 0.001) drawSfxFadeWedge(ctx, xAt(tEnd - fo), xAt(tEnd), midY, amp, ease, isDark, false);
+        };
+
+        function drawSfxFadeWedge(ctx, x0, x1, midY, amp, ease, isDark, rising) {
+            if (x1 - x0 < 0.75) return;
+            const steps = Math.max(1, Math.ceil(x1 - x0));
+            const yAt = (i) => {
+                const u = i / steps;
+                const s = ease ? u * u * (3 - 2 * u) : u;
+                return rising ? midY - s * amp : midY - (1 - s) * amp;
+            };
+            ctx.fillStyle = isDark ? 'rgba(74, 222, 128, 0.3)' : 'rgba(22, 163, 74, 0.24)';
+            ctx.beginPath();
+            ctx.moveTo(x0, midY);
+            for (let i = 0; i <= steps; i++) ctx.lineTo(x0 + i, yAt(i));
+            ctx.lineTo(x1, midY);
+            ctx.closePath();
+            ctx.fill();
+            ctx.strokeStyle = isDark ? 'rgba(74, 222, 128, 0.9)' : 'rgba(22, 163, 74, 0.85)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(x0, yAt(0));
+            for (let i = 1; i <= steps; i++) ctx.lineTo(x0 + i, yAt(i));
+            ctx.stroke();
+        }
 
         // ── Envelope (trim + fades) for regular timeline audio clips ──
         function restartClipAudioNode(clip) {
@@ -16843,7 +17054,10 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 else if (clip.type === 'text') icon = isSubtitleClip ? 'subtitles' : ((clip.effects && clip.effects.renderAsMath) ? 'variable' : 'type');
 
                 const hasWaveform = clip.peaks && clip.peaks.length > 0;
-                const hasSfxBand = !!clip.sfx && hasVolumeAutomation(clip);
+                const hasSfxBand = !!clip.sfx && (hasVolumeAutomation(clip) ||
+                    (clip.sfx.trimStart !== undefined && clip.sfx.trimStart > 0.01) ||
+                    (clip.sfx.trimEnd !== undefined && clip.sfx.duration > 0 && clip.sfx.trimEnd < clip.sfx.duration - 0.01) ||
+                    (clip.sfx.fadeIn || 0) > 0 || (clip.sfx.fadeOut || 0) > 0);
                 
                 const isAudioClip = clip.type === 'audio';
                 const isTextClip = clip.type === 'text';
@@ -17295,18 +17509,32 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 ctx.closePath();
                 ctx.fill();
 
-                // ── Envelope overlay for audio clips: trim shading + fade wedges ──
-                // Shaded regions mark timeline audio that is cut away (outside the
-                // effective window); the wedges visualize fade-in / fade-out curves.
-                if ((clip.type === 'audio' || (clip.sfx && hasVolumeAutomation(clip))) && (clipHasEnvelope(clip) || (clip.fadeIn > 0) || (clip.fadeOut > 0) || hasVolumeAutomation(clip))) {
+                // ── Envelope overlay for audio clips AND element clips with embedded
+                // SFX: trim shading + fade wedges. Shaded regions mark audio that is
+                // cut away (outside the effective window); wedges show the fade curves.
+                // Element SFX shares the same model — its sound's time axis maps 1:1 to
+                // clip time (the source starts at trimStart when the playhead enters),
+                // so clip.sfx.trimStart/trimEnd/fadeIn/fadeOut normalize into exactly
+                // the same values used for timeline audio.
+                const sfxEnv = clip.type !== 'audio' && !!clip.sfx;
+                const sfxDur = sfxEnv ? (clip.sfx.duration || 0) : 0;
+                const sfxTrimStart = sfxEnv ? (clip.sfx.trimStart !== undefined ? clip.sfx.trimStart : 0) : 0;
+                const sfxTrimEnd = sfxEnv ? (clip.sfx.trimEnd !== undefined ? clip.sfx.trimEnd : sfxDur) : 0;
+                const sfxEnvActive = sfxEnv && (sfxTrimStart > 0.01 || sfxTrimEnd < sfxDur - 0.01 || (clip.sfx.fadeIn || 0) > 0 || (clip.sfx.fadeOut || 0) > 0 || hasVolumeAutomation(clip));
+                const audioEnvActive = clip.type === 'audio' && (clipHasEnvelope(clip) || (clip.fadeIn > 0) || (clip.fadeOut > 0) || hasVolumeAutomation(clip));
+                if (sfxEnvActive || audioEnvActive) {
                     const isDark = document.documentElement.classList.contains('dark');
-                    const bufDur = clip.buffer ? clip.buffer.duration : (clip.maxDuration || clip.duration || 0);
-                    const winStart = clip.trimStart !== undefined ? clip.trimStart : (clip.sourceOffset || 0);
-                    const winEnd = Math.min(bufDur, clip.trimEnd !== undefined ? clip.trimEnd : winStart + clip.duration);
-                    const shadeStartSec = winStart - (clip.sourceOffset || 0);
-                    const shadeEndSec = winEnd - (clip.sourceOffset || 0);
-                    const fadeIn = Math.max(0, Math.min(clip.fadeIn || 0, Math.max(0, winEnd - winStart)));
-                    const fadeOut = Math.max(0, Math.min(clip.fadeOut || 0, Math.max(0, winEnd - winStart)));
+                    const bufDur = sfxEnv ? sfxDur : (clip.buffer ? clip.buffer.duration : (clip.maxDuration || clip.duration || 0));
+                    const winStart = sfxEnv ? sfxTrimStart : (clip.trimStart !== undefined ? clip.trimStart : (clip.sourceOffset || 0));
+                    const winEnd = sfxEnv ? Math.min(sfxDur, Math.max(sfxTrimStart, sfxTrimEnd)) : Math.min(bufDur, clip.trimEnd !== undefined ? clip.trimEnd : winStart + clip.duration);
+                    const shadeStartSec = sfxEnv ? winStart : winStart - (clip.sourceOffset || 0);
+                    const shadeEndSec = sfxEnv ? Math.min(winEnd, clip.duration) : winEnd - (clip.sourceOffset || 0);
+                    const fadeIn = Math.max(0, Math.min(sfxEnv ? (clip.sfx.fadeIn || 0) : (clip.fadeIn || 0), Math.max(0, winEnd - winStart)));
+                    const fadeOut = Math.max(0, Math.min(sfxEnv ? (clip.sfx.fadeOut || 0) : (clip.fadeOut || 0), Math.max(0, winEnd - winStart)));
+                    // The fade-out wedge ends where the sound actually stops in clip
+                    // time: for SFX that's min(trimmed length, clip duration) — the
+                    // same audibleEnd the envelope scheduler uses.
+                    const fadeOutEndSec = sfxEnv ? Math.min(Math.max(0, winEnd - winStart), clip.duration) : clip.duration;
                     const toCv = (sec) => sec * State.pixelsPerSecond - leftOffset;
                     // Trim shading: silent start / silent tail
                     if (shadeStartSec > 0.01) {
@@ -17331,7 +17559,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     }
                     // Fade wedges (drawn over the waveform): curve from the clip edge up
                     // to full amplitude over fadeIn / fadeOut seconds.
-                    const ease = clip.fadeCurve === 'ease';
+                    const ease = sfxEnv ? clip.sfx.fadeCurve === 'ease' : clip.fadeCurve === 'ease';
                     const curveY = (t) => { const s = ease ? t * t * (3 - 2 * t) : t; return midY - (s * maxAmplitude); };
                     const fadeColor = isDark ? 'rgba(86,68,221,0.45)' : 'rgba(86,68,221,0.3)';
                     const fadeLine = isDark ? 'rgba(124,106,255,0.95)' : 'rgba(64,48,190,0.9)';
@@ -17394,9 +17622,9 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         }
                     }
                     if (fadeOut > 0.01) {
-                        const fadeOutStartPx = (clip.duration - fadeOut) * State.pixelsPerSecond;
-                        const x0 = Math.max(0, toCv(clip.duration - fadeOut));
-                        const x1 = Math.min(internalWidth, toCv(clip.duration));
+                        const fadeOutStartPx = (fadeOutEndSec - fadeOut) * State.pixelsPerSecond;
+                        const x0 = Math.max(0, toCv(fadeOutEndSec - fadeOut));
+                        const x1 = Math.min(internalWidth, toCv(fadeOutEndSec));
                         if (x1 > x0) {
                             drawFade(x0, x1, fadeOutStartPx, fadeOut * State.pixelsPerSecond);
                             if (canLabel && x1 - x0 >= 30) drawFadeLabel((x0 + x1) / 2, labelY, `${fadeOut.toFixed(2)}s`);
@@ -17812,8 +18040,17 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 else if (k === '-' || k === '_') handleScaleDown();
                 else if (k === 'r') handleRotate(e.shiftKey ? 30 : 15);
                 else if (k === 'h') {
-                    if (e.shiftKey) handleCenterH();
-                    else handleFlipH();
+                    // With a clip selected, H flips horizontally (Shift = center) —
+                    // the classic transform shortcuts. With NO selection, H toggles
+                    // the hover playhead, as advertised in the View menu.
+                    if (e.shiftKey) {
+                        handleCenterH();
+                    } else if (State.selectedClipId || (State.multiSelectedClipIds && State.multiSelectedClipIds.length > 0)) {
+                        handleFlipH();
+                    } else {
+                        e.preventDefault();
+                        toggleHoverPlayhead();
+                    }
                 }
                 else if (k === 'v') {
                     if (e.shiftKey) handleCenterV();
@@ -18689,6 +18926,51 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             });
         }
 
+        // Keep the visual fade / inner-trim handles in sync while a clip is being
+        // trimmed. They're positioned in clip-relative px, so a stale position gets
+        // clipped out of view the moment the clip shrinks — which made the fade
+        // icons vanish mid-drag. Called on every trim mousemove; renderClips already
+        // recomputes the final positions on mouseup.
+        function syncEnvelopeHandles(clip, clipEl) {
+            if (!clipEl || clip.type !== 'audio') return;
+            const bufDur = clip.buffer ? clip.buffer.duration : (clip.maxDuration || clip.duration || 0);
+            const winStart = clip.trimStart !== undefined ? clip.trimStart : (clip.sourceOffset || 0);
+            const winEnd = Math.min(bufDur, clip.trimEnd !== undefined ? clip.trimEnd : winStart + clip.duration);
+            const winLen = Math.max(0.05, winEnd - winStart);
+            const fadeIn = Math.max(0, Math.min(clip.fadeIn || 0, winLen));
+            const fadeOut = Math.max(0, Math.min(clip.fadeOut || 0, winLen));
+            const clipW = clip.duration * State.pixelsPerSecond;
+            const srcOff = clip.sourceOffset || 0;
+            const shadeStartSec = winStart - srcOff;
+            const shadeEndSec = winEnd - srcOff;
+            const fInPx = Math.max(4, Math.min(fadeIn * State.pixelsPerSecond, Math.max(4, clipW - 4)));
+            const fOutPx = Math.max(4, Math.min((clip.duration - fadeOut) * State.pixelsPerSecond, Math.max(4, clipW - 4)));
+            const fadeInEl = clipEl.querySelector('.fade-handle.fade-in');
+            const fadeOutEl = clipEl.querySelector('.fade-handle.fade-out');
+            if (fadeInEl) fadeInEl.style.left = fInPx + 'px';
+            if (fadeOutEl) fadeOutEl.style.left = fOutPx + 'px';
+            // Inner trim handles only exist while the window is inside the source;
+            // toggle + slide them as the trim changes.
+            const startEl = clipEl.querySelector('.trim-inner-handle.start');
+            const endEl = clipEl.querySelector('.trim-inner-handle.end');
+            if (startEl) {
+                if (shadeStartSec > 0.04 && winStart > srcOff + 0.001) {
+                    startEl.style.display = '';
+                    startEl.style.left = Math.max(4, Math.min(shadeStartSec * State.pixelsPerSecond, Math.max(4, clipW - 4))) + 'px';
+                } else {
+                    startEl.style.display = 'none';
+                }
+            }
+            if (endEl) {
+                if (clip.duration - shadeEndSec > 0.04 && winEnd < srcOff + clip.duration - 0.001) {
+                    endEl.style.display = '';
+                    endEl.style.left = Math.max(4, Math.min(shadeEndSec * State.pixelsPerSecond, Math.max(4, clipW - 4))) + 'px';
+                } else {
+                    endEl.style.display = 'none';
+                }
+            }
+        }
+
         function handleMouseMove(e) {
             if (!State.drag.active) return;
 
@@ -18913,6 +19195,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 dragTooltip.classList.remove('hidden');
 
                 drawCachedWaveform(clipEl.querySelector('.waveform-canvas'), clip, palette);
+                syncEnvelopeHandles(clip, clipEl);
 
             } else if (State.drag.type === 'trimRight') {
                 let newDuration = State.drag.initialDuration + deltaTime;
@@ -18934,6 +19217,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 dragTooltip.classList.remove('hidden');
 
                 drawCachedWaveform(clipEl.querySelector('.waveform-canvas'), clip, palette);
+                syncEnvelopeHandles(clip, clipEl);
             } else if (State.drag.type === 'fadeIn' || State.drag.type === 'fadeOut') {
                 // Visual fade editing: dragging the handle changes fadeIn/fadeOut live,
                 // rebuilds the playing node so the new envelope applies immediately,
