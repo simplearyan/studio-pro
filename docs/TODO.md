@@ -68,6 +68,8 @@ analysis of editor and comparison with remotion
 - Add a right-click context menu on selected gaps with actions like 'Close Gap', 'Close All Gaps on Track', and 'Close All Gaps in Sequence' (premiere-style ripple).
 
 - Make the standard MediaRecorder export also render embedded SFX by scheduling clip.sfx buffer sources in the live audio graph during its export loop.
+- Add the same fade-in/fade-out sliders to regular timeline audio clips (music, voiceovers, and extracted SFX) so the envelope works everywhere, not just embedded element SFX, and wire it into playback and the export offline render.
+
 
 
 

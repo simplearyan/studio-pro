@@ -9097,6 +9097,10 @@
                     const sfxFadeIn = sfx ? (sfx.fadeIn !== undefined ? sfx.fadeIn : 0) : 0;
                     const sfxFadeOut = sfx ? (sfx.fadeOut !== undefined ? sfx.fadeOut : 0) : 0;
                     const sfxFadeMax = sfx ? Math.min(2, Math.max(0.1, sfx.duration || 0)) : 2;
+                    const sfxTrimStart = sfx ? (sfx.trimStart !== undefined ? sfx.trimStart : 0) : 0;
+                    const sfxTrimEnd = sfx ? (sfx.trimEnd !== undefined ? sfx.trimEnd : sfxDur) : 0;
+                    const sfxFadeCurve = (sfx && sfx.fadeCurve === 'ease') ? 'ease' : 'linear';
+                    const sfxTrimmed = sfx && (sfxTrimStart > 0.01 || sfxTrimEnd < sfxDur - 0.01);
                     const sfxExtracted = !!(sfx && clip.sfxExtractedClipId && State.clips.find(c => c.id === clip.sfxExtractedClipId));
                     const sfxStatusHtml = sfx ? (sfxExtracted
                         ? '<span class="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-1.5 py-0.5 rounded-sm border border-emerald-200 dark:border-emerald-700 inline-flex items-center gap-1"><i data-lucide="link" class="w-2.5 h-2.5"></i> Extracted · linked on timeline</span>'
@@ -9151,6 +9155,32 @@
                                             <span class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${sfxFadeOut.toFixed(1)}s</span>
                                         </div>
                                         <input type="range" min="0" max="${sfxFadeMax}" step="0.05" value="${sfxFadeOut}" class="w-full custom-slider" oninput="setClipSfxFade('${clip.id}', 'out', this.value); this.previousElementSibling.querySelector('span').textContent = parseFloat(this.value).toFixed(1) + 's';" onchange="setClipSfxFade('${clip.id}', 'out', this.value, true);">
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between items-center mb-1.5">
+                                            <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Trim</label>
+                                            <span class="flex items-center gap-1.5">
+                                                <span class="text-[10px] font-mono text-surface-500 dark:text-surface-300">${(sfxTrimEnd - sfxTrimStart).toFixed(2)}s / ${sfxDur.toFixed(2)}s</span>
+                                                ${sfxTrimmed ? `<button onclick="resetClipSfxTrim('${clip.id}'); event.stopPropagation();" class="text-[10px] font-bold text-brand-600 dark:text-brand-400 hover:underline" title="Reset trim to the full sound">Reset</button>` : ''}
+                                            </span>
+                                        </div>
+                                        <div class="flex justify-between items-center mb-1.5">
+                                            <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Start</label>
+                                            <span class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${sfxTrimStart.toFixed(2)}s</span>
+                                        </div>
+                                        <input type="range" min="0" max="${sfxDur}" step="0.01" value="${sfxTrimStart}" class="w-full custom-slider" oninput="setClipSfxTrim('${clip.id}', 'start', this.value); this.previousElementSibling.querySelector('span').textContent = parseFloat(this.value).toFixed(2) + 's';" onchange="setClipSfxTrim('${clip.id}', 'start', this.value, true);">
+                                        <div class="flex justify-between items-center mb-1.5 mt-1.5">
+                                            <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">End</label>
+                                            <span class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${sfxTrimEnd.toFixed(2)}s</span>
+                                        </div>
+                                        <input type="range" min="0" max="${sfxDur}" step="0.01" value="${sfxTrimEnd}" class="w-full custom-slider" oninput="setClipSfxTrim('${clip.id}', 'end', this.value); this.previousElementSibling.querySelector('span').textContent = parseFloat(this.value).toFixed(2) + 's';" onchange="setClipSfxTrim('${clip.id}', 'end', this.value, true);">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">Fade Curve</label>
+                                        <div class="flex bg-surface-100 dark:bg-surface-900 p-0.5 rounded-lg border border-surface-200/50 dark:border-surface-700/50">
+                                            <button onclick="setClipSfxFadeCurve('${clip.id}', 'linear'); event.stopPropagation();" class="flex-1 py-1 text-[10px] font-bold rounded-md transition-all duration-200 ${sfxFadeCurve === 'linear' ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm' : 'text-surface-500 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white'}">Linear</button>
+                                            <button onclick="setClipSfxFadeCurve('${clip.id}', 'ease'); event.stopPropagation();" class="flex-1 py-1 text-[10px] font-bold rounded-md transition-all duration-200 ${sfxFadeCurve === 'ease' ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm' : 'text-surface-500 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white'}">Ease</button>
+                                        </div>
                                     </div>
                                     ` : ''}
                                     ${sfxExtracted ? `
@@ -11065,35 +11095,48 @@
         // Apply the fade-in / fade-out envelope to a playing SFX. Works for both the
         // timeline element (clip.sfxNode, clip window ends at the playhead leaving the
         // clip) and the standalone preview (pass a sourceNode + endAtOverride so the
-        // fade-out lands exactly on the buffer end). Falls back to constant volume if
-        // the automation can't be scheduled.
+        // fade-out lands exactly on the buffer end). Respects the trimmed [start, end]
+        // range and the chosen fade curve ('linear' or 'ease'). Falls back to constant
+        // volume if the automation can't be scheduled.
         function scheduleSfxEnvelope(clip, sfxOffset, gainNode, sourceNode, endAtOverride) {
             const gain = gainNode || clip.sfxGain;
             if (!gain) return;
             const vol = clip.sfx.volume !== undefined ? clip.sfx.volume : 1;
-            const dur = clip.sfx.duration || 0;
-            const fi = Math.max(0, Math.min(clip.sfx.fadeIn || 0, dur));
-            const fo = Math.max(0, Math.min(clip.sfx.fadeOut || 0, dur - fi));
+            const info = sfxTrimInfo(clip);
+            const trimmedDur = info.trimmedDur;
+            const inTrimOffset = Math.max(0, Math.min(sfxOffset - info.trimStart, trimmedDur));
+            const fi = Math.max(0, Math.min(clip.sfx.fadeIn || 0, trimmedDur));
+            const fo = Math.max(0, Math.min(clip.sfx.fadeOut || 0, trimmedDur - fi));
+            const ease = clip.sfx.fadeCurve === 'ease';
             const now = audioCtx.currentTime;
             try {
                 gain.gain.cancelScheduledValues(now);
-                if (fi > 0) {
-                    gain.gain.setValueAtTime(0, now);
-                    gain.gain.linearRampToValueAtTime(vol, now + fi);
-                } else {
-                    gain.gain.setValueAtTime(vol, now);
-                }
-                const naturalEnd = now + Math.max(0, dur - sfxOffset);
+                const naturalEnd = now + Math.max(0, trimmedDur - inTrimOffset);
                 const clipEnd = endAtOverride !== undefined
                     ? endAtOverride
                     : now + Math.max(0, (clip.start + clip.duration) - State.currentTime);
                 const audibleEnd = Math.min(naturalEnd, clipEnd);
-                if (fo > 0 && (audibleEnd - now - fi) > 0.01) {
-                    const foStart = Math.max(now + fi, audibleEnd - fo);
-                    gain.gain.setValueAtTime(vol, foStart);
-                    gain.gain.linearRampToValueAtTime(0, audibleEnd);
+                const fadeInEnd = now + fi;
+                if (fi > 0) {
+                    if (ease) {
+                        gain.gain.setValueCurveAtTime(smoothstepCurve(0, vol, 48), now, fi);
+                    } else {
+                        gain.gain.setValueAtTime(0, now);
+                        gain.gain.linearRampToValueAtTime(vol, fadeInEnd);
+                    }
+                } else {
+                    gain.gain.setValueAtTime(vol, now);
                 }
-                // Clip ends before the buffer: stop the source at the clip end so the
+                if (fo > 0 && (audibleEnd - now - fi) > 0.01) {
+                    const foStart = Math.max(fadeInEnd, audibleEnd - fo);
+                    if (ease) {
+                        gain.gain.setValueCurveAtTime(smoothstepCurve(vol, 0, 48), foStart, Math.max(0.001, audibleEnd - foStart));
+                    } else {
+                        gain.gain.setValueAtTime(vol, foStart);
+                        gain.gain.linearRampToValueAtTime(0, audibleEnd);
+                    }
+                }
+                // Clip ends before the trimmed end: stop the source at the clip end so the
                 // fade-out tail isn't cut off mid-ramp by the playhead-leave cleanup.
                 if (sourceNode && clipEnd < naturalEnd - 0.02) {
                     try { sourceNode.stop(clipEnd + 0.02); } catch (e) {}
@@ -11101,6 +11144,25 @@
             } catch (e) {
                 try { gain.gain.cancelScheduledValues(audioCtx.currentTime); gain.gain.setValueAtTime(vol, audioCtx.currentTime); } catch (e2) {}
             }
+        }
+
+        // Effective duration / buffer offsets for the trimmed [start, end] range
+        function sfxTrimInfo(clip) {
+            const dur = clip.sfx.duration || 0;
+            const trimStart = Math.max(0, Math.min(clip.sfx.trimStart !== undefined ? clip.sfx.trimStart : 0, dur));
+            const trimEnd = Math.max(trimStart, Math.min(clip.sfx.trimEnd !== undefined ? clip.sfx.trimEnd : dur, dur));
+            return { dur, trimStart, trimEnd, trimmedDur: Math.max(0, trimEnd - trimStart) };
+        }
+
+        // Smoothstep (ease in-out) curve used for setValueCurveAtTime fades
+        function smoothstepCurve(from, to, points) {
+            const curve = new Float32Array(points);
+            for (let i = 0; i < points; i++) {
+                const t = points > 1 ? i / (points - 1) : 0;
+                const s = t * t * (3 - 2 * t);
+                curve[i] = from + (to - from) * s;
+            }
+            return curve;
         }
 
         function stopClipSfxNodes(clip) {
@@ -11126,7 +11188,10 @@
                     url: URL.createObjectURL(file),
                     buffer: buffer,
                     duration: buffer.duration,
-                    volume: clip.sfx && clip.sfx.volume !== undefined ? clip.sfx.volume : 1
+                    volume: clip.sfx && clip.sfx.volume !== undefined ? clip.sfx.volume : 1,
+                    trimStart: 0,
+                    trimEnd: buffer.duration,
+                    fadeCurve: 'linear'
                 };
                 delete clip.sfxExtractedClipId;
                 updateSidebarPanel();
@@ -11175,6 +11240,57 @@
             }
         };
 
+        window.setClipSfxTrim = function(clipId, which, value, restart) {
+            const clip = State.clips.find(c => c.id === clipId);
+            if (!clip || !clip.sfx || !clip.sfx.buffer) return;
+            const dur = clip.sfx.duration || 0;
+            let start = clip.sfx.trimStart !== undefined ? clip.sfx.trimStart : 0;
+            let end = clip.sfx.trimEnd !== undefined ? clip.sfx.trimEnd : dur;
+            const MIN_LEN = Math.min(0.05, dur);
+            if (which === 'start') {
+                start = Math.max(0, Math.min(parseFloat(value) || 0, dur));
+                if (end - start < MIN_LEN) start = Math.max(0, end - MIN_LEN);
+            } else {
+                end = Math.max(0, Math.min(parseFloat(value) || 0, dur));
+                if (end - start < MIN_LEN) end = Math.min(dur, start + MIN_LEN);
+            }
+            clip.sfx.trimStart = Math.round(start * 1000) / 1000;
+            clip.sfx.trimEnd = Math.round(end * 1000) / 1000;
+            if (restart) {
+                if (clip.sfxIsPlaying && clip.sfxNode) {
+                    try { clip.sfxNode.stop(); clip.sfxNode.disconnect(); } catch (e) {}
+                    clip.sfxNode = null;
+                    clip.sfxIsPlaying = false;
+                }
+                updateSidebarPanel();
+            }
+        };
+
+        window.setClipSfxFadeCurve = function(clipId, curve) {
+            const clip = State.clips.find(c => c.id === clipId);
+            if (!clip || !clip.sfx) return;
+            clip.sfx.fadeCurve = (curve === 'ease' || curve === 'linear') ? curve : 'linear';
+            if (clip.sfxIsPlaying && clip.sfxNode) {
+                try { clip.sfxNode.stop(); clip.sfxNode.disconnect(); } catch (e) {}
+                clip.sfxNode = null;
+                clip.sfxIsPlaying = false;
+            }
+            updateSidebarPanel();
+        };
+
+        window.resetClipSfxTrim = function(clipId) {
+            const clip = State.clips.find(c => c.id === clipId);
+            if (!clip || !clip.sfx) return;
+            clip.sfx.trimStart = 0;
+            clip.sfx.trimEnd = clip.sfx.duration || 0;
+            if (clip.sfxIsPlaying && clip.sfxNode) {
+                try { clip.sfxNode.stop(); clip.sfxNode.disconnect(); } catch (e) {}
+                clip.sfxNode = null;
+                clip.sfxIsPlaying = false;
+            }
+            updateSidebarPanel();
+        };
+
         window.previewClipSfx = function(clipId) {
             const clip = State.clips.find(c => c.id === clipId);
             if (!clip || !clip.sfx || !clip.sfx.buffer) return;
@@ -11185,8 +11301,10 @@
             const gain = audioCtx.createGain();
             source.connect(gain);
             gain.connect(State.speakerNode || audioCtx.destination);
-            scheduleSfxEnvelope(clip, 0, gain, source, audioCtx.currentTime + (clip.sfx.duration || 0));
-            source.start(0, 0);
+            const trimInfo = sfxTrimInfo(clip);
+            scheduleSfxEnvelope(clip, trimInfo.trimStart, gain, source, audioCtx.currentTime + trimInfo.trimmedDur);
+            // Play only the trimmed region: start at trimStart, stop at trimEnd
+            source.start(0, trimInfo.trimStart, trimInfo.trimmedDur);
             sfxPreviewSource = source;
             source.onended = () => { if (sfxPreviewSource === source) sfxPreviewSource = null; };
         };
@@ -18303,9 +18421,13 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                                 clip.sfxGain.connect(State.speakerNode || audioCtx.destination);
                             }
                             clip.sfxNode.connect(clip.sfxGain);
-                            const sfxOffset = Math.max(0, Math.min(State.currentTime - clip.start, Math.max(0, clip.sfx.duration - 0.01)));
+                            const { trimStart, trimmedDur } = sfxTrimInfo(clip);
+                            const inTrimPos = Math.max(0, Math.min(State.currentTime - clip.start, Math.max(0, trimmedDur - 0.01)));
+                            const sfxOffset = trimStart + inTrimPos;
                             scheduleSfxEnvelope(clip, sfxOffset, null, clip.sfxNode);
-                            clip.sfxNode.start(0, sfxOffset);
+                            // Bound the source to the trimmed end so it stops exactly at
+                            // trimEnd instead of playing the (silent) untrimmed tail.
+                            clip.sfxNode.start(0, sfxOffset, Math.max(0, trimmedDur - inTrimPos));
                             clip.sfxIsPlaying = true;
                         }
                     } else {
@@ -19181,7 +19303,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         const track = State.tracks.find(t => t.id === c.trackId);
                         const clipStart = Math.max(c.start, startTime);
                         const clipEnd = Math.min(c.start + c.duration, endTime);
-                        const duration = clipEnd - clipStart;
+                        let duration = clipEnd - clipStart;
                         
                         const sfxBuffer = getEmbeddedSfxBuffer(c);
                         const isSfx = !c.buffer && sfxBuffer;
@@ -19192,7 +19314,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         // Embedded SFX always starts from the clip's own start (mirrors
                         // playback: the sound begins when the playhead enters the clip),
                         // while timeline audio clips resume from their source offset.
-                        const sourceOffset = isSfx
+                        let sourceOffset = isSfx
                             ? Math.max(0, clipStart - c.start)
                             : c.sourceOffset + (clipStart - c.start);
                         
@@ -19203,24 +19325,37 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         
                         const startTimeInOffline = clipStart - startTime;
                         if (isSfx) {
-                            // Apply the same fade-in/fade-out envelope the element uses
-                            // during playback: ramp up from 0 over fadeIn, then ramp down
-                            // to 0 over fadeOut ending when the audible portion ends (the
-                            // clip window or the buffer end, whichever comes first).
-                            const sfxDur = c.sfx.duration || 0;
-                            const fi = Math.max(0, Math.min(c.sfx.fadeIn || 0, sfxDur));
-                            const fo = Math.max(0, Math.min(c.sfx.fadeOut || 0, sfxDur - fi));
-                            const audibleEnd = Math.min(duration, Math.max(0, sfxDur - sourceOffset));
-                            gainNode.gain.setValueAtTime(0, startTimeInOffline);
+                            // Apply the same envelope (trim + fades) the element uses
+                            // during playback: play only the trimmed [start, end] range
+                            // of the sound, ramp up from 0 over fadeIn, then ramp down to
+                            // 0 over fadeOut ending when the audible portion ends (the
+                            // clip window or the trimmed end, whichever comes first).
+                            const { trimStart, trimmedDur } = sfxTrimInfo(c);
+                            const inTrimPos = Math.max(0, Math.min(Math.max(0, clipStart - c.start), Math.max(0, trimmedDur - 0.001)));
+                            sourceOffset = trimStart + inTrimPos;
+                            duration = Math.min(duration, Math.max(0, trimmedDur - inTrimPos));
+                            const fi = Math.max(0, Math.min(c.sfx.fadeIn || 0, trimmedDur));
+                            const fo = Math.max(0, Math.min(c.sfx.fadeOut || 0, trimmedDur - fi));
+                            const audibleEnd = Math.min(duration, Math.max(0, trimmedDur - inTrimPos));
+                            const ease = c.sfx.fadeCurve === 'ease';
                             if (fi > 0) {
-                                gainNode.gain.linearRampToValueAtTime(vol, startTimeInOffline + fi);
+                                if (ease) {
+                                    gainNode.gain.setValueCurveAtTime(smoothstepCurve(0, vol, 48), startTimeInOffline, fi);
+                                } else {
+                                    gainNode.gain.setValueAtTime(0, startTimeInOffline);
+                                    gainNode.gain.linearRampToValueAtTime(vol, startTimeInOffline + fi);
+                                }
                             } else {
                                 gainNode.gain.setValueAtTime(vol, startTimeInOffline);
                             }
                             if (fo > 0 && (audibleEnd - fi) > 0.01) {
                                 const foStart = Math.max(fi, audibleEnd - fo);
-                                gainNode.gain.setValueAtTime(vol, startTimeInOffline + foStart);
-                                gainNode.gain.linearRampToValueAtTime(0, startTimeInOffline + audibleEnd);
+                                if (ease) {
+                                    gainNode.gain.setValueCurveAtTime(smoothstepCurve(vol, 0, 48), startTimeInOffline + foStart, Math.max(0.001, audibleEnd - foStart));
+                                } else {
+                                    gainNode.gain.setValueAtTime(vol, startTimeInOffline + foStart);
+                                    gainNode.gain.linearRampToValueAtTime(0, startTimeInOffline + audibleEnd);
+                                }
                             }
                         } else {
                             gainNode.gain.value = vol;
