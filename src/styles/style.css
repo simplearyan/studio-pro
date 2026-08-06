@@ -145,6 +145,126 @@ body.ctrl-held .trim-handle:active {
 .trim-handle.right { right: 0; border-left: 1px solid rgba(0,0,0,0.15); }
 .dark .trim-handle.right { border-left: 1px solid rgba(255,255,255,0.15); }
 
+/* Visual fade-in / fade-out handles on audio clips (drag to set envelope fades) */
+.fade-handle {
+    position: absolute;
+    top: 1px;
+    width: 12px;
+    height: 13px;
+    transform: translateX(-50%);
+    z-index: 32;
+    cursor: ew-resize;
+    border-radius: 4px;
+    background: rgba(15, 15, 20, 0.72);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.45;
+    transition: opacity 0.15s, transform 0.15s;
+    pointer-events: auto;
+    touch-action: none;
+}
+.dark .fade-handle { background: rgba(255, 255, 255, 0.85); }
+.clip:hover .fade-handle { opacity: 0.9; }
+.fade-handle.active { opacity: 0.95; }
+.fade-handle:hover { opacity: 1; transform: translateX(-50%) scale(1.12); }
+.fade-handle::before {
+    content: '';
+    width: 2px;
+    height: 7px;
+    border-radius: 1px;
+    background: rgba(255, 255, 255, 0.95);
+    box-shadow: -3px 0 0 rgba(255, 255, 255, 0.55), 3px 0 0 rgba(255, 255, 255, 0.55);
+}
+.dark .fade-handle::before {
+    background: rgba(20, 20, 25, 0.95);
+    box-shadow: -3px 0 0 rgba(20, 20, 25, 0.55), 3px 0 0 rgba(20, 20, 25, 0.55);
+}
+
+/* Inner envelope-trim handles at the shaded cut boundaries of audio clips */
+.trim-inner-handle {
+    position: absolute;
+    top: 15%;
+    bottom: 15%;
+    width: 7px;
+    transform: translateX(-50%);
+    z-index: 32;
+    cursor: ew-resize;
+    border-radius: 4px;
+    background: rgba(15, 15, 20, 0.6);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+    opacity: 0.55;
+    transition: opacity 0.15s, transform 0.15s;
+    pointer-events: auto;
+    touch-action: none;
+}
+.dark .trim-inner-handle { background: rgba(255, 255, 255, 0.75); }
+.clip:hover .trim-inner-handle { opacity: 0.95; }
+.trim-inner-handle:hover { opacity: 1; transform: translateX(-50%) scaleX(1.3); }
+.trim-inner-handle::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 2px;
+    height: 40%;
+    border-radius: 1px;
+    background: rgba(255, 255, 255, 0.95);
+    box-shadow: 0 -3px 0 -0.5px rgba(255, 255, 255, 0.8), 0 3px 0 -0.5px rgba(255, 255, 255, 0.8);
+}
+.dark .trim-inner-handle::before {
+    background: rgba(20, 20, 25, 0.95);
+    box-shadow: 0 -3px 0 -0.5px rgba(20, 20, 25, 0.8), 0 3px 0 -0.5px rgba(20, 20, 25, 0.8);
+}
+
+/* Rubber-band volume automation on audio clips: transparent click-to-add band +
+   draggable keyframe diamonds, matching the green polyline on the waveform. */
+.auto-band {
+    position: absolute;
+    top: 18px;
+    bottom: 3px;
+    left: 0;
+    right: 0;
+    z-index: 28;
+    cursor: crosshair;
+    background: transparent;
+    pointer-events: auto;
+    touch-action: none;
+}
+.auto-band:hover { background: rgba(74, 222, 128, 0.06); }
+.auto-band::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: 1px;
+    background: rgba(74, 222, 128, 0.25);
+    pointer-events: none;
+}
+.auto-point {
+    position: absolute;
+    width: 9px;
+    height: 9px;
+    transform: translate(-50%, -50%) rotate(45deg);
+    z-index: 34;
+    cursor: grab;
+    background: #22c55e;
+    border: 1.5px solid #ffffff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+    pointer-events: auto;
+    touch-action: none;
+    transition: transform 0.12s;
+}
+.dark .auto-point { border-color: #14532d; }
+.auto-point:hover {
+    transform: translate(-50%, -50%) rotate(45deg) scale(1.35);
+    background: #4ade80;
+}
+.auto-point:active { cursor: grabbing; }
+
 /* Per-track height resize handle (bottom edge of track header / lane) */
 .track-resize-handle {
     position: absolute;

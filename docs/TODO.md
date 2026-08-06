@@ -70,6 +70,8 @@ analysis of editor and comparison with remotion
 - Make the standard MediaRecorder export also render embedded SFX by scheduling clip.sfx buffer sources in the live audio graph during its export loop.
 - Add the same fade-in/fade-out sliders to regular timeline audio clips (music, voiceovers, and extracted SFX) so the envelope works everywhere, not just embedded element SFX, and wire it into playback and the export offline render.
 - Add trim, fade-in/fade-out, and fade-curve controls to regular timeline audio clips (music, voiceovers, and extracted SFX) so the envelope system works everywhere, wired into playback and the export offline render.
+✅ Draw the fade-in/fade-out curve and trim shading on the audio waveform peaks on the timeline so the envelope is visible at a glance.
+✅ Add keyframe-able volume automation envelopes to timeline audio clips (rubber-band style), layered on top of the existing trim/fade envelope system.
 
 
 
