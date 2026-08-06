@@ -10164,6 +10164,14 @@
 
         window.unlinkClip = function(clipId) {
             const clip = State.clips.find(c => c.id === clipId);
+            // If this clip was an SFX extraction, its source element's embedded
+            // SFX becomes audible again (playback and export both honor
+            // sfxExtractedClipId, so the dangling id would otherwise mute it).
+            State.clips.forEach(c => {
+                if (c.sfxExtractedClipId === clipId) {
+                    delete c.sfxExtractedClipId;
+                }
+            });
             if (!clip || !clip.linkedClipIds) return;
             
             clip.linkedClipIds.forEach(otherId => {
@@ -19056,10 +19064,20 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             const prevSpeakerGain = State.speakerNode ? State.speakerNode.gain.value : 1;
             
             try {
-                // Find audio clips that overlap with the export range and have decoded buffers
+                // Element clips (text/shape/image/math) can carry an embedded SFX buffer.
+                // When it hasn't been extracted to the timeline, the SFX must be mixed
+                // into the exported audio during the clip's window — extracted SFX are
+                // regular audio clips with a `buffer`, so they're already picked up by
+                // the plain `c.buffer` branch below and stay silent here (no double audio).
+                const getEmbeddedSfxBuffer = (c) => (
+                    (c.sfx && c.sfx.buffer && !c.sfxExtractedClipId && c.type !== 'audio') ? c.sfx.buffer : null
+                );
+                
+                // Find audio-bearing clips (timeline audio + embedded SFX) that overlap
+                // the export range and have decoded buffers.
                 const audioClips = State.clips.filter(c => {
                     if (c.hidden) return false;
-                    if (!c.buffer) return false;
+                    if (!c.buffer && !getEmbeddedSfxBuffer(c)) return false;
                     const track = State.tracks.find(t => t.id === c.trackId);
                     if (track && track.hidden) return false;
                     const clipStart = Math.max(c.start, startTime);
@@ -19080,14 +19098,25 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         const track = State.tracks.find(t => t.id === c.trackId);
                         const clipStart = Math.max(c.start, startTime);
                         const clipEnd = Math.min(c.start + c.duration, endTime);
-                        const sourceOffset = c.sourceOffset + (clipStart - c.start);
                         const duration = clipEnd - clipStart;
                         
+                        const sfxBuffer = getEmbeddedSfxBuffer(c);
+                        const isSfx = !c.buffer && sfxBuffer;
+                        
                         const source = offlineCtx.createBufferSource();
-                        source.buffer = c.buffer;
+                        source.buffer = sfxBuffer || c.buffer;
+                        
+                        // Embedded SFX always starts from the clip's own start (mirrors
+                        // playback: the sound begins when the playhead enters the clip),
+                        // while timeline audio clips resume from their source offset.
+                        const sourceOffset = isSfx
+                            ? Math.max(0, clipStart - c.start)
+                            : c.sourceOffset + (clipStart - c.start);
                         
                         const gainNode = offlineCtx.createGain();
-                        const vol = (track && track.volume !== undefined) ? track.volume : (c.volume || 1);
+                        const vol = isSfx
+                            ? (c.sfx.volume !== undefined ? c.sfx.volume : 1)
+                            : ((track && track.volume !== undefined) ? track.volume : (c.volume || 1));
                         gainNode.gain.value = vol;
                         
                         source.connect(gainNode);
