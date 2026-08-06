@@ -8412,7 +8412,7 @@
                                 <label class="text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Volume Automation</label>
                                 <span class="text-[10px] font-mono text-surface-500 dark:text-surface-300">${autoCount} keyframe${autoCount === 1 ? '' : 's'}</span>
                             </div>
-                            <p class="text-[10px] text-surface-500 dark:text-surface-300 leading-relaxed mb-1.5">Click the rubber band on the timeline clip to add keyframes, drag diamonds to shape volume over time, double-click a diamond to delete. Applied live and to exports. Note: with automation on, clicking the clip body adds keyframes — drag the clip header to move it.</p>
+                            <p class="text-[10px] text-surface-500 dark:text-surface-300 leading-relaxed mb-1.5">Click the rubber band on the timeline clip to add keyframes, drag diamonds to shape volume over time. Double-click a diamond to delete it, or double-click the line between two keyframes to cycle that segment's curve (linear → ease-in → ease-out → s-curve). Applied live and to exports. Note: with automation on, clicking the clip body adds keyframes — drag the clip header to move it.</p>
                             ${autoCount > 0
                                 ? `<button onclick="clearClipAutomation('${clip.id}'); event.stopPropagation();" class="text-[10px] font-bold text-brand-600 dark:text-brand-400 hover:underline">Clear automation</button>`
                                 : `<button onclick="enableClipAutomation('${clip.id}'); event.stopPropagation();" class="text-[10px] font-bold text-brand-600 dark:text-brand-400 hover:underline">Enable</button>`}
@@ -9172,6 +9172,7 @@
                     const sfxTrimEnd = sfx ? (sfx.trimEnd !== undefined ? sfx.trimEnd : sfxDur) : 0;
                     const sfxFadeCurve = (sfx && sfx.fadeCurve === 'ease') ? 'ease' : 'linear';
                     const sfxTrimmed = sfx && (sfxTrimStart > 0.01 || sfxTrimEnd < sfxDur - 0.01);
+                    const sfxAutoCount = Array.isArray(clip.volumeAutomation) ? clip.volumeAutomation.length : 0;
                     const sfxExtracted = !!(sfx && clip.sfxExtractedClipId && State.clips.find(c => c.id === clip.sfxExtractedClipId));
                     const sfxStatusHtml = sfx ? (sfxExtracted
                         ? '<span class="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-1.5 py-0.5 rounded-sm border border-emerald-200 dark:border-emerald-700 inline-flex items-center gap-1"><i data-lucide="link" class="w-2.5 h-2.5"></i> Extracted · linked on timeline</span>'
@@ -9253,9 +9254,19 @@
                                             <button onclick="setClipSfxFadeCurve('${clip.id}', 'ease'); event.stopPropagation();" class="flex-1 py-1 text-[10px] font-bold rounded-md transition-all duration-200 ${sfxFadeCurve === 'ease' ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm' : 'text-surface-500 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white'}">Ease</button>
                                         </div>
                                     </div>
+                                    <div>
+                                        <div class="flex justify-between items-center mb-1.5">
+                                            <label class="text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Volume Automation</label>
+                                            <span class="text-[10px] font-mono text-surface-500 dark:text-surface-300">${sfxAutoCount} keyframe${sfxAutoCount === 1 ? '' : 's'}</span>
+                                        </div>
+                                        <p class="text-[10px] text-surface-500 dark:text-surface-300 leading-relaxed mb-1.5">Rubber-band volume over this element's window — click the band on the clip to add keyframes, drag diamonds to shape, double-click a diamond to delete or the line to cycle that segment's curve (linear → ease-in → ease-out → s-curve). Applied live and to exports. Note: with automation on, clicking the clip body adds keyframes — drag the clip header to move it.</p>
+                                        ${sfxAutoCount > 0
+                                            ? `<button onclick="clearClipAutomation('${clip.id}'); event.stopPropagation();" class="text-[10px] font-bold text-brand-600 dark:text-brand-400 hover:underline">Clear automation</button>`
+                                            : `<button onclick="enableClipAutomation('${clip.id}'); event.stopPropagation();" class="text-[10px] font-bold text-brand-600 dark:text-brand-400 hover:underline">Enable</button>`}
+                                    </div>
                                     ` : ''}
                                     ${sfxExtracted ? `
-                                        <div class="text-[10px] text-surface-500 dark:text-surface-300 leading-relaxed">Audio plays from the extracted clip on the timeline — trim, fades and curve were carried over. Adjusting volume here syncs to it.</div>
+                                        <div class="text-[10px] text-surface-500 dark:text-surface-300 leading-relaxed">Audio plays from the extracted clip on the timeline — trim, fades, curve and volume automation were carried over. Adjusting volume here syncs to it.</div>
                                     ` : `
                                         <button onclick="extractSfxToTimeline('${clip.id}'); event.stopPropagation();" class="bg-brand-500 hover:bg-brand-600 text-white px-3 py-2 rounded text-xs font-bold transition-colors flex items-center justify-center gap-2 shadow-sm">
                                             <i data-lucide="scissors" class="w-3.5 h-3.5"></i> Extract to Timeline
@@ -10403,6 +10414,23 @@
                 `;
             }
 
+            if (clip.type === 'audio') {
+                itemsHtml += `
+                    <div class="border-t border-surface-200 dark:border-surface-700 my-1"></div>
+                    <button onclick="copyClipAutomation('${clip.id}'); hideClipContextMenu();" class="w-full text-left px-3 py-2 hover:bg-surface-100 dark:hover:bg-surface-700 flex items-center gap-2">
+                        <i data-lucide="clipboard-copy" class="w-3.5 h-3.5 text-brand-500"></i> Copy Envelope (Trim, Fades, Volume)
+                    </button>
+                    ${automationClipboard ? `
+                    <button onclick="pasteClipAutomation('${clip.id}', false); hideClipContextMenu();" class="w-full text-left px-3 py-2 hover:bg-surface-100 dark:hover:bg-surface-700 flex items-center gap-2">
+                        <i data-lucide="clipboard-paste" class="w-3.5 h-3.5 text-brand-500"></i> Paste Envelope
+                    </button>
+                    <button onclick="pasteClipAutomation('${clip.id}', true); hideClipContextMenu();" class="w-full text-left px-3 py-2 hover:bg-surface-100 dark:hover:bg-surface-700 flex items-center gap-2">
+                        <i data-lucide="scaling" class="w-3.5 h-3.5 text-brand-500"></i> Paste Envelope (Match Duration)
+                    </button>
+                    ` : ''}
+                `;
+            }
+
             itemsHtml += `
                 <div class="border-t border-surface-200 dark:border-surface-700 my-1"></div>
                 <button onclick="duplicateClipAction('${clip.id}'); hideClipContextMenu();" class="w-full text-left px-3 py-2 hover:bg-surface-100 dark:hover:bg-surface-700 flex items-center gap-2">
@@ -11225,6 +11253,29 @@
             return { dur, trimStart, trimEnd, trimmedDur: Math.max(0, trimEnd - trimStart) };
         }
 
+        // Compute real waveform peaks from an element clip's embedded SFX buffer so the
+        // clip can render the waveform canvas (rubber-band surface) like timeline audio.
+        function refreshSfxPeaks(clip) {
+            if (!clip || clip.type === 'audio' || !clip.sfx || !clip.sfx.buffer) return;
+            const peaksPerSecond = 100;
+            const step = Math.floor(clip.sfx.buffer.sampleRate / peaksPerSecond);
+            const data = clip.sfx.buffer.getChannelData(0);
+            const peaks = [];
+            for (let i = 0; i < data.length; i += step) {
+                let max = 0, min = 0;
+                for (let j = 0; j < step && i + j < data.length; j++) {
+                    const val = data[i + j];
+                    if (val > max) max = val;
+                    if (val < min) min = val;
+                }
+                peaks.push({ max, min });
+            }
+            clip.peaks = peaks;
+            clip.peaksPerSecond = peaksPerSecond;
+            // Element clips have no source offset — the peaks represent the whole sound.
+            clip.sourceOffset = 0;
+        }
+
         // Smoothstep (ease in-out) curve used for setValueCurveAtTime fades
         function smoothstepCurve(from, to, points) {
             const curve = new Float32Array(points);
@@ -11252,6 +11303,30 @@
 
         // Linear interpolation of the automation value at clip-local time t. Times are
         // clamped to the first/last keyframe range (values hold outside it).
+        // Per-segment curve shapes for rubber-band automation. Each keyframe may carry
+        // `curve` describing the segment from that keyframe to the next; undefined
+        // defaults to 'linear'. Cycled by double-clicking the band (see cycleAutoSegment).
+        const AUTO_CURVES = ['linear', 'ease-in', 'ease-out', 's-curve'];
+        function automationEase(u, curve) {
+            if (curve === 'ease-in') return u * u;
+            if (curve === 'ease-out') return 1 - (1 - u) * (1 - u);
+            if (curve === 's-curve') return u * u * (3 - 2 * u);
+            return u; // linear
+        }
+
+        // Sample the eased curve between v0 and v1 over the normalized range [uA, uB]
+        // (uA = 0 at the segment start, 1 at the end) into n+1 values for setValueCurveAtTime.
+        function automationCurveSamplesRange(v0, v1, curve, n, uA, uB) {
+            const out = new Float32Array(n + 1);
+            for (let i = 0; i <= n; i++) {
+                const u = uA + (uB - uA) * (i / n);
+                out[i] = Math.max(0, Math.min(1, v0 + (v1 - v0) * automationEase(u, curve)));
+            }
+            return out;
+        }
+
+        // Interpolated automation value at clip-local time t. Times are clamped to the
+        // first/last keyframe range (values hold outside it).
         function volumeAutomationValueAt(pts, t) {
             if (!pts || pts.length === 0) return 1;
             const sorted = pts.slice().sort((a, b) => a.t - b.t);
@@ -11261,56 +11336,109 @@
             for (let i = 0; i < sorted.length - 1; i++) {
                 if (t >= sorted[i].t && t <= sorted[i + 1].t) {
                     const span = sorted[i + 1].t - sorted[i].t;
-                    const f = span > 0 ? (t - sorted[i].t) / span : 0;
-                    return Math.max(0, Math.min(1, sorted[i].v + (sorted[i + 1].v - sorted[i].v) * f));
+                    const u = span > 0 ? (t - sorted[i].t) / span : 0;
+                    const e = automationEase(u, sorted[i].curve || 'linear');
+                    return Math.max(0, Math.min(1, sorted[i].v + (sorted[i + 1].v - sorted[i].v) * e));
                 }
             }
             return last.v;
         }
 
-        // Schedule ramps on a LIVE gain param from the current clip-local position
-        // (the playhead) to the end of the clip. Keyframe times are clip-relative.
+        // Schedule eased ramps on a LIVE gain param from the current clip-local position
+        // (the playhead) to the end of the clip. Each keyframe-to-keyframe segment is
+        // baked into a setValueCurveAtTime sample array honoring its curve shape.
         function scheduleVolumeAutomationLive(gainParam, pts, clipLocalPos, now) {
             if (!pts || pts.length === 0) return;
             const sorted = pts.slice().sort((a, b) => a.t - b.t);
             try {
                 gainParam.cancelScheduledValues(now);
-                gainParam.setValueAtTime(volumeAutomationValueAt(sorted, clipLocalPos), now);
-                for (let i = 0; i < sorted.length; i++) {
-                    const p = sorted[i];
-                    if (p.t > clipLocalPos) {
-                        gainParam.linearRampToValueAtTime(Math.max(0, Math.min(1, p.v)), now + (p.t - clipLocalPos));
-                    }
+                const vNow = Math.max(0, Math.min(1, volumeAutomationValueAt(sorted, clipLocalPos)));
+                gainParam.setValueAtTime(vNow, now);
+                // Find the keyframe that starts the segment the playhead sits in.
+                let startIdx = 0;
+                while (startIdx < sorted.length - 1 && sorted[startIdx + 1].t <= clipLocalPos) startIdx++;
+                let segStart = { t: sorted[startIdx].t, v: sorted[startIdx].v, curve: (sorted[startIdx] || {}).curve || 'linear' };
+                let first = true;
+                for (let i = startIdx + 1; i < sorted.length; i++) {
+                    const kf = sorted[i];
+                    const fullSpan = kf.t - segStart.t;
+                    if (fullSpan <= 0.0005) { segStart = kf; first = false; continue; }
+                    // The first scheduled segment may be the partial tail of the segment
+                    // the playhead sits in — sample the true curve over [uA, 1] so the
+                    // shape matches the drawn polyline, and schedule only the remaining
+                    // span from the playhead.
+                    const uA = first ? Math.max(0, Math.min(1, (clipLocalPos - segStart.t) / fullSpan)) : 0;
+                    const span = first ? kf.t - clipLocalPos : fullSpan;
+                    if (span <= 0.0005) { segStart = kf; first = false; continue; }
+                    const samples = automationCurveSamplesRange(segStart.v, kf.v, segStart.curve, 32, uA, 1);
+                    gainParam.setValueCurveAtTime(samples, first ? now : now + (segStart.t - clipLocalPos), span);
+                    segStart = kf;
+                    first = false;
                 }
             } catch (e) {}
         }
 
-        // Schedule ramps on an OFFLINE gain param covering the rendered local range
-        // [localStart, localEnd], with t0 the offline time where localStart lands.
+        // Schedule eased ramps on an OFFLINE gain param covering the rendered local
+        // range [localStart, localEnd], with t0 the offline time where localStart lands.
         function scheduleVolumeAutomationOffline(gainParam, pts, localStart, localEnd, t0) {
             if (!pts || pts.length === 0) return;
             const sorted = pts.slice().sort((a, b) => a.t - b.t);
             try {
                 gainParam.setValueAtTime(volumeAutomationValueAt(sorted, localStart), t0);
-                for (let i = 0; i < sorted.length; i++) {
-                    const p = sorted[i];
-                    if (p.t > localStart && p.t < localEnd) {
-                        gainParam.linearRampToValueAtTime(Math.max(0, Math.min(1, p.v)), t0 + (p.t - localStart));
+                let startIdx = 0;
+                while (startIdx < sorted.length - 1 && sorted[startIdx + 1].t <= localStart) startIdx++;
+                let segStart = { t: sorted[startIdx].t, v: sorted[startIdx].v, curve: (sorted[startIdx] || {}).curve || 'linear' };
+                let first = true;
+                for (let i = startIdx + 1; i < sorted.length; i++) {
+                    const kf = sorted[i];
+                    if (kf.t >= localEnd) break;
+                    const fullSpan = kf.t - segStart.t;
+                    if (fullSpan <= 0.0005) { segStart = kf; first = false; continue; }
+                    // First scheduled segment is the partial tail of the segment the
+                    // window starts in — sample the true curve over [uA, 1] and schedule
+                    // only the remaining span from localStart (at t0).
+                    const uA = first ? Math.max(0, Math.min(1, (localStart - segStart.t) / fullSpan)) : 0;
+                    const span = first ? kf.t - localStart : fullSpan;
+                    if (span <= 0.0005) { segStart = kf; first = false; continue; }
+                    const samples = automationCurveSamplesRange(segStart.v, kf.v, segStart.curve, 32, uA, 1);
+                    gainParam.setValueCurveAtTime(samples, t0 + Math.max(0, segStart.t - localStart), span);
+                    segStart = kf;
+                    first = false;
+                }
+                // Tail from the last scheduled keyframe to the end of the rendered range.
+                // When localEnd lands mid-segment, sample the true curve over [0, uB] so
+                // the tail shape matches the drawn polyline; hold flat after the last
+                // keyframe (values hold outside the keyframe range).
+                const tailStart = Math.max(localStart, segStart.t);
+                if (localEnd - tailStart > 0.0005) {
+                    let nextKf = null;
+                    for (let i = startIdx + 1; i < sorted.length; i++) {
+                        if (sorted[i].t > segStart.t) { nextKf = sorted[i]; break; }
+                    }
+                    if (nextKf && nextKf.t - segStart.t > 0.0005) {
+                        const fullTailSpan = nextKf.t - segStart.t;
+                        const uA = Math.max(0, Math.min(1, (tailStart - segStart.t) / fullTailSpan));
+                        const uB = Math.min(1, Math.max(uA, (localEnd - segStart.t) / fullTailSpan));
+                        const tailSamples = automationCurveSamplesRange(segStart.v, nextKf.v, segStart.curve || 'linear', 16, uA, uB);
+                        gainParam.setValueCurveAtTime(tailSamples, t0 + (tailStart - localStart), localEnd - tailStart);
+                    } else {
+                        gainParam.setValueAtTime(segStart.v, t0 + (tailStart - localStart));
                     }
                 }
-                gainParam.linearRampToValueAtTime(volumeAutomationValueAt(sorted, localEnd), t0 + (localEnd - localStart));
             } catch (e) {}
         }
 
         window.enableClipAutomation = function(clipId) {
             const clip = State.clips.find(c => c.id === clipId);
-            if (!clip || clip.type !== 'audio') return;
+            if (!clip || (clip.type !== 'audio' && !clip.sfx)) return;
             if (!hasVolumeAutomation(clip)) {
                 clip.volumeAutomation = [
                     { t: 0, v: 1 },
                     { t: Math.max(0.05, clip.duration || 1), v: 1 }
                 ];
             }
+            // Lazy peaks for element clips whose SFX predates the peaks feature.
+            if (clip.type !== 'audio') refreshSfxPeaks(clip);
             restartClipAudioNode(clip);
             updateSidebarPanel();
             renderClips();
@@ -11319,7 +11447,7 @@
 
         window.clearClipAutomation = function(clipId) {
             const clip = State.clips.find(c => c.id === clipId);
-            if (!clip || clip.type !== 'audio') return;
+            if (!clip || (clip.type !== 'audio' && !clip.sfx)) return;
             delete clip.volumeAutomation;
             restartClipAudioNode(clip);
             updateSidebarPanel();
@@ -11336,6 +11464,144 @@
             updateSidebarPanel();
             renderClips();
             drawAllWaveforms();
+        };
+
+        // ── Envelope clipboard: copy trim/fade/keyframe envelope from one audio clip
+        // and paste onto another. Stores absolute trim window, fade values + curve, and
+        // clip-relative volume keyframes alongside the source clip duration so paste
+        // can offer 'match duration' rescaling.
+        let automationClipboard = null;
+
+        // Keyframes added by clicking the rubber band, keyed by clipId, with a
+        // timestamp. Double-clicking the band first adds two keyframes (one per click)
+        // — cycleAutoSegment uses this log to undo those accidental adds, then cycles
+        // the curve of the segment under the cursor. Stored by object identity so
+        // indices can't go stale.
+        const autoBandAdds = {};
+
+        window.cycleAutoSegment = function(clipId, e) {
+            const clip = State.clips.find(c => c.id === clipId);
+            if (!clip || !Array.isArray(clip.volumeAutomation)) return;
+            const clipEl = document.querySelector(`.clip[data-clip-id="${clipId}"]`);
+            if (!clipEl) return;
+            const rect = clipEl.getBoundingClientRect();
+            const t = Math.max(0, Math.min(clip.duration, (e.clientX - rect.left) / State.pixelsPerSecond));
+
+            // Undo the two keyframes this double-click just added (both clicks landed
+            // within the double-click window at ~the same position). The position check
+            // keeps a genuinely-added keyframe (single click < 500ms earlier, elsewhere
+            // on the band) from being deleted along with the accidental dblclick adds.
+            const now = Date.now();
+            const recent = (autoBandAdds[clipId] || []).filter(a => now - a.time < 500 && Math.abs(a.kf.t - t) < 0.25);
+            if (recent.length > 0) {
+                const recentSet = new Set(recent.map(a => a.kf));
+                clip.volumeAutomation = clip.volumeAutomation.filter(k => !recentSet.has(k));
+                delete autoBandAdds[clipId];
+            }
+
+            const sorted = clip.volumeAutomation.slice().sort((a, b) => a.t - b.t);
+            if (sorted.length < 2) {
+                if (typeof showToast === 'function') showToast('Add a second keyframe to shape a segment');
+                renderClips();
+                drawAllWaveforms();
+                return;
+            }
+            // Find the segment containing t and cycle its curve (curve lives on the
+            // segment's START keyframe).
+            for (let i = 0; i < sorted.length - 1; i++) {
+                if (t >= sorted[i].t - 0.001 && t <= sorted[i + 1].t + 0.001) {
+                    const cur = sorted[i].curve || 'linear';
+                    const next = AUTO_CURVES[(AUTO_CURVES.indexOf(cur) + 1) % AUTO_CURVES.length];
+                    sorted[i].curve = next;
+                    restartClipAudioNode(clip);
+                    updateSidebarPanel();
+                    renderClips();
+                    drawAllWaveforms();
+                    if (typeof showToast === 'function') showToast(`Segment curve: ${next}`);
+                    return;
+                }
+            }
+            renderClips();
+            drawAllWaveforms();
+        };
+
+        window.copyClipAutomation = function(clipId) {
+            const clip = State.clips.find(c => c.id === clipId);
+            if (!clip || clip.type !== 'audio') return;
+            automationClipboard = {
+                hadTrim: clip.trimStart !== undefined || clip.trimEnd !== undefined,
+                trimStart: clip.trimStart !== undefined ? clip.trimStart : (clip.sourceOffset || 0),
+                trimEnd: clip.trimEnd !== undefined ? clip.trimEnd : (clip.sourceOffset || 0) + (clip.duration || 0),
+                fadeIn: clip.fadeIn || 0,
+                fadeOut: clip.fadeOut || 0,
+                fadeCurve: clip.fadeCurve === 'ease' ? 'ease' : 'linear',
+                volumeAutomation: Array.isArray(clip.volumeAutomation) ? clip.volumeAutomation.map(p => ({ t: p.t, v: p.v, curve: p.curve })) : [],
+                sourceDuration: clip.duration || 0
+            };
+            if (typeof showToast === 'function') showToast('Envelope copied — right-click another audio clip to paste');
+        };
+
+        window.pasteClipAutomation = function(clipId, matchDuration) {
+            const clip = State.clips.find(c => c.id === clipId);
+            if (!clip || clip.type !== 'audio') return;
+            if (!automationClipboard) {
+                if (typeof showToast === 'function') showToast('No envelope on the clipboard — copy one first');
+                return;
+            }
+            const clipBuf = clip.buffer ? clip.buffer.duration : (clip.maxDuration || clip.duration || 0);
+            const ratio = matchDuration && automationClipboard.sourceDuration > 0 && clip.duration > 0
+                ? clip.duration / automationClipboard.sourceDuration
+                : 1;
+
+            // Trim window: only applied when the SOURCE actually had explicit trims —
+            // pasting a clip with no trims pastes "no trims" (target keeps its natural
+            // [sourceOffset, sourceOffset + duration] window), instead of materializing
+            // a computed window that would shift its audible region.
+            if (automationClipboard.hadTrim) {
+                const trimStartAbs = automationClipboard.trimStart || 0;
+                let trimStart = Math.min(clipBuf, trimStartAbs);
+                let trimEnd = Math.min(clipBuf, automationClipboard.trimEnd !== undefined ? automationClipboard.trimEnd : trimStartAbs + automationClipboard.sourceDuration);
+                if (matchDuration && trimEnd > trimStart) {
+                    const newLen = Math.min(clipBuf, trimStart + (trimEnd - trimStart) * ratio);
+                    trimEnd = Math.max(trimStart + 0.05, newLen);
+                }
+                const MIN_LEN = Math.min(0.05, clipBuf);
+                if (trimEnd - trimStart < MIN_LEN) trimEnd = Math.min(clipBuf, trimStart + MIN_LEN);
+                clip.trimStart = Math.round(Math.max(0, Math.min(clipBuf, trimStart)) * 1000) / 1000;
+                clip.trimEnd = Math.round(Math.max(0, Math.min(clipBuf, trimEnd)) * 1000) / 1000;
+            } else {
+                delete clip.trimStart;
+                delete clip.trimEnd;
+            }
+
+            // Effective window length for capping fades: explicit trims, else the
+            // clip's natural [sourceOffset, sourceOffset + duration] range.
+            const fWinStart = clip.trimStart !== undefined ? clip.trimStart : (clip.sourceOffset || 0);
+            const fWinEnd = clip.trimEnd !== undefined ? clip.trimEnd : Math.min(clipBuf, fWinStart + (clip.duration || 0));
+            const winLen = Math.max(0.05, fWinEnd - fWinStart);
+            const scaleFade = (v) => matchDuration ? v * ratio : v;
+            const fi = Math.max(0, Math.min(scaleFade(automationClipboard.fadeIn || 0), winLen));
+            const fo = Math.max(0, Math.min(scaleFade(automationClipboard.fadeOut || 0), Math.max(0, winLen - fi)));
+            clip.fadeIn = Math.round(fi * 1000) / 1000;
+            clip.fadeOut = Math.round(fo * 1000) / 1000;
+            clip.fadeCurve = automationClipboard.fadeCurve;
+
+            // Volume keyframes: clip-relative times, optionally rescaled to target length
+            if (automationClipboard.volumeAutomation.length > 0) {
+                clip.volumeAutomation = automationClipboard.volumeAutomation.map(p => ({
+                    t: Math.round(Math.max(0, Math.min(clip.duration, (matchDuration ? p.t * ratio : p.t))) * 1000) / 1000,
+                    v: Math.max(0, Math.min(1, p.v)),
+                    curve: p.curve || 'linear'
+                }));
+            } else {
+                delete clip.volumeAutomation;
+            }
+
+            restartClipAudioNode(clip);
+            updateSidebarPanel();
+            renderClips();
+            drawAllWaveforms();
+            if (typeof showToast === 'function') showToast(matchDuration ? 'Envelope pasted (matched to clip duration)' : 'Envelope pasted');
         };
 
         // Map an automation value (0..1) to a CSS Y offset within the clip element for
@@ -11439,6 +11705,9 @@
                     fadeCurve: 'linear'
                 };
                 delete clip.sfxExtractedClipId;
+                // Real peaks from the sound so the element clip renders the waveform
+                // surface (rubber-band volume automation) like timeline audio clips.
+                refreshSfxPeaks(clip);
                 updateSidebarPanel();
                 renderClips();
             } catch (err) {
@@ -11544,6 +11813,11 @@
                 clip.sourceNode = null;
                 clip.isPlaying = false;
             }
+            if (clip.sfxIsPlaying && clip.sfxNode) {
+                try { clip.sfxNode.stop(); clip.sfxNode.disconnect(); } catch (e) {}
+                clip.sfxNode = null;
+                clip.sfxIsPlaying = false;
+            }
         }
 
         window.setClipTrim = function(clipId, which, value, restart) {
@@ -11635,6 +11909,9 @@
             }
             delete clip.sfx;
             delete clip.sfxExtractedClipId;
+            delete clip.peaks;
+            delete clip.peaksPerSecond;
+            delete clip.volumeAutomation;
             updateSidebarPanel();
             renderClips();
             syncMediaElements();
@@ -11697,6 +11974,8 @@
                 fadeIn: sfx.fadeIn !== undefined ? sfx.fadeIn : 0,
                 fadeOut: sfx.fadeOut !== undefined ? sfx.fadeOut : 0,
                 fadeCurve: sfx.fadeCurve || 'linear',
+                // Rubber-band volume automation follows the sound onto the timeline.
+                volumeAutomation: Array.isArray(clip.volumeAutomation) ? clip.volumeAutomation.map(p => ({ t: p.t, v: p.v, curve: p.curve })) : undefined,
                 effects: { volume: sfx.volume !== undefined ? sfx.volume : 1, echo: 0.5, echoEnable: false, cartoon: 0.5, cartoonEnable: false, cinematic: 0.5, cinematicEnable: false, robot: 0.5, robotEnable: false, noiseRed: 0.5, noiseRedEnable: false },
                 linkedClipIds: [clip.id]
             };
@@ -15489,7 +15768,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             copy.sourceNode = null;
             copy.playPromise = null;
             if (Array.isArray(originalClip.volumeAutomation)) {
-                copy.volumeAutomation = originalClip.volumeAutomation.map(p => ({ t: p.t, v: p.v }));
+                copy.volumeAutomation = originalClip.volumeAutomation.map(p => ({ t: p.t, v: p.v, curve: p.curve }));
             }
 
             if (originalClip.videoEl) {
@@ -16564,6 +16843,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 else if (clip.type === 'text') icon = isSubtitleClip ? 'subtitles' : ((clip.effects && clip.effects.renderAsMath) ? 'variable' : 'type');
 
                 const hasWaveform = clip.peaks && clip.peaks.length > 0;
+                const hasSfxBand = !!clip.sfx && hasVolumeAutomation(clip);
                 
                 const isAudioClip = clip.type === 'audio';
                 const isTextClip = clip.type === 'text';
@@ -16733,10 +17013,10 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 // keyframe) + draggable diamonds over the waveform, matching the canvas
                 // polyline. Only active once the clip has automation (card Enable button).
                 let autoHandlesHtml = '';
-                if (isAudioClip && hasVolumeAutomation(clip) && clip.duration * State.pixelsPerSecond > 20) {
+                if ((isAudioClip || hasSfxBand) && hasVolumeAutomation(clip) && clip.duration * State.pixelsPerSecond > 20) {
                     const trH = track.height;
                     autoHandlesHtml = `
-                        <div class="auto-band" data-clip-id="${clip.id}" title="Click to add a volume keyframe — drag diamonds to shape volume, double-click to delete"></div>
+                        <div class="auto-band" data-clip-id="${clip.id}" ondblclick="cycleAutoSegment('${clip.id}', event); event.stopPropagation();" title="Click to add a volume keyframe — double-click between keyframes to cycle the segment curve (linear → ease-in → ease-out → s-curve)"></div>
                         ${clip.volumeAutomation.map((p, i) => {
                             const xPx = Math.max(4, Math.min(p.t * State.pixelsPerSecond, Math.max(4, clip.duration * State.pixelsPerSecond - 4)));
                             const yPx = autoBandCssY(p.v, trH);
@@ -16753,7 +17033,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     ${autoHandlesHtml}
                     ${textPreviewHtml}
                     ${shapePreviewHtml}
-                    ${hasWaveform ? `<canvas class="waveform-canvas absolute top-0 bottom-0 z-10 opacity-90"></canvas>` : ''}
+                    ${(isAudioClip ? hasWaveform : (hasSfxBand && hasWaveform)) ? `<canvas class="waveform-canvas absolute top-0 bottom-0 z-10 ${isAudioClip ? 'opacity-90' : 'opacity-40'}"></canvas>` : ''}
                     ${keyframeDiamondsHtml}
                 `;
 
@@ -16771,9 +17051,9 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     });
                 }
 
-                if(hasWaveform) {
+                if (isAudioClip ? hasWaveform : (hasSfxBand && hasWaveform)) {
                     const cvs = el.querySelector('.waveform-canvas');
-                    drawCachedWaveform(cvs, clip, palette);
+                    if (cvs) drawCachedWaveform(cvs, clip, palette);
                 }
             });
             lucide.createIcons();
@@ -16941,7 +17221,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
         }
 
         function drawCachedWaveform(canvas, clip, palette) {
-            if (!clip.peaks || clip.peaks.length === 0) return;
+            if (!canvas || !clip.peaks || clip.peaks.length === 0) return;
 
             const scrollLeft = Math.floor(timelineScrollArea.scrollLeft);
             const viewportWidth = Math.ceil(timelineScrollArea.clientWidth);
@@ -17018,7 +17298,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 // ── Envelope overlay for audio clips: trim shading + fade wedges ──
                 // Shaded regions mark timeline audio that is cut away (outside the
                 // effective window); the wedges visualize fade-in / fade-out curves.
-                if (clip.type === 'audio' && (clipHasEnvelope(clip) || (clip.fadeIn > 0) || (clip.fadeOut > 0) || hasVolumeAutomation(clip))) {
+                if ((clip.type === 'audio' || (clip.sfx && hasVolumeAutomation(clip))) && (clipHasEnvelope(clip) || (clip.fadeIn > 0) || (clip.fadeOut > 0) || hasVolumeAutomation(clip))) {
                     const isDark = document.documentElement.classList.contains('dark');
                     const bufDur = clip.buffer ? clip.buffer.duration : (clip.maxDuration || clip.duration || 0);
                     const winStart = clip.trimStart !== undefined ? clip.trimStart : (clip.sourceOffset || 0);
@@ -17138,6 +17418,22 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                             if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
                         }
                         ctx.stroke();
+                        // Curve-name tags at each segment midpoint (short labels so the
+                        // eased shape is readable at a glance on wide-enough segments).
+                        if (canLabel) {
+                            const curveTag = (c) => c === 'ease-in' ? 'in' : c === 'ease-out' ? 'out' : c === 's-curve' ? 'S' : 'lin';
+                            for (let i = 0; i < autoPts.length - 1; i++) {
+                                const a = autoPts[i], b = autoPts[i + 1];
+                                const segPx = (b.t - a.t) * State.pixelsPerSecond;
+                                if (segPx < 26) continue;
+                                const midSec = (a.t + b.t) / 2;
+                                const cx = toCv(midSec);
+                                if (cx < 10 || cx > internalWidth - 10) continue;
+                                const midV = volumeAutomationValueAt(autoPts, midSec);
+                                const cy = yAt(midV) - 5;
+                                drawFadeLabel(cx, Math.max(12, cy), curveTag(a.curve || 'linear'));
+                            }
+                        }
                     }
                 }
             } else {
@@ -18315,7 +18611,11 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 const t = Math.max(0, Math.min(clip.duration, (e.clientX - rect.left) / State.pixelsPerSecond));
                 const v = autoClickV(e.clientY, rect.top, trackH);
                 clip.volumeAutomation = clip.volumeAutomation || [];
-                clip.volumeAutomation.push({ t: Math.round(t * 1000) / 1000, v: Math.round(v * 1000) / 1000 });
+                const newKf = { t: Math.round(t * 1000) / 1000, v: Math.round(v * 1000) / 1000 };
+                clip.volumeAutomation.push(newKf);
+                // Log this band-add so a subsequent double-click can undo it (each click
+                // of the dblclick adds a keyframe; the cycle handler removes them).
+                (autoBandAdds[clip.id] = autoBandAdds[clip.id] || []).push({ time: Date.now(), kf: newKf });
                 State.drag.type = 'autoPoint';
                 State.drag.autoIndex = clip.volumeAutomation.length - 1;
                 State.drag.autoTrackH = trackH;
@@ -19065,7 +19365,20 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                                 clip.sfxGain = audioCtx.createGain();
                                 clip.sfxGain.connect(State.speakerNode || audioCtx.destination);
                             }
-                            clip.sfxNode.connect(clip.sfxGain);
+                            if (hasVolumeAutomation(clip)) {
+                                // Rubber-band volume automation rides its own autoGain in
+                                // series (source → sfxAutoGain → sfxGain) so the keyframe
+                                // ramps stack with the SFX fade envelope on sfxGain.
+                                if (!clip.sfxAutoGain) {
+                                    clip.sfxAutoGain = audioCtx.createGain();
+                                    clip.sfxAutoGain.gain.value = 1;
+                                    clip.sfxAutoGain.connect(clip.sfxGain);
+                                }
+                                clip.sfxNode.connect(clip.sfxAutoGain);
+                                scheduleVolumeAutomationLive(clip.sfxAutoGain.gain, clip.volumeAutomation, Math.max(0, State.currentTime - clip.start), audioCtx.currentTime);
+                            } else {
+                                clip.sfxNode.connect(clip.sfxGain);
+                            }
                             const { trimStart, trimmedDur } = sfxTrimInfo(clip);
                             const inTrimPos = Math.max(0, Math.min(State.currentTime - clip.start, Math.max(0, trimmedDur - 0.01)));
                             const sfxOffset = trimStart + inTrimPos;
