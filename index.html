@@ -5690,7 +5690,7 @@
                     
                     if (typeof value === 'boolean') {
                         clip.effects[effectName] = value;
-                    } else if (['shadowColor', 'animIn', 'animOut', 'animLoop', 'animPuzzleDir', 'extrudeColor', 'fillColor', 'fontFamily', 'extrudeDir', 'textTransform', 'fontStyle', 'textDecoration', 'blendMode', 'animEase', 'animTextSpecial', 'flashColor', 'animTextIn', 'animTextOut', 'animTextLoop', 'animTextEase', 'animTextStagger', 'shapeType', 'strokeColor', 'maskType', 'bgColor', 'bgStrokeColor', 'bgShadowColor', 'bgExtrudeColor', 'bgExtrudeDir', 'textureSrc', 'textureBlendMode', 'textureFitting'].includes(effectName)) {
+                    } else if (['shadowColor', 'animIn', 'animOut', 'animLoop', 'animPuzzleDir', 'extrudeColor', 'fillColor', 'fontFamily', 'extrudeDir', 'textTransform', 'fontStyle', 'textDecoration', 'blendMode', 'animEase', 'animTextSpecial', 'flashColor', 'animTextIn', 'animTextOut', 'animTextLoop', 'animTextEase', 'animTextStagger', 'shapeType', 'strokeColor', 'maskType', 'bgColor', 'bgStrokeColor', 'bgShadowColor', 'bgExtrudeColor', 'bgExtrudeDir', 'textureSrc', 'textureBlendMode', 'textureFitting', 'position', 'animPreset'].includes(effectName)) {
                         clip.effects[effectName] = value;
                     } else {
                         clip.effects[effectName] = parseFloat(value);
@@ -5706,7 +5706,7 @@
                         if (sub) {
                             if (!sub.effects) sub.effects = {};
                             // Map text properties from clip effects to subtitle effects
-                            const subtitleEffectMap = ['fontFamily', 'fontSize', 'fillColor', 'fontWeight', 'fontStyle', 'lineHeight', 'shadowEnable', 'shadowColor', 'shadowBlur', 'shadowX', 'shadowY', 'strokeEnable', 'strokeColor', 'strokeWidth'];
+                            const subtitleEffectMap = ['fontFamily', 'fontSize', 'fillColor', 'fontWeight', 'fontStyle', 'lineHeight', 'letterSpacing', 'shadowEnable', 'shadowColor', 'shadowBlur', 'shadowX', 'shadowY', 'strokeEnable', 'strokeColor', 'strokeWidth', 'bgEnable', 'bgColor', 'bgOpacity', 'bgPadding', 'bgRadius', 'position', 'bottomOffset', 'animIn', 'animOut', 'animPreset', 'animEase', 'animInDur', 'animOutDur'];
                             if (subtitleEffectMap.includes(effectName)) {
                                 sub.effects[effectName] = clip.effects[effectName];
                                 saveSubtitlesToStorage();
@@ -7609,6 +7609,84 @@
                 `;
             }
 
+            // Caption card — per-caption style editing for subtitle-linked clips WITHOUT
+            // converting to a text clip. Every control writes a per-caption override into
+            // sub.effects (kept linked to the captions system); 'Global' reverts one field
+            // and 'Reset to Global Style' clears all overrides.
+            let captionHTML = '';
+            if (clip.subtitleId) {
+                const capSub = State.subtitles.find(s => s.id === clip.subtitleId);
+                if (capSub) {
+                    const capCfg = State.subtitleConfig;
+                    const capEf = { ...capCfg, ...(capSub.effects || {}) };
+                    const hasOv = (k) => capSub.effects && capSub.effects[k] !== undefined;
+                    const capOverridden = capSub.effects && Object.keys(capSub.effects).length > 0;
+                    const capPos = capEf.position || 'bottom';
+                    const capOff = capEf.bottomOffset !== undefined ? capEf.bottomOffset : 60;
+                    const capBg = capEf.bgEnable ? true : false;
+                    const capBgOp = Math.round((capEf.bgOpacity !== undefined ? capEf.bgOpacity : 0.5) * 100);
+                    const capEase = capEf.animEase !== undefined ? capEf.animEase : 'easeOut';
+                    const capDur = Math.round(((capEf.animInDur !== undefined ? capEf.animInDur : (capCfg.animInDur || 0.3))) * 100) / 100;
+                    const seg = (cur, val) => cur === val ? 'bg-brand-600 text-white shadow-sm' : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-700';
+                    const capAnimSel = (key, opts) => {
+                        const cur = capEf[key] !== undefined ? capEf[key] : (capCfg[key] !== undefined ? capCfg[key] : '');
+                        const optsHtml = opts.map(([v, l]) => `<option value="${v}" ${cur === v ? 'selected' : ''}>${l}</option>`).join('');
+                        const inheritLabel = capCfg[key] !== undefined && capCfg[key] !== '' ? `Global (${capCfg[key]})` : 'Global';
+                        return `<select class="w-full text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 focus:outline-none focus:border-brand-500 font-bold" onchange="if(this.value==='__inherit__'){setSubCaptionAnim('${clip.id}','${key}','__inherit__')}else{setClipEffect('${clip.id}','${key}',this.value); drawCanvas();}">${optsHtml}<option value="__inherit__" ${!hasOv(key) ? 'selected' : ''}>${inheritLabel}</option></select>`;
+                    };
+                    captionHTML = `
+                    <details id="cardCaption" class="group bg-white dark:bg-surface-800 border border-brand-300 dark:border-brand-600 shadow-sm rounded-lg shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'} overflow-hidden flex flex-col" open>
+                        <summary class="flex items-center justify-between p-3 ${isHorizontal ? '' : 'cursor-pointer'} list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700 " onclick="${isHorizontal ? 'event.preventDefault();' : ''}">
+                            <div class="text-sm font-bold text-surface-800 dark:text-surface-200 flex items-center gap-2"><i data-lucide="subtitles" class="w-4 h-4 text-brand-500 dark:text-brand-400"></i> Caption ${capOverridden ? '<span class="text-[9px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-1.5 py-0.5 rounded-sm border border-amber-200 dark:border-amber-700">Overridden</span>' : '<span class="text-[9px] font-bold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-900/30 px-1.5 py-0.5 rounded-sm border border-brand-200 dark:border-brand-700">Linked</span>'}</div>
+                            ${isHorizontal ? '' : '<i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>'}
+                        </summary>
+                        <div class="p-3 flex flex-col gap-3 bg-surface-50 dark:bg-surface-900/50 flex-1">
+                            <p class="text-[10px] text-surface-500 dark:text-surface-300 leading-relaxed">This clip stays linked to the captions system — edits here only affect this caption. Changes to the global style still apply to every field you don't override.</p>
+                            <div>
+                                <label class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">Position</label>
+                                <div class="grid grid-cols-2 gap-1.5">
+                                    <button type="button" onclick="setClipEffect('${clip.id}', 'position', 'bottom'); updateSidebarPanel();" class="py-1.5 text-[10px] font-bold rounded-lg transition-colors ${seg(capPos, 'bottom')}">Bottom</button>
+                                    <button type="button" onclick="setClipEffect('${clip.id}', 'position', 'top'); updateSidebarPanel();" class="py-1.5 text-[10px] font-bold rounded-lg transition-colors ${seg(capPos, 'top')}">Top</button>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between items-center mb-1.5">
+                                    <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Offset</label>
+                                    <span class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${capOff}px</span>
+                                </div>
+                                <input type="range" min="10" max="300" value="${capOff}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'bottomOffset', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + 'px'; drawCanvas();">
+                            </div>
+                            <div class="flex items-center justify-between gap-2">
+                                <label class="flex items-center gap-2 cursor-pointer shrink-0"><input type="checkbox" ${capBg ? 'checked' : ''} class="rounded text-brand-500 focus:ring-brand-500" onchange="setClipEffect('${clip.id}', 'bgEnable', this.checked); updateSidebarPanel();"><span class="text-xs font-bold text-surface-700 dark:text-surface-300">Background box</span></label>
+                                <div class="flex items-center gap-2 ${capBg ? '' : 'opacity-40 pointer-events-none'}">
+                                    <span class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${capBgOp}%</span>
+                                    <input type="range" min="0" max="100" value="${capBgOp}" class="w-16 custom-slider" oninput="setClipEffect('${clip.id}', 'bgOpacity', this.value / 100); this.parentElement.querySelector('span').textContent = this.value + '%'; drawCanvas();">
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div><label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1 block">Anim In</label>${capAnimSel('animIn', [['none', 'None'], ['fadeIn', 'Fade'], ['slideUp', 'Slide up'], ['scaleIn', 'Scale']])}</div>
+                                <div><label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1 block">Anim Out</label>${capAnimSel('animOut', [['none', 'None'], ['fadeOut', 'Fade'], ['slideDown', 'Slide'], ['scaleOut', 'Scale']])}</div>
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1 block">Preset Animation</label>
+                                ${capAnimSel('animPreset', [['none', 'None'], ['fade', 'Fade Up'], ['pop', 'Pop'], ['letterPop', 'Letter Pop'], ['letterFade', 'Letter Fade'], ['typewriter', 'Typewriter'], ['wordHighlight', 'Word Glow'], ['bounce', 'Bounce'], ['rotate', 'Rotate']])}
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div><label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1 block">Easing</label>${capAnimSel('animEase', [['easeOut', 'Ease Out'], ['easeIn', 'Ease In'], ['easeInOut', 'Ease In-Out'], ['elastic', 'Elastic'], ['bounce', 'Bounce'], ['linear', 'Linear']])}</div>
+                                <div>
+                                    <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1 block">Duration</label>
+                                    <input type="number" value="${capDur}" min="0.1" max="2" step="0.1" class="w-full text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 focus:outline-none focus:border-brand-500 font-bold font-mono" onchange="const _d=parseFloat(this.value)||0.3; setClipEffect('${clip.id}', 'animInDur', _d); setClipEffect('${clip.id}', 'animOutDur', _d); drawCanvas();">
+                                </div>
+                            </div>
+                            <button onclick="resetSubtitleClipStyle('${clip.id}')" class="w-full py-1.5 px-2 text-[10px] font-bold rounded-lg bg-surface-100 dark:bg-surface-800 hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-600 dark:text-surface-300 transition-colors flex items-center justify-center gap-1.5">
+                                <i data-lucide="rotate-ccw" class="w-3 h-3"></i> Reset to Global Style
+                            </button>
+                        </div>
+                    </details>
+                `;
+                }
+            }
+
             // Texture Overlay card — available for text (incl. math + its background box) and shapes
             let textureHTML = '';
             if (isText || isShape) {
@@ -9268,8 +9346,8 @@
                                         <!-- One visualizer: the zoomed window with sleek trim handles -->
                                         <div class="relative h-[92px] rounded-lg overflow-hidden border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-900/60 select-none touch-none cursor-ew-resize" data-sfx-vis="${clip.id}" onpointerdown="sfxTrimVisDown(event, '${clip.id}')" title="Drag the handles to trim · drag inside the selection to slide it">
                                             <canvas id="sfxTrimVis-${clip.id}" class="absolute inset-0 w-full h-full block pointer-events-none"></canvas>
-                                            <div class="absolute top-0 bottom-0 w-[5px] cursor-ew-resize rounded-sm bg-brand-500 hover:bg-brand-400 dark:bg-brand-400 dark:hover:bg-brand-300 shadow-md z-10" style="left:${sfxTrimStartPct}%; transform:translateX(-50%)" data-sfx-handle="start" role="slider" tabindex="0" aria-label="Trim start" aria-valuemin="${sfxRangeStart.toFixed(2)}" aria-valuemax="${sfxRangeEnd.toFixed(2)}" aria-valuenow="${sfxTrimStart.toFixed(2)}" aria-valuetext="${sfxTrimStart.toFixed(2)} seconds" onkeydown="sfxTrimVisKey('${clip.id}', 'start', event);"></div>
-                                            <div class="absolute top-0 bottom-0 w-[5px] cursor-ew-resize rounded-sm bg-brand-500 hover:bg-brand-400 dark:bg-brand-400 dark:hover:bg-brand-300 shadow-md z-10" style="left:${sfxTrimEndPct}%; transform:translateX(-50%)" data-sfx-handle="end" role="slider" tabindex="0" aria-label="Trim end" aria-valuemin="${sfxRangeStart.toFixed(2)}" aria-valuemax="${sfxRangeEnd.toFixed(2)}" aria-valuenow="${sfxTrimEnd.toFixed(2)}" aria-valuetext="${sfxTrimEnd.toFixed(2)} seconds" onkeydown="sfxTrimVisKey('${clip.id}', 'end', event);"></div>
+                                            <div class="absolute top-0 bottom-0 w-[5px] cursor-ew-resize bg-brand-500 hover:bg-brand-400 dark:bg-brand-400 dark:hover:bg-brand-300 shadow-sm z-10 before:content-[''] before:absolute before:left-1/2 before:top-1/2 before:-translate-x-1/2 before:-translate-y-1/2 before:w-px before:h-2/5 before:bg-white/70" style="left:${sfxTrimStartPct}%; transform:translateX(-50%)" data-sfx-handle="start" role="slider" tabindex="0" aria-label="Trim start" aria-valuemin="${sfxRangeStart.toFixed(2)}" aria-valuemax="${sfxRangeEnd.toFixed(2)}" aria-valuenow="${sfxTrimStart.toFixed(2)}" aria-valuetext="${sfxTrimStart.toFixed(2)} seconds" onkeydown="sfxTrimVisKey('${clip.id}', 'start', event);"></div>
+                                            <div class="absolute top-0 bottom-0 w-[5px] cursor-ew-resize bg-brand-500 hover:bg-brand-400 dark:bg-brand-400 dark:hover:bg-brand-300 shadow-sm z-10 before:content-[''] before:absolute before:left-1/2 before:top-1/2 before:-translate-x-1/2 before:-translate-y-1/2 before:w-px before:h-2/5 before:bg-white/70" style="left:${sfxTrimEndPct}%; transform:translateX(-50%)" data-sfx-handle="end" role="slider" tabindex="0" aria-label="Trim end" aria-valuemin="${sfxRangeStart.toFixed(2)}" aria-valuemax="${sfxRangeEnd.toFixed(2)}" aria-valuenow="${sfxTrimEnd.toFixed(2)}" aria-valuetext="${sfxTrimEnd.toFixed(2)} seconds" onkeydown="sfxTrimVisKey('${clip.id}', 'end', event);"></div>
                                         </div>
                                         <div class="flex justify-between items-center mt-1">
                                             <span class="text-[9px] font-mono text-surface-400 dark:text-surface-500" id="sfxTrimInVal-${clip.id}">${sfxTrimStart.toFixed(2)}s</span>
@@ -9320,6 +9398,7 @@
                 const navItems = [];
                 if (sceneHTML) navItems.push({ id: 'cardScene', name: 'Scene', icon: 'layers' });
                 if (transformHTML) navItems.push({ id: 'cardTransform', name: 'Transform', icon: 'move' });
+                if (captionHTML) navItems.push({ id: 'cardCaption', name: 'Caption', icon: 'subtitles' });
                 if (isText) {
                     navItems.push({ id: 'cardContent', name: 'Content', icon: 'type' });
                     navItems.push({ id: 'cardTypography', name: 'Typography', icon: 'case-sensitive' });
@@ -9380,6 +9459,7 @@
                             ${sourceHTML}
                             ${transformHTML}
                             ${isText ? textHTML : ''}
+                            ${captionHTML}
                             ${isText ? typographyHTML : ''}
                             ${isText ? spacingHTML : ''}
                             ${isText ? letterStylesHTML : ''}
@@ -12026,9 +12106,9 @@
         };
 
         // Draw the zoomed window's waveform with the trim selection highlighted:
-        // sleek pill handles mark the audible window, a subtle tint fills it, crisp
-        // boundary lines sit at the trim edges, fade wedges render inside. Nothing is
-        // dimmed — the window is what the user chose to look at.
+        // sleek pill handles mark the audible window, a subtle tint fills it, and
+        // fade wedges render inside. Nothing is dimmed — the window is what the
+        // user chose to look at.
         window.drawSfxTrimVis = function (clipId) {
             const clip = State.clips.find(c => c.id === clipId);
             if (!clip || !clip.sfx) return;
@@ -12070,16 +12150,14 @@
                 ctx.lineTo(x, midY - p.min * amp);
             }
             ctx.stroke();
-            // Selection: subtle highlight between the handles + crisp boundary lines
+            // Selection: subtle highlight between the handles. No drawn boundary lines —
+            // the DOM trim handles already mark the edges (avoid double-handle look).
             const x0 = xAt(tStart);
             const x1 = xAt(tEnd);
             if (x1 - x0 > 1) {
                 ctx.fillStyle = isDark ? 'rgba(139, 92, 246, 0.14)' : 'rgba(99, 102, 241, 0.10)';
                 ctx.fillRect(x0, 0, x1 - x0, h);
             }
-            ctx.fillStyle = isDark ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.8)';
-            ctx.fillRect(Math.round(x0) - 0.5, 0, 1, h);
-            ctx.fillRect(Math.round(x1) - 0.5, 0, 1, h);
             // Fade wedges inside the selected region
             const span = Math.max(0.001, tEnd - tStart);
             const fi = Math.max(0, Math.min(clip.sfx.fadeIn || 0, span));
@@ -13020,6 +13098,79 @@ const isVis = !clip.hidden;
             drawCanvas();
         };
 
+        // ── Per-caption style helpers (stay linked to the captions system) ─────────
+        // The caption-relevant effect keys — used to mirror the global style onto the
+        // timeline clip's own effects when a caption's overrides are cleared, so the
+        // clip and the canvas stay consistent.
+        const SUBTITLE_EFFECT_KEYS = ['fontFamily', 'fontSize', 'fontWeight', 'fillColor', 'fontStyle', 'lineHeight', 'letterSpacing',
+            'shadowEnable', 'shadowColor', 'shadowBlur', 'shadowX', 'shadowY',
+            'strokeEnable', 'strokeColor', 'strokeWidth',
+            'bgEnable', 'bgColor', 'bgOpacity', 'bgPadding', 'bgRadius',
+            'position', 'bottomOffset', 'animIn', 'animOut', 'animPreset', 'animEase', 'animInDur', 'animOutDur'];
+
+        // Revert ONE caption field back to inheriting the global style (drops the
+        // per-caption override for that key, keeping every other override intact).
+        window.setSubCaptionAnim = function(clipId, key, value) {
+            const clip = State.clips.find(c => c.id === clipId);
+            if (!clip || !clip.subtitleId) return;
+            const sub = State.subtitles.find(s => s.id === clip.subtitleId);
+            if (!sub) return;
+            if (value === '__inherit__') {
+                if (sub.effects) delete sub.effects[key];
+                // Mirror the global value back onto the clip's own effect so the
+                // timeline clip stays consistent with the inherited style.
+                if (clip.effects && State.subtitleConfig[key] !== undefined) clip.effects[key] = State.subtitleConfig[key];
+            } else {
+                if (!sub.effects) sub.effects = {};
+                sub.effects[key] = value;
+            }
+            saveSubtitlesToStorage();
+            drawCanvas();
+        };
+
+        // Clear a single caption's style overrides so it follows the global style again
+        // (stays linked — no conversion).
+        window.resetSubtitleClipStyle = function(clipId) {
+            const clip = State.clips.find(c => c.id === clipId);
+            if (!clip || !clip.subtitleId) return;
+            const sub = State.subtitles.find(s => s.id === clip.subtitleId);
+            if (!sub) return;
+            delete sub.effects;
+            // Mirror the global style onto the clip's caption-relevant effects
+            const cfg = State.subtitleConfig;
+            if (clip.effects) {
+                SUBTITLE_EFFECT_KEYS.forEach(k => {
+                    if (cfg[k] !== undefined) clip.effects[k] = cfg[k];
+                });
+            }
+            saveSubtitlesToStorage();
+            drawCanvas();
+            updateSidebarPanel();
+            renderSubtitlesPanel();
+        };
+
+        // Clear EVERY caption's overrides so the global style applies uniformly — the
+        // captions equivalent of markdown's global defaults, applied to the whole project.
+        window.resetAllSubtitleOverrides = function() {
+            let any = false;
+            State.subtitles.forEach(sub => {
+                if (sub.effects && Object.keys(sub.effects).length) { delete sub.effects; any = true; }
+            });
+            if (!any) return;
+            const cfg = State.subtitleConfig;
+            State.clips.filter(c => c.subtitleId).forEach(clip => {
+                if (!clip.effects) clip.effects = {};
+                SUBTITLE_EFFECT_KEYS.forEach(k => {
+                    if (cfg[k] !== undefined) clip.effects[k] = cfg[k];
+                });
+            });
+            saveSubtitlesToStorage();
+            syncSubtitlesToClips();
+            drawCanvas();
+            updateSidebarPanel();
+            renderSubtitlesPanel();
+        };
+
         function renderSubtitlesPanel() {
             const cfg = State.subtitleConfig;
             const subs = State.subtitles || [];
@@ -13043,7 +13194,11 @@ const isVis = !clip.hidden;
             const styleHtml = `
                 <div class="flex flex-col gap-3 p-3 overflow-y-auto flex-1">
                     <div class="text-[10px] text-surface-500 dark:text-surface-300 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-700/30 rounded-lg p-2 leading-relaxed">
-                        <i data-lucide="info" class="w-3 h-3 inline-block mr-1 align-middle"></i>Global defaults for <strong>new</strong> markdown clips. Select a clip on the timeline and use the <strong>Properties</strong> tab for per-clip customization.
+                        <i data-lucide="info" class="w-3 h-3 inline-block mr-1 align-middle"></i>Global style applies to <strong>every caption</strong> that doesn't override it. Select a caption clip on the timeline and use the <strong>Properties</strong> tab for per-caption overrides.
+                    </div>
+                    <div class="flex items-center justify-between bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg px-3 py-2 shadow-sm shrink-0">
+                        <span class="text-[10px] font-bold text-surface-600 dark:text-surface-300 flex items-center gap-1.5"><i data-lucide="rotate-ccw" class="w-3 h-3"></i>Clear per-caption overrides</span>
+                        <button onclick="resetAllSubtitleOverrides()" class="text-[10px] font-bold text-brand-600 dark:text-brand-400 hover:text-brand-700 dark:hover:text-brand-300 border border-brand-200 dark:border-brand-700 bg-brand-50 dark:bg-brand-900/30 hover:bg-brand-100 dark:hover:bg-brand-900/50 px-2.5 py-1 rounded transition-colors" title="Remove every per-caption style override so all captions follow the global style">Reset All</button>
                     </div>
                     <div class="bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0">
                         <div class="p-3 flex flex-col gap-3">
@@ -15258,8 +15413,8 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             // In animation (merge per-subtitle overrides via ef)
             const animIn = ef.animIn !== undefined ? ef.animIn : cfg.animIn;
             const animOut = ef.animOut !== undefined ? ef.animOut : cfg.animOut;
-            const animInDur = cfg.animInDur || 0.3;
-            const animOutDur = cfg.animOutDur || 0.3;
+            const animInDur = (ef.animInDur !== undefined ? ef.animInDur : cfg.animInDur) || 0.3;
+            const animOutDur = (ef.animOutDur !== undefined ? ef.animOutDur : cfg.animOutDur) || 0.3;
             if (animIn !== 'none' && subTime < animInDur) {
                 const p = subTime / animInDur;
                 if (animIn === 'fadeIn') { alpha = p; }
