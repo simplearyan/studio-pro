@@ -20381,22 +20381,33 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
         // 'loadedmetadata', then seek once and redraw. This makes the canvas preview
         // show the correct frame immediately after a split, without the user having
         // to nudge the playhead back and forth.
+        //
+        // Latest-wins coalescing (fixes dropped seeks + stale preview): a seek issued
+        // while the element is already seeking is never discarded — the newest target
+        // is remembered in `el._wantedTime` and applied when the in-flight seek
+        // finishes, so rapid J/L presses or scrub drags converge to the final frame
+        // instead of requiring a second press. Paints only once the decoded frame is
+        // actually presented (seeked / requestVideoFrameCallback), so a single
+        // click-seek no longer leaves the previous frame on screen until the next
+        // interaction. Default threshold is frame-accurate (0.001 s) so the ,/. keys'
+        // 1/30 s steps actually seek instead of being rejected by a 0.1 s cutoff.
         function seekMediaEl(el, targetTime, threshold) {
             if (!el) return;
-            const thresh = threshold !== undefined ? threshold : 0.1;
+            const thresh = threshold !== undefined ? threshold : 0.001;
+            const want = Math.max(0, targetTime);
             if (el.readyState < 1) {
-                if (Math.abs((el._pendingSeek === undefined ? -1 : el._pendingSeek) - targetTime) > thresh) {
+                if (Math.abs((el._pendingSeek === undefined ? -1 : el._pendingSeek) - want) > thresh) {
                     // Replace any previously-registered wait (playhead moved before load)
                     if (el._pendingSeekFn) el.removeEventListener('loadedmetadata', el._pendingSeekFn);
                     if (el._pendingErrFn) el.removeEventListener('error', el._pendingErrFn);
-                    el._pendingSeek = targetTime;
+                    el._pendingSeek = want;
                     el._pendingSeekFn = () => {
                         el.removeEventListener('loadedmetadata', el._pendingSeekFn);
                         el.removeEventListener('error', el._pendingErrFn);
                         delete el._pendingSeek;
                         delete el._pendingSeekFn;
                         delete el._pendingErrFn;
-                        drawWhenFrameReady(el, targetTime);
+                        drawWhenFrameReady(el, want);
                     };
                     el._pendingErrFn = () => {
                         el.removeEventListener('loadedmetadata', el._pendingSeekFn);
@@ -20410,8 +20421,55 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 }
                 return;
             }
-            if (!el.seeking && Math.abs(el.currentTime - targetTime) > thresh) {
-                try { el.currentTime = targetTime; } catch (_) {}
+            // Latest-wins coalescing: never drop a seek issued mid-flight.
+            el._wantedTime = want;
+            if (!el.seeking && Math.abs(el.currentTime - want) > thresh) {
+                try { el.currentTime = want; } catch (_) {}
+                // One-shot seeked handler: re-seek to the newest _wantedTime if the
+                // target moved while decoding, then repaint only once the frame is
+                // presented (rVFC when available). Capped so a broken source can't spin.
+                if (!el._seekedPaintFn) {
+                    let settleT = null;
+                    // 'seeked' already means the decoded frame is present, so paint right
+                    // away. rVFC is skipped for the paused preview — it doesn't reliably
+                    // fire on a paused element after a seek, which would leave the stale
+                    // frame on screen (the bug this whole path fixes).
+                    const settle = () => {
+                        if (settleT) { clearTimeout(settleT); settleT = null; }
+                        el.removeEventListener('seeked', onSeeked);
+                        el._seekedPaintFn = null;
+                        delete el._wantedTime;
+                        el._seekRounds = 0;
+                        drawCanvas();
+                    };
+                    const onSeeked = () => {
+                        if (settleT) { clearTimeout(settleT); settleT = null; }
+                        const wanted = el._wantedTime;
+                        if (wanted !== undefined && Math.abs(el.currentTime - wanted) > thresh && (el._seekRounds || 0) < 3) {
+                            el._seekRounds = (el._seekRounds || 0) + 1;
+                            try { el.currentTime = wanted; } catch (_) {}
+                            // Re-arm the one-shot + the fallback for the re-seek.
+                            settleT = setTimeout(settle, 400);
+                            return;
+                        }
+                        settle();
+                    };
+                    const onErr = () => {
+                        if (settleT) { clearTimeout(settleT); settleT = null; }
+                        el.removeEventListener('seeked', onSeeked);
+                        el.removeEventListener('error', onErr);
+                        delete el._wantedTime;
+                        el._seekedPaintFn = null;
+                    };
+                    el._seekedPaintFn = onSeeked;
+                    el.addEventListener('seeked', onSeeked);
+                    el.addEventListener('error', onErr, { once: true });
+                    // Safety net mirroring drawWhenFrameReady's 400 ms fallback: if
+                    // 'seeked' never fires on a stalled source, still repaint so the
+                    // element recovers instead of leaving the handler armed forever
+                    // (which would also block any future handler via _seekedPaintFn).
+                    settleT = setTimeout(settle, 400);
+                }
             }
         }
 
