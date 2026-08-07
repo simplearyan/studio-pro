@@ -966,6 +966,7 @@
                 fontSize: 36,
                 fontFamily: 'Inter',
                 fontWeight: 700,
+                scale: 1,
                 fillColor: '#ffffff',
                 strokeEnable: true,
                 strokeColor: '#000000',
@@ -3007,6 +3008,17 @@
                 if (x < 2.5 / d1) return n1 * (x -= 2.25 / d1) * x + 0.9375;
                 return n1 * (x -= 2.625 / d1) * x + 0.984375;
             }
+        };
+
+        // Caption ↔ text-clip animation vocabulary bridge (schema unification).
+        // Captions accept the SAME animIn/animOut/animTextIn values as text clips, so
+        // edits made from a synced caption clip's ANIMATIONS tab apply directly, and
+        // convertSubtitleClipToText retains the animation through bakeSubtitleStyleIntoClip.
+        const ANIM_IN_TEXT_TO_CAPTION = { fade: 'fadeIn', zoomIn: 'scaleIn', pop: 'popIn' };
+        const ANIM_OUT_TEXT_TO_CAPTION = { fade: 'fadeOut', zoomOut: 'scaleOut' };
+        const TEXT_LETTER_TO_PRESET = {
+            typewriter: 'typewriter', scaleFade: 'letterPop', slideUp: 'letterFade',
+            odometer: 'rotate', randomSnap: 'bounce'
         };
 
         function calculateAnimationState(clip, clipTime, timeLeft, w, h) {
@@ -5708,9 +5720,16 @@
                         if (sub) {
                             if (!sub.effects) sub.effects = {};
                             // Map text properties from clip effects to subtitle effects
-                            const subtitleEffectMap = ['fontFamily', 'fontSize', 'fillColor', 'fontWeight', 'fontStyle', 'lineHeight', 'letterSpacing', 'shadowEnable', 'shadowColor', 'shadowBlur', 'shadowX', 'shadowY', 'strokeEnable', 'strokeColor', 'strokeWidth', 'bgEnable', 'bgColor', 'bgOpacity', 'bgPadding', 'bgRadius', 'position', 'bottomOffset', 'animIn', 'animOut', 'animPreset', 'animEase', 'animInDur', 'animOutDur', 'animFullSpan'];
+                            const subtitleEffectMap = ['fontFamily', 'fontSize', 'fillColor', 'scale', 'fontWeight', 'fontStyle', 'lineHeight', 'letterSpacing', 'shadowEnable', 'shadowColor', 'shadowBlur', 'shadowX', 'shadowY', 'strokeEnable', 'strokeColor', 'strokeWidth', 'bgEnable', 'bgColor', 'bgOpacity', 'bgPadding', 'bgRadius', 'position', 'bottomOffset', 'animIn', 'animOut', 'animPreset', 'animEase', 'animInDur', 'animOutDur', 'animFullSpan', 'animTextIn', 'animTextOut', 'animTextEase', 'animTextInDur', 'animTextStagger'];
                             if (subtitleEffectMap.includes(effectName)) {
-                                sub.effects[effectName] = clip.effects[effectName];
+                                // Translate text-clip animation vocabulary into caption
+                                // vocabulary when the animation was edited from the clip's
+                                // ANIMATIONS tab, so the caption renderer honors it.
+                                if (!sub.effects) sub.effects = {};
+                                let capVal = clip.effects[effectName];
+                                if (effectName === 'animIn' && ANIM_IN_TEXT_TO_CAPTION[capVal] !== undefined) capVal = ANIM_IN_TEXT_TO_CAPTION[capVal];
+                                else if (effectName === 'animOut' && ANIM_OUT_TEXT_TO_CAPTION[capVal] !== undefined) capVal = ANIM_OUT_TEXT_TO_CAPTION[capVal];
+                                sub.effects[effectName] = capVal;
                                 saveSubtitlesToStorage();
                             }
                         }
@@ -7625,8 +7644,6 @@
                     const capOverridden = capSub.effects && Object.keys(capSub.effects).length > 0;
                     const capPos = capEf.position || 'bottom';
                     const capOff = capEf.bottomOffset !== undefined ? capEf.bottomOffset : 60;
-                    const capBg = capEf.bgEnable ? true : false;
-                    const capBgOp = Math.round((capEf.bgOpacity !== undefined ? capEf.bgOpacity : 0.5) * 100);
                     const capEase = capEf.animEase !== undefined ? capEf.animEase : 'easeOut';
                     const capDur = Math.round(((capEf.animInDur !== undefined ? capEf.animInDur : (capCfg.animInDur || 0.3))) * 100) / 100;
                     const capPresetEff = capEf.animPreset !== undefined ? capEf.animPreset : (capCfg.animPreset || 'none');
@@ -7647,6 +7664,14 @@
                         </summary>
                         <div class="p-3 flex flex-col gap-3 bg-surface-50 dark:bg-surface-900/50 flex-1">
                             <p class="text-[10px] text-surface-500 dark:text-surface-300 leading-relaxed">This clip stays linked to the captions system — edits here only affect this caption. Changes to the global style still apply to every field you don't override.</p>
+                            <div class="border-t border-surface-200 dark:border-surface-700 pt-3 flex flex-col gap-3">
+                                <div class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest flex items-center gap-1.5"><i data-lucide="palette" class="w-3 h-3"></i>Style</div>
+                                ${captionStyleControlHtml('scale', 'clip', clip.id)}
+                                ${captionStyleControlHtml('color', 'clip', clip.id)}
+                                ${captionStyleControlHtml('stroke', 'clip', clip.id)}
+                                ${captionStyleControlHtml('shadow', 'clip', clip.id)}
+                                ${captionStyleControlHtml('bg', 'clip', clip.id)}
+                            </div>
                             <div>
                                 <label class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">Position</label>
                                 <div class="grid grid-cols-2 gap-1.5">
@@ -7661,15 +7686,8 @@
                                 </div>
                                 <input type="range" min="10" max="300" value="${capOff}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'bottomOffset', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + 'px'; drawCanvas();">
                             </div>
-                            <div class="flex items-center justify-between gap-2">
-                                <label class="flex items-center gap-2 cursor-pointer shrink-0"><input type="checkbox" ${capBg ? 'checked' : ''} class="rounded text-brand-500 focus:ring-brand-500" onchange="setClipEffect('${clip.id}', 'bgEnable', this.checked); updateSidebarPanel();"><span class="text-xs font-bold text-surface-700 dark:text-surface-300">Background box</span></label>
-                                <div class="flex items-center gap-2 ${capBg ? '' : 'opacity-40 pointer-events-none'}">
-                                    <span class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${capBgOp}%</span>
-                                    <input type="range" min="0" max="100" value="${capBgOp}" class="w-16 custom-slider" oninput="setClipEffect('${clip.id}', 'bgOpacity', this.value / 100); this.parentElement.querySelector('span').textContent = this.value + '%'; drawCanvas();">
-                                </div>
-                            </div>
                             <div class="grid grid-cols-2 gap-2">
-                                <div><label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1 block">Anim In</label>${capAnimSel('animIn', [['none', 'None'], ['fadeIn', 'Fade'], ['slideUp', 'Slide up'], ['scaleIn', 'Scale']])}</div>
+                                <div><label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1 block">Anim In</label>${capAnimSel('animIn', [['none', 'None'], ['fadeIn', 'Fade'], ['slideUp', 'Slide up'], ['scaleIn', 'Scale'], ['popIn', 'Pop']])}</div>
                                 <div><label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1 block">Anim Out</label>${capAnimSel('animOut', [['none', 'None'], ['fadeOut', 'Fade'], ['slideDown', 'Slide'], ['scaleOut', 'Scale']])}</div>
                             </div>
                             <div>
@@ -12959,7 +12977,7 @@ const isVis = !clip.hidden;
                         colorIndex: 0,
                         hidden: false,
                         effects: {
-                            scale: 1, rotate: 0, offsetX: 0, offsetY: 0,
+                            scale: State.subtitleConfig.scale !== undefined ? State.subtitleConfig.scale : 1, rotate: 0, offsetX: 0, offsetY: 0,
                             fontFamily: State.subtitleConfig.fontFamily || 'Inter',
                             fontWeight: State.subtitleConfig.fontWeight || 700,
                             fillColor: '#ffffff',
@@ -12994,6 +13012,7 @@ const isVis = !clip.hidden;
             fx.fontStyle = ef.fontStyle || 'normal';
             fx.lineHeight = ef.lineHeight !== undefined ? ef.lineHeight : 1.3;
             fx.letterSpacing = ef.letterSpacing !== undefined ? ef.letterSpacing : 0;
+            fx.scale = ef.scale !== undefined ? ef.scale : 1;
 
             // Stroke
             fx.strokeEnable = !!ef.strokeEnable;
@@ -13043,6 +13062,9 @@ const isVis = !clip.hidden;
                 letterPop: { animTextIn: 'scaleFade' },
                 letterFade: { animTextIn: 'slideUp' },
                 typewriter: { animTextIn: 'typewriter' },
+                // Word Glow has no per-letter equivalent in the text system — the
+                // sequential typewriter reveal (spread across the clip when karaoke /
+                // animFullSpan is on) is the closest behavior to retain.
                 wordHighlight: { animTextIn: 'typewriter' },
                 bounce: { animTextIn: 'slideUp', animTextEase: 'bounce' },
                 rotate: { animTextIn: 'odometer' }
@@ -13073,9 +13095,18 @@ const isVis = !clip.hidden;
             // reveal across the clip's whole duration instead of the entrance phase.
             fx.animTextInDur = fx.animFullSpan
                 ? Math.max(0.5, clip.duration || 1)
-                : Math.max(0.5, ef.animInDur !== undefined ? ef.animInDur : 0.3);
+                : Math.max(0.3, ef.animInDur !== undefined ? ef.animInDur : 0.3);
             fx.animTextOutDur = Math.max(0.5, ef.animOutDur !== undefined ? ef.animOutDur : 0.3);
             fx.animTextStagger = 'letter';
+            // Round-trip: letter animations set on the synced clip from the ANIMATIONS
+            // tab (mirrored into sub.effects) pass straight through to the converted
+            // clip, so convertSubtitleClipToText never drops a per-letter animation.
+            if (fx.animTextIn === 'none' && ef.animTextIn && ef.animTextIn !== 'none') {
+                fx.animTextIn = ef.animTextIn;
+                fx.animTextEase = ef.animTextEase !== undefined ? ef.animTextEase : ease;
+                fx.animTextInDur = ef.animTextInDur !== undefined ? ef.animTextInDur : fx.animTextInDur;
+            }
+            fx.animTextOut = ef.animTextOut !== undefined ? ef.animTextOut : fx.animTextOut;
 
             // Position — captions render at the bottom/top of the canvas; convert that
             // placement into offsetY percentage so the text element sits where the
@@ -13165,7 +13196,7 @@ const isVis = !clip.hidden;
         // The caption-relevant effect keys — used to mirror the global style onto the
         // timeline clip's own effects when a caption's overrides are cleared, so the
         // clip and the canvas stay consistent.
-        const SUBTITLE_EFFECT_KEYS = ['fontFamily', 'fontSize', 'fontWeight', 'fillColor', 'fontStyle', 'lineHeight', 'letterSpacing',
+        const SUBTITLE_EFFECT_KEYS = ['fontFamily', 'fontSize', 'fontWeight', 'fillColor', 'scale', 'fontStyle', 'lineHeight', 'letterSpacing',
             'shadowEnable', 'shadowColor', 'shadowBlur', 'shadowX', 'shadowY',
             'strokeEnable', 'strokeColor', 'strokeWidth',
             'bgEnable', 'bgColor', 'bgOpacity', 'bgPadding', 'bgRadius',
@@ -13301,6 +13332,80 @@ const isVis = !clip.hidden;
             return newSubs.length;
         };
 
+        // Shared style-control builder for captions — ONE implementation drives both
+        // the global Style tab and the per-caption Properties card. Renders Material-
+        // style control groups for the SHARED text-effect schema (scale, fill color,
+        // stroke, shadow, background) so captions expose exactly the same properties
+        // as text clips instead of a parallel set. mode 'global' writes
+        // State.subtitleConfig (inherited by every caption); mode 'clip' writes a
+        // per-caption override via setClipEffect, which subtitleEffectMap mirrors
+        // into sub.effects — the same control logic powers global AND individual
+        // editing, mirroring markdown's global-config + per-clip-bake pattern.
+        window.captionStyleControlHtml = function(group, mode, clipId) {
+            const cfg = State.subtitleConfig;
+            let ef = cfg;
+            if (mode === 'clip' && clipId) {
+                const c = State.clips.find(x => x.id === clipId);
+                const s = c && c.subtitleId ? State.subtitles.find(x => x.id === c.subtitleId) : null;
+                ef = { ...cfg, ...(s && s.effects ? s.effects : {}) };
+            }
+            const val = (k) => (ef[k] !== undefined ? ef[k] : cfg[k]);
+            const put = (k, v) => mode === 'clip'
+                ? `setClipEffect('${clipId}', '${k}', ${v}); drawCanvas();`
+                : `State.subtitleConfig.${k} = ${v}; saveSubtitlesToStorage(); drawCanvas();`;
+            const putToggle = (k, v) => mode === 'clip'
+                ? `setClipEffect('${clipId}', '${k}', ${v}); drawCanvas(); updateSidebarPanel();`
+                : `State.subtitleConfig.${k} = ${v}; saveSubtitlesToStorage(); drawCanvas(); renderSubtitlesPanel();`;
+            const badge = (txt) => `<span data-v class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-1.5 py-0.5 rounded shrink-0">${txt}</span>`;
+            const lbl = (t) => `<label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1 block">${t}</label>`;
+            const colorBox = (k, def, wide) => `<div class="relative ${wide ? 'h-8 w-full' : 'w-8 h-8 shrink-0'} rounded border border-surface-200 dark:border-surface-700 overflow-hidden"><input type="color" value="${val(k) || def}" class="absolute inset-0 w-full h-full cursor-pointer" oninput="${put(k, 'this.value')}"></div>`;
+            if (group === 'scale') {
+                const pct = Math.round((val('scale') !== undefined ? val('scale') : 1) * 100);
+                return `<div class="sub-style-group flex items-center justify-between gap-2">
+                    <label class="flex items-center gap-1.5 shrink-0 text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest"><i data-lucide="scan" class="w-3 h-3"></i>Scale</label>
+                    <div class="flex items-center gap-2 flex-1">
+                        <input type="range" min="10" max="300" step="1" value="${pct}" class="flex-1 custom-slider" oninput="${put('scale', 'this.value / 100')}; this.closest('.sub-style-group').querySelector('[data-v]').textContent = (this.value / 100).toFixed(2) + 'x';">
+                        ${badge((pct / 100).toFixed(2) + 'x')}
+                    </div>
+                </div>`;
+            }
+            if (group === 'color') {
+                return `<div class="sub-style-group">
+                    ${lbl('Color')}
+                    ${colorBox('fillColor', '#ffffff', true)}
+                </div>`;
+            }
+            const toggleRow = (k, title, sub) => `<div class="sub-style-group flex items-center justify-between gap-2">
+                <label class="flex items-center gap-2 cursor-pointer shrink-0"><input type="checkbox" ${val(k) ? 'checked' : ''} class="rounded text-brand-500 focus:ring-brand-500" onchange="${putToggle(k, 'this.checked')}"><span class="text-xs font-bold text-surface-700 dark:text-surface-300">${title}</span></label>
+                <div class="flex items-center gap-2 ${val(k) ? '' : 'opacity-40 pointer-events-none'}">${sub}</div>
+            </div>`;
+            if (group === 'stroke') {
+                const w = val('strokeWidth') !== undefined ? val('strokeWidth') : 3;
+                return toggleRow('strokeEnable', 'Stroke', `
+                    ${colorBox('strokeColor', '#000000')}
+                    <input type="range" min="0" max="12" step="1" value="${w}" class="w-16 custom-slider shrink-0" oninput="${put('strokeWidth', 'parseInt(this.value)')}; this.closest('.sub-style-group').querySelector('[data-v]').textContent = this.value + 'px';">
+                    ${badge(w + 'px')}
+                `);
+            }
+            if (group === 'shadow') {
+                const b = val('shadowBlur') !== undefined ? val('shadowBlur') : 4;
+                return toggleRow('shadowEnable', 'Shadow', `
+                    ${colorBox('shadowColor', '#000000')}
+                    <input type="range" min="0" max="20" step="1" value="${b}" class="w-14 custom-slider shrink-0" oninput="${put('shadowBlur', 'parseInt(this.value)')}; this.closest('.sub-style-group').querySelector('[data-v]').textContent = this.value + 'px';">
+                    ${badge(b + 'px')}
+                `);
+            }
+            if (group === 'bg') {
+                const op = Math.round((val('bgOpacity') !== undefined ? val('bgOpacity') : 0.5) * 100);
+                return toggleRow('bgEnable', 'Background', `
+                    ${colorBox('bgColor', '#000000')}
+                    <input type="range" min="0" max="100" step="1" value="${op}" class="w-16 custom-slider shrink-0" oninput="${put('bgOpacity', 'this.value / 100')}; this.closest('.sub-style-group').querySelector('[data-v]').textContent = this.value + '%';">
+                    ${badge(op + '%')}
+                `);
+            }
+            return '';
+        };
+
         function renderSubtitlesPanel() {
             const cfg = State.subtitleConfig;
             const subs = State.subtitles || [];
@@ -13359,35 +13464,20 @@ const isVis = !clip.hidden;
                                     </select>
                                 </div>
                             </div>
-                            <div class="grid grid-cols-2 gap-2">
-                                <div>
-                                    <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1 block">Color</label>
-                                    <div class="relative h-8 rounded border border-surface-200 dark:border-surface-700 overflow-hidden">
-                                        <input type="color" value="${cfg.fillColor||'#ffffff'}" class="absolute inset-0 w-full h-full cursor-pointer" oninput="State.subtitleConfig.fillColor = this.value; saveSubtitlesToStorage(); drawCanvas();">
-                                    </div>
-                                </div>
-                                <div>
-                                    <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1 block">Weight</label>
-                                    <select class="w-full text-xs p-2 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner focus:outline-none focus:border-brand-500 font-bold" onchange="State.subtitleConfig.fontWeight = parseInt(this.value); saveSubtitlesToStorage(); drawCanvas();">
-                                        <option value="400" ${cfg.fontWeight===400?'selected':''}>Normal</option>
-                                        <option value="600" ${cfg.fontWeight===600?'selected':''}>Semi Bold</option>
-                                        <option value="700" ${cfg.fontWeight===700?'selected':''}>Bold</option>
-                                        <option value="900" ${cfg.fontWeight===900?'selected':''}>Black</option>
-                                    </select>
-                                </div>
+                            <div>
+                                <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1 block">Weight</label>
+                                <select class="w-full text-xs p-2 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner focus:outline-none focus:border-brand-500 font-bold" onchange="State.subtitleConfig.fontWeight = parseInt(this.value); saveSubtitlesToStorage(); drawCanvas();">
+                                    <option value="400" ${cfg.fontWeight===400?'selected':''}>Normal</option>
+                                    <option value="600" ${cfg.fontWeight===600?'selected':''}>Semi Bold</option>
+                                    <option value="700" ${cfg.fontWeight===700?'selected':''}>Bold</option>
+                                    <option value="900" ${cfg.fontWeight===900?'selected':''}>Black</option>
+                                </select>
                             </div>
-                            <div class="flex items-center justify-between">
-                                <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.strokeEnable?'checked':''} class="rounded text-brand-500 focus:ring-brand-500" onchange="State.subtitleConfig.strokeEnable = this.checked; saveSubtitlesToStorage(); drawCanvas(); renderSubtitlesPanel();"><span class="text-xs font-bold text-surface-700 dark:text-surface-300">Stroke</span></label>
-                                ${cfg.strokeEnable ? `<div class="flex items-center gap-2"><div class="relative w-5 h-5 rounded border border-surface-200 dark:border-surface-700 overflow-hidden shrink-0"><input type="color" value="${cfg.strokeColor||'#000000'}" class="absolute inset-0 w-full h-full cursor-pointer opacity-0" oninput="State.subtitleConfig.strokeColor = this.value; saveSubtitlesToStorage(); drawCanvas();"><div class="w-full h-full rounded" style="background:${cfg.strokeColor||'#000000'}"></div></div><input type="range" min="1" max="6" value="${cfg.strokeWidth||3}" class="w-16 custom-slider" oninput="State.subtitleConfig.strokeWidth = parseInt(this.value); saveSubtitlesToStorage(); drawCanvas();"></div>` : ''}
-                            </div>
-                            <div class="flex items-center justify-between">
-                                <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.shadowEnable?'checked':''} class="rounded text-brand-500 focus:ring-brand-500" onchange="State.subtitleConfig.shadowEnable = this.checked; saveSubtitlesToStorage(); drawCanvas(); renderSubtitlesPanel();"><span class="text-xs font-bold text-surface-700 dark:text-surface-300">Shadow</span></label>
-                                ${cfg.shadowEnable ? `<div class="flex items-center gap-2"><div class="relative w-5 h-5 rounded border border-surface-200 dark:border-surface-700 overflow-hidden shrink-0"><input type="color" value="${cfg.shadowColor||'#000000'}" class="absolute inset-0 w-full h-full cursor-pointer opacity-0" oninput="State.subtitleConfig.shadowColor = this.value; saveSubtitlesToStorage(); drawCanvas();"><div class="w-full h-full rounded" style="background:${cfg.shadowColor||'#000000'}"></div></div><input type="range" min="0" max="10" value="${cfg.shadowBlur||4}" class="w-14 custom-slider" oninput="State.subtitleConfig.shadowBlur = parseInt(this.value); saveSubtitlesToStorage(); drawCanvas();"></div>` : ''}
-                            </div>
-                            <div class="flex items-center justify-between">
-                                <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${cfg.bgEnable?'checked':''} class="rounded text-brand-500 focus:ring-brand-500" onchange="State.subtitleConfig.bgEnable = this.checked; saveSubtitlesToStorage(); drawCanvas(); renderSubtitlesPanel();"><span class="text-xs font-bold text-surface-700 dark:text-surface-300">Background</span></label>
-                                ${cfg.bgEnable ? `<input type="range" min="10" max="100" value="${Math.round((cfg.bgOpacity||0.5)*100)}" class="w-20 custom-slider" oninput="State.subtitleConfig.bgOpacity = this.value/100; saveSubtitlesToStorage(); drawCanvas();">` : ''}
-                            </div>
+                            ${captionStyleControlHtml('color', 'global')}
+                            ${captionStyleControlHtml('scale', 'global')}
+                            ${captionStyleControlHtml('stroke', 'global')}
+                            ${captionStyleControlHtml('shadow', 'global')}
+                            ${captionStyleControlHtml('bg', 'global')}
                             <div>
                                 <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1 block">Animation</label>
                                 <div class="grid grid-cols-3 gap-1.5">
@@ -13395,11 +13485,14 @@ const isVis = !clip.hidden;
                                         <option value="none" ${cfg.animIn==='none'?'selected':''}>In: None</option>
                                         <option value="fadeIn" ${cfg.animIn==='fadeIn'?'selected':''}>Fade</option>
                                         <option value="slideUp" ${cfg.animIn==='slideUp'?'selected':''}>Slide up</option>
+                                        <option value="scaleIn" ${cfg.animIn==='scaleIn'?'selected':''}>Scale</option>
+                                        <option value="popIn" ${cfg.animIn==='popIn'?'selected':''}>Pop</option>
                                     </select>
                                     <select class="text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 focus:outline-none focus:border-brand-500 font-bold" onchange="State.subtitleConfig.animOut = this.value; saveSubtitlesToStorage(); drawCanvas();">
                                         <option value="none" ${cfg.animOut==='none'?'selected':''}>Out: None</option>
                                         <option value="fadeOut" ${cfg.animOut==='fadeOut'?'selected':''}>Fade</option>
                                         <option value="slideDown" ${cfg.animOut==='slideDown'?'selected':''}>Slide</option>
+                                        <option value="scaleOut" ${cfg.animOut==='scaleOut'?'selected':''}>Scale</option>
                                     </select>
                                     <input type="number" value="${cfg.animInDur||0.3}" min="0.1" max="2" step="0.1" class="text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 focus:outline-none focus:border-brand-500 font-bold font-mono" onchange="State.subtitleConfig.animInDur=parseFloat(this.value); State.subtitleConfig.animOutDur=parseFloat(this.value); saveSubtitlesToStorage(); drawCanvas();">
                                 </div>
@@ -13531,8 +13624,8 @@ const isVis = !clip.hidden;
                                         <div><label class="text-[8px] font-bold text-surface-400">Pos</label><select id="subInlinePos_${sid}" onchange="autoSaveInlineSubtitle('${sid}')" class="w-full text-[10px] p-1 border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 focus:outline-none focus:border-brand-500 font-bold"><option value="bottom" ${(ef.position||cfg.position)==='bottom'?'selected':''}>Bottom</option><option value="top" ${ef.position==='top'?'selected':''}>Top</option></select></div>
                                     </div>
                                     <div class="grid grid-cols-2 gap-1.5">
-                                        <div><label class="text-[8px] font-bold text-surface-400">Anim In</label><select id="subInlineAnimIn_${sid}" onchange="autoSaveInlineSubtitle('${sid}')" class="w-full text-[10px] p-1 border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 focus:outline-none focus:border-brand-500 font-bold"><option value="" ${!ef.animIn?'selected':''}>Same</option><option value="none" ${ef.animIn==='none'?'selected':''}>None</option><option value="fadeIn" ${ef.animIn==='fadeIn'?'selected':''}>Fade</option><option value="slideUp" ${ef.animIn==='slideUp'?'selected':''}>Slide up</option></select></div>
-                                        <div><label class="text-[8px] font-bold text-surface-400">Anim Out</label><select id="subInlineAnimOut_${sid}" onchange="autoSaveInlineSubtitle('${sid}')" class="w-full text-[10px] p-1 border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 focus:outline-none focus:border-brand-500 font-bold"><option value="" ${!ef.animOut?'selected':''}>Same</option><option value="none" ${ef.animOut==='none'?'selected':''}>None</option><option value="fadeOut" ${ef.animOut==='fadeOut'?'selected':''}>Fade</option><option value="slideDown" ${ef.animOut==='slideDown'?'selected':''}>Slide</option></select></div>
+                                        <div><label class="text-[8px] font-bold text-surface-400">Anim In</label><select id="subInlineAnimIn_${sid}" onchange="autoSaveInlineSubtitle('${sid}')" class="w-full text-[10px] p-1 border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 focus:outline-none focus:border-brand-500 font-bold"><option value="" ${!ef.animIn?'selected':''}>Same</option><option value="none" ${ef.animIn==='none'?'selected':''}>None</option><option value="fadeIn" ${ef.animIn==='fadeIn'?'selected':''}>Fade</option><option value="slideUp" ${ef.animIn==='slideUp'?'selected':''}>Slide up</option><option value="scaleIn" ${ef.animIn==='scaleIn'?'selected':''}>Scale</option><option value="popIn" ${ef.animIn==='popIn'?'selected':''}>Pop</option></select></div>
+                                        <div><label class="text-[8px] font-bold text-surface-400">Anim Out</label><select id="subInlineAnimOut_${sid}" onchange="autoSaveInlineSubtitle('${sid}')" class="w-full text-[10px] p-1 border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 focus:outline-none focus:border-brand-500 font-bold"><option value="" ${!ef.animOut?'selected':''}>Same</option><option value="none" ${ef.animOut==='none'?'selected':''}>None</option><option value="fadeOut" ${ef.animOut==='fadeOut'?'selected':''}>Fade</option><option value="slideDown" ${ef.animOut==='slideDown'?'selected':''}>Slide</option><option value="scaleOut" ${ef.animOut==='scaleOut'?'selected':''}>Scale</option></select></div>
                                     </div>
                                     <div><label class="text-[8px] font-bold text-surface-400">Preset</label><select id="subInlineAnimPreset_${sid}" onchange="autoSaveInlineSubtitle('${sid}')" class="w-full text-[10px] p-1 border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 focus:outline-none focus:border-brand-500 font-bold"><option value="" ${!ef.animPreset?'selected':''}>Same</option><option value="none" ${ef.animPreset==='none'?'selected':''}>None</option><option value="fade" ${ef.animPreset==='fade'?'selected':''}>Fade Up</option><option value="pop" ${ef.animPreset==='pop'?'selected':''}>Pop</option><option value="letterPop" ${ef.animPreset==='letterPop'?'selected':''}>Letter Pop</option><option value="letterFade" ${ef.animPreset==='letterFade'?'selected':''}>Letter Fade</option><option value="typewriter" ${ef.animPreset==='typewriter'?'selected':''}>Typewriter</option><option value="wordHighlight" ${ef.animPreset==='wordHighlight'?'selected':''}>Word Glow</option><option value="bounce" ${ef.animPreset==='bounce'?'selected':''}>Bounce</option><option value="rotate" ${ef.animPreset==='rotate'?'selected':''}>Rotate</option></select></div>
                                     <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" id="subInlineFullSpan_${sid}" ${ef.animFullSpan ? 'checked' : ''} onchange="autoSaveInlineSubtitle('${sid}')" class="rounded text-brand-500 focus:ring-brand-500"><span class="text-[8px] font-bold text-surface-400">Whole caption duration (karaoke)</span></label>
@@ -15688,29 +15781,45 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             const timeLeft = subDuration - subTime;
             let alpha = 1;
             let yOffset = 0;
+            let xOffset = 0;
             let scale = 1;
+            const styleScale = ef.scale !== undefined ? ef.scale : 1;
 
-            // In animation (merge per-subtitle overrides via ef)
-            const animIn = ef.animIn !== undefined ? ef.animIn : cfg.animIn;
-            const animOut = ef.animOut !== undefined ? ef.animOut : cfg.animOut;
+            // In/out animation — the caption accepts BOTH its own vocabulary
+            // (fadeIn/slideUp/scaleIn) and the text-clip vocabulary (fade/zoomIn/pop…)
+            // via the shared alias tables, so a synced caption clip edited from the
+            // ANIMATIONS tab animates identically to a text clip.
+            const animInRaw = ef.animIn !== undefined ? ef.animIn : cfg.animIn;
+            const animOutRaw = ef.animOut !== undefined ? ef.animOut : cfg.animOut;
+            const animIn = ANIM_IN_TEXT_TO_CAPTION[animInRaw] !== undefined ? ANIM_IN_TEXT_TO_CAPTION[animInRaw] : animInRaw;
+            const animOut = ANIM_OUT_TEXT_TO_CAPTION[animOutRaw] !== undefined ? ANIM_OUT_TEXT_TO_CAPTION[animOutRaw] : animOutRaw;
             const animInDur = (ef.animInDur !== undefined ? ef.animInDur : cfg.animInDur) || 0.3;
             const animOutDur = (ef.animOutDur !== undefined ? ef.animOutDur : cfg.animOutDur) || 0.3;
             if (animIn !== 'none' && subTime < animInDur) {
                 const p = subTime / animInDur;
                 if (animIn === 'fadeIn') { alpha = p; }
                 else if (animIn === 'slideUp') { alpha = Math.min(1, p * 2); yOffset = 30 * (1 - p); }
+                else if (animIn === 'slideLeft') { alpha = Math.min(1, p * 2); xOffset = -80 * (1 - p); }
+                else if (animIn === 'slideRight') { alpha = Math.min(1, p * 2); xOffset = 80 * (1 - p); }
                 else if (animIn === 'scaleIn') { alpha = Math.min(1, p * 2); scale = 0.5 + 0.5 * p; }
+                else if (animIn === 'popIn') { alpha = Math.min(1, p * 1.6); scale = 0.5 + 0.5 * p + Math.sin(p * Math.PI) * 0.2; }
             }
             // Out animation
             if (animOut !== 'none' && timeLeft < animOutDur) {
                 const p = timeLeft / animOutDur;
                 if (animOut === 'fadeOut') { alpha = p; }
                 else if (animOut === 'slideDown') { alpha = Math.min(1, p * 2); yOffset = -30 * (1 - p); }
+                else if (animOut === 'slideLeft') { alpha = Math.min(1, p * 2); xOffset = -80 * (1 - p); }
+                else if (animOut === 'slideRight') { alpha = Math.min(1, p * 2); xOffset = 80 * (1 - p); }
                 else if (animOut === 'scaleOut') { alpha = Math.min(1, p * 2); scale = 0.5 + 0.5 * p; }
             }
 
-            // Preset animation (CapCut / Kalakar style)
-            const animPreset = ef.animPreset !== undefined ? ef.animPreset : cfg.animPreset;
+            // Preset animation (CapCut / Kalakar style). Accepts the caption preset
+            // vocabulary AND text-clip per-letter values (animTextIn) via the shared
+            // TEXT_LETTER_TO_PRESET table, so ANIMATIONS-tab letter edits apply.
+            const animPresetRaw = ef.animPreset !== undefined ? ef.animPreset : cfg.animPreset;
+            const animTextInRaw = ef.animTextIn !== undefined ? ef.animTextIn : (cfg.animTextIn || 'none');
+            const animPreset = animPresetRaw && animPresetRaw !== 'none' ? animPresetRaw : (TEXT_LETTER_TO_PRESET[animTextInRaw] || 'none');
             const presetEase = EASING[(ef.animEase !== undefined ? ef.animEase : cfg.animEase) || 'easeOut'] || EASING.easeOut;
             if (animPreset === 'fade' && subTime < animInDur) {
                 const p = subTime / animInDur;
@@ -15737,7 +15846,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             ctx.textBaseline = 'middle';
 
             // Wrap text
-            const maxWidth = w * 0.85;
+            const maxWidth = (w * 0.85) / styleScale;
             const lines = wrapText(ctx, sub.text || '', maxWidth);
             const lh = (ef.lineHeight !== undefined ? ef.lineHeight : (cfg.lineHeight || 1.3)) * fontSize;
             const totalH = lines.length * lh;
@@ -15748,8 +15857,8 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             const baseX = w / 2;
             const baseY = pos === 'top' ? offset + totalH / 2 : h - offset - totalH / 2;
 
-            ctx.translate(baseX, baseY + yOffset);
-            ctx.scale(scale, scale);
+            ctx.translate(baseX + xOffset, baseY + yOffset);
+            ctx.scale(scale * styleScale, scale * styleScale);
 
             // Background
             if (animPreset !== 'wordHighlight' && (ef.bgEnable !== undefined ? ef.bgEnable : cfg.bgEnable)) {
@@ -15774,7 +15883,8 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             // offsets so multi-line captions highlight in sequence (CapCut-style).
             // NaN-safe: if the caption has no usable duration (e.g. missing times),
             // fall back to the entrance phase so karaoke can't blank the caption.
-            const animSweepDur = ef.animFullSpan ? Math.max(0.15, Number.isFinite(subDuration) ? subDuration : animInDur) : animInDur;
+            const sweepBase = (animTextInRaw !== 'none' && ef.animTextInDur !== undefined) ? ef.animTextInDur : animInDur;
+            const animSweepDur = ef.animFullSpan ? Math.max(0.15, Number.isFinite(subDuration) ? subDuration : animInDur) : sweepBase;
             let lineOffsets = null;
             if (ef.animFullSpan && (animPreset === 'wordHighlight' || letterPresets[animPreset])) {
                 const lws = lines.map(l => l.split(/\s+/).filter(Boolean).length);
