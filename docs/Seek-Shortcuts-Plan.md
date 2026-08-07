@@ -32,7 +32,7 @@ J:  plain -5.00 | Alt -2.50 | Shift -7.50 | Ctrl -10.00
 L:  plain +5.00 | Alt +2.50 | Shift +7.50 | Ctrl +10.00
 ```
 
-## 2. `,` / `<` / `.` / `>` — frame step (PLANNED)
+## 2. `,` / `<` / `.` / `>` — frame step (IMPLEMENTED, 2026-08-07)
 
 These keys currently all step **1 frame** (1/30 s), with `<`/`>` being the same
 keys as `,`/`.` when Shift is held. The plan mirrors the J/L ladder so muscle

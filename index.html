@@ -1053,6 +1053,7 @@
             inspector: { visible: false, dock: 'left', fullWidth: false, width: 320 },
             hoverPlayheadEnabled: true,
             hoverPlayheadTime: null,
+            _hoverPlayheadX: null,
             pushTrim: false,
             bladeMode: false,
             bladeScope: 'clip', // 'clip' (clip + linked partners) | 'all' — blade tool split scope
@@ -2789,9 +2790,15 @@
                     indicator.className = "w-2 h-2 rounded-full bg-surface-300 dark:bg-surface-600";
                 }
             }
+            const hp = document.getElementById('hoverPlayhead');
             if (!State.hoverPlayheadEnabled) {
-                const hp = document.getElementById('hoverPlayhead');
                 if (hp) hp.classList.add('hidden');
+            } else if (hp && State.hoverPlayheadTime != null && State._hoverPlayheadX != null) {
+                // Toggled back on while the pointer is over the timeline: re-show
+                // the playhead immediately at the last tracked position — no need
+                // to nudge the mouse. (Position stays tracked until mouseleave,
+                // even while hidden, so this fires for the hide→move→show flow.)
+                showHoverPlayheadAt(State._hoverPlayheadX, State.hoverPlayheadTime);
             }
         }
 
@@ -18791,10 +18798,16 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 else if (e.key === ',' || e.key === '<' || e.key === '.' || e.key === '>') {
                     e.preventDefault();
                     const isForward = (e.key === '.' || e.key === '>');
-                    const delta = isForward ? (1/30) : -(1/30);
+                    // Frame-step ladder (mirrors J/L): ,/. = 1 frame, Shift (i.e. </>)
+                    // = 5 frames, Alt = 0.5 s (15 frames), Ctrl = 2 s (60 frames).
+                    // Ctrl wins over the others if several are held. Clip-nudging
+                    // moved to the "Keyboard Seeks Clip" toggle only, so Alt/Ctrl are
+                    // free for step amounts instead of hijacking the keys.
+                    const baseFrames = e.ctrlKey ? 60 : (e.shiftKey ? 5 : (e.altKey ? 15 : 1));
+                    const delta = (isForward ? 1 : -1) * baseFrames / 30;
                     
                     const hasSelection = State.selectedClipId || (State.multiSelectedClipIds && State.multiSelectedClipIds.length > 0);
-                    const seekClip = hasSelection && (State.keyboardSeekClip || e.altKey || (e.ctrlKey && e.shiftKey));
+                    const seekClip = hasSelection && State.keyboardSeekClip;
                     
                     if (seekClip) {
                         nudgeSelectedClips(delta);
@@ -19443,40 +19456,67 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             document.addEventListener('mouseup', handleMouseUp);
         }
 
-        function setupHoverPlayhead() {
+        // Shared renderer: positions the hover playhead and its time label.
+        // Used by the mousemove handler and by toggleHoverPlayhead so a
+        // toggled-on playhead shows the exact same label/blade styling.
+        function showHoverPlayheadAt(rawX, time) {
             const container = document.getElementById('timelineScrollArea');
             const hp = document.getElementById('hoverPlayhead');
             const hpt = document.getElementById('hoverPlayheadTime');
             const hptc = document.getElementById('hoverPlayheadTimeContainer');
+            hp.style.left = `${rawX}px`;
+            hp.classList.toggle('blade-active', !!State.bladeMode);
+            if (State.bladeMode) {
+                hpt.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>${formatTime(time)}`;
+            } else {
+                hpt.textContent = formatTime(time);
+            }
+            if (hptc) {
+                hptc.style.top = `${container.scrollTop + 4}px`;
+            }
+            hp.classList.remove('hidden');
+        }
+
+        function setupHoverPlayhead() {
+            const container = document.getElementById('timelineScrollArea');
+            const hp = document.getElementById('hoverPlayhead');
             
             container.addEventListener('mousemove', (e) => {
                 if (!State.hoverPlayheadEnabled || State.drag.active || State.trackResizing) {
                     hp.classList.add('hidden');
-                    State.hoverPlayheadTime = null;
+                    if (State.hoverPlayheadEnabled) {
+                        // Drag / resize in progress: not hovering, forget the spot.
+                        State.hoverPlayheadTime = null;
+                        State._hoverPlayheadX = null;
+                    } else {
+                        // Toggle off, but keep tracking the pointer so toggling
+                        // back on re-shows the playhead instantly at the current
+                        // spot — no mouse nudge needed.
+                        const rect = container.getBoundingClientRect();
+                        const rawX = e.clientX - rect.left + container.scrollLeft;
+                        if (rawX < 0) {
+                            State.hoverPlayheadTime = null;
+                            State._hoverPlayheadX = null;
+                        } else {
+                            State._hoverPlayheadX = rawX;
+                            State.hoverPlayheadTime = Math.max(0, Math.min(rawX / State.pixelsPerSecond, State.duration));
+                        }
+                    }
                     return;
                 }
                 const rect = container.getBoundingClientRect();
                 const rawX = e.clientX - rect.left + container.scrollLeft;
                 const time = Math.max(0, Math.min(rawX / State.pixelsPerSecond, State.duration));
-                if (rawX < 0) { State.hoverPlayheadTime = null; return; }
+                if (rawX < 0) { State.hoverPlayheadTime = null; State._hoverPlayheadX = null; return; }
                 State.hoverPlayheadTime = time;
-                
-                hp.style.left = `${rawX}px`;
-                hp.classList.toggle('blade-active', !!State.bladeMode);
-                if (State.bladeMode) {
-                    hpt.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>${formatTime(time)}`;
-                } else {
-                    hpt.textContent = formatTime(time);
-                }
-                if (hptc) {
-                    hptc.style.top = `${container.scrollTop + 4}px`;
-                }
-                hp.classList.remove('hidden');
+                State._hoverPlayheadX = rawX;
+                showHoverPlayheadAt(rawX, time);
             });
             
             container.addEventListener('mouseleave', () => {
                 hp.classList.add('hidden');
                 State.hoverPlayheadTime = null;
+                State._hoverPlayheadX = null;
             });
         }
 
