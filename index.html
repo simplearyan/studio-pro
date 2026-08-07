@@ -18772,11 +18772,15 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 else if (k === 'j' || k === 'l') {
                     e.preventDefault();
                     const isForward = (k === 'l');
-                    const baseSeconds = e.ctrlKey ? 10 : 5;
+                    // J/L time-seek ladder: default 5 s, Alt = 2.5 s, Shift = 7.5 s,
+                    // Ctrl = 10 s (Ctrl wins over the others if several are held).
+                    // Clip-nudging moved to the "Keyboard Seeks Clip" toggle only, so
+                    // Alt/Shift are free for seek amounts instead of hijacking the keys.
+                    const baseSeconds = e.ctrlKey ? 10 : (e.shiftKey ? 7.5 : (e.altKey ? 2.5 : 5));
                     const delta = isForward ? baseSeconds : -baseSeconds;
                     
                     const hasSelection = State.selectedClipId || (State.multiSelectedClipIds && State.multiSelectedClipIds.length > 0);
-                    const seekClip = hasSelection && (State.keyboardSeekClip || e.shiftKey || e.altKey);
+                    const seekClip = hasSelection && State.keyboardSeekClip;
                     
                     if (seekClip) {
                         nudgeSelectedClips(delta);
