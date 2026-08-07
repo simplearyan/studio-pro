@@ -9746,7 +9746,7 @@
         };
 
         window.renderPresetsLibrary = function() {
-            sidebarContent.className = "flex flex-col gap-3 p-4 w-full flex-1 min-h-0 overflow-y-auto";
+            sidebarContent.className = "flex flex-col gap-3 p-4 w-full flex-1 min-h-0 overflow-hidden";
             
             const customPresets = loadCustomPresets();
             const allPresets = [...DEFAULT_PRESETS, ...customPresets];
@@ -9763,12 +9763,12 @@
             }
             
             const categories = [
-                { id: 'all', name: 'All' },
-                { id: 'math', name: 'Math' },
-                { id: 'text', name: 'Text' },
-                { id: 'shape', name: 'Shapes' },
-                { id: 'media', name: 'Media' },
-                { id: 'keyframes', name: 'Keyframes' }
+                { id: 'all', name: 'All', icon: 'grid' },
+                { id: 'math', name: 'Math', icon: 'sigma' },
+                { id: 'text', name: 'Text', icon: 'type' },
+                { id: 'shape', name: 'Shapes', icon: 'shapes' },
+                { id: 'media', name: 'Media', icon: 'image' },
+                { id: 'keyframes', name: 'Keyframes', icon: 'key' }
             ];
             
             const filtered = activePresets.filter(p => {
@@ -9779,64 +9779,79 @@
                 return p.type === State.activePresetFilter;
             });
             
+            const activeFilterCount = filtered.length;
+            
+            // Helper: pick a category label + icon + gradient for a preset (with thumbnail fallback)
+            const presetMeta = (p) => {
+                if (p.category === 'Math') return { cat: 'Math', icon: 'sigma', grad: 'from-violet-500 to-fuchsia-500' };
+                if (p.category === 'Keyframe Path') return { cat: 'Keyframes', icon: 'key', grad: 'from-cyan-500 to-blue-600' };
+                if (p.type === 'text') return { cat: 'Text', icon: 'type', grad: 'from-indigo-500 to-violet-500' };
+                if (p.type === 'shape') return { cat: 'Shapes', icon: 'shapes', grad: 'from-emerald-500 to-teal-600' };
+                if (p.type === 'image') return { cat: 'Image', icon: 'image', grad: 'from-amber-500 to-orange-600' };
+                if (p.type === 'video') return { cat: 'Video', icon: 'video', grad: 'from-rose-500 to-red-600' };
+                if (p.type === 'scene') return { cat: 'Scene', icon: 'clapperboard', grad: 'from-fuchsia-500 to-pink-600' };
+                return { cat: p.type || 'Media', icon: 'film', grad: 'from-slate-500 to-slate-700' };
+            };
+            
+            const escapeHtml = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+            
             let html = `
-                <style>
-                    .presets-flex-container {
-                        display: flex;
-                        flex-wrap: wrap;
-                        align-content: flex-start;
-                        justify-content: center;
-                        gap: 10px;
-                        width: 100%;
-                    }
-                    .presets-card {
-                        width: 94px;
-                        height: 94px;
-                        flex-shrink: 0;
-                        box-sizing: border-box;
-                    }
-                </style>
-                
-                <div class="flex items-center gap-1 bg-surface-100 dark:bg-surface-800/50 p-1 rounded-md shrink-0">
+                <!-- Header: title + storage actions -->
+                <div class="flex items-center justify-between shrink-0">
+                    <div class="flex items-center gap-2">
+                        <div class="w-8 h-8 rounded-lg bg-brand-50 dark:bg-brand-500/15 text-brand-600 dark:text-brand-400 flex items-center justify-center shadow-sm border border-brand-100 dark:border-brand-500/20">
+                            <i data-lucide="layout-grid" class="w-4 h-4"></i>
+                        </div>
+                        <div>
+                            <h2 class="text-[13px] font-extrabold text-surface-800 dark:text-surface-100 tracking-tight leading-none">Presets</h2>
+                            <p class="text-[10px] font-medium text-surface-500 dark:text-surface-400 mt-0.5">${activeFilterCount} ${activeFilterCount === 1 ? 'template' : 'templates'}</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-0.5">
+                        <label class="material-icon-btn cursor-pointer" title="Import presets (JSON)">
+                            <i data-lucide="download" class="w-4 h-4"></i>
+                            <input type="file" accept=".json" class="hidden" onchange="importPresets(event)">
+                        </label>
+                        <button onclick="exportPresets()" class="material-icon-btn" title="Export presets (JSON)">
+                            <i data-lucide="upload" class="w-4 h-4"></i>
+                        </button>
+                        <button onclick="restoreDefaultPresets()" class="material-icon-btn" title="Restore deleted default presets">
+                            <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Material segmented filter pills -->
+                <div class="material-segmented shrink-0 w-full">
                     ${categories.map(cat => {
                         const isActive = State.activePresetFilter === cat.id;
                         return `
-                            <button onclick="setPresetFilter('${cat.id}')" class="flex-1 text-[10px] font-bold py-1 px-1.5 rounded transition-colors text-center ${isActive ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm' : 'text-surface-500 hover:text-surface-900 dark:hover:text-surface-100'}" style="min-width: 0;">
+                            <button onclick="setPresetFilter('${cat.id}')" class="${isActive ? 'active' : ''}" style="min-width: 0;">
+                                <i data-lucide="${cat.icon}" class="w-3 h-3 shrink-0"></i>
                                 ${cat.name}
                             </button>
                         `;
                     }).join('')}
                 </div>
 
-                <div class="flex items-center justify-between shrink-0 gap-2 mt-1">
-                    <span class="text-[9px] font-bold text-surface-600 dark:text-surface-300 uppercase tracking-wider">Storage Actions</span>
-                    <div class="flex items-center gap-1">
-                        <label class="cursor-pointer bg-surface-100 hover:bg-surface-200 dark:bg-surface-800 dark:hover:bg-surface-700 text-surface-700 dark:text-surface-300 px-1.5 py-0.5 rounded text-[8.5px] font-bold transition-all flex items-center gap-0.5 border border-surface-200 dark:border-surface-700 shadow-sm">
-                            <i data-lucide="download" class="w-2.5 h-2.5"></i> Import
-                            <input type="file" accept=".json" class="hidden" onchange="importPresets(event)">
-                        </label>
-                        <button onclick="exportPresets()" class="bg-surface-100 hover:bg-surface-200 dark:bg-surface-800 dark:hover:bg-surface-700 text-surface-700 dark:text-surface-300 px-1.5 py-0.5 rounded text-[8.5px] font-bold transition-all flex items-center gap-0.5 border border-surface-200 dark:border-surface-700 shadow-sm">
-                            <i data-lucide="upload" class="w-2.5 h-2.5"></i> Export
-                        </button>
-                        <button onclick="restoreDefaultPresets()" class="bg-surface-100 hover:bg-surface-200 dark:bg-surface-800 dark:hover:bg-surface-700 text-surface-700 dark:text-surface-300 px-1.5 py-0.5 rounded text-[8.5px] font-bold transition-all flex items-center gap-0.5 border border-surface-200 dark:border-surface-700 shadow-sm" title="Restore default presets">
-                            <i data-lucide="rotate-ccw" class="w-2.5 h-2.5"></i> Restore
-                        </button>
-                    </div>
-                </div>
-                
-                <div class="presets-flex-container overflow-y-auto pr-1 flex-1">
+                <!-- Preset grid (image-first cards) -->
+                <div class="preset-lib-scroll flex-1 min-h-0 overflow-y-auto pr-1 -mr-1">
             `;
             
             if (filtered.length === 0) {
                 html += `
-                    <div class="col-span-full flex flex-col items-center justify-center text-surface-500 py-12 border-2 border-dashed border-surface-300 dark:border-surface-700 rounded-lg w-full">
-                        <i data-lucide="folder-open" class="w-8 h-8 mb-2 opacity-50"></i>
-                        <p class="text-xs text-center px-4">No presets found in this category.</p>
+                    <div class="flex flex-col items-center justify-center text-surface-500 py-14 border-2 border-dashed border-surface-200 dark:border-surface-700/70 rounded-2xl w-full mt-1">
+                        <div class="w-12 h-12 rounded-full bg-surface-100 dark:bg-surface-800 flex items-center justify-center mb-3">
+                            <i data-lucide="folder-open" class="w-6 h-6 opacity-50"></i>
+                        </div>
+                        <p class="text-xs font-semibold text-center px-4">No presets in this category</p>
+                        <p class="text-[10px] text-center px-6 mt-1 opacity-70">Select a clip and use "Save Preset" to build your own library.</p>
                     </div>
                 `;
             } else {
+                html += `<div class="presets-grid pb-2">`;
                 filtered.forEach(p => {
-                    const iconName = p.category === 'Math' ? 'variable' : (p.type === 'text' ? 'type' : (p.type === 'shape' ? 'shapes' : (p.type === 'image' ? 'image' : (p.type === 'video' ? 'video' : 'film'))));
+                    const meta = presetMeta(p);
                     
                     const selectedClip = State.clips.find(c => c.id === State.selectedClipId);
                     let canApply = selectedClip && selectedClip.type === p.type;
@@ -9846,41 +9861,44 @@
                         canApply = selectedClip && ((isPresetVisual && isClipVisual) || (!isPresetVisual && !isClipVisual));
                     }
                     
+                    const thumbContent = p.thumbnail
+                        ? `<img src="${p.thumbnail}" alt="" loading="lazy">`
+                        : `<div class="thumb-fallback bg-gradient-to-br ${meta.grad}"><i data-lucide="${meta.icon}" class="w-7 h-7 text-white"></i></div>`;
+                    
                     html += `
-                        <div class="presets-card group relative flex flex-col items-center justify-center p-3 rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 shadow-sm hover:shadow-md hover:border-brand-300 dark:hover:border-brand-500/50 transition-all overflow-hidden cursor-pointer" onclick="addPresetToTimeline('${p.id}')">
-                            <!-- Icon -->
-                            <div class="w-10 h-10 rounded-full bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 flex items-center justify-center mb-3 transition-transform duration-300 group-hover:scale-110">
-                                <i data-lucide="${iconName}" class="w-5 h-5"></i>
+                        <div class="preset-card" onclick="addPresetToTimeline('${p.id}')" title="${escapeHtml(p.name)}">
+                            <!-- Thumbnail / fallback -->
+                            <div class="preset-card-thumb">
+                                ${thumbContent}
+                                <span class="preset-card-cat">${meta.cat}</span>
+                                
+                                <!-- Hover overlay actions -->
+                                <div class="preset-card-overlay">
+                                    <div class="preset-card-actions">
+                                        <button onclick="addPresetToTimeline('${p.id}'); event.stopPropagation();" class="preset-card-btn primary" title="Add to Timeline">
+                                            <i data-lucide="plus" class="w-4 h-4"></i>
+                                        </button>
+                                        <button onclick="applyPresetToSelected('${p.id}'); event.stopPropagation();" class="preset-card-btn ok" ${canApply ? '' : 'disabled'} title="${canApply ? 'Apply Style to Selected Clip' : 'Select a matching clip to apply'}">
+                                            <i data-lucide="check" class="w-4 h-4"></i>
+                                        </button>
+                                    </div>
+                                    <div class="preset-card-actions">
+                                        <button onclick="exportSinglePreset('${p.id}'); event.stopPropagation();" class="preset-card-btn" title="Export preset">
+                                            <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                                        </button>
+                                        <button onclick="deleteCustomPreset('${p.id}'); event.stopPropagation();" class="preset-card-btn danger" title="Delete preset">
+                                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                             
                             <!-- Name -->
-                            <h4 class="text-xs font-bold text-surface-800 dark:text-surface-200 text-center w-full truncate px-2" title="${p.name}">${p.name}</h4>
-                            
-                            <!-- Hover Overlay -->
-                            <div class="absolute inset-0 bg-surface-900/90 backdrop-blur-sm flex flex-col items-center justify-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                                <!-- Top Actions (Export / Delete) -->
-                                <div class="absolute top-2 right-2 flex gap-1">
-                                    <button onclick="exportSinglePreset('${p.id}'); event.stopPropagation();" class="p-1.5 rounded-full text-surface-300 hover:text-white hover:bg-surface-700 transition-colors" title="Export preset">
-                                        <i data-lucide="download" class="w-3 h-3"></i>
-                                    </button>
-                                    <button onclick="deleteCustomPreset('${p.id}'); event.stopPropagation();" class="p-1.5 rounded-full text-surface-300 hover:text-red-400 hover:bg-surface-700 transition-colors" title="Delete preset">
-                                        <i data-lucide="trash-2" class="w-3 h-3"></i>
-                                    </button>
-                                </div>
-                                
-                                <!-- Primary Actions -->
-                                <div class="flex gap-2 mt-4">
-                                    <button onclick="addPresetToTimeline('${p.id}'); event.stopPropagation();" class="w-9 h-9 rounded-full bg-brand-500 hover:bg-brand-400 text-white flex items-center justify-center transition-colors shadow-lg" title="Add to Timeline">
-                                        <i data-lucide="plus" class="w-4 h-4"></i>
-                                    </button>
-                                    <button onclick="applyPresetToSelected('${p.id}'); event.stopPropagation();" class="w-9 h-9 rounded-full transition-colors flex items-center justify-center shadow-lg ${canApply ? 'bg-emerald-500 hover:bg-emerald-400 text-white' : 'bg-surface-700 text-surface-500 cursor-not-allowed'}" ${canApply ? '' : 'disabled'} title="Apply Style to Selected Clip">
-                                        <i data-lucide="check" class="w-4 h-4"></i>
-                                    </button>
-                                </div>
-                            </div>
+                            <div class="preset-card-name">${escapeHtml(p.name)}</div>
                         </div>
                     `;
                 });
+                html += `</div>`;
             }
             
             html += `</div>`;
@@ -10006,6 +10024,26 @@
             updateSidebarPanel();
         };
 
+        // Shared helper: capture a lightweight thumbnail of the current canvas
+        // (like thumb-maker's saveToLibrary) so saved presets show real previews.
+        window.capturePresetThumbnail = function() {
+            try {
+                const srcCanvas = document.getElementById('renderCanvas');
+                if (!srcCanvas || srcCanvas.width <= 0) return '';
+                const tw = 240;
+                const th = Math.max(120, Math.round((srcCanvas.height / srcCanvas.width) * tw));
+                const tc = document.createElement('canvas');
+                tc.width = tw;
+                tc.height = th;
+                const tctx = tc.getContext('2d');
+                tctx.drawImage(srcCanvas, 0, 0, tw, th);
+                return tc.toDataURL('image/jpeg', 0.35);
+            } catch (e) {
+                console.error("Thumbnail capture failed:", e);
+                return '';
+            }
+        };
+
         window.saveElementAsPreset = function() {
             if (!State.selectedClipId) {
                 alert("Please select a clip on the timeline first to save its properties as a preset.");
@@ -10022,6 +10060,7 @@
                 name: name,
                 type: clip.type,
                 category: 'User Custom',
+                thumbnail: window.capturePresetThumbnail(),
                 effects: JSON.parse(JSON.stringify(clip.effects))
             };
 
@@ -10377,6 +10416,9 @@
                 keyframes: JSON.parse(JSON.stringify(clip.keyframes)),
                 effects: {}
             };
+
+            // Capture a thumbnail of the current canvas so the preset card shows a preview
+            preset.thumbnail = window.capturePresetThumbnail();
             
             const presets = loadCustomPresets();
             presets.push(preset);
