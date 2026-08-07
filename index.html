@@ -14152,6 +14152,39 @@ Paste any **video URL** \u2014 or use \`![alt](mock:video)\` while you design. I
             applyMarkdownStyle();
         };
 
+        // Apply a saved text preset's effects onto the markdown Heading or Text style
+        // (mapping clip-effect keys -> markdownConfig 'heading*' / 'text*' keys).
+        window.applyMdTextPreset = function(presetId, target) {
+            const preset = DEFAULT_PRESETS.find(p => p.id === presetId) || loadCustomPresets().find(p => p.id === presetId);
+            if (!preset || !preset.effects) return;
+            const fx = preset.effects;
+            const cfg = State.markdownConfig;
+            const p = target === 'heading' ? 'heading' : 'text';
+            const map = {
+                fontFamily: p + 'FontFamily',
+                fontSize: p + 'FontSize',
+                fontWeight: p + 'FontWeight',
+                fillColor: p + 'Color',
+                strokeEnable: p + 'StrokeEnable',
+                strokeColor: p + 'StrokeColor',
+                strokeWidth: p + 'StrokeWidth',
+                shadowEnable: p + 'ShadowEnable',
+                shadowColor: p + 'ShadowColor',
+                shadowBlur: p + 'ShadowBlur',
+                shadowX: p + 'ShadowX',
+                shadowY: p + 'ShadowY',
+                extrudeEnable: p + 'ExtrudeEnable',
+                extrudeColor: p + 'ExtrudeColor',
+                extrudeDir: p + 'ExtrudeDir',
+                extrudeDepth: p + 'ExtrudeDepth'
+            };
+            for (const [srcKey, dstKey] of Object.entries(map)) {
+                if (fx[srcKey] !== undefined) cfg[dstKey] = fx[srcKey];
+            }
+            applyMarkdownStyle();
+            renderMarkdownPanel();
+        };
+
         // In-place visual update for the heading FX group toggles — no full panel rebuild,
         // so the scroll position is preserved and the pill/knob reflect the checked state
         // immediately (peer-checked: CSS variants fail for the nested knob + dark mode).
@@ -14255,6 +14288,41 @@ Paste any **video URL** \u2014 or use \`![alt](mock:video)\` while you design. I
             }
             const headingFontOptionsHtml = mdFontOpts(headingFontValue);
             const textFontOptionsHtml = mdFontOpts(textFontValue);
+
+            // Material-style horizontal chip strip of saved text presets for fast styling
+            // of the markdown Heading / Text styles (thumbnails when saved, else an Aa tile).
+            function mdPresetStripHtml(target) {
+                let deletedIds = [];
+                try { deletedIds = JSON.parse(localStorage.getItem('deleted_presets') || '[]'); } catch(e) {}
+                const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+                // Text-style presets only — exclude Math presets, which are also type 'text'
+                // (math clips render as text with renderAsMath: true) but shouldn't style markdown.
+                const textPresets = [...DEFAULT_PRESETS, ...loadCustomPresets()]
+                    .filter(p => !deletedIds.includes(p.id) && p.type === 'text' && p.category !== 'Math')
+                    .slice(0, 14);
+                if (!textPresets.length) return '';
+                return `
+                    <div class="flex flex-col gap-1.5">
+                        <div class="flex items-center justify-between">
+                            <label class="text-[9px] font-semibold text-surface-600 dark:text-surface-300 uppercase tracking-widest">Quick Styles</label>
+                            <span class="text-[8px] font-medium text-surface-400 dark:text-surface-500">tap to apply</span>
+                        </div>
+                        <div class="flex gap-1.5 overflow-x-auto no-scrollbar pb-1 -mx-1 px-1">
+                            ${textPresets.map(p => {
+                                const tile = p.thumbnail
+                                    ? `<img src="${p.thumbnail}" alt="" class="w-full h-full object-cover" loading="lazy">`
+                                    : `<span class="w-full h-full flex items-center justify-center bg-gradient-to-br from-indigo-500 to-violet-500 text-white font-extrabold" style="font-size:13px">Aa</span>`;
+                                return `
+                                    <button type="button" onclick="applyMdTextPreset('${p.id}', '${target}')" class="shrink-0 w-[52px] flex flex-col items-center gap-1 rounded-lg p-1 border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 hover:border-brand-400/70 dark:hover:border-brand-500/60 hover:shadow-md hover:-translate-y-0.5 transition-all group" title="${esc(p.name)}">
+                                        <span class="w-10 h-7 rounded-md overflow-hidden border border-surface-200 dark:border-surface-700/60 shadow-sm block">${tile}</span>
+                                        <span class="text-[7.5px] font-bold text-surface-600 dark:text-surface-300 truncate w-full text-center leading-tight">${esc(p.name)}</span>
+                                    </button>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                `;
+            }
 
             // Effects sub-tab for Heading Style: Stroke & Outline / Drop Shadow / 3D Extrude
             // (mirrors the per-clip text properties panel controls)
@@ -14442,6 +14510,7 @@ Paste any **video URL** \u2014 or use \`![alt](mock:video)\` while you design. I
                         </summary>
                         <div class="p-3 flex flex-col gap-3">
                             ${cfg.headingFxTab === 'effects' ? headingEffectsHtml : `
+                            ${mdPresetStripHtml('heading')}
                             <div class="grid grid-cols-2 gap-2">
                                 <div>
                                     <label class="text-[9px] font-semibold text-surface-600 dark:text-surface-300">Font</label>
@@ -14526,6 +14595,7 @@ Paste any **video URL** \u2014 or use \`![alt](mock:video)\` while you design. I
                         </summary>
                         <div class="p-3 flex flex-col gap-3">
                             ${cfg.textFxTab === 'effects' ? textEffectsHtml : `
+                            ${mdPresetStripHtml('text')}
                             <div class="grid grid-cols-2 gap-2">
                                 <div>
                                     <label class="text-[9px] font-semibold text-surface-600 dark:text-surface-300">Font</label>
