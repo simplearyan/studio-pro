@@ -1011,6 +1011,7 @@
                 animSlideDir: 'up',
                 animSlideOffCanvas: true,
                 animPreset: 'none',
+                animFullSpan: false, // karaoke presets sweep across the whole caption duration instead of the entrance phase
                 position: 'bottom',
                 bottomOffset: 60,
                 lineHeight: 1.3,
@@ -5707,7 +5708,7 @@
                         if (sub) {
                             if (!sub.effects) sub.effects = {};
                             // Map text properties from clip effects to subtitle effects
-                            const subtitleEffectMap = ['fontFamily', 'fontSize', 'fillColor', 'fontWeight', 'fontStyle', 'lineHeight', 'letterSpacing', 'shadowEnable', 'shadowColor', 'shadowBlur', 'shadowX', 'shadowY', 'strokeEnable', 'strokeColor', 'strokeWidth', 'bgEnable', 'bgColor', 'bgOpacity', 'bgPadding', 'bgRadius', 'position', 'bottomOffset', 'animIn', 'animOut', 'animPreset', 'animEase', 'animInDur', 'animOutDur'];
+                            const subtitleEffectMap = ['fontFamily', 'fontSize', 'fillColor', 'fontWeight', 'fontStyle', 'lineHeight', 'letterSpacing', 'shadowEnable', 'shadowColor', 'shadowBlur', 'shadowX', 'shadowY', 'strokeEnable', 'strokeColor', 'strokeWidth', 'bgEnable', 'bgColor', 'bgOpacity', 'bgPadding', 'bgRadius', 'position', 'bottomOffset', 'animIn', 'animOut', 'animPreset', 'animEase', 'animInDur', 'animOutDur', 'animFullSpan'];
                             if (subtitleEffectMap.includes(effectName)) {
                                 sub.effects[effectName] = clip.effects[effectName];
                                 saveSubtitlesToStorage();
@@ -7628,6 +7629,9 @@
                     const capBgOp = Math.round((capEf.bgOpacity !== undefined ? capEf.bgOpacity : 0.5) * 100);
                     const capEase = capEf.animEase !== undefined ? capEf.animEase : 'easeOut';
                     const capDur = Math.round(((capEf.animInDur !== undefined ? capEf.animInDur : (capCfg.animInDur || 0.3))) * 100) / 100;
+                    const capPresetEff = capEf.animPreset !== undefined ? capEf.animPreset : (capCfg.animPreset || 'none');
+                    const capSweep = ['wordHighlight', 'letterPop', 'letterFade', 'typewriter', 'bounce', 'rotate'].includes(capPresetEff);
+                    const capFullSpan = capEf.animFullSpan ? true : false;
                     const seg = (cur, val) => cur === val ? 'bg-brand-600 text-white shadow-sm' : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-700';
                     const capAnimSel = (key, opts) => {
                         const cur = capEf[key] !== undefined ? capEf[key] : (capCfg[key] !== undefined ? capCfg[key] : '');
@@ -7671,6 +7675,14 @@
                             <div>
                                 <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1 block">Preset Animation</label>
                                 ${capAnimSel('animPreset', [['none', 'None'], ['fade', 'Fade Up'], ['pop', 'Pop'], ['letterPop', 'Letter Pop'], ['letterFade', 'Letter Fade'], ['typewriter', 'Typewriter'], ['wordHighlight', 'Word Glow'], ['bounce', 'Bounce'], ['rotate', 'Rotate']])}
+                                ${capSweep ? `
+                                <div class="flex items-center justify-between mt-1.5">
+                                    <label class="text-[10px] font-bold text-surface-600 dark:text-surface-300 flex items-center gap-1.5 cursor-pointer" title="Sweep across the whole caption duration (CapCut-style karaoke) instead of only the ~0.5s entrance phase"><i data-lucide="timer" class="w-3 h-3 text-brand-500"></i>Whole caption duration</label>
+                                    <label class="relative inline-flex items-center cursor-pointer">
+                                        <input type="checkbox" class="sr-only peer" ${capFullSpan ? 'checked' : ''} onchange="setClipEffect('${clip.id}', 'animFullSpan', this.checked); updateSidebarPanel();">
+                                        <div class="w-7 h-4 bg-surface-300 dark:bg-surface-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:border-surface-600 dark:peer-checked:bg-brand-500 peer-checked:bg-brand-500"></div>
+                                    </label>
+                                </div>` : ''}
                             </div>
                             <div class="grid grid-cols-2 gap-2">
                                 <div><label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1 block">Easing</label>${capAnimSel('animEase', [['easeOut', 'Ease Out'], ['easeIn', 'Ease In'], ['easeInOut', 'Ease In-Out'], ['elastic', 'Elastic'], ['bounce', 'Bounce'], ['linear', 'Linear']])}</div>
@@ -13014,7 +13026,12 @@ const isVis = !clip.hidden;
             }
             fx.animInDur = ef.animInDur !== undefined ? ef.animInDur : 0.3;
             fx.animOutDur = ef.animOutDur !== undefined ? ef.animOutDur : 0.3;
-            fx.animTextInDur = Math.max(0.5, ef.animInDur !== undefined ? ef.animInDur : 0.3);
+            fx.animFullSpan = !!ef.animFullSpan;
+            // Full-duration karaoke (CapCut-style) survives conversion: spread the text
+            // reveal across the clip's whole duration instead of the entrance phase.
+            fx.animTextInDur = fx.animFullSpan
+                ? Math.max(0.5, clip.duration || 1)
+                : Math.max(0.5, ef.animInDur !== undefined ? ef.animInDur : 0.3);
             fx.animTextOutDur = Math.max(0.5, ef.animOutDur !== undefined ? ef.animOutDur : 0.3);
             fx.animTextStagger = 'letter';
 
@@ -13110,7 +13127,7 @@ const isVis = !clip.hidden;
             'shadowEnable', 'shadowColor', 'shadowBlur', 'shadowX', 'shadowY',
             'strokeEnable', 'strokeColor', 'strokeWidth',
             'bgEnable', 'bgColor', 'bgOpacity', 'bgPadding', 'bgRadius',
-            'position', 'bottomOffset', 'animIn', 'animOut', 'animPreset', 'animEase', 'animInDur', 'animOutDur'];
+            'position', 'bottomOffset', 'animIn', 'animOut', 'animPreset', 'animEase', 'animInDur', 'animOutDur', 'animFullSpan'];
 
         // Revert ONE caption field back to inheriting the global style (drops the
         // per-caption override for that key, keeping every other override intact).
@@ -13349,6 +13366,14 @@ const isVis = !clip.hidden;
                                     <div class="grid grid-cols-4 gap-1">
                                         ${[['none','None'],['fade','Fade Up'],['pop','Pop'],['letterPop','Letter Pop'],['letterFade','Letter Fade'],['typewriter','Typewriter'],['wordHighlight','Word Glow'],['bounce','Bounce'],['rotate','Rotate']].map(([pv, pl]) => `<button class="px-1 py-1.5 text-[9px] font-bold rounded transition-colors ${(cfg.animPreset||'none') === pv ? 'bg-brand-600 text-white shadow-sm' : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-700'}" onclick="State.subtitleConfig.animPreset='${pv}'; saveSubtitlesToStorage(); drawCanvas(); renderSubtitlesPanel();">${pl}</button>`).join('')}
                                     </div>
+                                    ${['wordHighlight', 'letterPop', 'letterFade', 'typewriter', 'bounce', 'rotate'].includes(cfg.animPreset) ? `
+                                    <div class="flex items-center justify-between mt-2">
+                                        <label class="text-[10px] font-bold text-surface-600 dark:text-surface-300 flex items-center gap-1.5 cursor-pointer" title="Sweep across the whole caption duration (CapCut-style karaoke) instead of only the ~0.5s entrance phase"><i data-lucide="timer" class="w-3 h-3 text-brand-500"></i>Whole caption duration</label>
+                                        <label class="relative inline-flex items-center cursor-pointer">
+                                            <input type="checkbox" class="sr-only peer" ${cfg.animFullSpan ? 'checked' : ''} onchange="State.subtitleConfig.animFullSpan = this.checked; saveSubtitlesToStorage(); drawCanvas();">
+                                            <div class="w-7 h-4 bg-surface-300 dark:bg-surface-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:border-surface-600 dark:peer-checked:bg-brand-500 peer-checked:bg-brand-500"></div>
+                                        </label>
+                                    </div>` : ''}
                                     <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mt-2 mb-1 block">Easing</label>
                                     <select class="w-full text-xs p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 focus:outline-none focus:border-brand-500 font-bold" onchange="State.subtitleConfig.animEase = this.value; saveSubtitlesToStorage(); drawCanvas();">
                                         <option value="easeOut" ${cfg.animEase==='easeOut'?'selected':''}>Ease Out</option>
@@ -13399,6 +13424,7 @@ const isVis = !clip.hidden;
                     const animInEl = document.getElementById('subInlineAnimIn_' + id);
                     const animOutEl = document.getElementById('subInlineAnimOut_' + id);
                     const animPresetEl = document.getElementById('subInlineAnimPreset_' + id);
+                    const fullSpanEl = document.getElementById('subInlineFullSpan_' + id);
                     sub.effects = {
                         fontFamily: fontEl && fontEl.value ? fontEl.value : undefined,
                         fontSize: sizeEl ? parseInt(sizeEl.value) || undefined : undefined,
@@ -13406,7 +13432,8 @@ const isVis = !clip.hidden;
                         position: posEl && posEl.value ? posEl.value : undefined,
                         animIn: animInEl && animInEl.value ? animInEl.value : undefined,
                         animOut: animOutEl && animOutEl.value ? animOutEl.value : undefined,
-                        animPreset: animPresetEl && animPresetEl.value ? animPresetEl.value : undefined
+                        animPreset: animPresetEl && animPresetEl.value ? animPresetEl.value : undefined,
+                        animFullSpan: fullSpanEl ? fullSpanEl.checked : undefined
                     };
                 } else if (overrideCheck) {
                     sub.effects = {};
@@ -13466,6 +13493,7 @@ const isVis = !clip.hidden;
                                         <div><label class="text-[8px] font-bold text-surface-400">Anim Out</label><select id="subInlineAnimOut_${sid}" onchange="autoSaveInlineSubtitle('${sid}')" class="w-full text-[10px] p-1 border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 focus:outline-none focus:border-brand-500 font-bold"><option value="" ${!ef.animOut?'selected':''}>Same</option><option value="none" ${ef.animOut==='none'?'selected':''}>None</option><option value="fadeOut" ${ef.animOut==='fadeOut'?'selected':''}>Fade</option><option value="slideDown" ${ef.animOut==='slideDown'?'selected':''}>Slide</option></select></div>
                                     </div>
                                     <div><label class="text-[8px] font-bold text-surface-400">Preset</label><select id="subInlineAnimPreset_${sid}" onchange="autoSaveInlineSubtitle('${sid}')" class="w-full text-[10px] p-1 border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 focus:outline-none focus:border-brand-500 font-bold"><option value="" ${!ef.animPreset?'selected':''}>Same</option><option value="none" ${ef.animPreset==='none'?'selected':''}>None</option><option value="fade" ${ef.animPreset==='fade'?'selected':''}>Fade Up</option><option value="pop" ${ef.animPreset==='pop'?'selected':''}>Pop</option><option value="letterPop" ${ef.animPreset==='letterPop'?'selected':''}>Letter Pop</option><option value="letterFade" ${ef.animPreset==='letterFade'?'selected':''}>Letter Fade</option><option value="typewriter" ${ef.animPreset==='typewriter'?'selected':''}>Typewriter</option><option value="wordHighlight" ${ef.animPreset==='wordHighlight'?'selected':''}>Word Glow</option><option value="bounce" ${ef.animPreset==='bounce'?'selected':''}>Bounce</option><option value="rotate" ${ef.animPreset==='rotate'?'selected':''}>Rotate</option></select></div>
+                                    <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" id="subInlineFullSpan_${sid}" ${ef.animFullSpan ? 'checked' : ''} onchange="autoSaveInlineSubtitle('${sid}')" class="rounded text-brand-500 focus:ring-brand-500"><span class="text-[8px] font-bold text-surface-400">Whole caption duration (karaoke)</span></label>
                                 </div>
                             </div>
                         </details>
@@ -15391,18 +15419,30 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
         }
 
         /** Draw a single caption line letter-by-letter (letterPop / letterFade / typewriter / bounce / rotate) */
-        function drawCaptionLetters(ctx, line, y, ef, cfg, preset, subTime, animInDur) {
+        function drawCaptionLetters(ctx, line, y, ef, cfg, preset, subTime, sweepDur, offs) {
             const chars = Array.from(line);
             if (!chars.length) return;
             const ls = (ef.letterSpacing !== undefined ? ef.letterSpacing : (cfg.letterSpacing || 0)) || 0;
             const widths = chars.map(ch => ctx.measureText(ch).width + ls);
             const totalW = widths.reduce((a, b) => a + b, 0) - ls;
             const easeName = (ef.animEase !== undefined ? ef.animEase : cfg.animEase) || 'easeOut';
-            const dur = Math.max(0.2, animInDur || 0.4);
-            const stagger = (dur * 0.8) / Math.max(1, chars.length);
+            const dur = Math.max(0.2, sweepDur || 0.4);
+            // With whole-caption (karaoke) mode the reveal flows across every line:
+            // each char gets an equal slice of the caption with a short per-char
+            // animation, instead of everything finishing in the entrance phase.
+            const karaoke = !!(offs && offs.tc);
+            const totalChars = karaoke ? offs.tc : chars.length;
+            const charBase = karaoke ? offs.c : 0;
+            // In karaoke mode each char gets exactly dur/totalChars (no floor) so the
+            // sweep always completes by the caption's end — even for very long text.
+            const slice = karaoke ? dur / Math.max(1, totalChars) : 0;
+            // letterDur = 0.8*slice keeps a per-char overlap that still never
+            // overruns: last char finishes at (totalChars-1)*slice + 0.8*slice < dur.
+            const letterDur = karaoke ? Math.min(0.5, slice * 0.8) : dur;
+            const stagger = karaoke ? slice : (dur * 0.8) / Math.max(1, totalChars);
             let x = -totalW / 2;
             for (let i = 0; i < chars.length; i++) {
-                const p = (subTime - i * stagger) / dur;
+                const p = (subTime - (charBase + i) * stagger) / letterDur;
                 const ep = captionPresetEase(easeName, p);
                 let la = 1, ls2 = 1, ly = 0, rot = 0;
                 if (preset === 'letterPop') { ls2 = 0.4 + 0.6 * ep; la = Math.min(1, p * 2); ly = (1 - ep) * 14; }
@@ -15443,21 +15483,25 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
         }
 
         /** Karaoke word-glow preset: a highlight pill sweeps across the caption word by word */
-        function drawCaptionWordGlow(ctx, line, y, ef, cfg, subTime, animInDur, fontSize) {
+        function drawCaptionWordGlow(ctx, line, y, ef, cfg, subTime, sweepDur, fontSize, offs) {
             const words = line.split(/\s+/).filter(Boolean);
             if (!words.length) return;
             const spaceW = ctx.measureText(' ').width;
             const widths = words.map(w => ctx.measureText(w).width);
             const totalW = widths.reduce((a, b) => a + b, 0) + spaceW * (words.length - 1);
-            const dur = Math.max(0.3, animInDur || 0.5);
-            const wordDur = dur / Math.max(1, words.length);
+            const dur = Math.max(0.3, sweepDur || 0.5);
+            // Whole-caption mode: each word across every line gets an equal slice of
+            // the caption's full duration, so the glow travels the whole caption.
+            const totalWords = offs && offs.tw ? offs.tw : words.length;
+            const wordBase = offs ? offs.w : 0;
+            const wordDur = dur / Math.max(1, totalWords);
             const op = ef.bgOpacity !== undefined ? ef.bgOpacity : (cfg.bgOpacity !== undefined ? cfg.bgOpacity : 0.5);
             const pad = ef.bgPadding || (cfg.bgPadding || 8);
             const pillH = fontSize + pad * 2;
             const rad = ef.bgRadius || (cfg.bgRadius || 10);
             let x = -totalW / 2;
             words.forEach((w, wi) => {
-                const p = (subTime - wi * wordDur) / wordDur;
+                const p = (subTime - (wordBase + wi) * wordDur) / wordDur;
                 const active = p > 0 && p < 1;
                 const done = p >= 1;
                 if (active || done) {
@@ -15613,14 +15657,34 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             // Draw each line
             const startY = -((lines.length - 1) * lh) / 2;
             const letterPresets = { letterPop: 1, letterFade: 1, typewriter: 1, bounce: 1, rotate: 1 };
+            // Whole-caption (karaoke) mode: sweep duration = the caption's full
+            // on-screen time instead of the entrance phase, with per-line word/char
+            // offsets so multi-line captions highlight in sequence (CapCut-style).
+            // NaN-safe: if the caption has no usable duration (e.g. missing times),
+            // fall back to the entrance phase so karaoke can't blank the caption.
+            const animSweepDur = ef.animFullSpan ? Math.max(0.15, Number.isFinite(subDuration) ? subDuration : animInDur) : animInDur;
+            let lineOffsets = null;
+            if (ef.animFullSpan && (animPreset === 'wordHighlight' || letterPresets[animPreset])) {
+                const lws = lines.map(l => l.split(/\s+/).filter(Boolean).length);
+                const lcs = lines.map(l => Array.from(l).length);
+                const tw = lws.reduce((a, b) => a + b, 0);
+                const tc = lcs.reduce((a, b) => a + b, 0);
+                lineOffsets = [];
+                let wo = 0, co = 0;
+                lines.forEach((l, i) => {
+                    lineOffsets.push({ w: wo, c: co, tw, tc });
+                    wo += lws[i];
+                    co += lcs[i];
+                });
+            }
             lines.forEach((line, i) => {
                 const y = startY + i * lh;
                 if (animPreset === 'wordHighlight') {
-                    drawCaptionWordGlow(ctx, line, y, ef, cfg, subTime, animInDur, fontSize);
+                    drawCaptionWordGlow(ctx, line, y, ef, cfg, subTime, animSweepDur, fontSize, lineOffsets ? lineOffsets[i] : null);
                     return;
                 }
                 if (letterPresets[animPreset]) {
-                    drawCaptionLetters(ctx, line, y, ef, cfg, animPreset, subTime, animInDur);
+                    drawCaptionLetters(ctx, line, y, ef, cfg, animPreset, subTime, animSweepDur, lineOffsets ? lineOffsets[i] : null);
                     return;
                 }
 
