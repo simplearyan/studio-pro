@@ -4995,7 +4995,7 @@
                         }
                         ctx.restore();
                     } else {
-                    if (clip.isPlaceholder || (clip.type === 'image' && (!clip.imageEl || !clip.imageEl.complete || clip.imageEl.naturalWidth === 0)) || (clip.type === 'video' && (!clip.videoEl || (clip._mdMedia && !clip.videoEl._mdLoaded && clip.videoEl.readyState < 2)))) {
+                    if (clip.isPlaceholder || (clip.type === 'image' && (!clip.imageEl || !clip.imageEl.complete || clip.imageEl.naturalWidth === 0)) || (clip.type === 'video' && (!clip.videoEl || (clip.videoEl.readyState < 2 && !(clip.videoEl._mdLoaded || clip.videoEl._frameReady))))) {
                         const borderRadius = clip.effects.borderRadius !== undefined ? clip.effects.borderRadius : 0;
 
                         const clipTime = State.currentTime - clip.start;
@@ -5132,6 +5132,7 @@
                         ctx.font = '600 18px "Inter", sans-serif';
                         ctx.globalAlpha = aState.animAlpha * (opacity / 100) * 0.8;
                         if (clip._mdMedia) ctx.fillText(clip._mdMock ? "Mock from markdown \u2014 edit alt text in script" : "Loading media \u2026", 0, durY + 34);
+                        else if (clip.type === 'video') ctx.fillText("Loading media \u2026", 0, durY + 34);
                         else ctx.fillText("Replace source in Properties tab", 0, durY + 34);
                         ctx.globalAlpha = aState.animAlpha * (opacity / 100);
 
@@ -10712,9 +10713,12 @@
                 clip.title = file.name;
             } else if (clip.type === 'video') {
                 const v = document.createElement('video');
-                v.src = objectUrl;
+                v.preload = 'auto';
+                v.playsInline = true;
                 v.crossOrigin = "anonymous";
                 v.muted = true;
+                v.src = objectUrl;
+                armVideoFrameLatch(v);
                 await new Promise((resolve) => {
                     v.onloadedmetadata = () => {
                         clip.maxDuration = v.duration;
@@ -10722,7 +10726,9 @@
                     };
                     v.onerror = resolve;
                 });
-                v.load();
+                // src assignment with preload='auto' already starts loading — an extra
+                // load() would restart it and reset readyState to 0, re-triggering the
+                // blank-frame wipe this phase is fixing.
                 clip.videoEl = v;
                 clip.fileUrl = objectUrl;
                 clip.isPlaceholder = false;
@@ -16526,10 +16532,12 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
 
                         if (isVideo) {
                             const v = document.createElement('video');
-                            v.src = objectUrl;
+                            v.preload = 'auto';
+                            v.playsInline = true;
                             v.crossOrigin = "anonymous";
                             v.muted = true;
-                            v.load();
+                            v.src = objectUrl;
+                            armVideoFrameLatch(v);
 
                             let videoTargetTrackId = getAvailableTrack('video', State.currentTime, duration);
                             let videoTargetTrack = State.tracks.find(t=>t.id===videoTargetTrackId);
@@ -17156,9 +17164,12 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
 
             const newVideoEl = clip.videoEl ? document.createElement('video') : null;
             if (newVideoEl) {
+                newVideoEl.preload = 'auto';
+                newVideoEl.playsInline = true;
                 newVideoEl.src = clip.fileUrl;
                 newVideoEl.crossOrigin = "anonymous";
                 newVideoEl.muted = true;
+                armVideoFrameLatch(newVideoEl);
                 newVideoEl.load();
             }
 
@@ -20259,23 +20270,63 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
         // browser has actually decoded that frame. Setting `currentTime` is async —
         // drawing immediately after would still show the old frame, which is why the
         // preview stayed stale after split until the user nudged the playhead.
+        // Latch a plain-import video element the same way markdown media does: once a
+        // frame has actually decoded, mark it ready and repaint the canvas so the good
+        // frame is never wiped by a later blank repaint. `_frameReady` is what the draw
+        // gate (~4998) checks to decide between showing the video and the placeholder.
+        function armVideoFrameLatch(el) {
+            if (!el || el._frameLatchOn) return;
+            el._frameLatchOn = true;
+            el._frameReady = false;
+            const stopPoll = () => clearInterval(el._framePollIv);
+            const onReady = () => { if (!el._frameReady) { el._frameReady = true; stopPoll(); drawCanvas(); } };
+            el.addEventListener('loadeddata', onReady);
+            el.addEventListener('seeked', onReady);
+            el.addEventListener('canplay', onReady);
+            // Safety net in case all three events fire before a listener could attach.
+            // Capped + stopped on error/emptied so a dead source can't poll forever.
+            el._framePollIv = setInterval(() => { if (el.readyState >= 2 && !el._frameReady) { el._frameReady = true; stopPoll(); drawCanvas(); } }, 50);
+            el.addEventListener('error', stopPoll, { once: true });
+            el.addEventListener('emptied', stopPoll, { once: true });
+            setTimeout(stopPoll, 30000);
+        }
+
         // Falls back to a short timeout in case 'seeked' never fires.
         function drawWhenFrameReady(el, targetTime) {
             if (!el) return;
+            armVideoFrameLatch(el);
             const want = Math.max(0, targetTime);
+            let finished = false;
             const finish = () => {
+                if (finished) return;
+                finished = true;
                 el.removeEventListener('seeked', finish);
+                el.removeEventListener('loadeddata', finish);
                 clearTimeout(finish._t);
+                clearInterval(finish._iv);
+                // Only latch when a frame is actually present — otherwise the gate keeps
+                // showing the honest placeholder instead of a blank element.
+                if (el.readyState >= 2 && el.videoWidth > 0) el._frameReady = true;
                 drawCanvas();
+            };
+            // Wait for a decodable frame before painting: drawing a fresh element at
+            // readyState < 2 paints blank, then the real frame arriving later wipes it
+            // (the blank-after-import symptom). Poll readyState + listen for the frame
+            // events, with a fallback timeout so a dead source can't hang the editor.
+            const waitForFrame = () => {
+                if (el.readyState >= 2 && el.videoWidth > 0) { finish(); return; }
+                el.addEventListener('seeked', finish);
+                el.addEventListener('loadeddata', finish);
+                finish._iv = setInterval(() => {
+                    if (el.readyState >= 2 && el.videoWidth > 0) finish();
+                }, 16);
+                finish._t = setTimeout(finish, 400);
             };
             try {
                 if (Math.abs(el.currentTime - want) > 0.05) {
                     el.currentTime = want;
-                    el.addEventListener('seeked', finish);
-                    finish._t = setTimeout(finish, 400);
-                } else {
-                    finish();
                 }
+                waitForFrame();
             } catch (_) {
                 finish();
             }
@@ -20383,6 +20434,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     retryVideo.preload = 'auto';
                     retryVideo.crossOrigin = 'anonymous';
                     retryVideo.muted = true;
+                    armVideoFrameLatch(retryVideo);
                     clip.videoEl = retryVideo;
                     el = retryVideo;
                 }
@@ -20550,6 +20602,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                             newVideo.crossOrigin = 'anonymous';
                             newVideo.muted = clip.videoEl.muted;
                             newVideo.volume = clip.videoEl.volume;
+                            armVideoFrameLatch(newVideo);
                             // Attempt to set scrub position immediately (may throw if
                             // metadata not yet loaded; next sync cycle will retry)
                             const seekTarget = clip.sourceOffset + (State.currentTime - clip.start);
