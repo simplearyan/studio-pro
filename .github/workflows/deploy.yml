@@ -3,6 +3,7 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [master, main]
+    tags: ['v[0-9]*']
   workflow_dispatch:
 
 permissions:
@@ -22,9 +23,13 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
-      - name: Checkout
+      # The ROOT build always comes from the default branch, even when this
+      # run was triggered by a tag push — otherwise a tag-triggered checkout
+      # would build the tag itself as the live root site.
+      - name: Checkout (root = default branch)
         uses: actions/checkout@v4
         with:
+          ref: refs/heads/${{ github.event.repository.default_branch }}
           fetch-depth: 0
 
       - name: Setup Node.js
@@ -42,12 +47,18 @@ jobs:
           GITHUB_ACTIONS: 'true'
 
       # ── Versioned snapshots ────────────────────────────────────────────
-      # Every `v*` tag (e.g. v1.0) is built with a per-tag base path and
-      # baked into the SAME Pages artifact as a subfolder, so it is served
-      # at https://<user>.github.io/<repo>/<tag>/ alongside the current
-      # root build. Tag-only pushes never trigger this workflow (the `on:`
-      # block above ignores tags); the snapshot is refreshed whenever the
-      # branch deploys, keeping old versions permanently available.
+      # Every `v*` tag (e.g. v0.6, v1.0) is built with a per-tag base path and
+      # baked into the SAME Pages artifact as a subfolder, so it is served at
+      # https://<user>.github.io/<repo>/<tag>/ alongside the current root
+      # build. Runs on every branch deploy AND on tag pushes (tags: trigger),
+      # so pushing a new v* tag publishes it automatically.
+      #
+      # Caveat: GitHub runs the workflow file from the PUSHED REF's tree. A
+      # tag pointing at an old commit (e.g. v0.6, whose tree has the old
+      # branch-only workflow) therefore cannot auto-trigger this pipeline —
+      # for those, just re-run "Deploy to GitHub Pages" via workflow_dispatch
+      # or push main; the snapshot gets baked in either way. Tags created at
+      # commits that already contain this workflow auto-deploy on push.
       - name: Fetch version tags
         run: git fetch --tags --force origin
 
