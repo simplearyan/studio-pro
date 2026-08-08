@@ -5633,14 +5633,18 @@
                 clip.audioNodes.reverbGain.gain.value = rVal;
             }
             
-            // Pitch via playbackRate
+            // Pitch via playbackRate (speed multiplies on top; preservesPitch keeps
+            // the audio pitch steady when only the clip speed is changed).
             const pitch = fx.pitch !== undefined ? fx.pitch : 1;
+            const spd = clipSpeed(clip);
+            const rate = Math.max(0.05, pitch * spd);
+            const preserves = Math.abs(pitch - 1) < 0.001;
             if (clip.audioEl) {
-                clip.audioEl.preservesPitch = false;
-                clip.audioEl.playbackRate = pitch;
+                clip.audioEl.preservesPitch = preserves;
+                clip.audioEl.playbackRate = rate;
             } else if (clip.videoEl) {
-                clip.videoEl.preservesPitch = false;
-                clip.videoEl.playbackRate = pitch;
+                clip.videoEl.preservesPitch = preserves;
+                clip.videoEl.playbackRate = rate;
             }
 
             clip.audioNodes.tinny.frequency.value = fx.cartoonEnable ? Math.max(1, cartoonVal * 1500) : 0;
@@ -5696,6 +5700,72 @@
             }
             drawCanvas();
         };
+        // Playback speed multiplier for media clips (video / audio). Default 1.
+        const clipSpeed = (clip) => {
+            const s = clip && clip.speed;
+            return (typeof s === 'number' && isFinite(s) && s > 0) ? s : 1;
+        };
+
+        window.setClipSpeed = (clipId, speed) => {
+            const targetIds = (State.multiSelectedClipIds && State.multiSelectedClipIds.length > 0 && State.multiSelectedClipIds.includes(clipId))
+                ? State.multiSelectedClipIds
+                : [clipId];
+            let primaryClip = null;
+            targetIds.forEach(id => {
+                const clip = State.clips.find(c => c.id === id);
+                if (!clip || (clip.type !== 'video' && clip.type !== 'audio')) return;
+                if (id === clipId) primaryClip = clip;
+                const oldSpeed = clipSpeed(clip);
+                const newSpeed = Math.max(0.25, Math.min(4, parseFloat(speed) || 1));
+                if (Math.abs(newSpeed - oldSpeed) < 0.001) return;
+                // Keep the same source window, rescale the timeline duration so faster
+                // clips get shorter on the timeline (CapCut-style speed editing).
+                const hasTrim = clip.type === 'audio' && clip.trimStart !== undefined;
+                const bufDur = clip.buffer ? clip.buffer.duration : Infinity;
+                const trimStart = hasTrim ? clip.trimStart : (clip.sourceOffset || 0);
+                const trimEnd = hasTrim
+                    ? Math.min(bufDur, clip.trimEnd !== undefined ? clip.trimEnd : trimStart + clip.duration * oldSpeed)
+                    : (clip.sourceOffset || 0) + clip.duration * oldSpeed;
+                const sourceWindow = Math.max(0.1, trimEnd - trimStart);
+                let newDuration = sourceWindow / newSpeed;
+                const maxSource = Math.max(0.1, (clip.maxDuration || clip.duration) - (clip.sourceOffset || 0));
+                newDuration = Math.min(newDuration, maxSource / newSpeed);
+                newDuration = Math.max(0.1, newDuration);
+                clip.speed = newSpeed;
+                clip.duration = newDuration;
+                // The source window is preserved exactly (trim fields stay in source
+                // time); only the timeline length rescales. Only persist trimEnd when it
+                // was already explicit — otherwise the natural fallback recomputes.
+                if (hasTrim && clip.trimEnd !== undefined) clip.trimEnd = trimEnd;
+                // Keep the media elements' playback rate in sync so speed changes apply
+                // instantly. preservesPitch stays on while only speed is active; the
+                // pitch effect needs raw playbackRate and shifts pitch as before.
+                const fx = clip.effects || {};
+                const pitch = fx.pitch !== undefined ? fx.pitch : 1;
+                const rate = Math.max(0.05, pitch * newSpeed);
+                const preserves = Math.abs(pitch - 1) < 0.001;
+                if (clip.videoEl) { clip.videoEl.preservesPitch = preserves; clip.videoEl.playbackRate = rate; }
+                if (clip.audioEl) { clip.audioEl.preservesPitch = preserves; clip.audioEl.playbackRate = rate; }
+                // A running buffer source (created before the speed change) keeps its old
+                // rate until the next restart — push the new rate onto it right away.
+                if (clip.sourceNode) { try { clip.sourceNode.playbackRate.value = newSpeed; } catch (e) {} }
+            });
+            if (!primaryClip) return;
+            const clip = primaryClip;
+            if (clip.start + clip.duration > State.duration) {
+                State.duration = Math.ceil(clip.start + clip.duration + 10);
+                updateTimelineWidth();
+            }
+            calcOverlaps();
+            renderClips();
+            syncMediaElements();
+            drawCanvas();
+            // Don't rebuild the properties panel here — oninput fires per drag tick and
+            // a rebuild would detach the slider mid-drag. The slider/preset handlers
+            // call updateSidebarPanel() themselves on change.
+            if (typeof drawAllWaveforms === 'function') drawAllWaveforms();
+        };
+
         window.setClipEffect = (clipId, effectName, value) => {
             const targetIds = (State.multiSelectedClipIds && State.multiSelectedClipIds.length > 0 && State.multiSelectedClipIds.includes(clipId)) 
                 ? State.multiSelectedClipIds 
@@ -8565,6 +8635,26 @@
                         </div>
                     </div>
                 </details>` +
+                `<details id="cardAudioSpeed" class="group bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 shadow-sm rounded-lg shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'} overflow-hidden flex flex-col" open>
+                    <summary class="flex justify-between items-center font-bold cursor-pointer p-2.5 bg-surface-50/50 dark:bg-surface-800 text-sm text-surface-800 dark:text-surface-200 select-none">
+                        <div class="flex items-center gap-2"><i data-lucide="gauge" class="w-4 h-4 text-brand-500"></i> Speed</div>
+                    </summary>
+                    <div class="p-3 bg-white dark:bg-surface-800 flex flex-col gap-3">
+                        <div class="flex flex-col gap-1.5">
+                            <div class="flex justify-between items-center text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase">
+                                <span>Multiplier</span>
+                                <span>${clipSpeed(clip).toFixed(2)}x</span>
+                            </div>
+                            <input type="range" min="0.25" max="4" step="0.05" value="${clipSpeed(clip)}" class="w-full custom-slider" oninput="setClipSpeed('${clip.id}', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = parseFloat(this.value).toFixed(2) + 'x';" onchange="updateSidebarPanel();">
+                            <div class="flex flex-wrap gap-1">
+                                ${[0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4].map(p => `
+                                    <button onclick="setClipSpeed('${clip.id}', ${p}); updateSidebarPanel(); event.stopPropagation();" class="flex-1 min-w-[36px] py-1 text-[9px] font-bold rounded-md border transition-all duration-150 ${Math.abs(clipSpeed(clip) - p) < 0.01 ? 'bg-brand-500 text-white border-brand-500 shadow-sm' : 'bg-surface-50 dark:bg-surface-900 text-surface-600 dark:text-surface-300 border-surface-200 dark:border-surface-700 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-400'}">${p}×</button>
+                                `).join('')}
+                            </div>
+                            <p class="text-[9px] text-surface-500 dark:text-surface-300 leading-relaxed">Speeds up or slows down this audio. Fades and trim follow the same source material — the clip's timeline length changes accordingly.</p>
+                        </div>
+                    </div>
+                </details>` +
                 `<details id="cardAudioPitch" class="group bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 shadow-sm rounded-lg shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'} overflow-hidden flex flex-col" open>
                     <summary class="flex justify-between items-center font-bold cursor-pointer p-2.5 bg-surface-50/50 dark:bg-surface-800 text-sm text-surface-800 dark:text-surface-200 select-none">
                         <div class="flex items-center gap-2"><i data-lucide="music" class="w-4 h-4 text-brand-500"></i> Pitch</div>
@@ -9168,6 +9258,7 @@
                         { id: 'cardAudioVolume', name: 'Volume', icon: 'volume-2' },
                         { id: 'cardAudioEnvelope', name: 'Trim & Fades', icon: 'waves' },
                         { id: 'cardAudioEQ', name: 'EQ (Freq)', icon: 'sliders' },
+                        { id: 'cardAudioSpeed', name: 'Speed', icon: 'gauge' },
                         { id: 'cardAudioPitch', name: 'Pitch', icon: 'music' },
                         { id: 'cardAudioReverb', name: 'Reverb', icon: 'mic' },
                         { id: 'cardAudioDenoise', name: 'Denoise', icon: 'mic-off' },
@@ -9270,6 +9361,34 @@
                                         <input type="file" accept="${clip.type === 'image' ? 'image/*' : 'video/*'}" class="hidden" onchange="replaceClipSource('${clip.id}', this.files)">
                                     </label>
                                 </div>
+                            </div>
+                        </details>
+                    `;
+                }
+
+                // ── Clip Speed (CapCut / Premiere-style speed up & down) ──
+                let speedHTML = '';
+                if (clip.type === 'video' || clip.type === 'audio') {
+                    const curSpeed = clipSpeed(clip);
+                    const speedDur = clip.duration;
+                    speedHTML = `
+                        <details id="cardSpeed" class="group bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 shadow-sm rounded-lg shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'} overflow-hidden flex flex-col" open>
+                            <summary class="flex items-center justify-between p-3 ${isHorizontal ? '' : 'cursor-pointer'} list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700 " onclick="${isHorizontal ? 'event.preventDefault();' : ''}">
+                                <div class="text-sm font-bold text-surface-800 dark:text-surface-200 flex items-center gap-2"><i data-lucide="gauge" class="w-4 h-4 text-surface-500 dark:text-surface-300"></i> Speed</div>
+                                ${isHorizontal ? '' : '<i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>'}
+                            </summary>
+                            <div class="p-3 flex flex-col gap-3 bg-surface-50 dark:bg-surface-900/50 flex-1">
+                                <div class="flex justify-between items-center">
+                                    <span class="text-xs font-bold text-surface-800 dark:text-surface-200">${curSpeed.toFixed(2)}×</span>
+                                    <span class="text-[10px] font-mono text-surface-500 dark:text-surface-300">Timeline ${speedDur.toFixed(2)}s · Source ${(speedDur * curSpeed).toFixed(2)}s</span>
+                                </div>
+                                <input type="range" min="0.25" max="4" step="0.05" value="${curSpeed}" class="w-full custom-slider" oninput="setClipSpeed('${clip.id}', this.value); this.previousElementSibling.querySelector('span:first-child').textContent = parseFloat(this.value).toFixed(2) + '×';" onchange="updateSidebarPanel();">
+                                <div class="flex flex-wrap gap-1">
+                                    ${[0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4].map(p => `
+                                        <button onclick="setClipSpeed('${clip.id}', ${p}); updateSidebarPanel(); event.stopPropagation();" class="flex-1 min-w-[40px] py-1 text-[10px] font-bold rounded-md border transition-all duration-150 ${Math.abs(curSpeed - p) < 0.01 ? 'bg-brand-500 text-white border-brand-500 shadow-sm' : 'bg-white dark:bg-surface-800 text-surface-600 dark:text-surface-300 border-surface-200 dark:border-surface-700 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-400'}">${p}×</button>
+                                    `).join('')}
+                                </div>
+                                <p class="text-[10px] text-surface-500 dark:text-surface-300 leading-relaxed">Speeds up or slows down this clip. The timeline length changes to fit the same source material — split before changing speed to keep surrounding clips in place.</p>
                             </div>
                         </details>
                     `;
@@ -9452,6 +9571,7 @@
                     if (cropHTML) navItems.push({ id: 'cardCrop', name: 'Crop', icon: 'crop' });
                     if (maskHTML) navItems.push({ id: 'cardMask', name: 'Mask', icon: 'scissors' });
                 }
+                if (speedHTML) navItems.push({ id: 'cardSpeed', name: 'Speed', icon: 'gauge' });
                 if (strokeHTML) navItems.push({ id: 'cardStroke', name: 'Stroke', icon: 'edit-3' });
                 if (extrudeHTML) navItems.push({ id: 'cardExtrude', name: 'Extrude 3D', icon: 'box' });
                 if (blendingHTML) navItems.push({ id: 'cardOpacity', name: 'Blending', icon: 'eye' });
@@ -9497,6 +9617,7 @@
                         <div id="propertiesCardContainer" class="p-4 flex gap-6 min-w-0 ${isHorizontal ? 'flex-row overflow-x-auto flex-1 no-scrollbar' : 'flex-col overflow-y-auto flex-1 w-full properties-scroll-container'}">
                             ${sceneHTML}
                             ${sourceHTML}
+                            ${speedHTML}
                             ${transformHTML}
                             ${isText ? textHTML : ''}
                             ${captionHTML}
@@ -11348,6 +11469,7 @@
                 duration: trimmedDuration,
                 start: State.currentTime,
                 sourceOffset: audio.inPoint,
+                speed: 1,
                 trackId: audioTargetTrackId,
                 colorIndex: targetTrack ? targetTrack.colorIndex : 1,
                 audioEl: audioEl,
@@ -11845,8 +11967,9 @@
             // Effective window: explicit trim fields override, otherwise the clip's
             // natural source range [sourceOffset, sourceOffset + duration], always
             // clamped to the buffer length.
+            const spd = clipSpeed(clip);
             const trimStart = Math.min(bufDur, clip.trimStart !== undefined ? clip.trimStart : (clip.sourceOffset || 0));
-            const trimEnd = Math.min(bufDur, clip.trimEnd !== undefined ? clip.trimEnd : trimStart + clip.duration);
+            const trimEnd = Math.min(bufDur, clip.trimEnd !== undefined ? clip.trimEnd : trimStart + clip.duration * spd);
             const trimmedDur = Math.max(0, trimEnd - trimStart);
             const inTrimOffset = Math.max(0, Math.min(bufferOffset - trimStart, trimmedDur));
             const fi = Math.max(0, Math.min(clip.fadeIn || 0, trimmedDur));
@@ -11855,7 +11978,9 @@
             const now = audioCtx.currentTime;
             try {
                 gain.gain.cancelScheduledValues(now);
-                const naturalEnd = now + Math.max(0, trimmedDur - inTrimOffset);
+                // The source plays at `spd`, so the remaining trimmed sound consumes
+                // (trimmedDur - inTrimOffset) / spd wall-clock seconds.
+                const naturalEnd = now + Math.max(0, (trimmedDur - inTrimOffset) / spd);
                 // If the clip's timeline window ends before the trimmed sound, schedule
                 // a graceful stop so the fade-out completes instead of an abrupt cut
                 // when the playhead-leave cleanup fires.
@@ -15579,6 +15704,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     start: start,
                     duration: dur,
                     sourceOffset: 0,
+                    speed: 1,
                     maxDuration: 3600,
                     fileUrl: isMock ? null : (v.url || null),
                     videoEl: videoEl,
@@ -16560,6 +16686,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                                 start: State.currentTime,
                                 duration: duration,
                                 sourceOffset: 0,
+                                speed: 1,
                                 maxDuration: duration,
                                 fileUrl: objectUrl,
                                 videoEl: v,
@@ -16583,6 +16710,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                             start: State.currentTime,
                             duration: duration,
                             sourceOffset: 0,
+                            speed: 1,
                             audioEl: audioEl,
                             buffer: decodedBuffer,
                             peaks: peaks,
@@ -17142,7 +17270,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     
                     nextClip.start = splitPoint;
                     nextClip.duration = rightDuration;
-                    nextClip.sourceOffset = currentClip.sourceOffset + leftDuration;
+                    nextClip.sourceOffset = currentClip.sourceOffset + leftDuration * clipSpeed(currentClip);
                     
                     State.clips.push(nextClip);
                     currentClip = nextClip;
@@ -17184,7 +17312,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 ...clip,
                 id: 'c_' + Date.now() + Math.random().toString(36).substr(2, 5),
                 start: time,
-                sourceOffset: clip.sourceOffset + leftDuration,
+                sourceOffset: clip.sourceOffset + leftDuration * clipSpeed(clip),
                 duration: rightDuration,
                 audioEl: newAudioEl,
                 videoEl: newVideoEl,
@@ -17415,7 +17543,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             const silentRegions = [];
             
             const startSample = Math.floor(clip.sourceOffset * sampleRate);
-            const endSample = Math.floor((clip.sourceOffset + clip.duration) * sampleRate);
+            const endSample = Math.floor((clip.sourceOffset + clip.duration * clipSpeed(clip)) * sampleRate);
             const blockSize = Math.floor(sampleRate * 0.01);
             
             for (let i = startSample; i < endSample; i += blockSize) {
@@ -17467,7 +17595,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 const validEndSec = silence.startSec - padding;
                 
                 if (validEndSec > validStartSec) {
-                    const duration = validEndSec - validStartSec;
+                    const duration = (validEndSec - validStartSec) / clipSpeed(clip);
                     const newClip = createSplitClipData(clip, currentTimelineTime, validStartSec, duration);
                     newClips.push(newClip);
                     currentTimelineTime += duration;
@@ -17476,9 +17604,9 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             });
             
             const finalValidStart = currentSrcTime;
-            const finalValidEnd = clip.sourceOffset + clip.duration;
+            const finalValidEnd = clip.sourceOffset + clip.duration * clipSpeed(clip);
             if (finalValidEnd > finalValidStart) {
-                const duration = finalValidEnd - finalValidStart;
+                const duration = (finalValidEnd - finalValidStart) / clipSpeed(clip);
                 const newClip = createSplitClipData(clip, currentTimelineTime, finalValidStart, duration);
                 newClips.push(newClip);
             }
@@ -18267,8 +18395,11 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 const sfxPeakOffset = sfxPeakEnv ? sfxPeakInfo.trimStart : 0;
                 const sfxAudibleDur = sfxPeakEnv ? Math.max(0, sfxPeakInfo.trimmedDur) : -1;
                 const sfxInAudible = (x) => sfxAudibleDur < 0 || (leftOffset + x / dpr) / State.pixelsPerSecond < sfxAudibleDur;
-                const startPeakIdx = (leftOffset / State.pixelsPerSecond + (sfxPeakEnv ? sfxPeakOffset : clip.sourceOffset)) * clip.peaksPerSecond;
-                const peaksPerPixel = clip.peaksPerSecond / (State.pixelsPerSecond * dpr);
+                // Each timeline second maps to `speed` source seconds, so the peaks
+                // window consumes more source material per pixel at higher speeds.
+                const spd = clipSpeed(clip);
+                const startPeakIdx = ((leftOffset / State.pixelsPerSecond) * spd + (sfxPeakEnv ? sfxPeakOffset : clip.sourceOffset)) * clip.peaksPerSecond;
+                const peaksPerPixel = clip.peaksPerSecond * spd / (State.pixelsPerSecond * dpr);
 
                 for (let x = 0; x < internalWidth; x++) {
                     let max = 0;
@@ -19969,7 +20100,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
 
             } else if (State.drag.type === 'trimLeft') {
                 let newStart = State.drag.initialStart + deltaTime;
-                let newSourceOffset = State.drag.initialSourceOffset + deltaTime;
+                let newSourceOffset = State.drag.initialSourceOffset + deltaTime * clipSpeed(clip);
                 let newDuration = State.drag.initialDuration - deltaTime;
 
                 // Procedural clips (text/shape/image/scene) have no source media to trim
@@ -20146,9 +20277,9 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 const winEnd = clip.trimEnd !== undefined ? clip.trimEnd : prevEnd;
                 if (Math.abs(winStart - prevStart) < 0.001) {
                     clip.trimStart = Math.min(bufDur, Math.max(0, clip.sourceOffset));
-                    clip.trimEnd = Math.min(bufDur, Math.max(clip.trimStart || 0, clip.sourceOffset + clip.duration));
+                    clip.trimEnd = Math.min(bufDur, Math.max(clip.trimStart || 0, clip.sourceOffset + clip.duration * clipSpeed(clip)));
                 } else if (Math.abs(winEnd - prevEnd) < 0.001) {
-                    clip.trimEnd = Math.min(bufDur, Math.max(clip.trimStart !== undefined ? clip.trimStart : clip.sourceOffset, clip.sourceOffset + clip.duration));
+                    clip.trimEnd = Math.min(bufDur, Math.max(clip.trimStart !== undefined ? clip.trimStart : clip.sourceOffset, clip.sourceOffset + clip.duration * clipSpeed(clip)));
                 }
             }
             
@@ -20396,7 +20527,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 }
                 if (State.currentTime < absStart || State.currentTime >= absStart + clip.duration) return;
                 const el = clip.videoEl;
-                const targetTime = clip.sourceOffset + (State.currentTime - absStart);
+                const targetTime = clip.sourceOffset + (State.currentTime - absStart) * clipSpeed(clip);
                 waiting = true;
                 if (el.readyState < 1) {
                     // Metadata not loaded yet (fresh element right after .load()) — wait for
@@ -20615,8 +20746,9 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                             }
                             clip.sourceNode = audioCtx.createBufferSource();
                             clip.sourceNode.buffer = clip.buffer;
+                            clip.sourceNode.playbackRate.value = clipSpeed(clip);
                             const pos = Math.max(0, State.currentTime - clip.start);
-                            const targetTime = clip.sourceOffset + pos;
+                            const targetTime = clip.sourceOffset + pos * clipSpeed(clip);
                             if (clipHasEnvelope(clip) || hasVolumeAutomation(clip)) {
                                 // Trimmed + faded timeline audio (e.g. extracted SFX): bound
                                 // the source to trimEnd and shape the fades on a dedicated
@@ -20653,9 +20785,9 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                                 // source range [sourceOffset, sourceOffset + duration].
                                 const bufDur = clip.buffer ? clip.buffer.duration : Infinity;
                                 const trimStart = Math.min(bufDur, clip.trimStart !== undefined ? clip.trimStart : (clip.sourceOffset || 0));
-                                const trimEnd = Math.min(bufDur, clip.trimEnd !== undefined ? clip.trimEnd : trimStart + clip.duration);
-                                const inTrimPos = Math.min(pos, Math.max(0, trimEnd - trimStart));
-                                const bufferTime = trimStart + inTrimPos;
+                                const trimEnd = Math.min(bufDur, clip.trimEnd !== undefined ? clip.trimEnd : trimStart + clip.duration * clipSpeed(clip));
+                                const inTrimPos = Math.min(pos, Math.max(0, (trimEnd - trimStart) / clipSpeed(clip)));
+                                const bufferTime = trimStart + inTrimPos * clipSpeed(clip);
                                 const remaining = Math.max(0, trimEnd - bufferTime);
                                 clip.sourceNode.start(0, bufferTime, remaining);
                                 scheduleClipEnvelope(clip, clip.sourceNode, bufferTime);
@@ -20694,6 +20826,8 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     // element every frame (syncMediaElements runs per-frame while playing,
                     // which would spam network errors and console warnings endlessly).
                     if (clip.videoEl && clip.videoEl.error && clip.fileUrl) {
+                        // MEDIA_ERR codes: 1=abort, 2=network, 3=decode, 4=src-not-supported
+                        console.log('[video-error]', clip.title, 'code=', el.error.code, 'readyState=', el.readyState, 't=', State.currentTime.toFixed(2));
                         const retries = clip._videoRetries || 0;
                         if (retries < 3) {
                             clip._videoRetries = retries + 1;
@@ -20707,7 +20841,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                             armVideoFrameLatch(newVideo);
                             // Attempt to set scrub position immediately (may throw if
                             // metadata not yet loaded; next sync cycle will retry)
-                            const seekTarget = clip.sourceOffset + (State.currentTime - clip.start);
+                            const seekTarget = clip.sourceOffset + (State.currentTime - clip.start) * clipSpeed(clip);
                             try { newVideo.currentTime = Math.max(0, seekTarget); } catch (_) {}
                             clip.videoEl = newVideo;
                             el = newVideo;
@@ -20726,7 +20860,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     if (shouldPlay) {
                         if (clip.audioEl) applyAudioEffects(clip);
                         
-                        const targetTime = clip.sourceOffset + (State.currentTime - clip.start);
+                        const targetTime = clip.sourceOffset + (State.currentTime - clip.start) * clipSpeed(clip);
                         
                         seekMediaEl(el, targetTime, 0.25);
                         
@@ -20745,7 +20879,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         if (isUpcoming) {
                             seekMediaEl(el, clip.sourceOffset);
                         } else if (!State.isPlaying && State.currentTime >= clip.start && State.currentTime <= clip.start + clip.duration) {
-                            const targetTime = clip.sourceOffset + (State.currentTime - clip.start);
+                            const targetTime = clip.sourceOffset + (State.currentTime - clip.start) * clipSpeed(clip);
                             seekMediaEl(el, targetTime);
                         }
                     }
@@ -21320,7 +21454,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     applyAudioEffects(clip);
                     
                     const offset = Math.max(0, startTime - clip.start);
-                    el.currentTime = clip.sourceOffset + offset;
+                    el.currentTime = clip.sourceOffset + offset * clipSpeed(clip);
                     
                     if (startTime >= clip.start) {
                         const p = el.play();
@@ -21523,13 +21657,16 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         
                         const source = offlineCtx.createBufferSource();
                         source.buffer = sfxBuffer || c.buffer;
+                        // Speed changes the source playback rate; the clip's timeline
+                        // window then consumes more/less source material per second.
+                        source.playbackRate.value = clipSpeed(c);
                         
                         // Embedded SFX always starts from the clip's own start (mirrors
                         // playback: the sound begins when the playhead enters the clip),
                         // while timeline audio clips resume from their source offset.
                         let sourceOffset = isSfx
                             ? Math.max(0, clipStart - c.start)
-                            : c.sourceOffset + (clipStart - c.start);
+                            : c.sourceOffset + (clipStart - c.start) * clipSpeed(c);
                         
                         const gainNode = offlineCtx.createGain();
                         const vol = isSfx
@@ -21576,11 +21713,12 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                             // play only [trimStart, trimEnd] and ramp over the fades.
                             const bufDur = c.buffer ? c.buffer.duration : (c.sourceOffset || 0) + c.duration;
                             const trimStart = Math.min(bufDur, c.trimStart !== undefined ? c.trimStart : (c.sourceOffset || 0));
-                            const trimEnd = Math.min(bufDur, c.trimEnd !== undefined ? c.trimEnd : trimStart + c.duration);
+                            const trimEnd = Math.min(bufDur, c.trimEnd !== undefined ? c.trimEnd : trimStart + c.duration * clipSpeed(c));
                             const trimmedDur = Math.max(0, trimEnd - trimStart);
-                            const inTrimPos = Math.max(0, Math.min(Math.max(0, clipStart - c.start), Math.max(0, trimmedDur - 0.001)));
-                            sourceOffset = trimStart + inTrimPos;
-                            duration = Math.min(duration, Math.max(0, trimmedDur - inTrimPos));
+                            const spd = clipSpeed(c);
+                            const inTrimPos = Math.max(0, Math.min(Math.max(0, clipStart - c.start), Math.max(0, (trimmedDur - 0.001) / spd)));
+                            sourceOffset = trimStart + inTrimPos * spd;
+                            duration = Math.min(duration, Math.max(0, (trimmedDur - inTrimPos * spd) / spd));
                             const fi = Math.max(0, Math.min(c.fadeIn || 0, trimmedDur));
                             const fo = Math.max(0, Math.min(c.fadeOut || 0, trimmedDur - fi));
                             const audibleEnd = Math.min(duration, Math.max(0, trimmedDur - inTrimPos));
@@ -21620,7 +21758,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         chainOut.connect(gainNode);
                         gainNode.connect(masterGain);
                         
-                        source.start(startTimeInOffline, sourceOffset, duration);
+                        source.start(startTimeInOffline, sourceOffset, duration * clipSpeed(c));
                     });
                     
                     console.log('Rendering audio offline (' + totalDuration.toFixed(1) + 's)...');
@@ -21660,6 +21798,8 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 el.muted = true;
                 el.preload = 'auto';
                 el.playsInline = true;
+                el.preservesPitch = true;
+                el.playbackRate = clipSpeed(clip);
                 exportVideoContainer.appendChild(el);
                 
                 // Save old element reference and swap in the fresh one
@@ -21676,7 +21816,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 
                 // Seek to the clip's starting position within the export range
                 const clipStartInExport = Math.max(startTime, clip.start);
-                const sourceOffset = clip.sourceOffset + (clipStartInExport - clip.start);
+                const sourceOffset = clip.sourceOffset + (clipStartInExport - clip.start) * clipSpeed(clip);
                 el.currentTime = sourceOffset;
             }
             
@@ -21893,7 +22033,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     if (!clip) continue;
                     if (exportTime >= clip.start && exportTime < clip.start + clip.duration) {
                         if (entry.el.paused) {
-                            const targetTime = clip.sourceOffset + (exportTime - clip.start);
+                            const targetTime = clip.sourceOffset + (exportTime - clip.start) * clipSpeed(clip);
                             try { entry.el.currentTime = Math.max(0, targetTime); } catch (_) {}
                             entry.el.play().catch(() => {});
                         }
