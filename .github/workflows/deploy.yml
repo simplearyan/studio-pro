@@ -64,7 +64,6 @@ jobs:
 
       - name: Build version snapshots (v* tags)
         run: |
-          set -e
           tags="$(git tag -l 'v[0-9]*' | sort -V)"
           if [ -z "$tags" ]; then
             echo "No v* tags found — skipping versioned snapshots."
@@ -74,10 +73,19 @@ jobs:
             echo "Building snapshot for tag $tag → /studio-pro/$tag/"
             rm -rf "_snap_$tag"
             mkdir -p "_snap_$tag"
-            git archive "$tag" | tar -x -C "_snap_$tag"
-            ( cd "_snap_$tag" && npm ci && npx vite build --base="/studio-pro/$tag/" --outDir dist )
-            mkdir -p "dist/$tag"
-            cp -r "_snap_$tag/dist/." "dist/$tag/"
+            if ! git archive "$tag" | tar -x -C "_snap_$tag"; then
+              echo "archive failed for $tag — skipping (deploy continues)"
+              rm -rf "_snap_$tag"
+              continue
+            fi
+            if ( cd "_snap_$tag" \
+                 && if [ -f package-lock.json ]; then npm ci; else npm install --no-audit --no-fund; fi \
+                 && npx vite build --base="/studio-pro/$tag/" --outDir dist ); then
+              mkdir -p "dist/$tag"
+              cp -r "_snap_$tag/dist/." "dist/$tag/"
+            else
+              echo "snapshot build failed for $tag — skipping (deploy continues)"
+            fi
             rm -rf "_snap_$tag"
           done
 
