@@ -4103,6 +4103,101 @@
             return canvas;
         }
 
+        // ── Color Correction (CapCut / Premiere style) ───────────────────────────
+        // Per-clip color grading for image/video sources: saturation, vibrance, hue,
+        // temperature (warm/cool), tint (green/magenta), brightness, contrast and blur.
+        // Values are read through getInterpolatedValue so they are keyframe-able like
+        // every other effect. The CSS-compatible filters (blur/saturation/hue/bright-
+        // ness/contrast) run GPU-side via ctx.filter; temperature/tint/vibrance need a
+        // per-pixel pass. When nothing is active it returns null so the hot draw path
+        // stays untouched.
+        function applyColorCorrection(clip, source, sx, sy, sw, sh, dw, dh) {
+            const g = (k, d) => window.getInterpolatedValue(clip, k, clip.effects[k] !== undefined ? clip.effects[k] : d);
+            const saturation = g('colorSaturation', 100);
+            const vibrance = g('colorVibrance', 0);
+            const hue = g('colorHue', 0);
+            const temperature = g('colorTemperature', 0);
+            const tint = g('colorTint', 0);
+            const brightness = g('colorBrightness', 100);
+            const contrast = g('colorContrast', 100);
+            const blur = g('colorBlur', 0);
+
+            const active = Math.abs(saturation - 100) > 0.5 || Math.abs(vibrance) > 0.5 ||
+                Math.abs(hue) > 0.5 || Math.abs(temperature) > 0.5 || Math.abs(tint) > 0.5 ||
+                Math.abs(brightness - 100) > 0.5 || Math.abs(contrast - 100) > 0.5 || blur > 0.5;
+            if (!active) return null;
+
+            const cw = Math.max(1, Math.round(dw));
+            const ch = Math.max(1, Math.round(dh));
+
+            // Image clips are static — cache the graded canvas so playback/scrubbing
+            // doesn't re-run the pixel pass every frame. The signature covers the size,
+            // every control value AND the source identity (src changes on replace), so
+            // the cache is always invalidated when anything the grade depends on changes.
+            // Video clips are never cached: their source frame advances every frame.
+            if (clip.type === 'image' && clip._ccCache && clip._ccCache.sig === `${cw}x${ch}|${saturation}|${vibrance}|${hue}|${temperature}|${tint}|${brightness}|${contrast}|${blur}|${source === clip.imageEl && clip.imageEl.src ? clip.imageEl.src : ''}`) {
+                return clip._ccCache.canvas;
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = cw;
+            canvas.height = ch;
+            const cctx = canvas.getContext('2d', { willReadFrequently: true });
+
+            // GPU filter pass for the CSS-supported controls.
+            const parts = [];
+            if (blur > 0.5) parts.push(`blur(${blur}px)`);
+            if (Math.abs(saturation - 100) > 0.5) parts.push(`saturate(${saturation}%)`);
+            if (Math.abs(hue) > 0.5) parts.push(`hue-rotate(${hue}deg)`);
+            if (Math.abs(brightness - 100) > 0.5) parts.push(`brightness(${brightness}%)`);
+            if (Math.abs(contrast - 100) > 0.5) parts.push(`contrast(${contrast}%)`);
+            if (parts.length) cctx.filter = parts.join(' ');
+            cctx.drawImage(source, sx, sy, sw, sh, 0, 0, cw, ch);
+            cctx.filter = 'none';
+
+            // Per-pixel pass for temperature / tint / vibrance.
+            if (Math.abs(temperature) > 0.5 || Math.abs(tint) > 0.5 || Math.abs(vibrance) > 0.5) {
+                const img = cctx.getImageData(0, 0, cw, ch);
+                const d = img.data;
+                const t = temperature / 100;
+                const n = tint / 100;
+                const v = vibrance / 100;
+                for (let i = 0; i < d.length; i += 4) {
+                    let r = d[i], g = d[i + 1], b = d[i + 2];
+                    if (t !== 0) {
+                        r += t * 30;
+                        b -= t * 30;
+                        g += t * 5;
+                    }
+                    if (n !== 0) {
+                        g -= n * 25;
+                        r += n * 12;
+                        b += n * 12;
+                    }
+                    if (v !== 0) {
+                        const maxc = Math.max(r, g, b);
+                        const minc = Math.min(r, g, b);
+                        const sat = maxc === 0 ? 0 : (maxc - minc) / maxc;
+                        const amt = 1 + v * (1 - sat) * 0.8;
+                        r = maxc - (maxc - r) * amt;
+                        g = maxc - (maxc - g) * amt;
+                        b = maxc - (maxc - b) * amt;
+                    }
+                    d[i] = r < 0 ? 0 : r > 255 ? 255 : r;
+                    d[i + 1] = g < 0 ? 0 : g > 255 ? 255 : g;
+                    d[i + 2] = b < 0 ? 0 : b > 255 ? 255 : b;
+                }
+                cctx.putImageData(img, 0, 0);
+            }
+            if (clip.type === 'image') {
+                clip._ccCache = {
+                    sig: `${cw}x${ch}|${saturation}|${vibrance}|${hue}|${temperature}|${tint}|${brightness}|${contrast}|${blur}|${source === clip.imageEl && clip.imageEl.src ? clip.imageEl.src : ''}`,
+                    canvas
+                };
+            }
+            return canvas;
+        }
+
         function drawCanvas(targetCtx, targetW, targetH, opts) {
             const skipSubtitles = !!(opts && opts.skipSubtitles);
             const skipBg = !!(opts && opts.skipBg);
@@ -5219,15 +5314,15 @@
 
                         // Apply masking zoom (scales down source dimensions centered on crop frame)
                         const zMask = maskingZoom / 100;
-                        const sw = Math.max(1, baseSw / zMask);
-                        const sh = Math.max(1, baseSh / zMask);
+                        let sw = Math.max(1, baseSw / zMask);
+                        let sh = Math.max(1, baseSh / zMask);
                         
                         const framingPanX = cropEnable ? (clip.effects.framingPanX || 0) : 0;
                         const framingPanY = cropEnable ? (clip.effects.framingPanY || 0) : 0;
                         const maxShiftX = (baseSw - sw) / 2;
                         const maxShiftY = (baseSh - sh) / 2;
-                        const sx = baseSx + (baseSw - sw) / 2 + (framingPanX / 100) * maxShiftX;
-                        const sy = baseSy + (baseSh - sh) / 2 + (framingPanY / 100) * maxShiftY;
+                        let sx = baseSx + (baseSw - sw) / 2 + (framingPanX / 100) * maxShiftX;
+                        let sy = baseSy + (baseSh - sh) / 2 + (framingPanY / 100) * maxShiftY;
 
                         const cropRatio = baseSw / baseSh;
                         const cRatio = w / h;
@@ -5256,6 +5351,15 @@
                             } else { dw = MD_MOCK_W; dh = MD_MOCK_H; }
                             dw = dw * zFrame;
                             dh = dh * zFrame;
+                        }
+
+                        // Color correction — when any grading control is active, render the
+                        // cropped source through a graded canvas and feed that downstream so
+                        // masks, shadows, mosaic, puzzle and the direct draw all see it.
+                        const ccCanvas = applyColorCorrection(clip, source, sx, sy, sw, sh, dw, dh);
+                        if (ccCanvas) {
+                            source = ccCanvas;
+                            sx = 0; sy = 0; sw = dw; sh = dh;
                         }
 
                         const borderRadius = clip.effects.borderRadius !== undefined ? clip.effects.borderRadius : 0;
@@ -6152,6 +6256,23 @@
             // a rebuild would detach the slider mid-drag. The slider/preset handlers
             // call updateSidebarPanel() themselves on change.
             if (typeof drawAllWaveforms === 'function') drawAllWaveforms();
+        };
+
+        // Reset every color-correction control back to neutral (keyframe-free).
+        window.resetClipColor = (clipId) => {
+            const targetIds = (State.multiSelectedClipIds && State.multiSelectedClipIds.length > 0 && State.multiSelectedClipIds.includes(clipId))
+                ? State.multiSelectedClipIds : [clipId];
+            targetIds.forEach(id => {
+                const clip = State.clips.find(c => c.id === id);
+                if (!clip) return;
+                ['colorSaturation', 'colorVibrance', 'colorHue', 'colorTemperature', 'colorTint', 'colorBrightness', 'colorContrast', 'colorBlur'].forEach(k => {
+                    delete clip.effects[k];
+                    if (clip.keyframes && clip.keyframes[k]) delete clip.keyframes[k];
+                });
+                clip._ccCache = null;
+            });
+            drawCanvas();
+            updateSidebarPanel();
         };
 
         window.setClipEffect = (clipId, effectName, value) => {
@@ -8581,6 +8702,46 @@
                 </details>
             ` : '';
 
+            // ── Color Correction card (image / video only) ────────────────────────
+            // CapCut / Premiere-style grading: saturation, vibrance, hue, temperature,
+            // tint, brightness, contrast and blur — all keyframe-able via the same
+            // setClipEffect path used by every other numeric effect.
+            const colorHTML = (clip.type === 'image' || clip.type === 'video') ? `
+                <details id="cardColor" class="group bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 shadow-sm rounded-lg shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'} overflow-hidden flex flex-col" open>
+                    <summary class="flex items-center justify-between p-3 ${isHorizontal ? '' : 'cursor-pointer'} list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700 " onclick="${isHorizontal ? 'event.preventDefault();' : ''}">
+                        <div class="text-sm font-bold text-surface-800 dark:text-surface-200 flex items-center gap-2"><i data-lucide="palette" class="w-4 h-4 text-surface-500 dark:text-surface-300"></i> Color Correction</div>
+                        <div class="flex items-center gap-2">
+                            <button onclick="resetClipColor('${clip.id}'); event.stopPropagation();" class="text-[9px] font-bold text-surface-500 dark:text-surface-300 hover:text-brand-600 dark:hover:text-brand-400 border border-surface-200 dark:border-surface-700 rounded px-2 py-1 transition-colors" title="Reset all color controls">Reset</button>
+                            ${isHorizontal ? '' : '<i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>'}
+                        </div>
+                    </summary>
+                    <div class="p-3 flex flex-col gap-2.5 bg-surface-50 dark:bg-surface-900/50 flex-1">
+                        ${[
+                            ['colorSaturation', 'Saturation', 0, 200, '%'],
+                            ['colorVibrance', 'Vibrance', -100, 100, ''],
+                            ['colorHue', 'Hue', -180, 180, '°'],
+                            ['colorTemperature', 'Temperature', -100, 100, ''],
+                            ['colorTint', 'Tint', -100, 100, ''],
+                            ['colorBrightness', 'Brightness', 0, 200, '%'],
+                            ['colorContrast', 'Contrast', 0, 200, '%'],
+                            ['colorBlur', 'Blur', 0, 50, 'px']
+                        ].map(([key, label, min, max, unit]) => {
+                            const def = (key === 'colorSaturation' || key === 'colorBrightness' || key === 'colorContrast') ? 100 : 0;
+                            const val = fx[key] !== undefined ? fx[key] : def;
+                            return `
+                        <div>
+                            <div class="flex justify-between items-center mb-1.5">
+                                <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">${label}</label>
+                                <span class="text-xs font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-2 py-0.5 rounded shadow-sm">${val}${unit}</span>
+                            </div>
+                            <input type="range" min="${min}" max="${max}" value="${val}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', '${key}', this.value); this.previousElementSibling.querySelector('span').textContent = parseFloat(this.value) + '${unit}'; drawCanvas();">
+                        </div>`;
+                        }).join('')}
+                        <p class="text-[10px] text-surface-500 dark:text-surface-300 leading-relaxed pt-0.5">Adjusts the clip's color like CapCut / Premiere. All values are keyframe-able from the Animations tab.</p>
+                    </div>
+                </details>
+            ` : '';
+
             const scaleVal = fx.scale !== undefined ? fx.scale : 1;
             const rotateVal = fx.rotate !== undefined ? fx.rotate : 0;
             const radiusVal = fx.borderRadius !== undefined ? fx.borderRadius : 0;
@@ -9970,6 +10131,7 @@
                     navItems.push({ id: 'cardSource', name: 'Source', icon: 'link' });
                     if (cropHTML) navItems.push({ id: 'cardCrop', name: 'Crop', icon: 'crop' });
                     if (maskHTML) navItems.push({ id: 'cardMask', name: 'Mask', icon: 'scissors' });
+                    if (colorHTML) navItems.push({ id: 'cardColor', name: 'Color', icon: 'palette' });
                 }
                 if (speedHTML) navItems.push({ id: 'cardSpeed', name: 'Speed', icon: 'gauge' });
                 if (strokeHTML) navItems.push({ id: 'cardStroke', name: 'Stroke', icon: 'edit-3' });
@@ -10028,6 +10190,7 @@
                             ${isShape ? shapeHTML : ''}
                             ${cropHTML}
                             ${maskHTML}
+                            ${colorHTML}
                             ${strokeHTML}
                             ${extrudeHTML}
                             ${blendingHTML}
