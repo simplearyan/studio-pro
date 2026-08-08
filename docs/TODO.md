@@ -42,10 +42,25 @@ analysis of editor and comparison with remotion
 
 ✅ Add ability to use audio for specifi text - shape - image - math - elment 
 
-- the hold option is not working for opacity property - fix this 
-- overhauled preset - like thumb maker - store webp images 
+✅ the hold option is not working for opacity property - fix this 
+✅ overhauled preset - like thumb maker - store webp images 
+
+✅ Overhauled Preset Tab - Add ability to use text preset for markdown text styles - 
 
 ✅ for markdown style - add mock video and mock image - with alt text - for markdown add more porsition options - like top left - cenrter left - bottom left ✅ and similar for right - also add ability - lets say two text are at left center - add gap between them - 
+
+- Add ability to custmize and video and audio speed 
+- overhauled properties panel - re-ogransied - in clean structure 
+
+# Before implementing, add console.log(el.error.code) at the ~20696 recovery branch and run a live 20-scrub session on the two broken files to capture exact before-numbers for the plan doc.
+
+# Build a small Node script that parses the moov/stss table of an MP4 to prove the keyframe-index approach works on the two broken files before touching index.html.
+
+# Implement Phase 1 of Video-Stream-Stability-Plan.md: error-code classification, exponential retry backoff, last-good-frame cache in drawCanvas, and proactive re-attempt on play/scrub-idle.
+
+
+
+
 
 ## Suggestions
 

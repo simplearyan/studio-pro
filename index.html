@@ -21292,6 +21292,102 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             }
         }
 
+        // Like armVideoFrameLatch but for EXPORT elements: sets _frameReady the
+        // moment a decodable frame exists WITHOUT repainting the preview canvas,
+        // so the draw gate never shows the mock placeholder during export.
+        function armExportFrameLatch(el) {
+            if (!el) return;
+            const onReady = () => {
+                if (el.readyState >= 2 && el.videoWidth > 0 && !el._frameReady) {
+                    el._frameReady = true;
+                    clearInterval(el._expFramePollIv);
+                }
+            };
+            if (el.readyState >= 2 && el.videoWidth > 0) { el._frameReady = true; return; }
+            el.addEventListener('loadeddata', onReady);
+            el.addEventListener('seeked', onReady);
+            el.addEventListener('canplay', onReady);
+            el._expFramePollIv = setInterval(onReady, 50);
+            el.addEventListener('error', () => clearInterval(el._expFramePollIv), { once: true });
+            setTimeout(() => clearInterval(el._expFramePollIv), 30000);
+        }
+
+        // Export-safe seek: like seekMediaEl (latest-wins, waits for the decoded
+        // frame) but paints NOTHING — used by the export loops to lock fresh
+        // <video> elements to the model clock without redrawing the preview.
+        // Resolves when the element is within `threshold` of `targetTime` and a
+        // frame is present, or after a bounded fallback so a stalled source
+        // can't hang the export. No-op (resolves immediately) when already in range.
+        // `fallbackMs` caps the wait (default 400; the standard capture path passes
+        // a shorter bound so a rare correction can't visibly freeze the recording).
+        function seekExportVideo(el, targetTime, threshold, fallbackMs) {
+            return new Promise(resolve => {
+                if (!el) { resolve(); return; }
+                const thresh = threshold !== undefined ? threshold : 0.05;
+                const fb = fallbackMs !== undefined ? fallbackMs : 400;
+                const want = Math.max(0, targetTime);
+                if (el.readyState < 1) {
+                    // Metadata not loaded yet — wait for it (bounded so a dead
+                    // source can't hang the export loop), then seek + settle.
+                    const onMeta = () => {
+                        el.removeEventListener('loadedmetadata', onMeta);
+                        el.removeEventListener('error', onErr);
+                        clearTimeout(metaT);
+                        seekExportVideo(el, want, thresh, fb).then(resolve);
+                    };
+                    const onErr = () => {
+                        el.removeEventListener('loadedmetadata', onMeta);
+                        el.removeEventListener('error', onErr);
+                        clearTimeout(metaT);
+                        resolve();
+                    };
+                    const metaT = setTimeout(() => {
+                        el.removeEventListener('loadedmetadata', onMeta);
+                        el.removeEventListener('error', onErr);
+                        resolve();
+                    }, Math.max(fb, 3000));
+                    el.addEventListener('loadedmetadata', onMeta);
+                    el.addEventListener('error', onErr);
+                    return;
+                }
+                let finished = false;
+                const finish = () => {
+                    if (finished) return;
+                    finished = true;
+                    el.removeEventListener('seeked', finish);
+                    el.removeEventListener('loadeddata', finish);
+                    clearTimeout(finish._t);
+                    clearInterval(finish._iv);
+                    if (el.readyState >= 2 && el.videoWidth > 0) el._frameReady = true;
+                    resolve();
+                };
+                if (Math.abs(el.currentTime - want) > thresh) {
+                    // Initiated a real seek: resolve only once the DECODED frame is
+                    // presented ('seeked', or readyState>=2 with the seek finished).
+                    // The bare readyState poll can stay >=2 mid-seek and would let
+                    // the capture draw the stale pre-seek frame — the very bug the
+                    // re-seek is meant to eliminate.
+                    try { el.currentTime = want; } catch (_) {}
+                    el.addEventListener('seeked', finish);
+                    el.addEventListener('loadeddata', finish);
+                    finish._iv = setInterval(() => {
+                        if (el.readyState >= 2 && !el.seeking && el.videoWidth > 0) finish();
+                    }, 16);
+                    finish._t = setTimeout(finish, fb);
+                } else {
+                    // Already in range — resolve now if a frame is present, else
+                    // wait for one (fresh element right after the initial seek).
+                    if (el.readyState >= 2 && el.videoWidth > 0) { finish(); return; }
+                    el.addEventListener('seeked', finish);
+                    el.addEventListener('loadeddata', finish);
+                    finish._iv = setInterval(() => {
+                        if (el.readyState >= 2 && el.videoWidth > 0) finish();
+                    }, 16);
+                    finish._t = setTimeout(finish, fb);
+                }
+            });
+        }
+
         function syncMediaElements() {
             if (!audioCtx) ensureAudioContext();
             
@@ -22128,7 +22224,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
 
             recorder.start();
             
-            function exportLoop(now) {
+            async function exportLoop(now) {
                 if (!State.isExporting) return;
 
                 if (State.cancelExport) {
@@ -22163,6 +22259,24 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         }
                     }
                 });
+
+                // Export sync: lock playing video elements to the (wall-clock) model
+                // time before capture. This path advances State.currentTime with real
+                // dt so it is self-consistent by construction — the re-seek is a
+                // defensive lock that only fires when an element stutters or drifts.
+                const stdSyncThresh = Math.max(2 / 30, 0.05);
+                for (const clip of State.clips) {
+                    if (clip.type !== 'video' || clip.hidden) continue;
+                    const el = clip.videoEl;
+                    if (!el || el.paused || el.readyState < 1) continue;
+                    if (State.currentTime < clip.start || State.currentTime > clip.start + clip.duration) continue;
+                    const stdTarget = clipSourcePos(clip, State.currentTime - clip.start);
+                    if (Math.abs(el.currentTime - stdTarget) > stdSyncThresh) {
+                        // Short fallback: a rare correction must not visibly freeze
+                        // the MediaRecorder stream for the full 400 ms default.
+                        await seekExportVideo(el, stdTarget, stdSyncThresh, 100);
+                    }
+                }
 
                 if (exportCanvas && exportCtx) {
                     drawCanvas(exportCtx, exportW, exportH);
@@ -22508,6 +22622,10 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 el.preservesPitch = true;
                 el.playbackRate = clipSpeed(clip);
                 if (hasSpeedRamp(clip)) el.playbackRate = rampSpeedAt(clip, 0);
+                // Set _frameReady the moment a decodable frame exists (no preview
+                // repaint) so the draw gate never shows the mock placeholder when
+                // this fresh element is first captured.
+                armExportFrameLatch(el);
                 exportVideoContainer.appendChild(el);
                 
                 // Save old element reference and swap in the fresh one
@@ -22753,6 +22871,31 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         if (!entry.el.paused) {
                             entry.el.pause();
                         }
+                    }
+                }
+
+                // ── Export sync (Phase 2): lock active video elements to the model clock ──
+                // The element plays on the wall clock while the loop advances on the
+                // frame-count clock. Heavy per-frame work (color grade, blend overlays)
+                // makes capture slower than real time, letting the picture run ahead of
+                // the audio (measured +16 s at the 20 s mark on the effects export). A
+                // thresholded re-seek pulls it back to the exact model position before
+                // capture — a no-op when within threshold, so healthy exports pay nothing.
+                const syncThreshold = Math.max(2 * timeStep, 0.05);
+                // Skip the sync pass on the final iteration (all frames captured).
+                if (lastCapturedFrame + 1 < totalFrames) {
+                    for (const [clipId, entry] of exportVideoEls) {
+                        const clip = State.clips.find(c => c.id === clipId);
+                        if (!clip) continue;
+                        if (exportTime < clip.start || exportTime >= clip.start + clip.duration) continue;
+                        if (entry.el.paused && !entry.el.seeking) continue;
+                        const syncTarget = clipSourcePos(clip, exportTime - clip.start);
+                        const drift = entry.el.currentTime - syncTarget;
+                        if (Math.abs(drift) <= syncThreshold) continue;
+                        // Fast mode captures faster than real time — the element is typically
+                        // BEHIND; correct only when AHEAD (behind resolves as capture pauses).
+                        if (State.exportFastMode && drift < 0) continue;
+                        await seekExportVideo(entry.el, syncTarget, syncThreshold);
                     }
                 }
 

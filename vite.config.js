@@ -4,7 +4,7 @@ export default defineConfig({
   base: process.env.GITHUB_ACTIONS === 'true' ? '/studio-pro/' : '/',
   server: {
     port: 3000,
-    open: true
+    open: false
   },
   build: {
     outDir: 'dist',
