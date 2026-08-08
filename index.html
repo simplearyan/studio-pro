@@ -5716,6 +5716,184 @@
             return clipSpeed(clip);
         };
 
+        // ── Speed ramps (Premiere-style rate-stretch) ──
+        // clip.speedRamp = [{ t, v }] where t is clip-local time (0..clip.duration)
+        // and v is the instantaneous speed multiplier at that time. The speed is
+        // linearly interpolated between keyframes and held at the edges. When a ramp
+        // is present the timeline→source mapping uses the integral of the speed over
+        // time (piecewise-quadratic), not the constant `speed * pos` formula.
+        function hasSpeedRamp(clip) {
+            return !!(clip && Array.isArray(clip.speedRamp) && clip.speedRamp.length >= 2);
+        }
+        const clampRampSpeed = (v) => Math.max(0.1, Math.min(10, Number(v) || 1));
+        function rampSpeedAt(clip, t) {
+            const r = clip && clip.speedRamp;
+            if (!Array.isArray(r) || r.length === 0) return clipSpeed(clip);
+            if (r.length === 1) return clampRampSpeed(r[0].v);
+            const tt = Math.max(0, t);
+            if (tt <= r[0].t) return clampRampSpeed(r[0].v);
+            const last = r[r.length - 1];
+            if (tt >= last.t) return clampRampSpeed(last.v);
+            for (let i = 0; i < r.length - 1; i++) {
+                const a = r[i], b = r[i + 1];
+                if (tt >= a.t && tt <= b.t) {
+                    const span = Math.max(1e-6, b.t - a.t);
+                    const u = (tt - a.t) / span;
+                    return clampRampSpeed(a.v + (b.v - a.v) * u);
+                }
+            }
+            return clampRampSpeed(last.v);
+        }
+        // Source seconds consumed over clip-local [0, t] (exact integral of the
+        // piecewise-linear speed).
+        function rampIntegral(clip, t) {
+            const r = clip && clip.speedRamp;
+            if (!Array.isArray(r) || r.length === 0) return t * clipSpeed(clip);
+            const tt = Math.max(0, t);
+            let acc = 0;
+            let prevV = clampRampSpeed(r[0].v);
+            if (r[0].t > 0) {
+                if (tt <= r[0].t) return tt * prevV;
+                acc += r[0].t * prevV;
+            }
+            for (let i = 0; i < r.length - 1; i++) {
+                const a = r[i], b = r[i + 1];
+                const aV = clampRampSpeed(a.v), bV = clampRampSpeed(b.v);
+                const span = Math.max(1e-6, b.t - a.t);
+                if (tt <= b.t) {
+                    const d = tt - a.t;
+                    return acc + aV * d + ((bV - aV) * d * d) / (2 * span);
+                }
+                acc += (aV + bV) * 0.5 * span;
+            }
+            const last = r[r.length - 1];
+            return acc + clampRampSpeed(last.v) * Math.max(0, tt - last.t);
+        }
+        // Source position of the playhead at clip-local time t.
+        function clipSourcePos(clip, localT) {
+            return (clip.sourceOffset || 0) + rampIntegral(clip, Math.max(0, localT));
+        }
+        // Timeline seconds needed to consume `sourceDelta` source seconds from the
+        // clip start (inverse of the integral — bisection, called rarely). Deltas
+        // beyond the clip's current integral extrapolate at the ramp's end speed
+        // (used by the trim-right source limit, which can exceed the current
+        // duration; callers inside the clip see no difference).
+        function clipTimeForSource(clip, sourceDelta) {
+            const total = rampIntegral(clip, clip.duration);
+            if (sourceDelta <= 0) return 0;
+            let hi = clip.duration;
+            if (sourceDelta > total) {
+                const endRate = rampSpeedAt(clip, clip.duration);
+                hi = clip.duration + (sourceDelta - total) / Math.max(0.05, endRate);
+            }
+            let lo = 0;
+            for (let i = 0; i < 40; i++) {
+                const mid = (lo + hi) / 2;
+                if (rampIntegral(clip, mid) < sourceDelta) lo = mid; else hi = mid;
+            }
+            return (lo + hi) / 2;
+        }
+        // Average speed over the whole clip (used for visual-only mappings like the
+        // waveform peaks density).
+        function clipAvgSpeed(clip) {
+            if (!hasSpeedRamp(clip)) return clipSpeed(clip);
+            const d = Math.max(1e-6, clip.duration || 1e-6);
+            return Math.max(0.1, rampIntegral(clip, d) / d);
+        }
+
+        // ── Speed Ramp UI + handlers ──
+        function updateClipSpeedRamp(clip) {
+            // Restart a running buffer source so the new rate curve applies now.
+            if (clip.isPlaying && clip.sourceNode) {
+                try { clip.sourceNode.stop(); clip.sourceNode.disconnect(); } catch (e) {}
+                clip.sourceNode = null;
+                clip.isPlaying = false;
+            }
+            calcOverlaps();
+            renderClips();
+            syncMediaElements();
+            drawCanvas();
+            if (typeof drawAllWaveforms === 'function') drawAllWaveforms();
+        }
+
+        window.addClipSpeedRampKeyframe = (clipId) => {
+            const clip = State.clips.find(c => c.id === clipId);
+            if (!clip) return;
+            // Ramps and the pitch bake are mutually exclusive (the bake assumes a
+            // constant speed) — unbake if needed.
+            if (clip.pitchBaked) window.setClipPreservePitch(clipId, false);
+            if (!Array.isArray(clip.speedRamp) || clip.speedRamp.length < 2) {
+                const cur = clipUserSpeed(clip);
+                clip.speedRamp = [{ t: 0, v: cur }, { t: clip.duration, v: cur }];
+            } else {
+                const last = clip.speedRamp[clip.speedRamp.length - 1];
+                const step = Math.max(0.25, clip.duration * 0.1);
+                clip.speedRamp.push({ t: Math.min(clip.duration, last.t + step), v: last.v });
+            }
+            clip.speedRamp.sort((a, b) => a.t - b.t);
+            updateClipSpeedRamp(clip);
+            updateSidebarPanel();
+        };
+
+        window.removeClipSpeedRampKeyframe = (clipId, idx) => {
+            const clip = State.clips.find(c => c.id === clipId);
+            if (!clip || !Array.isArray(clip.speedRamp)) return;
+            clip.speedRamp.splice(idx, 1);
+            if (clip.speedRamp.length < 2) clip.speedRamp = undefined;
+            updateClipSpeedRamp(clip);
+            updateSidebarPanel();
+        };
+
+        window.clearClipSpeedRamp = (clipId) => {
+            const clip = State.clips.find(c => c.id === clipId);
+            if (!clip) return;
+            clip.speedRamp = undefined;
+            updateClipSpeedRamp(clip);
+            updateSidebarPanel();
+        };
+
+        window.setClipSpeedRamp = (clipId, idx, key, value) => {
+            const clip = State.clips.find(c => c.id === clipId);
+            if (!clip || !Array.isArray(clip.speedRamp)) return;
+            const k = clip.speedRamp[idx];
+            if (!k) return;
+            if (key === 't') k.t = Math.max(0, Math.min(clip.duration, parseFloat(value) || 0));
+            else k.v = clampRampSpeed(parseFloat(value) || 1);
+            clip.speedRamp.sort((a, b) => a.t - b.t);
+            updateClipSpeedRamp(clip);
+        };
+
+        function speedRampHTML(clip) {
+            if (clip.type !== 'video' && clip.type !== 'audio') return '';
+            const ramp = (Array.isArray(clip.speedRamp) && clip.speedRamp.length >= 2) ? clip.speedRamp : null;
+            const dur = clip.duration || 0;
+            let body = '';
+            if (clip.pitchBaked) {
+                body = `
+                    <p class="text-[8.5px] text-amber-600 dark:text-amber-400 leading-tight">Preserve Pitch is on — clear it to edit a speed ramp.</p>`;
+            } else if (ramp) {
+                body = ramp.map((k, i) => `
+                    <div class="flex items-center gap-1.5">
+                        <input type="range" min="0" max="${Math.max(0.1, dur)}" step="0.05" value="${Math.min(dur, k.t).toFixed(2)}" oninput="setClipSpeedRamp('${clip.id}', ${i}, 't', this.value)" onchange="updateSidebarPanel()" class="flex-1 custom-slider !h-[3px]" title="Keyframe time">
+                        <input type="range" min="0.25" max="4" step="0.05" value="${k.v.toFixed(2)}" oninput="setClipSpeedRamp('${clip.id}', ${i}, 'v', this.value)" onchange="updateSidebarPanel()" class="w-12 custom-slider !h-[3px]" title="Speed at this keyframe">
+                        <span class="text-[8px] font-mono text-surface-500 dark:text-surface-300 w-9 text-right shrink-0">${k.v.toFixed(2)}×</span>
+                        <button onclick="removeClipSpeedRampKeyframe('${clip.id}', ${i}); event.stopPropagation();" class="shrink-0 w-4 h-4 flex items-center justify-center text-surface-400 hover:text-red-500 dark:text-surface-500 dark:hover:text-red-400 transition-colors" title="Remove keyframe"><i data-lucide="x" class="w-3 h-3"></i></button>
+                    </div>`).join('');
+            } else {
+                body = `
+                    <p class="text-[8.5px] text-surface-500 dark:text-surface-300 leading-tight">Gradually speed up or slow down over the clip (like Premiere rate-stretch).</p>`;
+            }
+            return `
+                <div class="flex flex-col gap-1.5 pt-2 mt-1 border-t border-surface-200 dark:border-surface-700">
+                    <div class="flex justify-between items-center">
+                        <span class="text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase flex items-center gap-1"><i data-lucide="trending-up" class="w-3 h-3"></i> Speed Ramp</span>
+                        ${ramp ? `<button onclick="clearClipSpeedRamp('${clip.id}'); event.stopPropagation();" class="text-[8.5px] font-bold text-red-500 hover:text-red-600 dark:text-red-400 transition-colors" title="Remove all keyframes">Clear</button>` : ''}
+                    </div>
+                    ${body}
+                    ${!clip.pitchBaked ? `<button onclick="addClipSpeedRampKeyframe('${clip.id}'); event.stopPropagation();" class="self-start text-[8.5px] font-bold text-brand-600 dark:text-brand-400 hover:opacity-80 transition-opacity flex items-center gap-1"><i data-lucide="plus" class="w-3 h-3"></i> ${ramp ? 'Add Keyframe' : 'Add Speed Ramp'}</button>` : ''}
+                </div>`;
+        }
+
         // ── Pitch preservation for buffer-based audio (SOLA time-stretch + resample) ──
         // Playing a buffer at speed S shifts pitch by S. To keep the pitch steady we
         // bake a pitch-corrected copy: stretch by 1/S then resample by 1/S, which
@@ -5852,6 +6030,9 @@
                 if (!clip || clip.type !== 'audio' || !clip.buffer) return;
                 const enable = !!on;
                 if (enable && !clip.pitchBaked) {
+                    // A speed ramp and the pitch bake are mutually exclusive (the bake
+                    // assumes a constant rate) — drop the ramp when enabling the toggle.
+                    if (Array.isArray(clip.speedRamp) && clip.speedRamp.length >= 2) clip.speedRamp = undefined;
                     const spd = clipSpeed(clip);
                     bakePitchBuffer(clip, spd);
                 } else if (!enable && clip.pitchBaked) {
@@ -5878,6 +6059,7 @@
                 // Effective playback speed: pitch-baked clips play their baked buffer
                 // at rate 1, so the user-facing speed is the one baked into the audio.
                 const oldSpeed = (clip.pitchBaked && clip.pitchOrigSpeed) ? clip.pitchOrigSpeed : clipSpeed(clip);
+                const oldDuration = clip.duration || 0;
                 const newSpeed = Math.max(0.25, Math.min(4, parseFloat(speed) || 1));
                 if (Math.abs(newSpeed - oldSpeed) < 0.001) return;
                 // Keep the same source window, rescale the timeline duration so faster
@@ -5903,6 +6085,16 @@
                 newDuration = Math.max(0.1, newDuration);
                 clip.speed = newSpeed;
                 clip.duration = newDuration;
+                // With a speed ramp, rescale every keyframe by the base-speed ratio so
+                // the ramp SHAPE is preserved while the whole curve shifts up/down —
+                // the source window (integral over the clip) then scales by the same
+                // ratio, which matches the duration rescale above. Keyframe times
+                // stretch with the new duration so the shape stays on-clip.
+                if (hasSpeedRamp(clip)) {
+                    const r = newSpeed / oldSpeed;
+                    const tScale = oldDuration > 0 ? (newDuration / oldDuration) : 1;
+                    clip.speedRamp.forEach(k => { k.t = k.t * tScale; k.v = clampRampSpeed(k.v * r); });
+                }
                 if (clip.pitchBaked && clip.pitchOrigBuffer) {
                     // Preserve-pitch on: re-bake the correction for the new speed. The
                     // SOLA transform is expensive, so it is debounced — the speed/duration
@@ -8849,6 +9041,7 @@
                             </div>
                             <p class="text-[9px] text-surface-500 dark:text-surface-300 leading-relaxed">Speeds up or slows down this audio. Fades and trim follow the same source material — the clip's timeline length changes accordingly.</p>
                         </div>
+                        ${speedRampHTML(clip)}
                         <div class="flex items-center justify-between gap-2 pt-1 border-t border-surface-200 dark:border-surface-700">
                             <div class="flex flex-col gap-0.5 min-w-0">
                                 <span class="text-[10px] font-bold text-surface-800 dark:text-surface-200">Preserve pitch</span>
@@ -9595,6 +9788,7 @@
                                     `).join('')}
                                 </div>
                                 <p class="text-[10px] text-surface-500 dark:text-surface-300 leading-relaxed">Speeds up or slows down this clip. The timeline length changes to fit the same source material — split before changing speed to keep surrounding clips in place.</p>
+                                ${speedRampHTML(clip)}
                             </div>
                         </details>
                     `;
@@ -12176,11 +12370,10 @@
             if (!gain) return;
             const bufDur = clip.buffer ? clip.buffer.duration : (clip.sourceOffset || 0) + clip.duration;
             // Effective window: explicit trim fields override, otherwise the clip's
-            // natural source range [sourceOffset, sourceOffset + duration], always
-            // clamped to the buffer length.
-            const spd = clipSpeed(clip);
+            // natural source range anchored at sourceOffset, always clamped to the
+            // buffer length. With a ramp the window consumes the ramp's integral.
             const trimStart = Math.min(bufDur, clip.trimStart !== undefined ? clip.trimStart : (clip.sourceOffset || 0));
-            const trimEnd = Math.min(bufDur, clip.trimEnd !== undefined ? clip.trimEnd : trimStart + clip.duration * spd);
+            const trimEnd = Math.min(bufDur, clip.trimEnd !== undefined ? clip.trimEnd : trimStart + rampIntegral(clip, clip.duration));
             const trimmedDur = Math.max(0, trimEnd - trimStart);
             const inTrimOffset = Math.max(0, Math.min(bufferOffset - trimStart, trimmedDur));
             const fi = Math.max(0, Math.min(clip.fadeIn || 0, trimmedDur));
@@ -12189,9 +12382,12 @@
             const now = audioCtx.currentTime;
             try {
                 gain.gain.cancelScheduledValues(now);
-                // The source plays at `spd`, so the remaining trimmed sound consumes
-                // (trimmedDur - inTrimOffset) / spd wall-clock seconds.
-                const naturalEnd = now + Math.max(0, (trimmedDur - inTrimOffset) / spd);
+                // The source's variable rate means the remaining trimmed sound ends at
+                // the timeline time where the ramp integral (from trimStart) reaches
+                // trimEnd.
+                const tEnd = clipTimeForSource(clip, Math.max(0, trimEnd - trimStart));
+                const posNow = Math.max(0, State.currentTime - (clip.start || 0));
+                const naturalEnd = now + Math.max(0, tEnd - posNow);
                 // If the clip's timeline window ends before the trimmed sound, schedule
                 // a graceful stop so the fade-out completes instead of an abrupt cut
                 // when the playhead-leave cleanup fires.
@@ -17524,7 +17720,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 ...clip,
                 id: 'c_' + Date.now() + Math.random().toString(36).substr(2, 5),
                 start: time,
-                sourceOffset: clip.sourceOffset + leftDuration * clipSpeed(clip),
+                sourceOffset: clipSourcePos(clip, leftDuration),
                 duration: rightDuration,
                 audioEl: newAudioEl,
                 videoEl: newVideoEl,
@@ -17534,6 +17730,24 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 // half's links would leak into the left half via the shared reference.
                 linkedClipIds: clip.linkedClipIds ? clip.linkedClipIds.slice() : []
             };
+
+            // Rebase the speed ramp onto each half: the left keeps keyframes up to
+            // the cut (holding its end speed), the right starts at the cut with the
+            // remaining keyframes shifted to local time 0.
+            if (Array.isArray(clip.speedRamp) && clip.speedRamp.length >= 2) {
+                const origRamp = clip.speedRamp.slice();
+                const lk = origRamp.filter(k => k.t <= leftDuration + 0.001).map(k => ({ t: Math.min(leftDuration, k.t), v: k.v }));
+                if (!lk.length || lk[lk.length - 1].t < leftDuration - 0.001) {
+                    lk.push({ t: leftDuration, v: rampSpeedAt(clip, leftDuration) });
+                }
+                clip.speedRamp = lk;
+                let rk = origRamp.filter(k => k.t >= leftDuration - 0.001).map(k => ({ t: Math.max(0, k.t - leftDuration), v: k.v }));
+                if (!rk.length || rk[0].t > 0.001) {
+                    rk.unshift({ t: 0, v: rampSpeedAt(clip, leftDuration) });
+                }
+                if (rk.length < 2) rk.push({ t: rightDuration, v: rk[0] ? rk[0].v : clipSpeed(clip) });
+                newClip.speedRamp = rk;
+            }
 
             if (newClip.audioEl) buildAudioGraph(newClip);
 
@@ -17696,20 +17910,22 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 newVideoEl.crossOrigin = "anonymous";
                 newVideoEl.muted = true;
                 newVideoEl.load();
-            }
-            const newClip = {
-                ...originalClip,
-                id: 'c_' + Date.now() + Math.random().toString(36).substr(2, 5),
-                start: startTimeline,
-                sourceOffset: startSource,
-                duration: duration,
-                audioEl: newAudioEl,
-                videoEl: newVideoEl,
-                effects: JSON.parse(JSON.stringify(originalClip.effects || [])),
-                audioNodes: null,
-                // Clone (don't share) the linked list — see splitClipAtTime
-                linkedClipIds: originalClip.linkedClipIds ? originalClip.linkedClipIds.slice() : []
-            };
+            }                const newClip = {
+                    ...originalClip,
+                    id: 'c_' + Date.now() + Math.random().toString(36).substr(2, 5),
+                    start: startTimeline,
+                    sourceOffset: startSource,
+                    duration: duration,
+                    audioEl: newAudioEl,
+                    videoEl: newVideoEl,
+                    effects: JSON.parse(JSON.stringify(originalClip.effects || [])),
+                    audioNodes: null,
+                    // Silence removal rewrites the source range, so a speed ramp's
+                    // keyframes (in original local time) would no longer align — drop it.
+                    speedRamp: undefined,
+                    // Clone (don't share) the linked list — see splitClipAtTime
+                    linkedClipIds: originalClip.linkedClipIds ? originalClip.linkedClipIds.slice() : []
+                };
             if (newClip.audioEl) buildAudioGraph(newClip);
             return newClip;
         }
@@ -17755,7 +17971,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             const silentRegions = [];
             
             const startSample = Math.floor(clip.sourceOffset * sampleRate);
-            const endSample = Math.floor((clip.sourceOffset + clip.duration * clipSpeed(clip)) * sampleRate);
+            const endSample = Math.floor(clipSourcePos(clip, clip.duration) * sampleRate);
             const blockSize = Math.floor(sampleRate * 0.01);
             
             for (let i = startSample; i < endSample; i += blockSize) {
@@ -17807,7 +18023,11 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 const validEndSec = silence.startSec - padding;
                 
                 if (validEndSec > validStartSec) {
-                    const duration = (validEndSec - validStartSec) / clipSpeed(clip);
+                    // Duration = timeline time needed to consume this source range
+                    // (inverse integral; constant speed falls out of the formula).
+                    const duration = hasSpeedRamp(clip)
+                        ? (clipTimeForSource(clip, validEndSec - (clip.sourceOffset || 0)) - clipTimeForSource(clip, validStartSec - (clip.sourceOffset || 0)))
+                        : (validEndSec - validStartSec) / clipSpeed(clip);
                     const newClip = createSplitClipData(clip, currentTimelineTime, validStartSec, duration);
                     newClips.push(newClip);
                     currentTimelineTime += duration;
@@ -17816,9 +18036,11 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             });
             
             const finalValidStart = currentSrcTime;
-            const finalValidEnd = clip.sourceOffset + clip.duration * clipSpeed(clip);
+            const finalValidEnd = clipSourcePos(clip, clip.duration);
             if (finalValidEnd > finalValidStart) {
-                const duration = (finalValidEnd - finalValidStart) / clipSpeed(clip);
+                const duration = hasSpeedRamp(clip)
+                    ? (clipTimeForSource(clip, finalValidEnd - (clip.sourceOffset || 0)) - clipTimeForSource(clip, finalValidStart - (clip.sourceOffset || 0)))
+                    : (finalValidEnd - finalValidStart) / clipSpeed(clip);
                 const newClip = createSplitClipData(clip, currentTimelineTime, finalValidStart, duration);
                 newClips.push(newClip);
             }
@@ -18257,9 +18479,11 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 // Speed badge — small pill next to the clip title when playback speed
                 // isn't 1×. renderClips() is re-run by setClipSpeed, so it updates live.
                 let speedBadgeHtml = '';
-                if ((clip.type === 'video' || clip.type === 'audio') && Math.abs(clipUserSpeed(clip) - 1) > 0.001) {
-                    const spd = clipUserSpeed(clip);
-                    const label = String(parseFloat(spd.toFixed(2))) + '×';
+                const badgeBase = clipUserSpeed(clip);
+                if ((clip.type === 'video' || clip.type === 'audio') && (Math.abs(badgeBase - 1) > 0.001 || hasSpeedRamp(clip))) {
+                    const spd = badgeBase;
+                    // A ramp means the speed varies — prefix with a tilde.
+                    const label = (hasSpeedRamp(clip) ? '~' : '') + String(parseFloat(spd.toFixed(2))) + '×';
                     speedBadgeHtml = `
                     <span class="inline-flex items-center px-1 rounded-sm text-[8px] font-bold leading-none shrink-0" style="background: rgba(0,0,0,0.55); color: #fff;" title="Speed ${label} — change it in the Speed card">${label}</span>
                 `;
@@ -18622,7 +18846,8 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 const sfxInAudible = (x) => sfxAudibleDur < 0 || (leftOffset + x / dpr) / State.pixelsPerSecond < sfxAudibleDur;
                 // Each timeline second maps to `speed` source seconds, so the peaks
                 // window consumes more source material per pixel at higher speeds.
-                const spd = clipSpeed(clip);
+                // With a ramp we use the average speed (visual approximation only).
+                const spd = clipAvgSpeed(clip);
                 const startPeakIdx = ((leftOffset / State.pixelsPerSecond) * spd + (sfxPeakEnv ? sfxPeakOffset : clip.sourceOffset)) * clip.peaksPerSecond;
                 const peaksPerPixel = clip.peaksPerSecond * spd / (State.pixelsPerSecond * dpr);
 
@@ -20325,7 +20550,12 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
 
             } else if (State.drag.type === 'trimLeft') {
                 let newStart = State.drag.initialStart + deltaTime;
-                let newSourceOffset = State.drag.initialSourceOffset + deltaTime * clipSpeed(clip);
+                // With a speed ramp the source consumed over the trimmed region is the
+                // integral of the ramp (extending left uses the leading speed).
+                const rampDelta = hasSpeedRamp(clip)
+                    ? (deltaTime >= 0 ? rampIntegral(clip, deltaTime) : deltaTime * rampSpeedAt(clip, 0))
+                    : deltaTime * clipSpeed(clip);
+                let newSourceOffset = State.drag.initialSourceOffset + rampDelta;
                 let newDuration = State.drag.initialDuration - deltaTime;
 
                 // Procedural clips (text/shape/image/scene) have no source media to trim
@@ -20382,7 +20612,11 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             } else if (State.drag.type === 'trimRight') {
                 let newDuration = State.drag.initialDuration + deltaTime;
                 
-                const maxAllowedDuration = clip.maxDuration - clip.sourceOffset;
+                // The clip may not extend past the end of its source: the timeline
+                // duration that consumes the remaining source is the inverse integral
+                // (constant speed falls out of the same formula — this also fixes the
+                // old behavior which treated source seconds as timeline seconds).
+                const maxAllowedDuration = clipTimeForSource(clip, Math.max(0, (clip.maxDuration || clip.duration) - (clip.sourceOffset || 0)));
                 if (newDuration > maxAllowedDuration) newDuration = maxAllowedDuration;
                 if (newDuration < 0.2) newDuration = 0.2;
                 
@@ -20502,9 +20736,9 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 const winEnd = clip.trimEnd !== undefined ? clip.trimEnd : prevEnd;
                 if (Math.abs(winStart - prevStart) < 0.001) {
                     clip.trimStart = Math.min(bufDur, Math.max(0, clip.sourceOffset));
-                    clip.trimEnd = Math.min(bufDur, Math.max(clip.trimStart || 0, clip.sourceOffset + clip.duration * clipSpeed(clip)));
+                    clip.trimEnd = Math.min(bufDur, Math.max(clip.trimStart || 0, clipSourcePos(clip, clip.duration)));
                 } else if (Math.abs(winEnd - prevEnd) < 0.001) {
-                    clip.trimEnd = Math.min(bufDur, Math.max(clip.trimStart !== undefined ? clip.trimStart : clip.sourceOffset, clip.sourceOffset + clip.duration * clipSpeed(clip)));
+                    clip.trimEnd = Math.min(bufDur, Math.max(clip.trimStart !== undefined ? clip.trimStart : clip.sourceOffset, clipSourcePos(clip, clip.duration)));
                 }
             }
             
@@ -20591,6 +20825,25 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             // Sync the properties card after envelope / trim drags (handle positions
             // re-render with the clip below).
             if (State.drag.type === 'fadeIn' || State.drag.type === 'fadeOut' || State.drag.type === 'envTrimStart' || State.drag.type === 'envTrimEnd' || State.drag.type === 'trimLeft' || State.drag.type === 'trimRight' || State.drag.type === 'autoPoint') {
+                // Trim-left changes the clip's local coordinate origin — rebase the
+                // speed-ramp keyframes so they stay aligned with the trimmed start.
+                if (State.drag.type === 'trimLeft') {
+                    const tc = State.clips.find(c => c.id === State.drag.clipId);
+                    if (tc && hasSpeedRamp(tc)) {
+                        // shift > 0 means the left edge was trimmed in: the new local
+                        // origin sits at `shift` seconds into the original clip.
+                        const shift = tc.start - State.drag.initialStart;
+                        if (Math.abs(shift) > 0.001 && Array.isArray(tc.speedRamp)) {
+                            const orig = tc.speedRamp.slice();
+                            const cutLocal = Math.max(0, shift);
+                            const cutSpeed = rampSpeedAt({ ...tc, speedRamp: orig }, cutLocal);
+                            let nk = orig.filter(k => k.t >= cutLocal - 0.001).map(k => ({ t: Math.max(0, k.t - cutLocal), v: k.v }));
+                            if (!nk.length || nk[0].t > 0.001) nk.unshift({ t: 0, v: cutSpeed });
+                            if (nk.length < 2) nk.push({ t: Math.max(0.2, tc.duration), v: nk[0].v });
+                            tc.speedRamp = nk;
+                        }
+                    }
+                }
                 updateSidebarPanel();
             }
             
@@ -20752,7 +21005,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 }
                 if (State.currentTime < absStart || State.currentTime >= absStart + clip.duration) return;
                 const el = clip.videoEl;
-                const targetTime = clip.sourceOffset + (State.currentTime - absStart) * clipSpeed(clip);
+                const targetTime = clipSourcePos(clip, State.currentTime - absStart);
                 waiting = true;
                 if (el.readyState < 1) {
                     // Metadata not loaded yet (fresh element right after .load()) — wait for
@@ -20973,7 +21226,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                             clip.sourceNode.buffer = clip.buffer;
                             clip.sourceNode.playbackRate.value = clipSpeed(clip);
                             const pos = Math.max(0, State.currentTime - clip.start);
-                            const targetTime = clip.sourceOffset + pos * clipSpeed(clip);
+                            const targetTime = clipSourcePos(clip, pos);
                             if (clipHasEnvelope(clip) || hasVolumeAutomation(clip)) {
                                 // Trimmed + faded timeline audio (e.g. extracted SFX): bound
                                 // the source to trimEnd and shape the fades on a dedicated
@@ -21007,12 +21260,17 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                                 }
                                 // Effective play window: explicit trim fields win (e.g.
                                 // music trimmed mid-buffer), otherwise the clip's natural
-                                // source range [sourceOffset, sourceOffset + duration].
+                                // source range anchored at sourceOffset. The audible
+                                // window starts at trimStart and consumes the ramp's
+                                // integral (constant speed falls out of the formula).
                                 const bufDur = clip.buffer ? clip.buffer.duration : Infinity;
                                 const trimStart = Math.min(bufDur, clip.trimStart !== undefined ? clip.trimStart : (clip.sourceOffset || 0));
-                                const trimEnd = Math.min(bufDur, clip.trimEnd !== undefined ? clip.trimEnd : trimStart + clip.duration * clipSpeed(clip));
-                                const inTrimPos = Math.min(pos, Math.max(0, (trimEnd - trimStart) / clipSpeed(clip)));
-                                const bufferTime = trimStart + inTrimPos * clipSpeed(clip);
+                                const trimEnd = Math.min(bufDur, clip.trimEnd !== undefined ? clip.trimEnd : trimStart + rampIntegral(clip, clip.duration));
+                                // Timeline time at which the source (from trimStart)
+                                // reaches trimEnd.
+                                const audibleT = clipTimeForSource(clip, Math.max(0, trimEnd - trimStart));
+                                const inTrimPos = Math.min(pos, Math.max(0, audibleT));
+                                const bufferTime = trimStart + Math.max(0, rampIntegral(clip, inTrimPos));
                                 const remaining = Math.max(0, trimEnd - bufferTime);
                                 clip.sourceNode.start(0, bufferTime, remaining);
                                 scheduleClipEnvelope(clip, clip.sourceNode, bufferTime);
@@ -21029,6 +21287,12 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         }
                         if (clip.isPlaying && clip.audioNodes) {
                             applyAudioEffects(clip);
+                        }
+                        // Speed ramps: push the instantaneous rate onto the running
+                        // source every frame so buffer audio accelerates/decelerates.
+                        // Skipped for pitch-baked clips (they always play at rate 1).
+                        if (clip.isPlaying && clip.sourceNode && hasSpeedRamp(clip) && !clip.pitchBaked) {
+                            try { clip.sourceNode.playbackRate.value = Math.max(0.05, rampSpeedAt(clip, Math.max(0, State.currentTime - clip.start))); } catch (e) {}
                         }
                     } else {
                         if (clip.isPlaying && clip.sourceNode) {
@@ -21066,7 +21330,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                             armVideoFrameLatch(newVideo);
                             // Attempt to set scrub position immediately (may throw if
                             // metadata not yet loaded; next sync cycle will retry)
-                            const seekTarget = clip.sourceOffset + (State.currentTime - clip.start) * clipSpeed(clip);
+                            const seekTarget = clipSourcePos(clip, State.currentTime - clip.start);
                             try { newVideo.currentTime = Math.max(0, seekTarget); } catch (_) {}
                             clip.videoEl = newVideo;
                             el = newVideo;
@@ -21085,9 +21349,17 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     if (shouldPlay) {
                         if (clip.audioEl) applyAudioEffects(clip);
                         
-                        const targetTime = clip.sourceOffset + (State.currentTime - clip.start) * clipSpeed(clip);
+                        const targetTime = clipSourcePos(clip, State.currentTime - clip.start);
                         
                         seekMediaEl(el, targetTime, 0.25);
+                        
+                        // Speed ramps: nudge the element's playback rate every frame so
+                        // the video accelerates/decelerates with the ramp (the per-frame
+                        // integral re-seek above keeps it frame-accurate).
+                        if (hasSpeedRamp(clip)) {
+                            const pitch = (clip.effects && clip.effects.pitch !== undefined) ? clip.effects.pitch : 1;
+                            el.playbackRate = Math.max(0.05, pitch * rampSpeedAt(clip, State.currentTime - clip.start));
+                        }
                         
                         if (el.paused) {
                             const p = el.play();
@@ -21104,7 +21376,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         if (isUpcoming) {
                             seekMediaEl(el, clip.sourceOffset);
                         } else if (!State.isPlaying && State.currentTime >= clip.start && State.currentTime <= clip.start + clip.duration) {
-                            const targetTime = clip.sourceOffset + (State.currentTime - clip.start) * clipSpeed(clip);
+                            const targetTime = clipSourcePos(clip, State.currentTime - clip.start);
                             seekMediaEl(el, targetTime);
                         }
                     }
@@ -21679,7 +21951,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     applyAudioEffects(clip);
                     
                     const offset = Math.max(0, startTime - clip.start);
-                    el.currentTime = clip.sourceOffset + offset * clipSpeed(clip);
+                    el.currentTime = clipSourcePos(clip, offset);
                     
                     if (startTime >= clip.start) {
                         const p = el.play();
@@ -21710,6 +21982,11 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                             el.currentTime = clip.sourceOffset;
                             const p = el.play();
                             if (p !== undefined) { clip.playPromise = p; p.catch(e=>{}); }
+                        }
+                        // Speed ramps: drive the element rate live during capture.
+                        if (el && !el.paused && hasSpeedRamp(clip)) {
+                            const pitch = (clip.effects && clip.effects.pitch !== undefined) ? clip.effects.pitch : 1;
+                            el.playbackRate = Math.max(0.05, pitch * rampSpeedAt(clip, Math.max(0, State.currentTime - clip.start)));
                         }
                         // Stop media if playhead passes it
                         if (State.currentTime > clip.start + clip.duration) {
@@ -21889,12 +22166,15 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         // window then consumes more/less source material per second.
                         source.playbackRate.value = clipSpeed(c);
                         
+                        const clipLocalStart = Math.max(0, clipStart - c.start);
+                        const clipLocalEnd = Math.min(c.duration, clipEnd - c.start);
                         // Embedded SFX always starts from the clip's own start (mirrors
                         // playback: the sound begins when the playhead enters the clip),
-                        // while timeline audio clips resume from their source offset.
+                        // while timeline audio clips resume from their source offset
+                        // (with a speed ramp, the integral of the ramp).
                         let sourceOffset = isSfx
                             ? Math.max(0, clipStart - c.start)
-                            : c.sourceOffset + (clipStart - c.start) * clipSpeed(c);
+                            : clipSourcePos(c, clipStart - c.start);
                         
                         const gainNode = offlineCtx.createGain();
                         const vol = isSfx
@@ -21902,6 +22182,18 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                             : ((track && track.volume !== undefined) ? track.volume : (c.volume || 1));
                         
                         const startTimeInOffline = clipStart - startTime;
+                        // Speed ramps: schedule the rate curve over the offline window so
+                        // the baked audio accelerates/decelerates exactly like playback.
+                        if (!isSfx && hasSpeedRamp(c) && !c.pitchBaked) {
+                            try {
+                                source.playbackRate.setValueAtTime(Math.max(0.05, rampSpeedAt(c, clipLocalStart)), startTimeInOffline);
+                                c.speedRamp.forEach(k => {
+                                    if (k.t > clipLocalStart && k.t < clipLocalEnd) {
+                                        source.playbackRate.linearRampToValueAtTime(clampRampSpeed(k.v), startTimeInOffline + (k.t - clipLocalStart));
+                                    }
+                                });
+                            } catch (e) {}
+                        }
                         if (isSfx) {
                             // Apply the same envelope (trim + fades) the element uses
                             // during playback: play only the trimmed [start, end] range
@@ -21941,15 +22233,20 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                             // play only [trimStart, trimEnd] and ramp over the fades.
                             const bufDur = c.buffer ? c.buffer.duration : (c.sourceOffset || 0) + c.duration;
                             const trimStart = Math.min(bufDur, c.trimStart !== undefined ? c.trimStart : (c.sourceOffset || 0));
-                            const trimEnd = Math.min(bufDur, c.trimEnd !== undefined ? c.trimEnd : trimStart + c.duration * clipSpeed(c));
+                            const trimEnd = Math.min(bufDur, c.trimEnd !== undefined ? c.trimEnd : trimStart + rampIntegral(c, c.duration));
                             const trimmedDur = Math.max(0, trimEnd - trimStart);
-                            const spd = clipSpeed(c);
-                            const inTrimPos = Math.max(0, Math.min(Math.max(0, clipStart - c.start), Math.max(0, (trimmedDur - 0.001) / spd)));
-                            sourceOffset = trimStart + inTrimPos * spd;
-                            duration = Math.min(duration, Math.max(0, (trimmedDur - inTrimPos * spd) / spd));
+                            // Source window actually played inside the export range,
+                            // anchored at trimStart (source = trimStart + ramp integral);
+                            // duration = timeline seconds needed to consume it (inverse
+                            // integral handles ramps exactly, constant speed reduces to
+                            // (srcEnd - srcStart) / speed).
+                            const srcStart = trimStart + rampIntegral(c, clipLocalStart);
+                            const srcEnd = Math.min(trimEnd, trimStart + rampIntegral(c, clipLocalEnd));
+                            sourceOffset = Math.max(trimStart, srcStart);
+                            duration = Math.min(duration, Math.max(0.001, clipTimeForSource(c, Math.max(0, srcEnd - trimStart)) - clipTimeForSource(c, Math.max(0, srcStart - trimStart))));
                             const fi = Math.max(0, Math.min(c.fadeIn || 0, trimmedDur));
                             const fo = Math.max(0, Math.min(c.fadeOut || 0, trimmedDur - fi));
-                            const audibleEnd = Math.min(duration, Math.max(0, trimmedDur - inTrimPos));
+                            const audibleEnd = Math.max(0.001, duration);
                             const ease = c.fadeCurve === 'ease';
                             if (fi > 0) {
                                 if (ease) {
@@ -21986,7 +22283,23 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         chainOut.connect(gainNode);
                         gainNode.connect(masterGain);
                         
-                        source.start(startTimeInOffline, sourceOffset, duration * clipSpeed(c));
+                        // The duration param of source.start() is in SOURCE seconds: the
+                        // ramp integral over the played window for ramped clips, the
+                        // constant-speed product otherwise, and for envelope clips the
+                        // already-clamped source window.
+                        let srcDur = duration * clipSpeed(c);
+                        if (hasSpeedRamp(c) && !isSfx) {
+                            if (clipHasEnvelope(c) || hasVolumeAutomation(c)) {
+                                const bufDur2 = c.buffer ? c.buffer.duration : (c.sourceOffset || 0) + c.duration;
+                                const trimStart2 = Math.min(bufDur2, c.trimStart !== undefined ? c.trimStart : (c.sourceOffset || 0));
+                                const trimEnd2 = Math.min(bufDur2, c.trimEnd !== undefined ? c.trimEnd : trimStart2 + rampIntegral(c, c.duration));
+                                const srcEnd2 = Math.min(trimEnd2, trimStart2 + rampIntegral(c, clipLocalEnd));
+                                srcDur = Math.max(0.001, srcEnd2 - sourceOffset);
+                            } else {
+                                srcDur = Math.max(0.001, rampIntegral(c, clipLocalEnd) - rampIntegral(c, clipLocalStart));
+                            }
+                        }
+                        source.start(startTimeInOffline, sourceOffset, srcDur);
                     });
                     
                     console.log('Rendering audio offline (' + totalDuration.toFixed(1) + 's)...');
@@ -22028,6 +22341,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 el.playsInline = true;
                 el.preservesPitch = true;
                 el.playbackRate = clipSpeed(clip);
+                if (hasSpeedRamp(clip)) el.playbackRate = rampSpeedAt(clip, 0);
                 exportVideoContainer.appendChild(el);
                 
                 // Save old element reference and swap in the fresh one
@@ -22044,7 +22358,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 
                 // Seek to the clip's starting position within the export range
                 const clipStartInExport = Math.max(startTime, clip.start);
-                const sourceOffset = clip.sourceOffset + (clipStartInExport - clip.start) * clipSpeed(clip);
+                const sourceOffset = clipSourcePos(clip, clipStartInExport - clip.start);
                 el.currentTime = sourceOffset;
             }
             
@@ -22261,9 +22575,13 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     if (!clip) continue;
                     if (exportTime >= clip.start && exportTime < clip.start + clip.duration) {
                         if (entry.el.paused) {
-                            const targetTime = clip.sourceOffset + (exportTime - clip.start) * clipSpeed(clip);
+                            const targetTime = clipSourcePos(clip, exportTime - clip.start);
                             try { entry.el.currentTime = Math.max(0, targetTime); } catch (_) {}
                             entry.el.play().catch(() => {});
+                        } else if (hasSpeedRamp(clip)) {
+                            // Keep the element rate following the ramp between frames.
+                            const pitch = (clip.effects && clip.effects.pitch !== undefined) ? clip.effects.pitch : 1;
+                            try { entry.el.playbackRate = Math.max(0.05, pitch * rampSpeedAt(clip, exportTime - clip.start)); } catch (_) {}
                         }
                     } else {
                         if (!entry.el.paused) {
