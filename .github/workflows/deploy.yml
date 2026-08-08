@@ -24,6 +24,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -34,10 +36,39 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build
+      - name: Build (current)
         run: npm run build
         env:
           GITHUB_ACTIONS: 'true'
+
+      # ── Versioned snapshots ────────────────────────────────────────────
+      # Every `v*` tag (e.g. v1.0) is built with a per-tag base path and
+      # baked into the SAME Pages artifact as a subfolder, so it is served
+      # at https://<user>.github.io/<repo>/<tag>/ alongside the current
+      # root build. Tag-only pushes never trigger this workflow (the `on:`
+      # block above ignores tags); the snapshot is refreshed whenever the
+      # branch deploys, keeping old versions permanently available.
+      - name: Fetch version tags
+        run: git fetch --tags --force origin
+
+      - name: Build version snapshots (v* tags)
+        run: |
+          set -e
+          tags="$(git tag -l 'v[0-9]*' | sort -V)"
+          if [ -z "$tags" ]; then
+            echo "No v* tags found — skipping versioned snapshots."
+            exit 0
+          fi
+          for tag in $tags; do
+            echo "Building snapshot for tag $tag → /studio-pro/$tag/"
+            rm -rf "_snap_$tag"
+            mkdir -p "_snap_$tag"
+            git archive "$tag" | tar -x -C "_snap_$tag"
+            ( cd "_snap_$tag" && npm ci && npx vite build --base="/studio-pro/$tag/" --outDir dist )
+            mkdir -p "dist/$tag"
+            cp -r "_snap_$tag/dist/." "dist/$tag/"
+            rm -rf "_snap_$tag"
+          done
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
