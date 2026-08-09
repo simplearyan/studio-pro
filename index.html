@@ -3848,6 +3848,10 @@
         }
 
         function drawVectorMath(ctx, clip, targetW, targetH) {
+            // Reject stale serialized sprites (JSON round-trip turns the canvas into {}).
+            if (clip.__vecLastSprite && clip.__vecLastSprite.canvas && clip.__vecLastSprite.canvas.nodeName !== 'CANVAS') {
+                clip.__vecLastSprite = null;
+            }
             let sprite = clip.__vecLastSprite || null;
             if (sprite && !vecMathRebakeAllowed()) {
                 // Still inside the cooldown window — reuse the last baked sprite (scaled below).
@@ -3909,7 +3913,9 @@
             // tinting, so a colored raster is a valid mask — this prevents first-paint
             // flicker when the white raster is still loading.
             const whiteImg = (whiteRec && whiteRec.loaded) ? whiteRec : (clip._mathLastGood || clip._mathLastExtrude || null);
-            if (!whiteImg || !whiteImg.image) return null;
+            // nodeName check rejects JSON-restored {} stubs that pass truthiness but
+            // are not real IMG elements (drawImage would throw and corrupt the canvas).
+            if (!whiteImg || !whiteImg.image || whiteImg.image.nodeName !== 'IMG') return null;
             const depth = fx.extrudeEnable ? (fx.extrudeDepth || 5) : 0;
             let dx = 1, dy = 1;
             const ed = fx.extrudeDir || 'br';
@@ -4013,7 +4019,7 @@
             // Always request the fresh record so its async onload can promote _mathLastGood.
             const mathRecord = getOrRenderMathImage(clip);
             const mathImg = (mathRecord && mathRecord.loaded) ? mathRecord : (clip._mathLastGood || null);
-            if (!mathImg || !mathImg.image) return null;
+            if (!mathImg || !mathImg.image || mathImg.image.nodeName !== 'IMG') return null;
             const depth = fx.extrudeEnable ? (fx.extrudeDepth || 5) : 0;
             let dx = 1, dy = 1;
             const ed = fx.extrudeDir || 'br';
@@ -4321,6 +4327,10 @@
                 h = res.h;
             }
             
+            // Reset any transform leaked by a previous frame (a draw exception that
+            // skipped ctx.restore()) so the clear + background always fill the canvas
+            // fully — otherwise leftover pixels split the preview in halves.
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
             ctx.clearRect(0, 0, w, h);
             
             // Use the scene's own background color when rendering a scene offscreen
@@ -4351,6 +4361,7 @@
                 });
 
                 activeVisualClips.forEach(clip => {
+                    try {
                     const baseScale = window.getInterpolatedValue(clip, 'scale', clip.effects.scale !== undefined ? clip.effects.scale : 1);
                     const rotate = window.getInterpolatedValue(clip, 'rotate', clip.effects.rotate !== undefined ? clip.effects.rotate : 0);
                     const offsetX = window.getInterpolatedValue(clip, 'offsetX', clip.effects.offsetX || 0);
@@ -5683,6 +5694,12 @@
                         }
                     }
                 }
+                    } catch (err) {
+                        // One bad clip must never corrupt the shared canvas state — an
+                        // exception here would skip ctx.restore() and leak the transform
+                        // into the next frame's clear/draw (split-preview symptom).
+                        console.error('Error drawing clip', clip.id, err);
+                    }
             });
             } else {
                 placeholder.classList.remove('hidden');
@@ -22108,7 +22125,10 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             'audioEl', 'videoEl', 'imageEl', 'buffer', 'peaks', 'peaksPerSecond',
             'audioNodes', 'sourceNode', 'playPromise', 'isPlaying',
             'sfxNode', 'sfxIsPlaying', '_autoGainNode', '_frameReady',
-            '_videoRetries', '_videoGiveUpAt', 'fileUrl'
+            '_videoRetries', '_videoGiveUpAt', 'fileUrl',
+            // Math render caches hold live DOM (HTMLImageElement / canvas) references —
+            // serializing them turns them into {} stubs that crash drawImage on restore.
+            '_mathLastGood', '_mathLastExtrude', '__vecLastSprite', '_mathPreview'
         ]);
 
         function base64FromBytes(bytes) {
@@ -22224,6 +22244,13 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             if (!c || !c.id) return null;
             const clip = Object.assign({}, c);
             delete clip.sfx;
+            // Projects saved before the math-cache blacklist may carry element-stub
+            // fields (_mathLastGood.image === {} from JSON round-trip) — strip them so
+            // the math sprite builder regenerates fresh rasters instead of crashing.
+            delete clip._mathLastGood;
+            delete clip._mathLastExtrude;
+            delete clip.__vecLastSprite;
+            delete clip._mathPreview;
             if ((clip.type === 'video' || clip.type === 'audio' || clip.type === 'image') && !clip.isPlaceholder && !clip._mdMock) {
                 clip.isPlaceholder = true;
                 clip._missingMedia = true;
