@@ -379,8 +379,32 @@
                 <button onclick="closeExportModal()" class="text-surface-500 hover:text-surface-900 dark:hover:text-white bg-surface-100 dark:bg-surface-900 p-1.5 rounded-md shrink-0 transition-colors" title="Close"><i data-lucide="x" class="w-4 h-4"></i></button>
             </div>
 
-            <div class="w-full rounded-xl overflow-hidden bg-black border border-surface-200 dark:border-surface-700 relative mb-4 aspect-video shadow-inner">
-                <video id="exportSuccessVideo" class="w-full h-full object-contain" controls playsinline preload="auto"></video>
+            <div id="exportSuccessVideoWrap" class="w-full rounded-xl overflow-hidden bg-black border border-surface-200 dark:border-surface-700 relative mb-4 aspect-video shadow-inner">
+                <video id="exportSuccessVideo" class="w-full h-full object-contain" playsinline preload="auto"></video>
+                <!-- Center play affordance (subtle black circle), visible while paused -->
+                <button id="exportVideoCenterPlay" class="absolute inset-0 flex items-center justify-center cursor-pointer transition-opacity duration-200 opacity-0" title="Play">
+                    <span class="w-14 h-14 rounded-full bg-black/60 hover:bg-black/75 backdrop-blur-sm flex items-center justify-center transition-colors">
+                        <i data-lucide="play" class="w-6 h-6 text-white fill-current translate-x-[1px]"></i>
+                    </span>
+                </button>
+                <!-- Bottom YouTube-style controls: one subtle pill per control -->
+                <div id="exportVideoControls" class="absolute inset-x-0 bottom-0 p-3 flex items-center gap-1.5 opacity-0 transition-opacity duration-200 pointer-events-none">
+                    <button id="exportVideoPlayBtn" class="pointer-events-auto w-9 h-9 rounded-full bg-black/50 hover:bg-black/70 text-white flex items-center justify-center shrink-0 transition-colors" title="Play / Pause">
+                        <i data-lucide="play" class="w-4 h-4 fill-current translate-x-[1px]"></i>
+                    </button>
+                    <div class="pointer-events-auto px-2.5 h-9 rounded-full bg-black/50 flex items-center shrink-0">
+                        <span id="exportVideoTime" class="text-[11px] font-mono text-white/90 whitespace-nowrap">0:00 / 0:00</span>
+                    </div>
+                    <div class="pointer-events-auto flex-1 min-w-0 h-9 rounded-full bg-black/50 flex items-center px-3">
+                        <input id="exportVideoSeek" type="range" min="0" max="100" value="0" step="0.1" class="w-full min-w-0" title="Seek">
+                    </div>
+                    <button id="exportVideoMuteBtn" class="pointer-events-auto w-9 h-9 rounded-full bg-black/50 hover:bg-black/70 text-white flex items-center justify-center shrink-0 transition-colors" title="Mute / Unmute">
+                        <i data-lucide="volume-2" class="w-4 h-4"></i>
+                    </button>
+                    <button id="exportVideoFsBtn" class="pointer-events-auto w-9 h-9 rounded-full bg-black/50 hover:bg-black/70 text-white flex items-center justify-center shrink-0 transition-colors" title="Fullscreen">
+                        <i data-lucide="maximize" class="w-4 h-4"></i>
+                    </button>
+                </div>
             </div>
 
             <div class="grid grid-cols-3 gap-2 mb-5">
@@ -442,6 +466,43 @@
         #reimportOverlay.reimport-drop-active #reimportDropHint { display: flex !important; }
     </style>
     <style>@keyframes progress-stripes { from { background-position: 1rem 0; } to { background-position: 0 0; } }</style>
+    <style>
+        /* Export-success video player — YouTube-style thin seek bar */
+        #exportVideoSeek {
+            -webkit-appearance: none;
+            appearance: none;
+            height: 4px;
+            border-radius: 9999px;
+            background: linear-gradient(to right, #8b5cf6 var(--seek-pct, 0%), rgba(255, 255, 255, 0.28) var(--seek-pct, 0%));
+            outline: none;
+            cursor: pointer;
+        }
+        #exportVideoSeek::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 12px;
+            height: 12px;
+            border-radius: 9999px;
+            background: #fff;
+            border: none;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);
+            opacity: 0;
+            transition: opacity .15s ease;
+        }
+        #exportSuccessVideoWrap:hover #exportVideoSeek::-webkit-slider-thumb,
+        #exportVideoSeek:active::-webkit-slider-thumb { opacity: 1; }
+        #exportVideoSeek::-moz-range-thumb {
+            width: 12px;
+            height: 12px;
+            border-radius: 9999px;
+            background: #fff;
+            border: none;
+            opacity: 0;
+            transition: opacity .15s ease;
+        }
+        #exportSuccessVideoWrap:hover #exportVideoSeek::-moz-range-thumb,
+        #exportVideoSeek:active::-moz-range-thumb { opacity: 1; }
+    </style>
         <style>
             /* Math formula preview inside timeline clips: scale SVG to fit the clip body */
             .math-clip-preview svg {
@@ -23258,12 +23319,99 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             document.getElementById('exportSuccess').classList.add('flex');
             document.getElementById('exportOverlay').classList.remove('hidden');
             document.getElementById('exportOverlay').classList.add('flex');
+            _exportPlayer.init();
         }
 
         function closeExportSuccessVideo() {
             const v = document.getElementById('exportSuccessVideo');
             if (v && v.tagName === 'VIDEO') { v.pause(); v.removeAttribute('src'); v.load(); }
         }
+
+        // ── Export-success video player: custom YouTube-style controls ──
+        // Native `controls` draw Chrome's hover vignette gradient; we drop them and
+        // render our own subtle black pill (play / time / seek / mute / fullscreen)
+        // with a center play button while paused, auto-hiding during playback.
+        const _exportPlayer = {
+            _done: false,
+            init() {
+                const wrap = document.getElementById('exportSuccessVideoWrap');
+                const v = document.getElementById('exportSuccessVideo');
+                if (!wrap || !v || this._done) return;
+                this._done = true;
+                const playBtn = document.getElementById('exportVideoPlayBtn');
+                const centerPlay = document.getElementById('exportVideoCenterPlay');
+                const timeEl = document.getElementById('exportVideoTime');
+                const seek = document.getElementById('exportVideoSeek');
+                const muteBtn = document.getElementById('exportVideoMuteBtn');
+                const fsBtn = document.getElementById('exportVideoFsBtn');
+                const controls = document.getElementById('exportVideoControls');
+                let hideTimer = null;
+                let lastMuted = null;
+
+                const fmt = (sec) => {
+                    if (!isFinite(sec)) sec = 0;
+                    sec = Math.max(0, Math.floor(sec));
+                    const m = Math.floor(sec / 60), s = sec % 60;
+                    return m > 0 ? `${m}:${s.toString().padStart(2, '0')}` : `0:${s.toString().padStart(2, '0')}`;
+                };
+                const setPlayIcon = (playing) => {
+                    playBtn.innerHTML = `<i data-lucide="${playing ? 'pause' : 'play'}" class="w-5 h-5 ${playing ? '' : 'fill-current translate-x-[1px]'}"></i>`;
+                    centerPlay.innerHTML = `<i data-lucide="play" class="w-6 h-6 text-white fill-current translate-x-[1px]"></i>`;
+                    lucide.createIcons();
+                    centerPlay.classList.toggle('opacity-0', playing);
+                };
+                const syncMuteIcon = () => {
+                    if (v.muted === lastMuted) return;
+                    lastMuted = v.muted;
+                    muteBtn.innerHTML = `<i data-lucide="${v.muted ? 'volume-x' : 'volume-2'}" class="w-5 h-5"></i>`;
+                    lucide.createIcons();
+                };
+                const sync = () => {
+                    const dur = v.duration || 0, cur = v.currentTime || 0;
+                    timeEl.textContent = `${fmt(cur)} / ${fmt(dur)}`;
+                    const pct = dur > 0 ? (cur / dur) * 100 : 0;
+                    seek.value = pct;
+                    seek.style.setProperty('--seek-pct', pct + '%');
+                    syncMuteIcon();
+                };
+                const showControls = () => {
+                    controls.classList.remove('opacity-0');
+                    centerPlay.classList.toggle('opacity-0', !v.paused);
+                    clearTimeout(hideTimer);
+                    if (!v.paused) hideTimer = setTimeout(() => { if (!v.paused) controls.classList.add('opacity-0'); }, 2200);
+                };
+                const hideControls = () => {
+                    if (!v.paused) controls.classList.add('opacity-0');
+                };
+                const togglePlay = () => {
+                    if (v.paused) { v.play().catch(() => {}); setPlayIcon(true); }
+                    else { v.pause(); setPlayIcon(false); }
+                    showControls();
+                };
+
+                v.addEventListener('play', () => { setPlayIcon(true); showControls(); });
+                v.addEventListener('pause', () => { setPlayIcon(false); showControls(); });
+                v.addEventListener('timeupdate', sync);
+                v.addEventListener('loadedmetadata', sync);
+                playBtn.addEventListener('click', togglePlay);
+                centerPlay.addEventListener('click', togglePlay);
+                seek.addEventListener('input', () => {
+                    const pct = parseFloat(seek.value);
+                    seek.style.setProperty('--seek-pct', pct + '%');
+                    if (v.duration) v.currentTime = (pct / 100) * v.duration;
+                });
+                muteBtn.addEventListener('click', () => { v.muted = !v.muted; syncMuteIcon(); });
+                fsBtn.addEventListener('click', () => {
+                    if (document.fullscreenElement) document.exitFullscreen();
+                    else if (wrap.requestFullscreen) wrap.requestFullscreen();
+                });
+                wrap.addEventListener('mouseenter', showControls);
+                wrap.addEventListener('mousemove', showControls);
+                wrap.addEventListener('mouseleave', hideControls);
+                sync();
+            }
+        };
+        _exportPlayer.init();
 
         function downloadExportAgain() {
             if (!_exportDoneUrl) return;
