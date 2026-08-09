@@ -5273,7 +5273,114 @@
                         }
                         ctx.restore();
                     } else {
+                    const videoDown = clip.type === 'video' && clip.fileUrl && (!clip.videoEl || !!clip.videoEl.error);
+                    // A freshly-recreated recovery element is loading its first frame —
+                    // keep the cached frame frozen until the new element actually paints.
+                    const freshReloading = clip.type === 'video' && clip._videoRetryAt && clip.videoEl && !clip.videoEl.error && clip.videoEl.readyState < 2;
                     if (clip.isPlaceholder || (clip.type === 'image' && (!clip.imageEl || !clip.imageEl.complete || clip.imageEl.naturalWidth === 0)) || (clip.type === 'video' && (!clip.videoEl || (clip.videoEl.readyState < 2 && !(clip.videoEl._mdLoaded || clip.videoEl._frameReady))))) {
+                        // Recovering / permanently-failed video: freeze the last successfully
+                        // painted frame instead of flashing the mock. The real frame is
+                        // cached in the video paint path (clip._lastGoodFrame) and re-drawn
+                        // here with the same crop fit, so a damaged stream reads as a
+                        // transient hiccup, not a broken placeholder.
+                        if (clip._lastGoodFrame && (videoDown || freshReloading)) {
+                            const borderRadius = clip.effects.borderRadius !== undefined ? clip.effects.borderRadius : 0;
+                            const clipTime = State.currentTime - clip.start;
+                            const timeLeft = clip.duration - clipTime;
+                            const aState = calculateAnimationState(clip, clipTime, timeLeft, w, h);
+                            const srcW = clip._lastGoodFrame.width || 100;
+                            const srcH = clip._lastGoodFrame.height || 100;
+                            const cropEnable = clip.effects.cropEnable !== undefined ? clip.effects.cropEnable : true;
+                            const cropLeft = cropEnable ? (clip.effects.cropLeft || 0) : 0;
+                            const cropRight = cropEnable ? (clip.effects.cropRight || 0) : 0;
+                            const cropTop = cropEnable ? (clip.effects.cropTop || 0) : 0;
+                            const cropBottom = cropEnable ? (clip.effects.cropBottom || 0) : 0;
+                            const maskingZoom = cropEnable ? (clip.effects.maskingZoom !== undefined ? clip.effects.maskingZoom : 100) : 100;
+                            const frameZoom = cropEnable ? (clip.effects.frameZoom !== undefined ? clip.effects.frameZoom : 100) : 100;
+                            const croppedLeftPx = srcW * (cropLeft / 100);
+                            const croppedRightPx = srcW * (cropRight / 100);
+                            const croppedTopPx = srcH * (cropTop / 100);
+                            const croppedBottomPx = srcH * (cropBottom / 100);
+                            const baseSw = Math.max(1, srcW - croppedLeftPx - croppedRightPx);
+                            const baseSh = Math.max(1, srcH - croppedTopPx - croppedBottomPx);
+                            const zMask = maskingZoom / 100;
+                            let sw = Math.max(1, baseSw / zMask);
+                            let sh = Math.max(1, baseSh / zMask);
+                            const framingPanX = cropEnable ? (clip.effects.framingPanX || 0) : 0;
+                            const framingPanY = cropEnable ? (clip.effects.framingPanY || 0) : 0;
+                            const maxShiftX = (baseSw - sw) / 2;
+                            const maxShiftY = (baseSh - sh) / 2;
+                            const sx = Math.max(0, croppedLeftPx + (baseSw - sw) / 2 + (framingPanX / 100) * maxShiftX);
+                            const sy = Math.max(0, croppedTopPx + (baseSh - sh) / 2 + (framingPanY / 100) * maxShiftY);
+                            const cropRatio = baseSw / baseSh;
+                            const cRatio = w / h;
+                            let dw2 = w, dh2 = h;
+                            if (!isNaN(cropRatio) && cropRatio > 0) {
+                                if (cropRatio > cRatio) dh2 = w / cropRatio; else dw2 = h * cropRatio;
+                            }
+                            const zFrame = frameZoom / 100;
+                            dw2 = dw2 * zFrame;
+                            dh2 = dh2 * zFrame;
+                            if (clip._mdKeepMockSize) {
+                                if (!isNaN(cropRatio) && cropRatio > 0) {
+                                    if (cropRatio > MD_MOCK_W / MD_MOCK_H) { dh2 = MD_MOCK_H; dw2 = MD_MOCK_H * cropRatio; }
+                                    else { dw2 = MD_MOCK_W; dh2 = MD_MOCK_W / cropRatio; }
+                                } else { dw2 = MD_MOCK_W; dh2 = MD_MOCK_H; }
+                                dw2 = dw2 * zFrame;
+                                dh2 = dh2 * zFrame;
+                            }
+
+                            ctx.save();
+                            const finalScale = baseScale * aState.animScale;
+                            const cx = w/2 + (offsetX * w) / 100 + aState.animX;
+                            const cy = h/2 + (offsetY * h) / 100 + aState.animY;
+                            ctx.globalAlpha = aState.animAlpha * (opacity / 100);
+                            ctx.globalCompositeOperation = clip.effects.blendMode || 'source-over';
+                            ctx.translate(cx, cy);
+                            ctx.rotate((rotate * Math.PI / 180) + aState.animRot);
+                            ctx.scale(finalScale * (clip.effects.flipH ? -1 : 1), finalScale * (clip.effects.flipV ? -1 : 1));
+                            if (borderRadius > 0 && ctx.roundRect) {
+                                ctx.beginPath();
+                                ctx.roundRect(-dw2/2, -dh2/2, dw2, dh2, borderRadius);
+                                ctx.clip();
+                            }
+                            if (clip.effects.shadowEnable) {
+                                ctx.shadowColor = clip.effects.shadowColor || '#000000';
+                                ctx.shadowBlur = clip.effects.shadowBlur || 20;
+                                ctx.shadowOffsetX = clip.effects.shadowOffsetX || 0;
+                                ctx.shadowOffsetY = clip.effects.shadowOffsetY || 10;
+                            }
+                            ctx.drawImage(clip._lastGoodFrame, sx, sy, sw, sh, -dw2/2, -dh2/2, dw2, dh2);
+                            ctx.shadowColor = 'transparent';
+                            ctx.shadowBlur = 0;
+
+                            // Status chip: "restoring…" while retries are in flight,
+                            // "video unavailable" once we've given up on this spot (the
+                            // stream's damaged region can't decode — move the playhead
+                            // or press play to recover).
+                            const recovering = videoDown && !clip._videoGiveUp;
+                            const label = recovering ? 'Restoring\u2026' : 'Video unavailable';
+                            const hint = (!recovering && clip.type === 'video') ? 'move playhead or press play' : '';
+                            const mk = Math.max(0.9, Math.min(2.2, Math.min(w, h) / 600));
+                            ctx.font = `bold ${Math.round(12 * mk)}px "Inter", sans-serif`;
+                            const chipW = Math.max(ctx.measureText(label).width, hint ? ctx.measureText(hint).width : 0) + 30 * mk;
+                            const chipH = 28 * mk + (hint ? 16 * mk : 0);
+                            ctx.fillStyle = 'rgba(0,0,0,0.62)';
+                            ctx.beginPath();
+                            if (ctx.roundRect) ctx.roundRect(-chipW/2, -dh2/2 + 12 * mk, chipW, chipH, 7 * mk);
+                            else ctx.rect(-chipW/2, -dh2/2 + 12 * mk, chipW, chipH);
+                            ctx.fill();
+                            ctx.fillStyle = '#ffffff';
+                            ctx.textAlign = 'center';
+                            ctx.textBaseline = 'middle';
+                            ctx.fillText(label, 0, -dh2/2 + (12 + 13) * mk);
+                            if (hint) {
+                                ctx.font = `${Math.round(10 * mk)}px "Inter", sans-serif`;
+                                ctx.fillStyle = 'rgba(255,255,255,0.72)';
+                                ctx.fillText(hint, 0, -dh2/2 + (12 + 26) * mk);
+                            }
+                            ctx.restore();
+                        } else {
                         const borderRadius = clip.effects.borderRadius !== undefined ? clip.effects.borderRadius : 0;
 
                         const clipTime = State.currentTime - clip.start;
@@ -5484,6 +5591,7 @@
                                 container.appendChild(box);
                             }
                         }
+                        } // end cached-frame fallback else (mock branch)
                     } else {
                         let source = clip.type === 'image' ? clip.imageEl : clip.videoEl;
                         if (source) {
@@ -5685,6 +5793,28 @@
                                 drawPuzzleBlocks(ctx, offCanvas, puzzleLevel, puzzleDir, clip.effects.animPuzzleSize || 8, puzzleSeedFromId(clip.id), !!clip.effects.animPuzzleSnap);
                             } else {
                                 ctx.drawImage(source, sx, sy, sw, sh, -dw/2, -dh/2, dw, dh);
+                            }
+                        }
+
+                        // Cache the last successfully painted video frame (raw source crop,
+                        // before effects) so recovery can freeze it instead of flashing the
+                        // mock when a decode error takes the element down mid-scrub. The
+                        // element is the same object across frames while playing, so the
+                        // copy runs every frame — it's one cheap drawImage and guarantees the
+                        // cache always holds the CURRENT frame, not a stale first frame.
+                        if (clip.type === 'video') {
+                            let fr = clip._lastGoodFrame;
+                            if (!fr) { fr = createOffscreenCanvas(1, 1); clip._lastGoodFrame = fr; }
+                            const fw = Math.max(1, Math.round(sw));
+                            const fh = Math.max(1, Math.round(sh));
+                            if (fr.width !== fw || fr.height !== fh) { fr.width = fw; fr.height = fh; }
+                            const fctx = fr.getContext('2d');
+                            fctx.drawImage(source, sx, sy, sw, sh, 0, 0, fr.width, fr.height);
+                            // Record WHERE this frame lives in the source, so recovery
+                            // can seek to a known-decodable spot instead of re-seeking
+                            // into the exact corrupt position that just errored.
+                            if (clip.videoEl && !clip.videoEl.error) {
+                                clip._videoLastGoodT = clipSourcePos(clip, State.currentTime - clip.start);
                             }
                         }
 
@@ -11886,6 +12016,14 @@
                 // Fresh source — reset any give-up/retry state from a previous broken URL
                 clip._videoRetries = 0;
                 clip._videoGiveUpAt = 0;
+                clip._videoGiveUp = false;
+                clip._videoErrorType = 0;
+                clip._videoRetryAt = 0;
+                clip._videoLastGoodT = 0;
+                clip._videoErrorT = -1;
+                clip._videoErrorCount = 0;
+                clip._videoFirstErrorAt = 0;
+                clip._lastGoodFrame = null;
                 // A video and its extracted audio track share one source file — if the
                 // audio companion is still missing, restore it from the same file so a
                 // single re-import brings the pair back. The saved link state is left
@@ -20554,6 +20692,11 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 const onMouseUp = () => {
                     document.removeEventListener('mousemove', onMouseMove);
                     document.removeEventListener('mouseup', onMouseUp);
+                    // Scrub released = intent to look at this spot: run one recovery
+                    // pass so a video that errored mid-scrub recreates immediately
+                    // instead of waiting for play.
+                    syncMediaElements();
+                    drawCanvas();
                 };
                 document.addEventListener('mousemove', onMouseMove);
                 document.addEventListener('mouseup', onMouseUp);
@@ -21888,6 +22031,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             }
             // Latest-wins coalescing: never drop a seek issued mid-flight.
             el._wantedTime = want;
+            el._lastSeekAt = performance.now();
             if (!el.seeking && Math.abs(el.currentTime - want) > thresh) {
                 try { el.currentTime = want; } catch (_) {}
                 // One-shot seeked handler: re-seek to the newest _wantedTime if the
@@ -22034,6 +22178,97 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             });
         }
 
+        // --- Broken-video recovery (Phase 1: classification + backoff + intent retry) ---
+        // Media error codes: 1=abort, 2=network, 3=decode, 4=src-not-supported.
+        // Decode errors (3) get the escalating retry ladder — the stream is damaged
+        // but may play after a fresh demux; unsupported (4) is permanent (no retries);
+        // network/abort (1/2) are usually transient, so retry more patiently.
+        // The ladder: 0ms → 500ms → 2s, then give up for a cooldown and try once
+        // more when the user shows intent (play, or scrub-idle).
+        const VIDEO_BACKOFF_MS = [0, 500, 2000];
+        const VIDEO_GIVEUP_COOLDOWN_MS = 5000;
+        // If decode keeps failing while the playhead stays parked in the same zone
+        // (~1.5s window), declare that zone un-recoverable and hold the last-good
+        // frame instead of recreating forever. Moving the playhead elsewhere resets it.
+        const VIDEO_BAD_ZONE_MS = 1500;
+        function tryRecreateVideo(clip, seekTarget) {
+            const code = clip._videoErrorType || 0;
+            // Unsupported source is permanent — never retry, just show the fallback.
+            if (code === 4) {
+                clip._videoGiveUp = true;
+                return false;
+            }
+            const now = performance.now();
+            // Zone give-up: repeated errors at the same playhead spot within the window
+            // mean this region genuinely can't decode (hardware decoder on a damaged
+            // GOP chain). Stop recreating until the user moves the playhead away.
+            if (clip._videoErrorCount && clip._videoFirstErrorAt && now - clip._videoFirstErrorAt < VIDEO_BAD_ZONE_MS && clip._videoErrorCount >= 2) {
+                clip._videoGiveUp = true;
+                clip._videoGiveUpAt = now;
+                return false;
+            }
+            if (clip._videoGiveUpAt && now - clip._videoGiveUpAt < VIDEO_GIVEUP_COOLDOWN_MS) return false;
+            const backoff = VIDEO_BACKOFF_MS[Math.min(clip._videoRetries || 0, VIDEO_BACKOFF_MS.length - 1)];
+            if (clip._videoRetryAt && now < clip._videoRetryAt) return false;
+            clip._videoGiveUp = false;
+            clip._videoRetryAt = now + (backoff || 0);
+            const newVideo = document.createElement('video');
+            newVideo.src = clip.fileUrl;
+            newVideo.preload = 'auto';
+            newVideo.crossOrigin = 'anonymous';
+            newVideo.muted = clip.videoEl ? clip.videoEl.muted : true;
+            newVideo.volume = clip.videoEl ? clip.videoEl.volume : 1;
+            armVideoFrameLatch(newVideo);
+            // Seek to a SAFE position, not the corrupt target: land just before the
+            // last decode error (or on the last known-good frame) so the fresh
+            // element starts decodable and plays forward through the damage once.
+            // Re-seeking straight to the broken timestamp re-triggers the decode
+            // error instantly — the stuck "Restoring…" loop.
+            const seekT = seekTarget !== undefined ? seekTarget : clip._videoErrorT;
+            let safeT;
+            if (seekT !== undefined && seekT > 0) {
+                if (clip._videoErrorT !== undefined && clip._videoErrorT >= 0) {
+                    safeT = Math.max(0, clip._videoErrorT - 0.35);
+                } else if (clip._videoLastGoodT !== undefined && clip._videoLastGoodT > 0) {
+                    safeT = Math.max(0, clip._videoLastGoodT - 0.1);
+                } else {
+                    safeT = 0;
+                }
+                try { newVideo.currentTime = Math.max(0, safeT); } catch (_) {}
+            }
+            if (clip.videoEl && clip.videoEl !== newVideo) {
+                try { clip.videoEl.remove(); } catch (_) {}
+            }
+            clip.videoEl = newVideo;
+            // Mark the fresh element as mid-recovery: the sync loop's corrupt-region
+            // gate will let it PLAY FORWARD through the damage once (instead of
+            // holding it frozen), so a parked user actually sees the video restore.
+            clip._videoRecovering = true;
+            clip._videoRetries = (clip._videoRetries || 0) + 1;
+            if (clip._videoRetries >= VIDEO_BACKOFF_MS.length) {
+                clip._videoGiveUpAt = now;
+                clip._videoRetries = 0;
+            }
+            return true;
+        }
+        // User intent to look at a video — reset the give-up cooldown and recreate
+        // the element immediately (e.g. pressing play after parking on a broken spot).
+        // The recreate lands at the safe position and plays forward through the
+        // damage once; if the region genuinely can't decode, the zone give-up freezes
+        // the last-good frame again instead of looping.
+        function resetVideoRetryIntent(clip) {
+            clip._videoGiveUpAt = 0;
+            clip._videoRetryAt = 0;
+            clip._videoGiveUp = false;
+            clip._videoErrorCount = 0;
+            clip._videoFirstErrorAt = 0;
+            clip._videoRecovering = false;
+            if (clip._videoRetries) clip._videoRetries = 0;
+            if (clip.type === 'video' && clip.fileUrl && !clip.videoEl) {
+                tryRecreateVideo(clip);
+            }
+        }
+
         function syncMediaElements() {
             if (!audioCtx) ensureAudioContext();
             
@@ -22044,19 +22279,76 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 const track = State.tracks.find(t => t.id === clip.trackId);
                 let el = clip.audioEl || clip.videoEl;
 
-                // Cooldown re-attempt: a video that gave up on a broken URL gets one fresh
-                // load per 10s, so transient failures self-heal without spamming the network
-                if (!el && clip.fileUrl && clip._videoGiveUpAt && Date.now() - clip._videoGiveUpAt > 10000) {
+                // Zone-change reset: if the user moves the playhead to a different
+                // region of a video that gave up on a broken spot, clear the zone
+                // counters so the new position gets a fresh attempt.
+                if (clip.type === 'video' && clip._videoGiveUpAt && clip._videoErrorT !== undefined && clip._videoErrorT >= 0 && clip.start !== undefined && clip.duration !== undefined) {
+                    const curSrc = clipSourcePos(clip, State.currentTime - clip.start);
+                    if (Math.abs(curSrc - clip._videoErrorT) > 1.2) {
+                        clip._videoErrorCount = 0;
+                        clip._videoFirstErrorAt = 0;
+                        clip._videoGiveUp = false;
+                        clip._videoGiveUpAt = 0;
+                        clip._videoRetryAt = 0;
+                        clip._videoRecovering = false;
+                        // Forget the broken zone entirely — the recreated element at the
+                        // new (clean) position must seek normally, not get held by the
+                        // stale corrupt-region gate.
+                        clip._videoErrorT = -1;
+                        // Moving the playhead AWAY from a broken zone is user intent —
+                        // recreate the element immediately at the new (clean) position
+                        // instead of waiting for the cooldown timer.
+                        if (!clip.videoEl && clip.fileUrl && !el) {
+                            const zoneRetry = document.createElement('video');
+                            zoneRetry.src = clip.fileUrl;
+                            zoneRetry.preload = 'auto';
+                            zoneRetry.crossOrigin = 'anonymous';
+                            zoneRetry.muted = true;
+                            armVideoFrameLatch(zoneRetry);
+                            try { zoneRetry.currentTime = Math.max(0, curSrc); } catch (_) {}
+                            clip.videoEl = zoneRetry;
+                            el = zoneRetry;
+                        }
+                    }
+                }
+
+                // Cooldown re-attempt: a video that gave up on a broken URL gets a fresh
+                // load once per cooldown, but ONLY once the playhead has moved to a
+                // different zone — while the user stays parked on the broken spot,
+                // recreating would just re-seek into the corrupt GOP and error again
+                // (the stuck loop). Moving the playhead away (or pressing play) is what
+                // triggers recovery.
+                if (!el && clip.fileUrl && clip._videoGiveUpAt && performance.now() - clip._videoGiveUpAt > VIDEO_GIVEUP_COOLDOWN_MS &&
+                    (clip._videoErrorT === undefined || clip._videoErrorT < 0 || clip.start === undefined ||
+                     Math.abs(clipSourcePos(clip, State.currentTime - clip.start) - clip._videoErrorT) > 0.6)) {
                     clip._videoGiveUpAt = 0;
+                    clip._videoRetryAt = 0;
+                    clip._videoGiveUp = false;
                     const retryVideo = document.createElement('video');
                     retryVideo.src = clip.fileUrl;
                     retryVideo.preload = 'auto';
                     retryVideo.crossOrigin = 'anonymous';
                     retryVideo.muted = true;
                     armVideoFrameLatch(retryVideo);
+                    // Land the fresh element at a safe position — the same recovery
+                    // rule tryRecreateVideo uses — so it shows a decodable frame
+                    // instead of sitting at 0 (or being dragged straight back onto
+                    // the broken GOP by the next paused seek).
+                    const _safeT = (clip._videoErrorT !== undefined && clip._videoErrorT >= 0)
+                        ? Math.max(0, clip._videoErrorT - 0.35)
+                        : (clip._videoLastGoodT && clip._videoLastGoodT > 0 ? Math.max(0, clip._videoLastGoodT - 0.1) : 0);
+                    try { retryVideo.currentTime = _safeT; } catch (_) {}
                     clip.videoEl = retryVideo;
+                    clip._videoRecovering = true;
                     el = retryVideo;
                 }
+                // NOTE: no scrub-idle intent reset here. The old "parked >400ms ⇒ wake
+                // recovery" reset fired while the user was STILL parked in the broken
+                // zone, recreating the element every half second — each recreate errored
+                // again, producing the endless error clusters. Recovery is driven only
+                // by (a) the cooldown re-attempt above when the playhead moves to a
+                // different zone, and (b) pressing play (resetVideoRetryIntent in
+                // togglePlay).
                 
                 if (track && track.hidden) {
                     if (el && !el.paused) {
@@ -22224,35 +22516,51 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     // which would spam network errors and console warnings endlessly).
                     if (clip.videoEl && clip.videoEl.error && clip.fileUrl) {
                         // MEDIA_ERR codes: 1=abort, 2=network, 3=decode, 4=src-not-supported
-                        console.log('[video-error]', clip.title, 'code=', el.error.code, 'readyState=', el.readyState, 't=', State.currentTime.toFixed(2));
-                        const retries = clip._videoRetries || 0;
-                        if (retries < 3) {
-                            clip._videoRetries = retries + 1;
-                            if (retries === 0) console.warn('Video element in error state, recreating:', clip.title);
-                            const newVideo = document.createElement('video');
-                            newVideo.src = clip.fileUrl;
-                            newVideo.preload = 'auto';
-                            newVideo.crossOrigin = 'anonymous';
-                            newVideo.muted = clip.videoEl.muted;
-                            newVideo.volume = clip.videoEl.volume;
-                            armVideoFrameLatch(newVideo);
-                            // Attempt to set scrub position immediately (may throw if
-                            // metadata not yet loaded; next sync cycle will retry)
-                            const seekTarget = clipSourcePos(clip, State.currentTime - clip.start);
-                            try { newVideo.currentTime = Math.max(0, seekTarget); } catch (_) {}
-                            clip.videoEl = newVideo;
-                            el = newVideo;
-                        } else {
-                            // Retries exhausted — drop the element so we stop hammering the
-                            // network every frame. The placeholder / mock (with alt text for
-                            // markdown media) takes over in drawCanvas. A fresh attempt is
-                            // allowed again after the 10s cooldown (see re-attempt above).
+                        console.log('[video-error]', clip.title, 'code=', el.error.code, 'readyState=', el.readyState, 't=', State.currentTime.toFixed(2), 'errT=', (clip._videoErrorT !== undefined ? clip._videoErrorT.toFixed(2) : 'none'), 'elCT=', el.currentTime ? el.currentTime.toFixed(2) : '0', 'retries=', clip._videoRetries || 0, 'retryAt=', clip._videoRetryAt ? 'y' : 'n', 'giveUpAt=', clip._videoGiveUpAt ? 'y' : 'n', 'playing=', State.isPlaying);
+                        clip._videoErrorType = el.error.code;
+                        // Record the source position that just failed to decode. Recovery
+                        // deliberately avoids re-seeking to this exact spot — seeking
+                        // straight back into the corrupt GOP is what kept the video stuck
+                        // in a recreate→error→recreate loop. We recover at a safe position
+                        // (just before the error, or the last known-good frame) and let
+                        // the element play forward through the damage once.
+                        // Anchor the zone to the PLAYHEAD (not the drifting element
+                        // position): while the user stays parked in the same region, a
+                        // forward-play recovery that errors again at a slightly advancing
+                        // position (23.6 → 24.5 → 24.7) must still count toward the same
+                        // zone's give-up — otherwise the counters reset every error and
+                        // the retry loop never stops.
+                        const errSrcT = clipSourcePos(clip, State.currentTime - clip.start);
+                        if (clip._videoErrorT === undefined || clip._videoErrorT < 0) {
+                            clip._videoErrorT = errSrcT;
+                        }
+                        clip._videoErrorCount = (clip._videoErrorCount || 0) + 1;
+                        if (!clip._videoFirstErrorAt) clip._videoFirstErrorAt = performance.now();
+                        if (clip._videoErrorType === 4) {
+                            // Unsupported source — permanent, no retries.
+                            clip._videoGiveUp = true;
                             try { clip.videoEl.remove(); } catch (_) {}
                             clip.videoEl = null;
-                            clip._videoGiveUpAt = Date.now();
-                            clip._videoRetries = 0;
+                        } else {
+                            // Escalating backoff (0ms → 500ms → 2s), then give up for a
+                            // cooldown; recreated again on user intent (play / scrub-idle).
+                            // The fresh element keeps the last-good frame cached for the
+                            // canvas meanwhile.
+                            if (tryRecreateVideo(clip)) {
+                                el = clip.videoEl;
+                            } else {
+                                // Backoff window active (or in cooldown) — drop the errored
+                                // element so we stop hammering the network every frame; the
+                                // cached last-good frame takes over in drawCanvas.
+                                try { clip.videoEl.remove(); } catch (_) {}
+                                clip.videoEl = null;
+                            }
                         }
                     }
+                    
+                    // Track where the playhead is so scrub-idle detection (A3) can
+                    // distinguish an active scrub from a user parked on a spot.
+                    if (clip.type === 'video') clip._videoLastSeek = State.currentTime;
                     
                     if (shouldPlay) {
                         if (clip.audioEl) applyAudioEffects(clip);
@@ -22270,7 +22578,50 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                             }
                             seekMediaEl(el, targetTime, 0.001);
                         } else {
-                            seekMediaEl(el, targetTime, 0.25);
+                            // Corrupt-region gate: if the playhead is still parked in the
+                            // zone that just produced a decode error, DON'T re-seek the
+                            // fresh element back to that exact spot — that's the loop that
+                            // kept the video stuck on "Restoring…". Hold it at the safe
+                            // recovery position and let it play forward through the damage
+                            // once; when the playhead moves away from the bad zone (or
+                            // playback advances past it), normal seeking resumes.
+                            if (clip._videoErrorT !== undefined && clip._videoErrorT >= 0 && Math.abs(targetTime - clip._videoErrorT) < 0.6) {
+                                // Already past the error position (played through)? Un-gate —
+                                // but only snap the element back to the playhead if the
+                                // playhead has also left the broken zone. If it's still
+                                // parked on the corrupt spot, keep the recovered stream
+                                // playing forward past the damage instead of re-seeking
+                                // straight back onto the corrupt GOP (instant re-error).
+                                if (el.currentTime > clip._videoErrorT + 0.8) {
+                                    clip._videoErrorT = -1;
+                                    clip._videoErrorCount = 0;
+                                    clip._videoFirstErrorAt = 0;
+                                    clip._videoRecovering = false;
+                                    if (Math.abs(targetTime - el.currentTime) > 0.9) {
+                                        seekMediaEl(el, targetTime, 0.25);
+                                    }
+                                }
+                                // else: hold at current position — do not seek. A fresh
+                                // recovery element is allowed to PLAY FORWARD through
+                                // the damage once (see below) so the video restores
+                                // instead of freezing on the last-good frame.
+                            } else {
+                                clip._videoRecovering = false;
+                                seekMediaEl(el, targetTime, 0.25);
+                            }
+                            
+                            // Recovery forward-play: a recreated element parked on the
+                            // safe side of the corrupt GOP decodes forward through the
+                            // damage when actually PLAYING — the per-frame re-seek above
+                            // is what re-triggers the error, so while recovering we let
+                            // it advance naturally (un-gate kicks in once it crosses
+                            // past the broken region).
+                            if (clip._videoRecovering && el.currentTime < (clip._videoErrorT || 0) + 0.8) {
+                                if (el.paused) {
+                                    const p = el.play();
+                                    if (p !== undefined) { clip.playPromise = p; p.catch(e => { clip.playPromise = null; }); }
+                                }
+                            }
                             
                             // Speed ramps: nudge the element's playback rate every frame so
                             // the video accelerates/decelerates with the ramp (the per-frame
@@ -22299,7 +22650,42 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                             seekMediaEl(el, clipSourcePos(clip, 0));
                         } else if (!State.isPlaying && State.currentTime >= clip.start && State.currentTime <= clip.start + clip.duration) {
                             const targetTime = clipSourcePos(clip, State.currentTime - clip.start);
-                            seekMediaEl(el, targetTime);
+                            // Same corrupt-region gate as the playing path: scrubbing
+                            // onto a spot that just produced a decode error must NOT
+                            // drag the fresh element straight back onto the broken GOP
+                            // (that re-triggers the error and leaves the video stuck).
+                            // Hold the last-good frame; the user can play forward past
+                            // the damage or scrub to a clean region.
+                            if (clip._videoErrorT !== undefined && clip._videoErrorT >= 0 && Math.abs(targetTime - clip._videoErrorT) < 0.6) {
+                                if (el.currentTime > clip._videoErrorT + 0.8) {
+                                    clip._videoErrorT = -1;
+                                    clip._videoErrorCount = 0;
+                                    clip._videoFirstErrorAt = 0;
+                                    clip._videoRecovering = false;
+                                    // Only snap back if the playhead is at a clean spot;
+                                    // if it's still parked on the broken position, let the
+                                    // recovered element keep playing forward past the damage.
+                                    if (Math.abs(targetTime - el.currentTime) > 0.9) {
+                                        seekMediaEl(el, targetTime);
+                                    }
+                                }
+                                // else: hold at the safe recovery position. A fresh
+                                // recovery element plays forward through the damage
+                                // once (recovery forward-play below) so a user parked
+                                // on a corrupt spot sees the video restore.
+                            } else {
+                                clip._videoRecovering = false;
+                                seekMediaEl(el, targetTime);
+                            }
+                            // Recovery forward-play (paused path): drive the fresh
+                            // element forward through the corrupt GOP so it crosses
+                            // the broken region and un-gates — no permanent freeze.
+                            if (clip._videoRecovering && el.currentTime < (clip._videoErrorT || 0) + 0.8) {
+                                if (el.paused) {
+                                    const p = el.play();
+                                    if (p !== undefined) { clip.playPromise = p; p.catch(e => { clip.playPromise = null; }); }
+                                }
+                            }
                         }
                     }
                 }
@@ -22360,7 +22746,10 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             'audioEl', 'videoEl', 'imageEl', 'buffer', 'peaks', 'peaksPerSecond',
             'audioNodes', 'sourceNode', 'playPromise', 'isPlaying',
             'sfxNode', 'sfxIsPlaying', '_autoGainNode', '_frameReady',
-            '_videoRetries', '_videoGiveUpAt', 'fileUrl',
+            '_videoRetries', '_videoGiveUpAt', '_videoGiveUp', '_videoErrorType',
+            '_videoRetryAt', '_videoLastSeek', '_videoLastGoodT', '_videoErrorT',
+            '_videoErrorCount', '_videoFirstErrorAt', '_videoRecovering',
+            '_lastGoodFrame', 'fileUrl',
             // Math render caches hold live DOM (HTMLImageElement / canvas) references —
             // serializing them turns them into {} stubs that crash drawImage on restore.
             '_mathLastGood', '_mathLastExtrude', '__vecLastSprite', '_mathPreview'
@@ -23101,6 +23490,15 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 wrapperPause.classList.add('flex');
                 
                 btnPlay.classList.add('opacity-80');
+                
+                // Play is intent: wake any video that gave up on a broken source so the
+                // next sync pass recreates it right away (recovery when the user is
+                // actually looking, not on an arbitrary timer).
+                State.clips.forEach(c => {
+                    if (c.type === 'video' && c.fileUrl && (c._videoGiveUpAt || c._videoGiveUp || c._videoRetryAt)) {
+                        resetVideoRetryIntent(c);
+                    }
+                });
                 
                 syncMediaElements();
                 requestAnimationFrame(loop);
