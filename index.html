@@ -8555,7 +8555,7 @@
                     const capPresetEff = capEf.animPreset !== undefined ? capEf.animPreset : (capCfg.animPreset || 'none');
                     const capSweep = ['wordHighlight', 'letterPop', 'letterFade', 'typewriter', 'bounce', 'rotate'].includes(capPresetEff);
                     const capFullSpan = capEf.animFullSpan ? true : false;
-                    const seg = (cur, val) => cur === val ? 'bg-brand-600 text-white shadow-sm' : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-700';
+                    const seg = (cur, val) => cur === val ? 'bg-brand-500/15 dark:bg-brand-400/25 text-brand-700 dark:text-brand-100 ring-1 ring-inset ring-brand-500/50' : 'bg-surface-100 dark:bg-surface-800 text-surface-700 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-700';
                     const capAnimSel = (key, opts) => {
                         const cur = capEf[key] !== undefined ? capEf[key] : (capCfg[key] !== undefined ? capCfg[key] : '');
                         const optsHtml = opts.map(([v, l]) => `<option value="${v}" ${cur === v ? 'selected' : ''}>${l}</option>`).join('');
@@ -14869,8 +14869,7 @@ const isVis = !clip.hidden;
             const animCard = sectionCard('wand-2', 'Animation', `
                 <div>
                     <label class="${lblCls} mb-1 block">Preset</label>
-                    <div class="grid ${isHoriz ? 'grid-cols-5' : 'grid-cols-4'} gap-1.5">
-                        ${[['none','None'],['fade','Fade Up'],['pop','Pop'],['letterPop','Letter Pop'],['letterFade','Letter Fade'],['typewriter','Typewriter'],['wordHighlight','Word Glow'],['bounce','Bounce'],['rotate','Rotate']].map(([pv, pl]) => `<button class="px-1 py-1.5 text-[10px] font-bold rounded transition-colors ${(cfg.animPreset||'none') === pv ? 'bg-brand-600 text-white shadow-sm' : 'bg-surface-100 dark:bg-surface-800 text-surface-700 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-700'}" onclick="State.subtitleConfig.animPreset='${pv}'; saveSubtitlesToStorage(); drawCanvas(); renderSubtitlesPanel();">${pl}</button>`).join('')}
+                    <div class="grid ${isHoriz ? 'grid-cols-5' : 'grid-cols-4'} gap-1.5">                                    ${[['none','None'],['fade','Fade Up'],['pop','Pop'],['letterPop','Letter Pop'],['letterFade','Letter Fade'],['typewriter','Typewriter'],['wordHighlight','Word Glow'],['bounce','Bounce'],['rotate','Rotate']].map(([pv, pl]) => `<button class="px-1 py-1.5 text-[10px] font-bold rounded transition-colors ${(cfg.animPreset||'none') === pv ? 'bg-brand-500/15 dark:bg-brand-400/25 text-brand-700 dark:text-brand-100 ring-1 ring-inset ring-brand-500/50' : 'bg-surface-100 dark:bg-surface-800 text-surface-700 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-700'}" onclick="State.subtitleConfig.animPreset='${pv}'; saveSubtitlesToStorage(); drawCanvas(); renderSubtitlesPanel();">${pl}</button>`).join('')}
                     </div>
                     ${['wordHighlight', 'letterPop', 'letterFade', 'typewriter', 'bounce', 'rotate'].includes(cfg.animPreset) ? `
                     <div class="flex items-center justify-between mt-2">
@@ -15088,7 +15087,7 @@ const isVis = !clip.hidden;
             // ── Build the "Generate from text" card ──
             const gen = State.subtitleGen = State.subtitleGen || { text: '', duration: 3, mode: 'auto', startAt: 'playhead', customStart: 0 };
             const genTextEsc = (gen.text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            const genActive = 'bg-brand-600 text-white shadow-sm';
+            const genActive = 'bg-brand-500/15 dark:bg-brand-400/25 text-brand-700 dark:text-brand-100 ring-1 ring-inset ring-brand-500/50';
             const genInactive = 'bg-surface-100 dark:bg-surface-800 text-surface-700 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-700';
             const genLabel = 'text-[10px] font-bold text-surface-700 dark:text-surface-200 uppercase tracking-widest';
             const genHtml = `
@@ -15176,10 +15175,10 @@ const isVis = !clip.hidden;
                             <div>
                                 <label class="${genLabel} mb-1 block">Fix Mode</label>
                                 <div class="grid grid-cols-2 gap-1.5">
-                                    <button onclick="setSubtitleFixMode('trim')" class="py-1.5 px-2 text-[10px] font-bold rounded-lg transition-colors flex items-center justify-center gap-1 ${(fix.fixMode||'trim') !== 'shift' ? 'bg-brand-600 text-white shadow-sm' : genInactive}" title="Never move a winning caption's times — trim only the overlapping part of the loser so the rest stays visible & in sync. Matches the canvas preview.">
+                                    <button onclick="setSubtitleFixMode('trim')" class="py-1.5 px-2 text-[10px] font-bold rounded-lg transition-colors flex items-center justify-center gap-1 ${(fix.fixMode||'trim') !== 'shift' ? genActive : genInactive}" title="Never move a winning caption's times — trim only the overlapping part of the loser so the rest stays visible & in sync. Matches the canvas preview.">
                                         <i data-lucide="scissors" class="w-3 h-3"></i> Trim overlaps
                                     </button>
-                                    <button onclick="setSubtitleFixMode('shift')" class="py-1.5 px-2 text-[10px] font-bold rounded-lg transition-colors flex items-center justify-center gap-1 ${(fix.fixMode||'trim') === 'shift' ? 'bg-brand-600 text-white shadow-sm' : genInactive}" title="Move timestamps (push/trim) to remove overlaps — can shift timing.">
+                                    <button onclick="setSubtitleFixMode('shift')" class="py-1.5 px-2 text-[10px] font-bold rounded-lg transition-colors flex items-center justify-center gap-1 ${(fix.fixMode||'trim') === 'shift' ? genActive : genInactive}" title="Move timestamps (push/trim) to remove overlaps — can shift timing.">
                                         <i data-lucide="move-horizontal" class="w-3 h-3"></i> Shift times
                                     </button>
                                 </div>
@@ -15197,10 +15196,10 @@ const isVis = !clip.hidden;
                             <div>
                                 <label class="${genLabel} mb-1 block">Overlap Priority</label>
                                 <div class="grid grid-cols-2 gap-1.5">
-                                    <button onclick="setSubtitleFixPriority('bottom')" class="py-1.5 px-2 text-[10px] font-bold rounded-lg transition-colors flex items-center justify-center gap-1 ${(fix.priority || 'top') === 'bottom' ? 'bg-brand-600 text-white shadow-sm' : genInactive}" title="Keep the earlier caption, push overlapping later captions forward">
+                                    <button onclick="setSubtitleFixPriority('bottom')" class="py-1.5 px-2 text-[10px] font-bold rounded-lg transition-colors flex items-center justify-center gap-1 ${(fix.priority || 'top') === 'bottom' ? genActive : genInactive}" title="Keep the earlier caption, push overlapping later captions forward">
                                         <i data-lucide="arrow-down" class="w-3 h-3"></i> Bottom wins
                                     </button>
-                                    <button onclick="setSubtitleFixPriority('top')" class="py-1.5 px-2 text-[10px] font-bold rounded-lg transition-colors flex items-center justify-center gap-1 ${(fix.priority || 'top') === 'top' ? 'bg-brand-600 text-white shadow-sm' : genInactive}" title="Keep the later caption, trim overlapping earlier captions to end before it">
+                                    <button onclick="setSubtitleFixPriority('top')" class="py-1.5 px-2 text-[10px] font-bold rounded-lg transition-colors flex items-center justify-center gap-1 ${(fix.priority || 'top') === 'top' ? genActive : genInactive}" title="Keep the later caption, trim overlapping earlier captions to end before it">
                                         <i data-lucide="arrow-up" class="w-3 h-3"></i> Top wins
                                     </button>
                                 </div>
