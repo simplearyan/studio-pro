@@ -22500,7 +22500,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
         const escapeHtmlBrief = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         const missingMediaClips = () => State.clips.filter(c => c._missingMedia);
 
-        function showReimportModal() {
+        async function showReimportModal() {
             const missing = missingMediaClips();
             const body = document.getElementById('reimportBody');
             const ov = document.getElementById('reimportOverlay');
@@ -22511,17 +22511,18 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     <span class="truncate">${escapeHtmlBrief(c.fileName || c.title || 'Untitled')}</span>
                     <span class="ml-auto shrink-0 text-[10px] uppercase tracking-wider text-surface-400">${c.type}</span>
                 </li>`).join('');
+            const lastFolderBtn = await lastReimportFolderBtnHtml();
             body.innerHTML = `
                 <p class="text-xs text-surface-500 dark:text-surface-300 leading-relaxed">${missing.length} clip${missing.length > 1 ? 's are' : ' is'} missing its media file (files aren't stored in the project). Select the original files — or drag &amp; drop them anywhere on this window — and they'll be matched to clips by filename and re-linked automatically.</p>
                 <ul class="flex flex-col gap-1.5 max-h-44 overflow-y-auto">${list}</ul>
+                ${lastFolderBtn}
                 <label class="cursor-pointer bg-brand-600 hover:bg-brand-700 text-white px-4 py-2.5 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 shadow-sm w-full">
                     <i data-lucide="upload" class="w-4 h-4"></i> Select Files
                     <input type="file" accept="audio/*,video/*,image/*" multiple class="hidden" onchange="reimportMediaFiles(this)">
                 </label>
-                <label class="cursor-pointer border border-surface-200 dark:border-surface-700 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-400 text-surface-600 dark:text-surface-300 px-4 py-2.5 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 w-full">
+                <button onclick="pickReimportFolder()" class="cursor-pointer border border-surface-200 dark:border-surface-700 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-400 text-surface-600 dark:text-surface-300 px-4 py-2.5 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 w-full">
                     <i data-lucide="folder-open" class="w-4 h-4"></i> Select Folder
-                    <input type="file" webkitdirectory class="hidden" onchange="reimportMediaFromFolder(this)">
-                </label>
+                </button>
                 <button onclick="hideReimportModal()" class="px-4 py-2 text-sm font-bold text-surface-600 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white hover:bg-surface-100 dark:hover:bg-surface-700 rounded-md transition-colors w-full">Skip for now</button>
             `;
             lucide.createIcons();
@@ -22532,6 +22533,134 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
         function hideReimportModal() {
             const ov = document.getElementById('reimportOverlay');
             if (ov) { ov.classList.add('hidden'); ov.classList.remove('flex'); }
+        }
+
+        // --- Last-used re-import folder (File System Access API) ---
+        // When supported (Chromium), the folder picker returns a persistent
+        // FileSystemDirectoryHandle — we store it in IndexedDB so the next
+        // re-import can default to the same folder instead of re-navigating.
+        // Firefox/Safari/webviews fall back to the webkitdirectory input (no
+        // persistent handle available there).
+        const _REIMPORT_DIR_DB = 'studioProReimportDir';
+        let _reimportDirHandle = null;
+        let _reimportDirLoaded = false;
+
+        function _reimportDirDb() {
+            return new Promise((resolve) => {
+                try {
+                    const req = indexedDB.open(_REIMPORT_DIR_DB, 1);
+                    req.onupgradeneeded = () => { try { req.result.createObjectStore('kv'); } catch (e) {} };
+                    req.onsuccess = () => resolve(req.result);
+                    req.onerror = () => resolve(null);
+                } catch (e) { resolve(null); }
+            });
+        }
+        async function _reimportDirGet(key) {
+            const db = await _reimportDirDb();
+            if (!db) return null;
+            return new Promise((resolve) => {
+                try {
+                    const rq = db.transaction('kv', 'readonly').objectStore('kv').get(key);
+                    rq.onsuccess = () => resolve(rq.result || null);
+                    rq.onerror = () => resolve(null);
+                } catch (e) { resolve(null); }
+            });
+        }
+        async function _reimportDirSet(key, val) {
+            const db = await _reimportDirDb();
+            if (!db) return;
+            try { db.transaction('kv', 'readwrite').objectStore('kv').put(val, key); } catch (e) {}
+        }
+        // Load the remembered handle once; returns null when unsupported or none saved.
+        async function loadReimportDirHandle() {
+            if (_reimportDirLoaded) return _reimportDirHandle;
+            _reimportDirLoaded = true;
+            if (typeof showDirectoryPicker !== 'function') { _reimportDirHandle = null; return null; }
+            try { _reimportDirHandle = await _reimportDirGet('lastDir'); } catch (e) { _reimportDirHandle = null; }
+            return _reimportDirHandle;
+        }
+        // Read-only permission check — never prompts (safe to call during render).
+        async function _reimportDirPermission(handle) {
+            try { return (await handle.queryPermission({ mode: 'read' })) === 'granted'; }
+            catch (e) { return false; }
+        }
+        // Grant read permission — requestPermission needs a user gesture, so only
+        // call this from click handlers.
+        async function _reimportDirGranted(handle) {
+            try {
+                if ((await handle.queryPermission({ mode: 'read' })) === 'granted') return true;
+                return (await handle.requestPermission({ mode: 'read' })) === 'granted';
+            } catch (e) { return false; }
+        }
+        // Collect media files (audio/video/image) from a directory handle.
+        async function collectReimportFiles(handle) {
+            const files = [];
+            if (!handle || handle.kind !== 'directory' || !handle.values) return files;
+            try {
+                for await (const entry of handle.values()) {
+                    if (entry.kind !== 'file') continue;
+                    try {
+                        const f = await entry.getFile();
+                        if (/^(audio|video|image)\//.test(f.type || '')) files.push(f);
+                    } catch (e) {}
+                }
+            } catch (e) {}
+            return files;
+        }
+        // Folder button: showDirectoryPicker when available (remembered via IDB,
+        // plus Chrome's own `id` remembers the picker's last directory); falls back
+        // to the webkitdirectory input otherwise.
+        window.pickReimportFolder = async function() {
+            if (_reimportBusy) return;
+            if (typeof showDirectoryPicker !== 'function') {
+                const inp = document.createElement('input');
+                inp.type = 'file';
+                inp.webkitdirectory = true;
+                inp.className = 'hidden';
+                inp.onchange = () => reimportMediaFromFolder(inp);
+                document.body.appendChild(inp);
+                inp.click();
+                inp.remove();
+                return;
+            }
+            try {
+                const handle = await showDirectoryPicker({ id: 'reimport-folder', mode: 'read' });
+                _reimportDirHandle = handle;
+                _reimportDirLoaded = true;
+                try { await _reimportDirSet('lastDir', handle); } catch (e) {}
+                if (!(await _reimportDirGranted(handle))) { console.warn('Re-import folder read permission denied'); return; }
+                const files = await collectReimportFiles(handle);
+                if (!files.length) return;
+                _reimportBusy = true;
+                try { await runReimport(files, { fromFolder: true }); }
+                finally { _reimportBusy = false; }
+            } catch (err) {
+                if (err && err.name === 'AbortError') return; // user cancelled the picker
+                console.warn('Folder pick failed:', err);
+            }
+        };
+        // One-click re-import from the remembered folder (no picker navigation).
+        window.reimportFromLastFolder = async function() {
+            if (_reimportBusy) return;
+            const handle = await loadReimportDirHandle();
+            if (!handle || !(await _reimportDirGranted(handle))) {
+                console.warn('No permission for the last re-import folder — pick it again');
+                return;
+            }
+            const files = await collectReimportFiles(handle);
+            if (!files.length) return;
+            _reimportBusy = true;
+            try { await runReimport(files, { fromFolder: true }); }
+            finally { _reimportBusy = false; }
+        };
+        // HTML for the "Re-import from last folder" quick button — shown only when a
+        // remembered folder is already granted read access.
+        async function lastReimportFolderBtnHtml() {
+            const handle = await loadReimportDirHandle();
+            if (!handle || !(await _reimportDirPermission(handle))) return '';
+            return `<button onclick="reimportFromLastFolder()" class="cursor-pointer bg-surface-200 hover:bg-surface-300 dark:bg-surface-700 dark:hover:bg-surface-600 text-surface-800 dark:text-surface-100 px-4 py-2.5 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 w-full">
+                        <i data-lucide="folder-clock" class="w-4 h-4"></i> Re-import from last folder: ${escapeHtmlBrief(handle.name)}
+                    </button>`;
         }
 
         // Shared batch re-import core — matched by filename, linked video+audio pairs
@@ -22597,19 +22726,20 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 if (unmatched.length) parts.push(fromFolder
                     ? `${unmatched.length} unmatched (not in project)`
                     : `${unmatched.length} unmatched (${escapeHtmlBrief(unmatched.slice(0, 3).join(', '))}${unmatched.length > 3 ? '…' : ''})`);
+                const lastFolderBtn = await lastReimportFolderBtnHtml();
                 body.innerHTML = `
                     <div class="rounded-lg bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-700/40 px-3 py-2.5 text-xs font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
                         <i data-lucide="check-circle" class="w-4 h-4"></i> ${escapeHtmlBrief(parts.join(' · '))}
                     </div>
                     ${still.length ? `<p class="text-xs text-surface-500 dark:text-surface-300 leading-relaxed">${still.length} clip${still.length > 1 ? 's still' : ' still'} missing — pick the remaining files or use each clip's Source card.</p>
+                        ${lastFolderBtn}
                         <label class="cursor-pointer bg-brand-600 hover:bg-brand-700 text-white px-4 py-2.5 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 shadow-sm w-full">
                             <i data-lucide="upload" class="w-4 h-4"></i> Select More Files
                             <input type="file" accept="audio/*,video/*,image/*" multiple class="hidden" onchange="reimportMediaFiles(this)">
                         </label>
-                        <label class="cursor-pointer border border-surface-200 dark:border-surface-700 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-400 text-surface-600 dark:text-surface-300 px-4 py-2.5 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 w-full">
+                        <button onclick="pickReimportFolder()" class="cursor-pointer border border-surface-200 dark:border-surface-700 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-400 text-surface-600 dark:text-surface-300 px-4 py-2.5 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 w-full">
                             <i data-lucide="folder-open" class="w-4 h-4"></i> Select Folder
-                            <input type="file" webkitdirectory class="hidden" onchange="reimportMediaFromFolder(this)">
-                        </label>` : ''}
+                        </button>` : ''}
                     <button onclick="hideReimportModal()" class="px-4 py-2 text-sm font-bold text-surface-600 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white hover:bg-surface-100 dark:hover:bg-surface-700 rounded-md transition-colors w-full">Done</button>
                 `;
                 lucide.createIcons();
