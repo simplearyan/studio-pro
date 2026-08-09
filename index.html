@@ -11668,6 +11668,83 @@
             renderClips();
         };
 
+        // Load a real audio file into a placeholder audio clip (decode, peaks,
+        // element, effect chain). Returns true on success; never revokes objectUrl
+        // (the caller owns it — a video companion shares its video's URL).
+        async function loadAudioFileIntoClip(clip, file, objectUrl, opts) {
+            const titleSuffix = (opts && opts.titleSuffix) || '';
+            ensureAudioContext();
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+                clip.buffer = audioBuffer;
+                const pps = 100;
+                const step = Math.floor(audioBuffer.sampleRate / pps);
+                const data = audioBuffer.getChannelData(0);
+                const peaks = [];
+                for (let i = 0; i < data.length; i += step) {
+                    let max = 0, min = 0;
+                    for (let j = 0; j < step && i + j < data.length; j++) {
+                        const val = data[i + j];
+                        if (val > max) max = val;
+                        if (val < min) min = val;
+                    }
+                    peaks.push({ max, min });
+                }
+                clip.peaks = peaks;
+                clip.peaksPerSecond = pps;
+                clip.maxDuration = audioBuffer.duration;
+                clip.duration = Math.max(0.1, audioBuffer.duration);
+                clip.sourceOffset = 0;
+                delete clip.trimStart;
+                delete clip.trimEnd;
+                delete clip.reverse;
+                unbakeReverseBuffer(clip);
+                const audioEl = new Audio(objectUrl);
+                audioEl.crossOrigin = "anonymous";
+                clip.audioEl = audioEl;
+                clip.fileUrl = objectUrl;
+                clip.title = file.name + titleSuffix;
+                clip.fileName = file.name;
+                clip.isPlaceholder = false;
+                clip._missingMedia = false;
+                clip._audioRetries = 0;
+                // Rebuild the effect chain for the new source so playback is clean.
+                if (clip.audioNodes) {
+                    try { clip.audioNodes.source.disconnect(); } catch (e) {}
+                    clip.audioNodes = null;
+                }
+                buildAudioGraph(clip);
+                applyAudioEffects(clip);
+                if (clip.start + clip.duration > State.duration) {
+                    State.duration = Math.ceil(clip.start + clip.duration + 10);
+                    updateTimelineWidth();
+                }
+                return true;
+            } catch (err) {
+                console.warn('Failed to decode audio file:', file.name, err);
+                return false;
+            }
+        }
+
+        // Find the audio companion for a video clip that is still missing its media:
+        // first by explicit link, then by normalized filename (the import handler
+        // titles the extracted track "<video name> (Audio)") for legacy projects
+        // saved before linking existed.
+        function findAudioCompanion(videoClip) {
+            // "Needs a file": either a deliberate placeholder (mock) or a clip whose
+            // media is missing after a project restore (re-import). Explicit links win;
+            // the name fallback covers legacy projects saved before linking existed.
+            const needsFile = (c) => (c.isPlaceholder || c._missingMedia) && !c.buffer;
+            for (const lid of (videoClip.linkedClipIds || [])) {
+                const lc = State.clips.find(c => c.id === lid);
+                if (lc && lc.type === 'audio' && needsFile(lc)) return lc;
+            }
+            const base = normFileName(videoClip.fileName || videoClip.title);
+            return State.clips.find(c => c.type === 'audio' && needsFile(c) &&
+                normFileName(c.fileName || c.title) === base) || null;
+        }
+
         window.replaceClipSource = async function(clipId, files) {
             if (!files || !files.length) return;
             const clip = State.clips.find(c => c.id === clipId);
@@ -11723,59 +11800,27 @@
                 // Fresh source — reset any give-up/retry state from a previous broken URL
                 clip._videoRetries = 0;
                 clip._videoGiveUpAt = 0;
+                // A video and its extracted audio track share one source file — if the
+                // audio companion is still a placeholder (missing media), re-link it from
+                // the same file so a single re-import restores the pair. Covers explicit
+                // links and legacy projects saved before linking existed.
+                const _comp = findAudioCompanion(clip);
+                if (_comp) {
+                    const _ok = await loadAudioFileIntoClip(_comp, file, objectUrl, { titleSuffix: ' (Audio)' });
+                    if (_ok) {
+                        clip.linkedClipIds = clip.linkedClipIds || [];
+                        _comp.linkedClipIds = _comp.linkedClipIds || [];
+                        if (!clip.linkedClipIds.includes(_comp.id)) clip.linkedClipIds.push(_comp.id);
+                        if (!_comp.linkedClipIds.includes(clip.id)) _comp.linkedClipIds.push(clip.id);
+                    }
+                }
             } else if (clip.type === 'audio') {
                 // Loading a file into a mock audio placeholder turns it into a real
                 // audio clip: decode the buffer, compute the waveform peaks, and let
                 // the clip's envelope (trim/fades/speed/reverse) keep working from the
                 // new source window.
-                ensureAudioContext();
-                try {
-                    const arrayBuffer = await file.arrayBuffer();
-                    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-                    clip.buffer = audioBuffer;
-                    const pps = 100;
-                    const step = Math.floor(audioBuffer.sampleRate / pps);
-                    const data = audioBuffer.getChannelData(0);
-                    const peaks = [];
-                    for (let i = 0; i < data.length; i += step) {
-                        let max = 0, min = 0;
-                        for (let j = 0; j < step && i + j < data.length; j++) {
-                            const val = data[i + j];
-                            if (val > max) max = val;
-                            if (val < min) min = val;
-                        }
-                        peaks.push({ max, min });
-                    }
-                    clip.peaks = peaks;
-                    clip.peaksPerSecond = pps;
-                    clip.maxDuration = audioBuffer.duration;
-                    clip.duration = Math.max(0.1, audioBuffer.duration);
-                    clip.sourceOffset = 0;
-                    delete clip.trimStart;
-                    delete clip.trimEnd;
-                    delete clip.reverse;
-                    unbakeReverseBuffer(clip);
-                    const audioEl = new Audio(objectUrl);
-                    audioEl.crossOrigin = "anonymous";
-                    clip.audioEl = audioEl;
-                    clip.fileUrl = objectUrl;
-                    clip.title = file.name;
-                    clip.isPlaceholder = false;
-                    clip._missingMedia = false;
-                    clip._audioRetries = 0;
-                    // Rebuild the effect chain for the new source so playback is clean.
-                    if (clip.audioNodes) {
-                        try { clip.audioNodes.source.disconnect(); } catch (e) {}
-                        clip.audioNodes = null;
-                    }
-                    buildAudioGraph(clip);
-                    applyAudioEffects(clip);
-                    if (clip.start + clip.duration > State.duration) {
-                        State.duration = Math.ceil(clip.start + clip.duration + 10);
-                        updateTimelineWidth();
-                    }
-                } catch (err) {
-                    console.warn('Failed to decode audio for mock clip:', err);
+                const _ok = await loadAudioFileIntoClip(clip, file, objectUrl);
+                if (!_ok) {
                     URL.revokeObjectURL(objectUrl);
                     return;
                 }
@@ -17681,6 +17726,13 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
 
                         buildAudioGraph(newAudioClip);
                         State.clips.push(newAudioClip);
+                        // Link the video and its extracted audio track — they share one
+                        // source file, so re-import / split / reverse treat them as a pair.
+                        if (isVideo && createdVideoClips.length) {
+                            const vc = createdVideoClips[createdVideoClips.length - 1];
+                            vc.linkedClipIds = [newAudioClip.id];
+                            newAudioClip.linkedClipIds = [vc.id];
+                        }
                     }
                 } catch (err) {
                     console.error("Error processing file", file.name, err);
@@ -22433,7 +22485,10 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
         // extension-insensitive) and re-links them via replaceClipSource. Linked
         // audio companions (video + its extracted audio track) share the source
         // file, so they're fed automatically from the matched video.
-        const normFileName = (s) => (s || '').toLowerCase().replace(/\.[a-z0-9]+$/, '').replace(/\s*\(audio\)$/, '').trim();
+        // Strip the " (Audio)" companion suffix BEFORE the file extension, so
+        // "video.mp4 (Audio)" normalizes to the same base as "video.mp4" — the
+        // extracted audio track matches its source video by name.
+        const normFileName = (s) => (s || '').toLowerCase().replace(/\s*\(audio\)$/, '').replace(/\.[a-z0-9]+$/, '').trim();
         const escapeHtmlBrief = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         const missingMediaClips = () => State.clips.filter(c => c._missingMedia);
 
