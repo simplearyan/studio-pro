@@ -415,7 +415,21 @@
                 <button onclick="downloadExportAgain()" class="px-5 py-2 bg-brand-600 hover:bg-brand-500 text-white text-sm font-bold rounded-md shadow-sm transition-colors flex items-center gap-2">Download <i data-lucide="download" class="w-4 h-4"></i></button>
             </div>
         </div>
-        <style>@keyframes progress-stripes { from { background-position: 1rem 0; } to { background-position: 0 0; } }</style>
+    </div>
+
+    <!-- Re-import Media Overlay (shown after opening a project that has missing files) -->
+    <div id="reimportOverlay" class="fixed inset-0 bg-surface-950/80 backdrop-blur-sm z-[100] hidden flex-col items-center justify-center p-4">
+        <div class="bg-white dark:bg-surface-800 p-5 sm:p-6 rounded-2xl shadow-2xl flex flex-col max-w-md w-full border border-surface-200 dark:border-surface-700">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-lg font-bold text-surface-900 dark:text-white flex items-center gap-2"><i data-lucide="import" class="w-5 h-5 text-brand-500"></i> Re-import Media</h2>
+                <button onclick="hideReimportModal()" class="text-surface-500 hover:text-surface-900 dark:hover:text-white bg-surface-100 dark:bg-surface-900 p-1.5 rounded-md"><i data-lucide="x" class="w-4 h-4"></i></button>
+            </div>
+            <div id="reimportBody" class="flex flex-col gap-3">
+                <!-- filled by JS -->
+            </div>
+        </div>
+    </div>
+    <style>@keyframes progress-stripes { from { background-position: 1rem 0; } to { background-position: 0 0; } }</style>
         <style>
             /* Math formula preview inside timeline clips: scale SVG to fit the clip body */
             .math-clip-preview svg {
@@ -532,7 +546,6 @@
                 border-color: #059669 !important;
             }
         </style>
-    </div>
     <!-- Compact Professional Navbar -->
     <header class="h-14 bg-white dark:bg-surface-800 flex items-center justify-between px-2 sm:px-4 shrink-0 z-40 shadow-sm relative w-full gap-2">
         <!-- LEFT: Logo -->
@@ -11650,6 +11663,7 @@
                 clip.imageEl = img;
                 clip.fileUrl = objectUrl;
                 clip.isPlaceholder = false;
+                clip._missingMedia = false;
                 clip.title = file.name;
             } else if (clip.type === 'video') {
                 const v = document.createElement('video');
@@ -11672,6 +11686,7 @@
                 clip.videoEl = v;
                 clip.fileUrl = objectUrl;
                 clip.isPlaceholder = false;
+                clip._missingMedia = false;
                 clip.title = file.name;
                 // Fresh source — reset any give-up/retry state from a previous broken URL
                 clip._videoRetries = 0;
@@ -11714,6 +11729,7 @@
                     clip.fileUrl = objectUrl;
                     clip.title = file.name;
                     clip.isPlaceholder = false;
+                    clip._missingMedia = false;
                     clip._audioRetries = 0;
                     // Rebuild the effect chain for the new source so playback is clean.
                     if (clip.audioNodes) {
@@ -22294,6 +22310,8 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             drawCanvas();
             updateSidebarPanel();
             resizeCanvas();
+            // Offer the batch re-import step when the loaded project has missing media
+            showReimportModal();
         }
 
         // localStorage autosave — debounced by signature comparison at a fixed
@@ -22363,6 +22381,121 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 saveProjectToFile();
             }
         });
+
+        // ── Batch re-import of missing media (shown after opening a project) ──
+        // Matches selected files to _missingMedia clips by filename (case- and
+        // extension-insensitive) and re-links them via replaceClipSource. Linked
+        // audio companions (video + its extracted audio track) share the source
+        // file, so they're fed automatically from the matched video.
+        const normFileName = (s) => (s || '').toLowerCase().replace(/\.[a-z0-9]+$/, '').replace(/\s*\(audio\)$/, '').trim();
+        const escapeHtmlBrief = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        const missingMediaClips = () => State.clips.filter(c => c._missingMedia);
+
+        function showReimportModal() {
+            const missing = missingMediaClips();
+            const body = document.getElementById('reimportBody');
+            const ov = document.getElementById('reimportOverlay');
+            if (!missing.length || !body || !ov) return;
+            const list = missing.map(c => `
+                <li class="flex items-center gap-2 text-xs font-semibold text-surface-700 dark:text-surface-200 bg-surface-50 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 rounded-lg px-2.5 py-2">
+                    <i data-lucide="${c.type === 'image' ? 'image' : c.type === 'audio' ? 'music' : 'film'}" class="w-3.5 h-3.5 text-surface-400 shrink-0"></i>
+                    <span class="truncate">${escapeHtmlBrief(c.fileName || c.title || 'Untitled')}</span>
+                    <span class="ml-auto shrink-0 text-[10px] uppercase tracking-wider text-surface-400">${c.type}</span>
+                </li>`).join('');
+            body.innerHTML = `
+                <p class="text-xs text-surface-500 dark:text-surface-300 leading-relaxed">${missing.length} clip${missing.length > 1 ? 's are' : ' is'} missing its media file (files aren't stored in the project). Select the original files and they'll be matched to clips by filename and re-linked automatically.</p>
+                <ul class="flex flex-col gap-1.5 max-h-44 overflow-y-auto">${list}</ul>
+                <label class="cursor-pointer bg-brand-600 hover:bg-brand-700 text-white px-4 py-2.5 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 shadow-sm w-full">
+                    <i data-lucide="upload" class="w-4 h-4"></i> Select Files
+                    <input type="file" accept="audio/*,video/*,image/*" multiple class="hidden" onchange="reimportMediaFiles(this)">
+                </label>
+                <button onclick="hideReimportModal()" class="px-4 py-2 text-sm font-bold text-surface-600 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white hover:bg-surface-100 dark:hover:bg-surface-700 rounded-md transition-colors w-full">Skip for now</button>
+            `;
+            lucide.createIcons();
+            ov.classList.remove('hidden');
+            ov.classList.add('flex');
+        }
+
+        function hideReimportModal() {
+            const ov = document.getElementById('reimportOverlay');
+            if (ov) { ov.classList.add('hidden'); ov.classList.remove('flex'); }
+        }
+
+        window.reimportMediaFiles = async function(input) {
+            const files = Array.from(input.files || []);
+            if (!files.length) return;
+            const body = document.getElementById('reimportBody');
+            if (body) {
+                body.innerHTML = `<div class="flex items-center gap-3 text-sm font-bold text-surface-700 dark:text-surface-200 py-2"><i data-lucide="loader-2" class="w-4 h-4 animate-spin text-brand-500"></i> Re-importing media…</div>`;
+                lucide.createIcons();
+            }
+
+            const pool = missingMediaClips();
+            const matched = [];
+            const unmatched = [];
+            for (const f of files) {
+                const base = normFileName(f.name);
+                const idx = pool.findIndex(c => normFileName(c.fileName || c.title) === base);
+                if (idx >= 0) { matched.push({ clip: pool[idx], file: f }); pool.splice(idx, 1); }
+                else unmatched.push(f.name);
+            }
+
+            let ok = 0, failed = 0;
+            const linkedDone = new Set();
+            for (const m of matched) {
+                try {
+                    await replaceClipSource(m.clip.id, [m.file]);
+                    m.clip._missingMedia = false;
+                    ok++;
+                } catch (e) { failed++; }
+            }
+            // Linked companions (video + its extracted audio track) share the same
+            // source file — feed it to any still-missing partner after the name pass.
+            // Works both ways: a matched video feeds its audio companion, and a matched
+            // audio companion feeds its video (only when the file is actually a video).
+            for (const m of matched) {
+                const isVideoFile = (m.file.type || '').startsWith('video/');
+                for (const lid of (m.clip.linkedClipIds || [])) {
+                    const lc = State.clips.find(c => c.id === lid);
+                    if (!lc || linkedDone.has(lc.id) || !lc._missingMedia) continue;
+                    if ((m.clip.type === 'video' && lc.type === 'audio') || (m.clip.type === 'audio' && lc.type === 'video' && isVideoFile)) {
+                        linkedDone.add(lc.id);
+                        try {
+                            await replaceClipSource(lc.id, [m.file]);
+                            lc._missingMedia = false;
+                            ok++;
+                        } catch (e) { failed++; }
+                    }
+                }
+            }
+
+            calcOverlaps();
+            renderClips();
+            drawCanvas();
+            updateSidebarPanel();
+            tryAutosaveProject();
+
+            const still = missingMediaClips();
+            if (body) {
+                const parts = [`${ok} file${ok !== 1 ? 's' : ''} re-imported`];
+                if (failed) parts.push(`${failed} failed`);
+                if (unmatched.length) parts.push(`${unmatched.length} unmatched (${escapeHtmlBrief(unmatched.slice(0, 3).join(', '))}${unmatched.length > 3 ? '…' : ''})`);
+                body.innerHTML = `
+                    <div class="rounded-lg bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-700/40 px-3 py-2.5 text-xs font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
+                        <i data-lucide="check-circle" class="w-4 h-4"></i> ${escapeHtmlBrief(parts.join(' · '))}
+                    </div>
+                    ${still.length ? `<p class="text-xs text-surface-500 dark:text-surface-300 leading-relaxed">${still.length} clip${still.length > 1 ? 's still' : ' still'} missing — pick the remaining files or use each clip's Source card.</p>
+                        <label class="cursor-pointer bg-brand-600 hover:bg-brand-700 text-white px-4 py-2.5 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 shadow-sm w-full">
+                            <i data-lucide="upload" class="w-4 h-4"></i> Select More Files
+                            <input type="file" accept="audio/*,video/*,image/*" multiple class="hidden" onchange="reimportMediaFiles(this)">
+                        </label>` : ''}
+                    <button onclick="hideReimportModal()" class="px-4 py-2 text-sm font-bold text-surface-600 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white hover:bg-surface-100 dark:hover:bg-surface-700 rounded-md transition-colors w-full">Done</button>
+                `;
+                lucide.createIcons();
+            }
+            if (input) input.value = '';
+            if (!still.length) setTimeout(hideReimportModal, 1200);
+        };
 
         // --- Playback Engine ---
 
