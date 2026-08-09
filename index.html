@@ -427,8 +427,20 @@
             <div id="reimportBody" class="flex flex-col gap-3">
                 <!-- filled by JS -->
             </div>
+            <div id="reimportDropHint" class="hidden mt-2 rounded-lg border-2 border-dashed border-brand-500 bg-brand-50 dark:bg-brand-900/30 text-brand-700 dark:text-brand-300 text-sm font-bold py-3 px-3 items-center justify-center gap-2 pointer-events-none">
+                <i data-lucide="download" class="w-4 h-4"></i> Drop files to re-import
+            </div>
         </div>
     </div>
+    <style>
+        /* Re-import modal drag & drop feedback */
+        #reimportOverlay.reimport-drop-active { background: rgba(99, 102, 241, 0.18); }
+        #reimportOverlay.reimport-drop-active > div {
+            border-color: #6366f1 !important;
+            box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.45), 0 20px 50px rgba(0, 0, 0, 0.35) !important;
+        }
+        #reimportOverlay.reimport-drop-active #reimportDropHint { display: flex !important; }
+    </style>
     <style>@keyframes progress-stripes { from { background-position: 1rem 0; } to { background-position: 0 0; } }</style>
         <style>
             /* Math formula preview inside timeline clips: scale SVG to fit the clip body */
@@ -22317,6 +22329,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
         // localStorage autosave — debounced by signature comparison at a fixed
         // cadence, skipped during playback/export. Cheap: structure-only JSON is
         // sub-ms to a few ms even for hundreds of clips, written only when changed.
+        let _reimportBusy = false;
         let _lastProjectSig = null;
 
         function tryAutosaveProject() {
@@ -22403,7 +22416,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     <span class="ml-auto shrink-0 text-[10px] uppercase tracking-wider text-surface-400">${c.type}</span>
                 </li>`).join('');
             body.innerHTML = `
-                <p class="text-xs text-surface-500 dark:text-surface-300 leading-relaxed">${missing.length} clip${missing.length > 1 ? 's are' : ' is'} missing its media file (files aren't stored in the project). Select the original files and they'll be matched to clips by filename and re-linked automatically.</p>
+                <p class="text-xs text-surface-500 dark:text-surface-300 leading-relaxed">${missing.length} clip${missing.length > 1 ? 's are' : ' is'} missing its media file (files aren't stored in the project). Select the original files — or drag &amp; drop them anywhere on this window — and they'll be matched to clips by filename and re-linked automatically.</p>
                 <ul class="flex flex-col gap-1.5 max-h-44 overflow-y-auto">${list}</ul>
                 <label class="cursor-pointer bg-brand-600 hover:bg-brand-700 text-white px-4 py-2.5 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 shadow-sm w-full">
                     <i data-lucide="upload" class="w-4 h-4"></i> Select Files
@@ -22423,7 +22436,9 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
 
         window.reimportMediaFiles = async function(input) {
             const files = Array.from(input.files || []);
-            if (!files.length) return;
+            if (!files.length || _reimportBusy) return;
+            _reimportBusy = true;
+            try {
             const body = document.getElementById('reimportBody');
             if (body) {
                 body.innerHTML = `<div class="flex items-center gap-3 text-sm font-bold text-surface-700 dark:text-surface-200 py-2"><i data-lucide="loader-2" class="w-4 h-4 animate-spin text-brand-500"></i> Re-importing media…</div>`;
@@ -22495,7 +22510,49 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             }
             if (input) input.value = '';
             if (!still.length) setTimeout(hideReimportModal, 1200);
+            } finally {
+                _reimportBusy = false;
+            }
         };
+
+        // Drag & drop onto the re-import modal — highlight while dragging files over
+        // the overlay, and re-import from the dropped files. Also stops the browser
+        // from navigating away if a drop lands just outside the open modal.
+        let _reimportDragDepth = 0;
+        const reimportOverlayEl = document.getElementById('reimportOverlay');
+        if (reimportOverlayEl) {
+            const hasFiles = (e) => !!(e.dataTransfer && e.dataTransfer.types && Array.prototype.includes.call(e.dataTransfer.types, 'Files'));
+            reimportOverlayEl.addEventListener('dragenter', (e) => {
+                if (!hasFiles(e)) return;
+                e.preventDefault();
+                _reimportDragDepth++;
+                reimportOverlayEl.classList.add('reimport-drop-active');
+            });
+            reimportOverlayEl.addEventListener('dragover', (e) => {
+                if (!hasFiles(e)) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'copy';
+            });
+            reimportOverlayEl.addEventListener('dragleave', (e) => {
+                if (!hasFiles(e)) return;
+                _reimportDragDepth = Math.max(0, _reimportDragDepth - 1);
+                if (_reimportDragDepth === 0) reimportOverlayEl.classList.remove('reimport-drop-active');
+            });
+            reimportOverlayEl.addEventListener('drop', (e) => {
+                if (!hasFiles(e)) return;
+                e.preventDefault();
+                _reimportDragDepth = 0;
+                reimportOverlayEl.classList.remove('reimport-drop-active');
+                const files = Array.from(e.dataTransfer.files || []);
+                if (files.length) reimportMediaFiles({ files, value: '' });
+            });
+            document.addEventListener('dragover', (e) => {
+                if (!reimportOverlayEl.classList.contains('hidden')) e.preventDefault();
+            });
+            document.addEventListener('drop', (e) => {
+                if (!reimportOverlayEl.classList.contains('hidden')) e.preventDefault();
+            });
+        }
 
         // --- Playback Engine ---
 
