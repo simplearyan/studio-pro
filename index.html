@@ -8571,7 +8571,7 @@
                         <div class="p-3 flex flex-col gap-3 bg-surface-50 dark:bg-surface-900/50 flex-1">
                             <p class="text-[10px] text-surface-500 dark:text-surface-300 leading-relaxed">This clip stays linked to the captions system — edits here only affect this caption. Changes to the global style still apply to every field you don't override.</p>
                             <div class="border-t border-surface-200 dark:border-surface-700 pt-3 flex flex-col gap-3">
-                                <div class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest flex items-center gap-1.5"><i data-lucide="palette" class="w-3 h-3"></i>Style</div>
+                                <div class="text-[10px] font-bold text-surface-700 dark:text-surface-200 uppercase tracking-widest flex items-center gap-1.5"><i data-lucide="palette" class="w-3 h-3"></i>Style</div>
                                 ${captionPresetStripHtml('clip', clip.id)}
                                 ${captionStyleControlHtml('scale', 'clip', clip.id)}
                                 ${captionStyleControlHtml('color', 'clip', clip.id)}
@@ -14579,34 +14579,38 @@ const isVis = !clip.hidden;
             const putToggle = (k, v) => mode === 'clip'
                 ? `setClipEffect('${clipId}', '${k}', ${v}); drawCanvas(); updateSidebarPanel();`
                 : `State.subtitleConfig.${k} = ${v}; saveSubtitlesToStorage(); drawCanvas(); renderSubtitlesPanel();`;
-            const badge = (txt) => `<span data-v class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-1.5 py-0.5 rounded shrink-0">${txt}</span>`;
-            const lbl = (t) => `<label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1 block">${t}</label>`;
-            const colorBox = (k, def, wide) => `<div class="relative ${wide ? 'h-8 w-full' : 'w-8 h-8 shrink-0'} rounded border border-surface-200 dark:border-surface-700 overflow-hidden"><input type="color" value="${val(k) || def}" class="absolute inset-0 w-full h-full cursor-pointer" oninput="${put(k, 'this.value')}"></div>`;
+            const badge = (txt) => `<span data-v class="text-[10px] font-bold text-surface-800 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-1.5 py-0.5 rounded shrink-0">${txt}</span>`;
+            const lblCls = 'text-[10px] font-bold text-surface-700 dark:text-surface-200 uppercase tracking-widest';
+            const rowLabel = (t, icon) => `<span class="flex items-center gap-1.5 shrink-0 ${lblCls}"><i data-lucide="${icon}" class="w-3 h-3 text-brand-500 dark:text-brand-400 shrink-0"></i>${t}</span>`;
+            const hexOk = (v) => typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v);
+            const colorBox = (k, def) => `<div class="relative w-7 h-7 shrink-0 rounded-md border border-surface-200 dark:border-surface-700 overflow-hidden"><input type="color" value="${hexOk(val(k)) ? val(k) : def}" class="absolute inset-0 w-full h-full cursor-pointer" oninput="${put(k, 'this.value')}"></div>`;
+            const toggleRow = (k, title, sub) => `<div class="sub-style-group flex items-center gap-2.5 min-w-0">
+                <label class="flex items-center gap-2 cursor-pointer shrink-0 select-none"><input type="checkbox" ${val(k) ? 'checked' : ''} class="rounded text-brand-500 focus:ring-brand-500" onchange="${putToggle(k, 'this.checked')}"><span class="text-xs font-bold text-surface-800 dark:text-surface-100">${title}</span></label>
+                <div class="flex items-center gap-2 flex-1 min-w-0 ${val(k) ? '' : 'opacity-40 pointer-events-none'}">${sub}</div>
+            </div>`;
+            const sliderRow = (k, min, max, valExpr, badgeExpr, cur) => `<input type="range" min="${min}" max="${max}" step="1" value="${cur}" class="flex-1 custom-slider min-w-0" oninput="${put(k, valExpr)}; this.closest('.sub-style-group').querySelector('[data-v]').textContent = ${badgeExpr};">`;
             if (group === 'scale') {
                 const pct = Math.round((val('scale') !== undefined ? val('scale') : 1) * 100);
-                return `<div class="sub-style-group flex items-center justify-between gap-2">
-                    <label class="flex items-center gap-1.5 shrink-0 text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest"><i data-lucide="scan" class="w-3 h-3"></i>Scale</label>
-                    <div class="flex items-center gap-2 flex-1">
-                        <input type="range" min="10" max="300" step="1" value="${pct}" class="flex-1 custom-slider" oninput="${put('scale', 'this.value / 100')}; this.closest('.sub-style-group').querySelector('[data-v]').textContent = (this.value / 100).toFixed(2) + 'x';">
+                return `<div class="sub-style-group flex items-center gap-2.5 min-w-0">
+                    ${rowLabel('Scale', 'scan')}
+                    <div class="flex items-center gap-2 flex-1 min-w-0">
+                        ${sliderRow('scale', 10, 300, 'this.value / 100', '(this.value / 100).toFixed(2) + \'x\'', pct)}
                         ${badge((pct / 100).toFixed(2) + 'x')}
                     </div>
                 </div>`;
             }
             if (group === 'color') {
-                return `<div class="sub-style-group">
-                    ${lbl('Color')}
-                    ${colorBox('fillColor', '#ffffff', true)}
+                return `<div class="sub-style-group flex items-center gap-2.5 min-w-0">
+                    ${rowLabel('Color', 'palette')}
+                    <div class="flex-1"></div>
+                    ${colorBox('fillColor', '#ffffff')}
                 </div>`;
             }
-            const toggleRow = (k, title, sub) => `<div class="sub-style-group flex items-center justify-between gap-2">
-                <label class="flex items-center gap-2 cursor-pointer shrink-0"><input type="checkbox" ${val(k) ? 'checked' : ''} class="rounded text-brand-500 focus:ring-brand-500" onchange="${putToggle(k, 'this.checked')}"><span class="text-xs font-bold text-surface-700 dark:text-surface-300">${title}</span></label>
-                <div class="flex items-center gap-2 ${val(k) ? '' : 'opacity-40 pointer-events-none'}">${sub}</div>
-            </div>`;
             if (group === 'stroke') {
                 const w = val('strokeWidth') !== undefined ? val('strokeWidth') : 3;
                 return toggleRow('strokeEnable', 'Stroke', `
                     ${colorBox('strokeColor', '#000000')}
-                    <input type="range" min="0" max="12" step="1" value="${w}" class="w-16 custom-slider shrink-0" oninput="${put('strokeWidth', 'parseInt(this.value)')}; this.closest('.sub-style-group').querySelector('[data-v]').textContent = this.value + 'px';">
+                    ${sliderRow('strokeWidth', 0, 12, 'parseInt(this.value)', 'this.value + \'px\'', w)}
                     ${badge(w + 'px')}
                 `);
             }
@@ -14614,7 +14618,7 @@ const isVis = !clip.hidden;
                 const b = val('shadowBlur') !== undefined ? val('shadowBlur') : 4;
                 return toggleRow('shadowEnable', 'Shadow', `
                     ${colorBox('shadowColor', '#000000')}
-                    <input type="range" min="0" max="20" step="1" value="${b}" class="w-14 custom-slider shrink-0" oninput="${put('shadowBlur', 'parseInt(this.value)')}; this.closest('.sub-style-group').querySelector('[data-v]').textContent = this.value + 'px';">
+                    ${sliderRow('shadowBlur', 0, 20, 'parseInt(this.value)', 'this.value + \'px\'', b)}
                     ${badge(b + 'px')}
                 `);
             }
@@ -14622,9 +14626,61 @@ const isVis = !clip.hidden;
                 const op = Math.round((val('bgOpacity') !== undefined ? val('bgOpacity') : 0.5) * 100);
                 return toggleRow('bgEnable', 'Background', `
                     ${colorBox('bgColor', '#000000')}
-                    <input type="range" min="0" max="100" step="1" value="${op}" class="w-16 custom-slider shrink-0" oninput="${put('bgOpacity', 'this.value / 100')}; this.closest('.sub-style-group').querySelector('[data-v]').textContent = this.value + '%';">
+                    ${sliderRow('bgOpacity', 0, 100, 'this.value / 100', 'this.value + \'%\'', op)}
                     ${badge(op + '%')}
                 `);
+            }
+            // ── Advanced background-box / texture groups (global config only) ──
+            if (group === 'bgStroke') {
+                const w = val('bgStrokeWidth') !== undefined ? val('bgStrokeWidth') : 4;
+                return toggleRow('bgStrokeEnable', 'Box Stroke', `
+                    ${colorBox('bgStrokeColor', '#ffffff')}
+                    ${sliderRow('bgStrokeWidth', 0, 12, 'parseInt(this.value)', 'this.value + \'px\'', w)}
+                    ${badge(w + 'px')}
+                `);
+            }
+            if (group === 'bgShadow') {
+                const b = val('bgShadowBlur') !== undefined ? val('bgShadowBlur') : 20;
+                return toggleRow('bgShadowEnable', 'Box Shadow', `
+                    ${colorBox('bgShadowColor', '#000000')}
+                    ${sliderRow('bgShadowBlur', 0, 40, 'parseInt(this.value)', 'this.value + \'px\'', b)}
+                    ${badge(b + 'px')}
+                `);
+            }
+            if (group === 'bgExtrude') {
+                const d = val('bgExtrudeDepth') !== undefined ? val('bgExtrudeDepth') : 5;
+                const dir = val('bgExtrudeDir') || 'br';
+                return `${toggleRow('bgExtrudeEnable', '3D Extrude', `
+                    ${colorBox('bgExtrudeColor', '#000000')}
+                    ${sliderRow('bgExtrudeDepth', 0, 20, 'parseInt(this.value)', 'this.value + \'px\'', d)}
+                    ${badge(d + 'px')}
+                `)}
+                <div class="flex items-center gap-2 ${val('bgExtrudeEnable') ? '' : 'opacity-40 pointer-events-none'}">
+                    <span class="${lblCls} shrink-0">Direction</span>
+                    <select class="flex-1 text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 focus:outline-none focus:border-brand-500 font-bold text-surface-800 dark:text-surface-200" onchange="${put('bgExtrudeDir', 'this.value')}">
+                        <option value="br" ${dir==='br'?'selected':''}>Bottom-Right</option>
+                        <option value="bl" ${dir==='bl'?'selected':''}>Bottom-Left</option>
+                        <option value="tr" ${dir==='tr'?'selected':''}>Top-Right</option>
+                        <option value="tl" ${dir==='tl'?'selected':''}>Top-Left</option>
+                    </select>
+                </div>`;
+            }
+            if (group === 'texture') {
+                const op = val('textureOpacity') !== undefined ? val('textureOpacity') : 50;
+                const bm = val('textureBlendMode') || 'multiply';
+                return `${toggleRow('textureEnable', 'Texture', `
+                    ${sliderRow('textureOpacity', 0, 100, 'parseInt(this.value)', 'this.value + \'%\'', op)}
+                    ${badge(op + '%')}
+                `)}
+                <div class="flex items-center gap-2 ${val('textureEnable') ? '' : 'opacity-40 pointer-events-none'}">
+                    <span class="${lblCls} shrink-0">Blend</span>
+                    <select class="flex-1 text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 focus:outline-none focus:border-brand-500 font-bold text-surface-800 dark:text-surface-200" onchange="${put('textureBlendMode', 'this.value')}">
+                        <option value="multiply" ${bm==='multiply'?'selected':''}>Multiply</option>
+                        <option value="screen" ${bm==='screen'?'selected':''}>Screen</option>
+                        <option value="overlay" ${bm==='overlay'?'selected':''}>Overlay</option>
+                        <option value="soft-light" ${bm==='soft-light'?'selected':''}>Soft Light</option>
+                    </select>
+                </div>`;
             }
             return '';
         };
@@ -14739,121 +14795,166 @@ const isVis = !clip.hidden;
             const badgeGreen = fixStatus || liveOverlaps === 0;
 
             const activeBtnClass = 'flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm';
-            const inactiveBtnClass = 'flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all text-surface-500 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white';
+            const inactiveBtnClass = 'flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all text-surface-600 dark:text-surface-400 hover:text-surface-900 dark:hover:text-white';
 
             const ov = (v, def) => v !== undefined ? v : def;
 
-            // ── Build style config HTML ──
-            const styleHtml = `
-                <div class="flex flex-col gap-3 p-3 overflow-y-auto flex-1">
-                    <div class="text-[10px] text-surface-500 dark:text-surface-300 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-700/30 rounded-lg p-2 leading-relaxed">
-                        <i data-lucide="info" class="w-3 h-3 inline-block mr-1 align-middle"></i>Global style applies to <strong>every caption</strong> that doesn't override it. Select a caption clip on the timeline and use the <strong>Properties</strong> tab for per-caption overrides.
+            // ── Build style config HTML (CapCut-style grouped sections) ──
+            const isHoriz = State.inspector && (State.inspector.dock === 'bottom' || State.inspector.dock === 'top');
+            const fxTab = cfg.subtitleFxTab || 'style';
+            const lblCls = 'text-[10px] font-bold text-surface-700 dark:text-surface-200 uppercase tracking-widest';
+            const fxBtn = (tab, label, icon) => `<button type="button" onclick="State.subtitleConfig.subtitleFxTab='${tab}'; saveSubtitlesToStorage(); renderSubtitlesPanel();" class="flex-1 py-1 text-[10px] font-bold rounded-md transition-all ${fxTab === tab ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm' : 'text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-white'}"><i data-lucide="${icon}" class="w-3 h-3 inline-block mr-1 align-middle"></i>${label}</button>`;
+            const sectionCard = (icon, title, inner, open) => `
+                <details class="group bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0" ${open ? 'open' : ''}>
+                    <summary class="flex items-center gap-2 p-2.5 cursor-pointer list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700">
+                        <i data-lucide="${icon}" class="w-3.5 h-3.5 text-brand-500 shrink-0"></i>
+                        <span class="${lblCls} flex items-center gap-1.5 flex-1 min-w-0">${title}</span>
+                        <i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180 shrink-0"></i>
+                    </summary>
+                    <div class="p-3 flex flex-col gap-3">${inner}</div>
+                </details>`;
+            const styleFieldsHtml = `
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="${lblCls} mb-1 block">Font</label>
+                        <select class="w-full text-xs p-2 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner focus:outline-none focus:border-brand-500 font-bold text-surface-800 dark:text-surface-200" onchange="State.subtitleConfig.fontFamily = this.value; saveSubtitlesToStorage(); drawCanvas();">
+                            <option value="Inter" ${cfg.fontFamily==='Inter'?'selected':''}>Inter</option>
+                            <option value="Rubik" ${cfg.fontFamily==='Rubik'?'selected':''}>Rubik</option>
+                            <option value="Montserrat" ${cfg.fontFamily==='Montserrat'?'selected':''}>Montserrat</option>
+                            <option value="Oswald" ${cfg.fontFamily==='Oswald'?'selected':''}>Oswald</option>
+                            <option value="Lora" ${cfg.fontFamily==='Lora'?'selected':''}>Lora</option>
+                            <option value="Arial" ${cfg.fontFamily==='Arial'?'selected':''}>Arial</option>
+                            <option value="sans-serif" ${cfg.fontFamily==='sans-serif'?'selected':''}>Sans-serif</option>
+                        </select>
                     </div>
-                    ${captionPresetStripHtml('global')}
-                    <div class="flex items-center justify-between bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg px-3 py-2 shadow-sm shrink-0">
-                        <span class="text-[10px] font-bold text-surface-600 dark:text-surface-300 flex items-center gap-1.5"><i data-lucide="rotate-ccw" class="w-3 h-3"></i>Clear per-caption overrides</span>
-                        <button onclick="resetAllSubtitleOverrides()" class="text-[10px] font-bold text-brand-600 dark:text-brand-400 hover:text-brand-700 dark:hover:text-brand-300 border border-brand-200 dark:border-brand-700 bg-brand-50 dark:bg-brand-900/30 hover:bg-brand-100 dark:hover:bg-brand-900/50 px-2.5 py-1 rounded transition-colors" title="Remove every per-caption style override so all captions follow the global style">Reset All</button>
+                    <div>
+                        <label class="${lblCls} mb-1 block">Weight</label>
+                        <select class="w-full text-xs p-2 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner focus:outline-none focus:border-brand-500 font-bold" onchange="State.subtitleConfig.fontWeight = parseInt(this.value); saveSubtitlesToStorage(); drawCanvas();">
+                            <option value="400" ${cfg.fontWeight===400?'selected':''}>Normal</option>
+                            <option value="600" ${cfg.fontWeight===600?'selected':''}>Semi Bold</option>
+                            <option value="700" ${cfg.fontWeight===700?'selected':''}>Bold</option>
+                            <option value="900" ${cfg.fontWeight===900?'selected':''}>Black</option>
+                        </select>
                     </div>
-                    <div class="bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0">
-                        <div class="p-3 flex flex-col gap-3">
-                            <div class="grid grid-cols-3 gap-2">
-                                <div class="col-span-2">
-                                    <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1 block">Font</label>
-                                    <select class="w-full text-xs p-2 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner focus:outline-none focus:border-brand-500 font-bold text-surface-800 dark:text-surface-200" onchange="State.subtitleConfig.fontFamily = this.value; saveSubtitlesToStorage(); drawCanvas();">
-                                        <option value="Inter" ${cfg.fontFamily==='Inter'?'selected':''}>Inter</option>
-                                        <option value="Rubik" ${cfg.fontFamily==='Rubik'?'selected':''}>Rubik</option>
-                                        <option value="Montserrat" ${cfg.fontFamily==='Montserrat'?'selected':''}>Montserrat</option>
-                                        <option value="Oswald" ${cfg.fontFamily==='Oswald'?'selected':''}>Oswald</option>
-                                        <option value="Lora" ${cfg.fontFamily==='Lora'?'selected':''}>Lora</option>
-                                        <option value="Arial" ${cfg.fontFamily==='Arial'?'selected':''}>Arial</option>
-                                        <option value="sans-serif" ${cfg.fontFamily==='sans-serif'?'selected':''}>Sans-serif</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1 block">Size</label>
-                                    <select class="w-full text-xs p-2 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner focus:outline-none focus:border-brand-500 font-bold" onchange="State.subtitleConfig.fontSize = parseInt(this.value); saveSubtitlesToStorage(); drawCanvas();">
-                                        <option value="24" ${cfg.fontSize===24?'selected':''}>24</option>
-                                        <option value="28" ${cfg.fontSize===28?'selected':''}>28</option>
-                                        <option value="32" ${cfg.fontSize===32?'selected':''}>32</option>
-                                        <option value="36" ${cfg.fontSize===36?'selected':''}>36</option>
-                                        <option value="42" ${cfg.fontSize===42?'selected':''}>42</option>
-                                        <option value="48" ${cfg.fontSize===48?'selected':''}>48</option>
-                                        <option value="56" ${cfg.fontSize===56?'selected':''}>56</option>
-                                        <option value="64" ${cfg.fontSize===64?'selected':''}>64</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div>
-                                <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1 block">Weight</label>
-                                <select class="w-full text-xs p-2 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner focus:outline-none focus:border-brand-500 font-bold" onchange="State.subtitleConfig.fontWeight = parseInt(this.value); saveSubtitlesToStorage(); drawCanvas();">
-                                    <option value="400" ${cfg.fontWeight===400?'selected':''}>Normal</option>
-                                    <option value="600" ${cfg.fontWeight===600?'selected':''}>Semi Bold</option>
-                                    <option value="700" ${cfg.fontWeight===700?'selected':''}>Bold</option>
-                                    <option value="900" ${cfg.fontWeight===900?'selected':''}>Black</option>
-                                </select>
-                            </div>
-                            ${captionStyleControlHtml('color', 'global')}
-                            ${captionStyleControlHtml('scale', 'global')}
-                            ${captionStyleControlHtml('stroke', 'global')}
-                            ${captionStyleControlHtml('shadow', 'global')}
-                            ${captionStyleControlHtml('bg', 'global')}
-                            <div>
-                                <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1 block">Animation</label>
-                                <div class="grid grid-cols-3 gap-1.5">
-                                    <select class="text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 focus:outline-none focus:border-brand-500 font-bold" onchange="State.subtitleConfig.animIn = this.value; saveSubtitlesToStorage(); drawCanvas();">
-                                        <option value="none" ${cfg.animIn==='none'?'selected':''}>In: None</option>
-                                        <option value="fadeIn" ${cfg.animIn==='fadeIn'?'selected':''}>Fade</option>
-                                        <option value="slideUp" ${cfg.animIn==='slideUp'?'selected':''}>Slide up</option>
-                                        <option value="scaleIn" ${cfg.animIn==='scaleIn'?'selected':''}>Scale</option>
-                                        <option value="popIn" ${cfg.animIn==='popIn'?'selected':''}>Pop</option>
-                                    </select>
-                                    <select class="text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 focus:outline-none focus:border-brand-500 font-bold" onchange="State.subtitleConfig.animOut = this.value; saveSubtitlesToStorage(); drawCanvas();">
-                                        <option value="none" ${cfg.animOut==='none'?'selected':''}>Out: None</option>
-                                        <option value="fadeOut" ${cfg.animOut==='fadeOut'?'selected':''}>Fade</option>
-                                        <option value="slideDown" ${cfg.animOut==='slideDown'?'selected':''}>Slide</option>
-                                        <option value="scaleOut" ${cfg.animOut==='scaleOut'?'selected':''}>Scale</option>
-                                    </select>
-                                    <input type="number" value="${cfg.animInDur||0.3}" min="0.1" max="2" step="0.1" class="text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 focus:outline-none focus:border-brand-500 font-bold font-mono" onchange="State.subtitleConfig.animInDur=parseFloat(this.value); State.subtitleConfig.animOutDur=parseFloat(this.value); saveSubtitlesToStorage(); drawCanvas();">
-                                </div>
-                                <div class="mt-2">
-                                    <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1 block">Preset Animation</label>
-                                    <div class="grid grid-cols-4 gap-1">
-                                        ${[['none','None'],['fade','Fade Up'],['pop','Pop'],['letterPop','Letter Pop'],['letterFade','Letter Fade'],['typewriter','Typewriter'],['wordHighlight','Word Glow'],['bounce','Bounce'],['rotate','Rotate']].map(([pv, pl]) => `<button class="px-1 py-1.5 text-[9px] font-bold rounded transition-colors ${(cfg.animPreset||'none') === pv ? 'bg-brand-600 text-white shadow-sm' : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-700'}" onclick="State.subtitleConfig.animPreset='${pv}'; saveSubtitlesToStorage(); drawCanvas(); renderSubtitlesPanel();">${pl}</button>`).join('')}
-                                    </div>
-                                    ${['wordHighlight', 'letterPop', 'letterFade', 'typewriter', 'bounce', 'rotate'].includes(cfg.animPreset) ? `
-                                    <div class="flex items-center justify-between mt-2">
-                                        <label class="text-[10px] font-bold text-surface-600 dark:text-surface-300 flex items-center gap-1.5 cursor-pointer" title="Sweep across the whole caption duration (CapCut-style karaoke) instead of only the ~0.5s entrance phase"><i data-lucide="timer" class="w-3 h-3 text-brand-500"></i>Whole caption duration</label>
-                                        <label class="relative inline-flex items-center cursor-pointer">
-                                            <input type="checkbox" class="sr-only peer" ${cfg.animFullSpan ? 'checked' : ''} onchange="State.subtitleConfig.animFullSpan = this.checked; saveSubtitlesToStorage(); drawCanvas();">
-                                            <div class="w-7 h-4 bg-surface-300 dark:bg-surface-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:border-surface-600 dark:peer-checked:bg-brand-500 peer-checked:bg-brand-500"></div>
-                                        </label>
-                                    </div>` : ''}
-                                    <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mt-2 mb-1 block">Easing</label>
-                                    <select class="w-full text-xs p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 focus:outline-none focus:border-brand-500 font-bold" onchange="State.subtitleConfig.animEase = this.value; saveSubtitlesToStorage(); drawCanvas();">
-                                        <option value="easeOut" ${cfg.animEase==='easeOut'?'selected':''}>Ease Out</option>
-                                        <option value="easeIn" ${cfg.animEase==='easeIn'?'selected':''}>Ease In</option>
-                                        <option value="easeInOut" ${cfg.animEase==='easeInOut'?'selected':''}>Ease In-Out</option>
-                                        <option value="elastic" ${cfg.animEase==='elastic'?'selected':''}>Elastic</option>
-                                        <option value="bounce" ${cfg.animEase==='bounce'?'selected':''}>Bounce</option>
-                                        <option value="linear" ${cfg.animEase==='linear'?'selected':''}>Linear</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1 block">Position</label>
-                                    <select class="w-full text-xs p-2 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner focus:outline-none focus:border-brand-500 font-bold" onchange="State.subtitleConfig.position = this.value; saveSubtitlesToStorage(); drawCanvas();">
-                                        <option value="bottom" ${cfg.position==='bottom'?'selected':''}>Bottom</option>
-                                        <option value="top" ${cfg.position==='top'?'selected':''}>Top</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1 block">Offset</label>
-                                    <input type="number" value="${cfg.bottomOffset||60}" min="10" max="300" class="w-full text-xs p-2 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner focus:outline-none focus:border-brand-500 font-bold" onchange="State.subtitleConfig.bottomOffset = parseInt(this.value); saveSubtitlesToStorage(); drawCanvas();">
-                                </div>
-                            </div>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="${lblCls} mb-1 block">Size</label>
+                        <div class="flex items-center gap-2">
+                            <span class="text-[10px] font-bold text-surface-800 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-1.5 py-0.5 rounded shrink-0">${cfg.fontSize||36}</span>
+                            <input type="range" min="24" max="200" step="1" value="${cfg.fontSize||36}" class="flex-1 custom-slider min-w-0" oninput="State.subtitleConfig.fontSize = parseInt(this.value); this.previousElementSibling.textContent = this.value; saveSubtitlesToStorage(); drawCanvas();">
                         </div>
                     </div>
+                    <div>${captionStyleControlHtml('scale', 'global')}</div>
+                </div>
+                ${captionStyleControlHtml('color', 'global')}
+            `;
+            const effectsFieldsHtml = `
+                ${captionStyleControlHtml('stroke', 'global')}
+                ${captionStyleControlHtml('shadow', 'global')}
+                ${captionStyleControlHtml('bg', 'global')}
+            `;
+            const typoCard = `
+                <details class="group bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0" open>
+                    <summary class="flex items-center gap-2 p-2.5 cursor-pointer list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700">
+                        <i data-lucide="type" class="w-3.5 h-3.5 text-brand-500 shrink-0"></i>
+                        <div class="flex gap-1 bg-surface-100 dark:bg-surface-900 p-0.5 rounded-lg flex-1 min-w-0" onclick="event.stopPropagation();">
+                            ${fxBtn('style', 'Style', 'type')}
+                            ${fxBtn('effects', 'Effects', 'sparkles')}
+                        </div>
+                        <i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180 shrink-0"></i>
+                    </summary>
+                    <div class="p-3 flex flex-col gap-3">${fxTab === 'effects' ? effectsFieldsHtml : styleFieldsHtml}</div>
+                </details>`;
+            const animCard = sectionCard('wand-2', 'Animation', `
+                <div>
+                    <label class="${lblCls} mb-1 block">Preset</label>
+                    <div class="grid ${isHoriz ? 'grid-cols-5' : 'grid-cols-4'} gap-1.5">
+                        ${[['none','None'],['fade','Fade Up'],['pop','Pop'],['letterPop','Letter Pop'],['letterFade','Letter Fade'],['typewriter','Typewriter'],['wordHighlight','Word Glow'],['bounce','Bounce'],['rotate','Rotate']].map(([pv, pl]) => `<button class="px-1 py-1.5 text-[10px] font-bold rounded transition-colors ${(cfg.animPreset||'none') === pv ? 'bg-brand-600 text-white shadow-sm' : 'bg-surface-100 dark:bg-surface-800 text-surface-700 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-700'}" onclick="State.subtitleConfig.animPreset='${pv}'; saveSubtitlesToStorage(); drawCanvas(); renderSubtitlesPanel();">${pl}</button>`).join('')}
+                    </div>
+                    ${['wordHighlight', 'letterPop', 'letterFade', 'typewriter', 'bounce', 'rotate'].includes(cfg.animPreset) ? `
+                    <div class="flex items-center justify-between mt-2">
+                        <label class="text-[10px] font-bold text-surface-700 dark:text-surface-200 flex items-center gap-1.5 cursor-pointer" title="Sweep across the whole caption duration (CapCut-style karaoke) instead of only the ~0.5s entrance phase"><i data-lucide="timer" class="w-3 h-3 text-brand-500"></i>Whole caption duration</label>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" class="sr-only peer" ${cfg.animFullSpan ? 'checked' : ''} onchange="State.subtitleConfig.animFullSpan = this.checked; saveSubtitlesToStorage(); drawCanvas();">
+                            <div class="w-7 h-4 bg-surface-300 dark:bg-surface-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:border-surface-600 dark:peer-checked:bg-brand-500 peer-checked:bg-brand-500"></div>
+                        </label>
+                    </div>` : ''}
+                </div>
+                <div class="grid grid-cols-3 gap-2">
+                    <div>
+                        <label class="${lblCls} mb-1 block">In</label>
+                        <select class="w-full text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 focus:outline-none focus:border-brand-500 font-bold" onchange="State.subtitleConfig.animIn = this.value; saveSubtitlesToStorage(); drawCanvas();">
+                            <option value="none" ${cfg.animIn==='none'?'selected':''}>None</option>
+                            <option value="fadeIn" ${cfg.animIn==='fadeIn'?'selected':''}>Fade</option>
+                            <option value="slideUp" ${cfg.animIn==='slideUp'?'selected':''}>Slide up</option>
+                            <option value="scaleIn" ${cfg.animIn==='scaleIn'?'selected':''}>Scale</option>
+                            <option value="popIn" ${cfg.animIn==='popIn'?'selected':''}>Pop</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="${lblCls} mb-1 block">Out</label>
+                        <select class="w-full text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 focus:outline-none focus:border-brand-500 font-bold" onchange="State.subtitleConfig.animOut = this.value; saveSubtitlesToStorage(); drawCanvas();">
+                            <option value="none" ${cfg.animOut==='none'?'selected':''}>None</option>
+                            <option value="fadeOut" ${cfg.animOut==='fadeOut'?'selected':''}>Fade</option>
+                            <option value="slideDown" ${cfg.animOut==='slideDown'?'selected':''}>Slide</option>
+                            <option value="scaleOut" ${cfg.animOut==='scaleOut'?'selected':''}>Scale</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="${lblCls} mb-1 block">Dur (s)</label>
+                        <input type="number" value="${cfg.animInDur||0.3}" min="0.1" max="2" step="0.1" class="w-full text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 focus:outline-none focus:border-brand-500 font-bold font-mono" onchange="State.subtitleConfig.animInDur=parseFloat(this.value); State.subtitleConfig.animOutDur=parseFloat(this.value); saveSubtitlesToStorage(); drawCanvas();">
+                    </div>
+                </div>
+                <div>
+                    <label class="${lblCls} mb-1 block">Easing</label>
+                    <select class="w-full text-xs p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 focus:outline-none focus:border-brand-500 font-bold" onchange="State.subtitleConfig.animEase = this.value; saveSubtitlesToStorage(); drawCanvas();">
+                        <option value="easeOut" ${cfg.animEase==='easeOut'?'selected':''}>Ease Out</option>
+                        <option value="easeIn" ${cfg.animEase==='easeIn'?'selected':''}>Ease In</option>
+                        <option value="easeInOut" ${cfg.animEase==='easeInOut'?'selected':''}>Ease In-Out</option>
+                        <option value="elastic" ${cfg.animEase==='elastic'?'selected':''}>Elastic</option>
+                        <option value="bounce" ${cfg.animEase==='bounce'?'selected':''}>Bounce</option>
+                        <option value="linear" ${cfg.animEase==='linear'?'selected':''}>Linear</option>
+                    </select>
+                </div>
+            `, false);
+            const posCard = sectionCard('move', 'Position', `
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="${lblCls} mb-1 block">Position</label>
+                        <select class="w-full text-xs p-2 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner focus:outline-none focus:border-brand-500 font-bold" onchange="State.subtitleConfig.position = this.value; saveSubtitlesToStorage(); drawCanvas();">
+                            <option value="bottom" ${cfg.position==='bottom'?'selected':''}>Bottom</option>
+                            <option value="top" ${cfg.position==='top'?'selected':''}>Top</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="${lblCls} mb-1 block">Offset</label>
+                        <div class="flex items-center gap-2">
+                            <span class="text-[10px] font-bold text-surface-800 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-1.5 py-0.5 rounded shrink-0">${cfg.bottomOffset||60}px</span>
+                            <input type="range" min="10" max="300" value="${cfg.bottomOffset||60}" class="flex-1 custom-slider min-w-0" oninput="State.subtitleConfig.bottomOffset = parseInt(this.value); this.previousElementSibling.textContent = this.value + 'px'; saveSubtitlesToStorage(); drawCanvas();">
+                        </div>
+                    </div>
+                </div>
+            `, true);
+            const advCard = sectionCard('sliders-horizontal', 'Advanced', `
+                ${captionStyleControlHtml('bgStroke', 'global')}
+                ${captionStyleControlHtml('bgShadow', 'global')}
+                ${captionStyleControlHtml('bgExtrude', 'global')}
+                ${captionStyleControlHtml('texture', 'global')}
+                <div class="border-t border-surface-200 dark:border-surface-700 pt-3 flex items-center justify-between">
+                    <span class="text-[10px] font-bold text-surface-700 dark:text-surface-200 flex items-center gap-1.5"><i data-lucide="rotate-ccw" class="w-3 h-3"></i>Clear per-caption overrides</span>
+                    <button onclick="resetAllSubtitleOverrides()" class="text-[10px] font-bold text-white bg-brand-600 hover:bg-brand-500 px-2.5 py-1 rounded transition-colors" title="Remove every per-caption style override so all captions follow the global style">Reset All</button>
+                </div>
+            `, false);
+            const styleHtml = `
+                <div class="${isHoriz ? 'grid grid-cols-2 gap-3' : 'flex flex-col gap-3'} p-3 overflow-y-auto flex-1">
+                    <div class="bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm p-3 shrink-0">
+                        ${captionPresetStripHtml('global')}
+                    </div>
+                    ${typoCard}
+                    ${animCard}
+                    ${posCard}
+                    ${advCard}
                 </div>
             `;
 
