@@ -600,6 +600,15 @@
             </button>
             <div class="hidden sm:block w-px h-4 bg-surface-200 dark:bg-surface-700 mx-1"></div>
             
+            <!-- Project Save / Open -->
+            <button onclick="saveProjectToFile()" class="p-1.5 text-surface-600 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white bg-surface-100 dark:bg-surface-800 rounded-md border border-surface-200 dark:border-surface-700 shadow-sm" title="Save Project (Ctrl+S)">
+                <i data-lucide="save" class="w-4 h-4"></i>
+            </button>
+            <button onclick="document.getElementById('projectFileInput').click()" class="p-1.5 text-surface-600 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white bg-surface-100 dark:bg-surface-800 rounded-md border border-surface-200 dark:border-surface-700 shadow-sm" title="Open Project (.json)">
+                <i data-lucide="folder-open" class="w-4 h-4"></i>
+            </button>
+            <input type="file" id="projectFileInput" accept=".json,application/json" class="hidden" onchange="importProjectFile(this)">
+            
             <!-- Export Button -->
             <div class="relative">
                 <button onclick="openExportModal()" aria-label="Export media" title="Export" class="bg-surface-900 hover:bg-black dark:bg-white dark:hover:bg-surface-100 text-white dark:text-surface-900 px-3 sm:px-4 py-1.5 rounded-md text-[11px] sm:text-xs font-bold flex items-center gap-1.5 shadow-sm">
@@ -2006,6 +2015,11 @@
             loadGoogleFonts();
             loadSubtitlesFromStorage();
             loadMarkdownConfig();
+            
+            // Restore the autosaved project (tracks/clips/captions/configs) if one
+            // exists — runs after the legacy loaders so project data wins. File-backed
+            // media restores as re-import placeholders; the user re-imports the files.
+            restoreAutosavedProject();
             
             // Handle headphone plug/unplug in real-time
             if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
@@ -5202,7 +5216,9 @@
                         // text color on its light pastel fill for clean, high-contrast type.
                         const pal = PALETTES[clip.colorIndex % PALETTES.length] || PALETTES[0];
                         const isImageMock = clip.type === 'image';
-                        const genericLabel = isImageMock ? 'MOCK IMAGE' : 'MOCK VIDEO';
+                        // Restored projects mark file-backed media as needing re-import
+                        // (blob URLs die on reload) — label the placeholder honestly.
+                        const genericLabel = clip._missingMedia ? 'RE-IMPORT MEDIA' : (isImageMock ? 'MOCK IMAGE' : 'MOCK VIDEO');
                         const cardRadius = 0; // square card — no border radius
                         const cardPath = (x, y, w2, h2, r) => { ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(x, y, w2, h2, r); else ctx.rect(x, y, w2, h2); };
 
@@ -5268,7 +5284,10 @@
 
                         // Alt text — extra big and clear, wrapped to two lines (theme text color)
                         let labelText = genericLabel;
-                        if (clip._mdMedia && (State.markdownConfig || {}).mockShowAltText !== false) {
+                        if (clip._missingMedia && clip.title) {
+                            // Show WHICH file is missing so the user knows what to re-import
+                            labelText = clip.title;
+                        } else if (clip._mdMedia && (State.markdownConfig || {}).mockShowAltText !== false) {
                             const alt = ((clip.title || '') + '').trim();
                             if (alt) labelText = alt;
                         }
@@ -10123,7 +10142,7 @@
                 const isImageOrVideo = clip.type === 'image' || clip.type === 'video';
                 let sourceHTML = '';
                 if (isImageOrVideo) {
-                    const isPlaceholder = clip.isPlaceholder ? 'Placeholder Gradient' : (clip.fileName || 'Imported File');
+                    const isPlaceholder = clip.isPlaceholder ? (clip._missingMedia ? (clip.fileName || clip.title || 'Missing file — re-import required') : 'Placeholder Gradient') : (clip.fileName || 'Imported File');
                     sourceHTML = `
                         <details id="cardSource" class="group bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 shadow-sm rounded-lg shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'} overflow-hidden flex flex-col" open>
                             <summary class="flex items-center justify-between p-3 ${isHorizontal ? '' : 'cursor-pointer'} list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700 " onclick="${isHorizontal ? 'event.preventDefault();' : ''}">
@@ -22033,6 +22052,317 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 }
             });
         }
+
+        // ═══════════════════════════════════════════════════════════════════
+        //  PROJECT SAVE / LOAD (JSON file + localStorage autosave)
+        //
+        //  The project is the full editable structure — tracks, clips, captions,
+        //  markdown/caption configs, canvas settings. Media *data* (video/audio/
+        //  image files) is intentionally NOT embedded: blob URLs die on reload and
+        //  real media is far too large for localStorage. So file-backed media clips
+        //  restore as honest "re-import" placeholders (same dashed-mock rendering
+        //  as the media-library mocks), and the user re-imports the files via the
+        //  existing Source Management / Load Audio cards. Small embedded SFX
+        //  buffers on text/shape/image/math elements ARE embedded as base64 WAV
+        //  (bounded by SFX_EMBED_MAX) so sound design survives the round-trip.
+        // ═══════════════════════════════════════════════════════════════════
+        const PROJECT_AUTOSAVE_KEY = 'studiopro_project_autosave_v1';
+        const PROJECT_VERSION = 1;
+        const SFX_EMBED_MAX = 800 * 1024; // per-SFX WAV byte cap for embedding
+
+        // Runtime-only clip fields that must never be serialized (elements, buffers,
+        // audio graphs, blob URLs, decode latches). Peaks are dropped too — they are
+        // recomputed on re-import, and keeping them bloats the JSON for long audio.
+        const PROJECT_RUNTIME_FIELDS = new Set([
+            'audioEl', 'videoEl', 'imageEl', 'buffer', 'peaks', 'peaksPerSecond',
+            'audioNodes', 'sourceNode', 'playPromise', 'isPlaying',
+            'sfxNode', 'sfxIsPlaying', '_autoGainNode', '_frameReady',
+            '_videoRetries', '_videoGiveUpAt', 'fileUrl'
+        ]);
+
+        function base64FromBytes(bytes) {
+            const u8 = new Uint8Array(bytes);
+            let bin = '';
+            const CH = 0x8000;
+            for (let i = 0; i < u8.length; i += CH) {
+                bin += String.fromCharCode.apply(null, u8.subarray(i, i + CH));
+            }
+            return btoa(bin);
+        }
+
+        function bytesFromBase64(b64) {
+            const bin = atob(b64);
+            const u8 = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+            return u8.buffer;
+        }
+
+        // Compact PCM WAV encoder — used to embed SFX buffers in the project JSON.
+        function audioBufferToWavBytes(buffer) {
+            const numCh = Math.min(2, buffer.numberOfChannels);
+            const sr = buffer.sampleRate;
+            const len = buffer.length;
+            const bytesPerSample = 2;
+            const dataSize = len * numCh * bytesPerSample;
+            const ab = new ArrayBuffer(44 + dataSize);
+            const view = new DataView(ab);
+            const writeStr = (off, s) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); };
+            writeStr(0, 'RIFF');
+            view.setUint32(4, 36 + dataSize, true);
+            writeStr(8, 'WAVE');
+            writeStr(12, 'fmt ');
+            view.setUint32(16, 16, true);
+            view.setUint16(20, 1, true);
+            view.setUint16(22, numCh, true);
+            view.setUint32(24, sr, true);
+            view.setUint32(28, sr * numCh * bytesPerSample, true);
+            view.setUint16(32, numCh * bytesPerSample, true);
+            view.setUint16(34, 16, true);
+            writeStr(36, 'data');
+            view.setUint32(40, dataSize, true);
+            const channels = [];
+            for (let c = 0; c < numCh; c++) channels.push(buffer.getChannelData(c));
+            let off = 44;
+            for (let i = 0; i < len; i++) {
+                for (let c = 0; c < numCh; c++) {
+                    const s = Math.max(-1, Math.min(1, channels[c][i]));
+                    view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+                    off += 2;
+                }
+            }
+            return ab;
+        }
+
+        // Turn the live State into a plain JSON-able project object.
+        function serializeProject() {
+            const clipToJSON = (c) => {
+                const out = {};
+                for (const k of Object.keys(c)) {
+                    if (PROJECT_RUNTIME_FIELDS.has(k)) continue;
+                    if (k === 'sfx') {
+                        const sfx = c.sfx;
+                        out.sfx = {
+                            name: sfx.name, duration: sfx.duration, volume: sfx.volume,
+                            trimStart: sfx.trimStart, trimEnd: sfx.trimEnd,
+                            fadeIn: sfx.fadeIn, fadeOut: sfx.fadeOut, fadeCurve: sfx.fadeCurve
+                        };
+                        if (sfx.buffer) {
+                            try {
+                                const bytes = audioBufferToWavBytes(sfx.buffer);
+                                if (bytes.byteLength <= SFX_EMBED_MAX) {
+                                    out.sfx.data = base64FromBytes(bytes);
+                                } else {
+                                    out.sfx.sfxMissing = true;
+                                }
+                            } catch (e) {
+                                out.sfx.sfxMissing = true;
+                            }
+                        }
+                        continue;
+                    }
+                    out[k] = c[k];
+                }
+                return out;
+            };
+            return {
+                app: 'StudioPro',
+                version: PROJECT_VERSION,
+                savedAt: Date.now(),
+                duration: State.duration,
+                currentTime: State.currentTime,
+                canvasBgColor: State.canvasBgColor,
+                aspectIndex: State.preview.aspectIndex,
+                tracks: State.tracks.map(t => ({
+                    id: t.id, type: t.type, name: t.name, height: t.height,
+                    colorIndex: t.colorIndex, hidden: t.hidden, locked: t.locked,
+                    volume: t.volume, muted: t.muted, solo: t.solo
+                })),
+                clips: State.clips.map(clipToJSON),
+                subtitles: State.subtitles,
+                subtitleConfig: State.subtitleConfig,
+                markdownConfig: State.markdownConfig,
+                markdownText: State.markdownText,
+                subtitleGen: State.subtitleGen,
+                subtitleFix: State.subtitleFix
+            };
+        }
+
+        // Rebuild a clip object from its serialized form. File-backed media becomes
+        // an honest re-import placeholder; SFX is decoded back from base64 WAV.
+        function restoreClip(c) {
+            if (!c || !c.id) return null;
+            const clip = Object.assign({}, c);
+            delete clip.sfx;
+            if ((clip.type === 'video' || clip.type === 'audio' || clip.type === 'image') && !clip.isPlaceholder && !clip._mdMock) {
+                clip.isPlaceholder = true;
+                clip._missingMedia = true;
+                clip.fileName = c.fileName || c.title;
+                delete clip.fileUrl;
+            }
+            if (c.sfx) {
+                clip.sfx = Object.assign({}, c.sfx);
+                delete clip.sfx.data;
+                delete clip.sfx.sfxMissing;
+                if (c.sfx.data) {
+                    try {
+                        const bytes = bytesFromBase64(c.sfx.data);
+                        ensureAudioContext();
+                        // decodeAudioData detaches the buffer — hand it a copy
+                        const copy = bytes.slice(0);
+                        audioCtx.decodeAudioData(copy).then((buf) => {
+                            clip.sfx.buffer = buf;
+                            clip.sfx.url = URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' }));
+                            drawCanvas();
+                        }).catch(() => { clip.sfx.sfxMissing = true; });
+                    } catch (e) {
+                        clip.sfx.sfxMissing = true;
+                    }
+                } else if (c.sfx.sfxMissing) {
+                    clip.sfx.sfxMissing = true;
+                }
+            }
+            return clip;
+        }
+
+        function applyProject(data) {
+            if (!data || data.app !== 'StudioPro') throw new Error('Not a StudioPro project file');
+            if (data.version !== PROJECT_VERSION) throw new Error('Unsupported project version: ' + data.version);
+
+            stopAllMedia();
+            // Tear down old per-clip audio chains so a replaced project doesn't leave
+            // silent-but-connected node graphs behind in the audio context.
+            try {
+                State.clips.forEach(old => {
+                    if (old.audioNodes && typeof old.audioNodes === 'object') {
+                        Object.values(old.audioNodes).forEach(n => { try { if (n && n.disconnect) n.disconnect(); } catch (e) {} });
+                    }
+                });
+            } catch (e) {}
+            State.isPlaying = false;
+            State.currentTime = data.currentTime || 0;
+            State.duration = Math.max(10, data.duration || 60);
+
+            if (data.canvasBgColor) {
+                State.canvasBgColor = data.canvasBgColor;
+                const cp = document.getElementById('canvasColorPicker');
+                const cs = document.getElementById('canvasColorSwatch');
+                if (cp) cp.value = data.canvasBgColor;
+                if (cs) cs.style.backgroundColor = data.canvasBgColor;
+            }
+            if (data.aspectIndex !== undefined && ASPECT_RATIOS[data.aspectIndex]) {
+                State.preview.aspectIndex = data.aspectIndex;
+                const ia = document.getElementById('iconAspect');
+                const ba = document.getElementById('btnToggleAspect');
+                if (ia) ia.setAttribute('data-lucide', ASPECT_RATIOS[data.aspectIndex].icon);
+                if (ba) ba.title = 'Aspect Ratio: ' + ASPECT_RATIOS[data.aspectIndex].label;
+                if (window.lucide) lucide.createIcons();
+            }
+
+            const savedTracks = Array.isArray(data.tracks) ? data.tracks : [];
+            State.tracks = savedTracks.map(t => Object.assign({
+                id: t.id, type: t.type === 'audio' ? 'audio' : 'video',
+                name: t.name || (t.type === 'audio' ? 'Audio' : 'Video'),
+                height: t.height || 90, colorIndex: t.colorIndex || 0,
+                hidden: !!t.hidden, locked: !!t.locked,
+                volume: t.volume !== undefined ? t.volume : 1,
+                muted: !!t.muted, solo: !!t.solo
+            }, t));
+            if (!State.tracks.length) {
+                State.tracks = [
+                    { id: 'v1', type: 'video', name: 'V1', height: 90, colorIndex: 0, hidden: false, locked: false, volume: 1, muted: false, solo: false },
+                    { id: 'a1', type: 'audio', name: 'A1', height: 90, colorIndex: 1, hidden: false, locked: false, volume: 1, muted: false, solo: false },
+                    { id: 'a2', type: 'audio', name: 'A2', height: 90, colorIndex: 2, hidden: false, locked: false, volume: 1, muted: false, solo: false }
+                ];
+            }
+
+            State.clips = (Array.isArray(data.clips) ? data.clips : []).map(restoreClip).filter(Boolean);
+            State.subtitles = Array.isArray(data.subtitles) ? data.subtitles : [];
+            if (data.subtitleConfig) State.subtitleConfig = Object.assign({}, State.subtitleConfig, data.subtitleConfig);
+            if (data.markdownConfig) State.markdownConfig = Object.assign({}, State.markdownConfig, data.markdownConfig);
+            if (data.markdownText !== undefined) State.markdownText = data.markdownText;
+            if (data.subtitleGen) State.subtitleGen = Object.assign({}, State.subtitleGen, data.subtitleGen);
+            if (data.subtitleFix) State.subtitleFix = Object.assign({}, State.subtitleFix, data.subtitleFix);
+
+            State.selectedClipId = null;
+            State.multiSelectedClipIds = [];
+
+            try { calcOverlaps(); } catch (e) {}
+            renderTrackHeaders();
+            renderClips();
+            updateTimelineWidth();
+            updatePlayhead();
+            drawCanvas();
+            updateSidebarPanel();
+            resizeCanvas();
+        }
+
+        // localStorage autosave — debounced by signature comparison at a fixed
+        // cadence, skipped during playback/export. Cheap: structure-only JSON is
+        // sub-ms to a few ms even for hundreds of clips, written only when changed.
+        let _lastProjectSig = null;
+
+        function tryAutosaveProject() {
+            if (State.isPlaying || State.isExporting) return;
+            let json;
+            try { json = JSON.stringify(serializeProject()); } catch (e) { return; }
+            if (json === _lastProjectSig) return;
+            _lastProjectSig = json;
+            try {
+                localStorage.setItem(PROJECT_AUTOSAVE_KEY, json);
+            } catch (e) {
+                console.warn('Project autosave failed (storage full?) — use the Save button to keep a copy.', e);
+            }
+        }
+
+        function restoreAutosavedProject() {
+            try {
+                const raw = localStorage.getItem(PROJECT_AUTOSAVE_KEY);
+                if (!raw) return false;
+                applyProject(JSON.parse(raw));
+                _lastProjectSig = raw;
+                return true;
+            } catch (e) {
+                console.warn('Could not restore autosaved project:', e);
+                return false;
+            }
+        }
+
+        window.saveProjectToFile = function() {
+            tryAutosaveProject();
+            const json = JSON.stringify(serializeProject(), null, 2);
+            const blob = new Blob([json], { type: 'application/json' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'studio-pro-project.json';
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 100);
+        };
+
+        window.importProjectFile = function(input) {
+            const file = input && input.files && input.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = () => {
+                try {
+                    applyProject(JSON.parse(reader.result));
+                } catch (e) {
+                    alert('Could not load project: ' + e.message);
+                }
+                if (input) input.value = '';
+            };
+            reader.readAsText(file);
+        };
+
+        setInterval(() => { tryAutosaveProject(); }, 2500);
+        window.addEventListener('beforeunload', () => { tryAutosaveProject(); });
+        window.addEventListener('pagehide', () => { tryAutosaveProject(); });
+        document.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+                e.preventDefault();
+                saveProjectToFile();
+            }
+        });
 
         // --- Playback Engine ---
 
