@@ -109,7 +109,7 @@ StudioPro Editor is a **browser-based, client-side video editor** — a CapCut/C
 5. **Not documented for external users.** The docs folder is excellent for developers but there's no user guide, quick-start, or feature tour for visitors.
 
 ### The one big asset we already have
-The **docs/ folder is a goldmine** — `MediaBunny-Export-Journey.md` documents debugging GPU BSODs, FPS precision, web-worker architecture. That's authentic "we solved hard problems" material that makes a project credible to sponsors and users. Most hobby editors can't show that.
+The **docs/ folder is a goldmine** — `docs/export/MediaBunny-Export-Journey.md` documents debugging GPU BSODs, FPS precision, web-worker architecture. That's authentic "we solved hard problems" material that makes a project credible to sponsors and users. Most hobby editors can't show that.
 
 ---
 
@@ -245,8 +245,8 @@ Visitors → demo WOW moment → star/watch on GitHub → read README
 |---|---|
 | Mediabunny sponsorship & expertise notes | `docs/mediabunny/Mediabunny-Exprties.md` |
 | Mediabunny use cases | `docs/mediabunny/Mediabunny-UseCases.md` |
-| Our export architecture (the "engineering story") | `docs/MediaBunny-Export-Journey.md` |
-| Export modes & FPS | `docs/MediaBunny-Export-Modes.md` |
+| Our export architecture (the "engineering story") | `docs/export/MediaBunny-Export-Journey.md` |
+| Export modes & FPS | `docs/export/MediaBunny-Export-Modes.md` |
 | TODO / future features | `docs/TODO.md` |
 | Editor version | `package.json` → `mediabunny@^1.50.9` |
 

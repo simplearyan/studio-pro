@@ -1,7 +1,7 @@
 # Remotion's Business Model — And What StudioPro Editor Can Learn From It
 
 > **Date:** August 2026
-> **Purpose:** Why people use and *pay* for Remotion, exactly how it makes money, an honest comparison with StudioPro Editor, and a concrete plan for monetizing an editor like ours. This is the companion piece to `docs/OpenSource-Funding-Strategy.md` (the Mediabunny analysis).
+> **Purpose:** Why people use and *pay* for Remotion, exactly how it makes money, an honest comparison with StudioPro Editor, and a concrete plan for monetizing an editor like ours. This is the companion piece to `docs/funding/OpenSource-Funding-Strategy.md` (the Mediabunny analysis).
 
 ---
 
@@ -128,7 +128,7 @@ Our **Markdown → auto-clips → export** pipeline is genuinely the "Remotion f
 5. **NEW: no "legal leverage" option** — Remotion monetizes because companies *must* pay; an end-user tool has no such mechanism, so we're limited to donations/tiers
 
 ### Our one big asset (repeat of the Mediabunny doc — it's that important)
-The **docs/ folder engineering story** (`MediaBunny-Export-Journey.md`, the GT-740 BSOD debugging, FPS precision, worker architecture) is authentic credibility most hobby editors can't show.
+The **docs/ folder engineering story** (`docs/export/MediaBunny-Export-Journey.md`, the GT-740 BSOD debugging, FPS precision, worker architecture) is authentic credibility most hobby editors can't show.
 
 ---
 
@@ -258,10 +258,10 @@ Remotion's revenue is private, but with $25/seat/mo + $100/mo minimum render tie
 
 | Item | Location |
 |---|---|
-| Mediabunny funding strategy (companion doc) | `docs/OpenSource-Funding-Strategy.md` |
+| Mediabunny funding strategy (companion doc) | `docs/funding/OpenSource-Funding-Strategy.md` |
 | Mediabunny sponsorship notes | `docs/mediabunny/Mediabunny-Exprties.md` |
-| Our export architecture (the "engineering story") | `docs/MediaBunny-Export-Journey.md` |
-| Export modes & FPS | `docs/MediaBunny-Export-Modes.md` |
+| Our export architecture (the "engineering story") | `docs/export/MediaBunny-Export-Journey.md` |
+| Export modes & FPS | `docs/export/MediaBunny-Export-Modes.md` |
 | TODO / future features | `docs/TODO.md` |
 | Remotion official site | `remotion.dev` |
 

@@ -1,7 +1,7 @@
 # Fixing the Broken-Video Scrub Issue — Solutions Explained Simply
 
 > A plain-language companion to the issue in `_demo_assets/ABOUT.md` and the deeper
-> technical plan in `docs/Video-Stream-Stability-Plan.md`.
+> technical plan in `docs/video/Video-Stream-Stability-Plan.md`.
 > What's wrong, why it happens, and the four ways to fix it — with effort and payoff
 > for each. **No code changed; this is a decision doc.**
 
@@ -130,7 +130,7 @@ no user action beyond one click.
 4. **Phase 4 — C2** (in-browser repair): the "heal the file" feature, when time allows.
 
 > For the two demo files specifically: A + B make them behave acceptably in the editor;
-> C2 (or re-downloading cleanly) makes them perfect. The `docs/Video-Stream-Stability-Plan.md`
+> C2 (or re-downloading cleanly) makes them perfect. The `docs/video/Video-Stream-Stability-Plan.md`
 > has the full measured baselines (380 scrub events, corrupt-GOP locations, per-file table)
 > and the exit criteria for each phase.
 

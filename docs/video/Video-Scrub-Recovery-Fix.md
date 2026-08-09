@@ -106,12 +106,12 @@ hardware decoder decode a structurally broken GOP. On machines where even a clea
 forward-play attempt fails, the video freezes on the last good frame with the chip —
 that is the best in-browser behavior possible. Making the *file* playable requires
 repairing it: re-encode with ffmpeg (native sidecar or `ffmpeg.wasm` — the "C2"
-option in `docs/Damaged-Video-Scrub-Solutions-Explained.md`), or re-downloading it
+option in `docs/video/Damaged-Video-Scrub-Solutions-Explained.md`), or re-downloading it
 with a proper tool.
 
 ## 6. Files
 
 - `index.html` — the recovery logic (all of §3).
-- `docs/Damaged-Video-Scrub-Solutions-Explained.md` — full options analysis, updated
+- `docs/video/Damaged-Video-Scrub-Solutions-Explained.md` — full options analysis, updated
   with the implementation status (§3.5).
 - This file — the how-we-fixed-it write-up.

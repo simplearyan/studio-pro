@@ -157,7 +157,7 @@ Defense in depth: `drawCanvas` resets the transform (`setTransform`) before clea
 
 ## 7. Verified behavior (test matrix)
 
-Test project: `_demo_assets/studio-pro-project (3).json` — a video split in two halves, each with a split audio companion, **all unlinked** (user right-clicked → Unlink, then split the audio, then saved).
+Test project: `_demo_assets/projects/studio-pro-project (3).json` — a video split in two halves, each with a split audio companion, **all unlinked** (user right-clicked → Unlink, then split the audio, then saved).
 
 | Scenario | Result |
 |---|---|
@@ -195,4 +195,4 @@ Test project: `_demo_assets/studio-pro-project (3).json` — a video split in tw
 - **Browser privacy**: the browser never exposes a JSON's originating folder path, so "remember last folder" is the closest equivalent — one pick (usually the JSON's folder) and everything matches.
 - **Permission lifecycle**: an in-memory handle from a pick works immediately; the IndexedDB copy powers the button after reload. `requestPermission` runs inside the click handler (browsers require a user gesture).
 - **Performance**: saves exclude media by design, so they're small and autosave is cheap; re-decoding embedded SFX on restore is the only heavier step and is async.
-- **Tauri / desktop future**: the same JSON + re-import model maps cleanly to a native file dialog or a "media folder" project convention — see `docs/Cross-Platform-Tauri-MediaBunny-Plan.md`.
+- **Tauri / desktop future**: the same JSON + re-import model maps cleanly to a native file dialog or a "media folder" project convention — see `docs/video/Cross-Platform-Tauri-MediaBunny-Plan.md`.

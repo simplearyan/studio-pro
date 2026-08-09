@@ -1,8 +1,8 @@
 # Export Sync Fix — Impact on Export Times
 
-**Status:** projection written **before** implementation; Phases 1–2 (export-safe `seekExportVideo` helper, `armExportFrameLatch`, thresholded re-seek in both the MediaBunny and standard capture loops) are now **implemented** (see `docs/Export-Heavy-Effects-Sync-Plan.md` Phases 1–2). After-numbers in §8 are **pending a live re-export** of the About.md repro.
+**Status:** projection written **before** implementation; Phases 1–2 (export-safe `seekExportVideo` helper, `armExportFrameLatch`, thresholded re-seek in both the MediaBunny and standard capture loops) are now **implemented** (see `docs/export/Export-Heavy-Effects-Sync-Plan.md` Phases 1–2). After-numbers in §8 are **pending a live re-export** of the About.md repro.
 **Purpose:** answer, in detail: *"Will the export desync fix make export times worse — especially for videos with no or few effects?"*
-**Source of the fix:** `docs/Export-Heavy-Effects-Sync-Plan.md` (Phases 1–2) + `docs/Export-Video-Audio-Sync-Plan.md` (Phase A) — the thresholded per-frame re-seek.
+**Source of the fix:** `docs/export/Export-Heavy-Effects-Sync-Plan.md` (Phases 1–2) + `docs/export/Export-Video-Audio-Sync-Plan.md` (Phase A) — the thresholded per-frame re-seek.
 
 ---
 
@@ -105,7 +105,7 @@ Planned handling: in fast mode, use a larger threshold and only correct when the
 
 Re-export the exact same 60 s project in each scenario and record wall time + drift:
 
-**Before-numbers are measured** (About.md repro + PSNR cross-correlation, `docs/Export-Heavy-Effects-Sync-Plan.md` §2). **After-numbers are pending**: re-export the same 60 s project per scenario on the fixed build, then re-run the PSNR method and the wall-time clock.
+**Before-numbers are measured** (About.md repro + PSNR cross-correlation, `docs/export/Export-Heavy-Effects-Sync-Plan.md` §2). **After-numbers are pending**: re-export the same 60 s project per scenario on the fixed build, then re-run the PSNR method and the wall-time clock.
 
 | Scenario | Export time before | Drift before | Export time after | Drift after | Δ |
 |---|---|---|---|---|---|
@@ -117,7 +117,7 @@ Re-export the exact same 60 s project in each scenario and record wall time + dr
 
 **Acceptance criteria (unchanged):** drift at model 20/40/55 s ≤ 2 frames; no-effects export within +5% of 60 s; heavy-effects increase documented (add Variant B rate-lock if > +30%).
 
-**How to run the after-measurement:** (1) open the fixed build, import `_demo_assets/…_The truth about gut health.mp4`, add captions + color grade + a multiply overlay for the heavy row; (2) export 60 s, note wall time; (3) ffmpeg-extract frames at audio times 20/40/55 s and cross-correlate against the source window (PSNR argmax) — expect the best match at the *same* timestamp (±2 frames).
+**How to run the after-measurement:** (1) open the fixed build, import `_demo_assets/videos/…_The truth about gut health.mp4`, add captions + color grade + a multiply overlay for the heavy row; (2) export 60 s, note wall time; (3) ffmpeg-extract frames at audio times 20/40/55 s and cross-correlate against the source window (PSNR argmax) — expect the best match at the *same* timestamp (±2 frames).
 
 Acceptance criteria:
 - Drift at model 20/40/55 s ≤ 2 frames (PSNR method from `Export-Heavy-Effects-Sync-Plan.md` §2).

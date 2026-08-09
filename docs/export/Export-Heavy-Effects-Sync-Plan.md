@@ -4,13 +4,13 @@
 
 **Source report:** `_exports/About.md` (user-written repro notes)
 **Evidence files:** `_exports/StudioPro_Export_MediaBunny (44).mp4` (with effects), `_exports/StudioPro_Export_MediaBunny (50).mp4` (no effects)
-**Related doc:** `docs/Export-Video-Audio-Sync-Plan.md` (same root cause, speed-triggered view)
+**Related doc:** `docs/export/Export-Video-Audio-Sync-Plan.md` (same root cause, speed-triggered view)
 
 ---
 
 ## 1. The problem (from About.md)
 
-User imported `_demo_assets/…_The truth about gut health.mp4` and exported the first 60 s with captions, twice:
+User imported `_demo_assets/videos/…_The truth about gut health.mp4` and exported the first 60 s with captions, twice:
 
 | Export | Effects | Wall time | Result |
 |---|---|---|---|
@@ -49,7 +49,7 @@ So: while the loop is busy, the element keeps playing at wall-clock rate. The ca
 - `(44)` took 90 s of wall time for 60 s of model time ⇒ capture ≈ 1.5× slower than real-time ⇒ at model 20 s the element has already played ~36 s ⇒ **drift ≈ +16 s and climbing**. This matches the measured numbers (early drift ratio ≈ 1.8, dominated by slow first frames / encoder warmup).
 - `(50)` ran at ≈ 1.0× wall time ⇒ drift ≈ 0 — exactly what the user observed.
 
-The canvas preview never has this bug because `syncMediaElements` calls `seekMediaEl(el, clipSourcePos(...), 0.25)` **every tick** (`index.html:21520`), permanently locking the element to the model clock. The export loop simply omits that step after the first seek. This is the same root cause as `docs/Export-Video-Audio-Sync-Plan.md` — that doc is the speed-triggered view, this one is the effect-cost-triggered view.
+The canvas preview never has this bug because `syncMediaElements` calls `seekMediaEl(el, clipSourcePos(...), 0.25)` **every tick** (`index.html:21520`), permanently locking the element to the model clock. The export loop simply omits that step after the first seek. This is the same root cause as `docs/export/Export-Video-Audio-Sync-Plan.md` — that doc is the speed-triggered view, this one is the effect-cost-triggered view.
 
 ## 4. Possible solutions (options)
 
@@ -80,7 +80,7 @@ Pause the element, seek to the exact frame, wait for `seeked`, capture, then adv
 
 **Phase 1 — Export-safe seek helper**
 - Add `seekExportVideo(el, target, threshold)` beside `seekMediaEl` (`index.html:21213`): same latest-wins coalescing + `_wantedTime` re-seek + settle promise on `seeked` / `readyState ≥ 2` with the existing 400 ms fallback, but **no preview `drawCanvas()` repaint** (accept a paint callback, default `drawCanvas`, pass a no-op for export).
-- `armVideoFrameLatch` the fresh export elements at creation (22509 area) so the `_frameReady` gate clears the instant the first frame decodes (also fixes the "mock video first frame" hazard from `docs/Export-First-Frame-Mock-Plan.md`).
+- `armVideoFrameLatch` the fresh export elements at creation (22509 area) so the `_frameReady` gate clears the instant the first frame decodes (also fixes the "mock video first frame" hazard from `docs/export/Export-First-Frame-Mock-Plan.md`).
 
 **Phase 2 — Wire into the MediaBunny loop** (`index.html:22727` …)
 - In the loop, right before capture (22762–22768), for each active export video element:

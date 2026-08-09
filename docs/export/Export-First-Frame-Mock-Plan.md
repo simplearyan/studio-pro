@@ -2,7 +2,7 @@
 
 ## 1. Problem statement
 
-A user imported a video from `_demo_assets` ("Blend Modes Explained in 49 Seconds.mp4"),
+A user imported a video from `_demo_assets/videos` ("Blend Modes Explained in 49 Seconds.mp4"),
 scrubbed it, added a shape clip, and exported to `_exports/StudioPro_Export_MediaBunny6556.mp4`.
 The **first frame of the exported file shows the editor's themed "MOCK VIDEO" placeholder card**
 instead of the actual first video frame. Later frames are correct.

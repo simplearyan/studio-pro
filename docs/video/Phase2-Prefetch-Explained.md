@@ -1,6 +1,6 @@
 # Phase 2 — "Prefetch" Explained Simply
 
-> A plain-language companion to **Phase 2** in `docs/Video-Preview-Fast-Loading-Plan.md`.
+> A plain-language companion to **Phase 2** in `docs/video/Video-Preview-Fast-Loading-Plan.md`.
 > What it does, why it matters, and how much code it touches.
 
 ## 1. The problem, in one sentence

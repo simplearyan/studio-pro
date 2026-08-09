@@ -9,7 +9,7 @@
 
 ## 1. The observation (measured)
 
-During the corrupt-video investigation (see `docs/Video-Stream-Stability-Plan.md` §3.3), we instrumented the recovery
+During the corrupt-video investigation (see `docs/video/Video-Stream-Stability-Plan.md` §3.3), we instrumented the recovery
 branch and ran **380 scrub events** (including a real ruler mouse-drag session, `mousedown → mousemove → mouseup`)
 on the two damaged H.264 files:
 
