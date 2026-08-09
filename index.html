@@ -2070,6 +2070,9 @@
 
             renderTrackHeaders();
             renderTracks();
+            // renderTracks rebuilds the lanes (removing any clips they held) — re-add
+            // clips afterwards so a restored project shows on the timeline immediately.
+            renderClips();
             updateTimelineWidth();
             updatePlayhead();
             setupHoverPlayhead();
@@ -22316,6 +22319,9 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
 
             try { calcOverlaps(); } catch (e) {}
             renderTrackHeaders();
+            // Build the track lanes BEFORE rendering clips — renderClips skips a clip
+            // whose .track-lane doesn't exist yet (fresh-load restore path).
+            renderTracks();
             renderClips();
             updateTimelineWidth();
             updatePlayhead();
