@@ -1299,6 +1299,18 @@
                     shadowY: 10
                 }
             },
+            {
+                id: 'preset_media_audio',
+                name: 'Mock Audio (Empty)',
+                type: 'audio',
+                category: 'Media Template',
+                isPlaceholder: true,
+                effects: {
+                    volume: 1, echo: 0.5, echoEnable: false, cartoon: 0.5, cartoonEnable: false,
+                    cinematic: 0.5, cinematicEnable: false, robot: 0.5, robotEnable: false,
+                    noiseRed: 0.5, noiseRedEnable: false
+                }
+            },
             // --- SCENE COMP PRESETS ---
             {
                 id: 'preset_scene_comp',
@@ -9177,6 +9189,21 @@
             const autoCount = (clip.volumeAutomation || []).length;
 
             const audioHTML = 
+                (clip.isPlaceholder ? `
+                <details id="cardAudioSource" class="group bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 shadow-sm rounded-lg shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'} overflow-hidden flex flex-col" open>
+                    <summary class="flex justify-between items-center font-bold cursor-pointer p-2.5 bg-surface-50/50 dark:bg-surface-800 text-sm text-surface-800 dark:text-surface-200 select-none">
+                        <div class="flex items-center gap-2"><i data-lucide="upload" class="w-4 h-4 text-brand-500"></i> Load Audio</div>
+                    </summary>
+                    <div class="p-3 bg-white dark:bg-surface-800 flex flex-col gap-3">
+                        <div class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Source</div>
+                        <span class="text-xs font-bold text-surface-800 dark:text-surface-100 block break-all bg-surface-50 dark:bg-surface-900/50 p-2 rounded border border-surface-200 dark:border-surface-700 shadow-sm">Mock audio — no file loaded yet</span>
+                        <label class="cursor-pointer bg-brand-500 hover:bg-brand-600 text-white px-3 py-2 rounded text-xs font-bold transition-colors flex items-center justify-center gap-2 shadow-sm w-full">
+                            <i data-lucide="upload" class="w-3.5 h-3.5"></i> Load Audio File
+                            <input type="file" accept="audio/*,video/*" class="hidden" onchange="replaceClipSource('${clip.id}', this.files)">
+                        </label>
+                        <p class="text-[9px] text-surface-500 dark:text-surface-300 leading-relaxed">Pick a sound file to turn this placeholder into a real audio clip — the waveform, duration, trim and fades appear automatically.</p>
+                    </div>
+                </details>` : '') +
                 `<details id="cardAudioAutoDuck" class="group bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 shadow-sm rounded-lg shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'} overflow-hidden flex flex-col" open>
                     <summary class="flex justify-between items-center font-bold cursor-pointer p-2.5 bg-surface-50/50 dark:bg-surface-800 text-sm text-surface-800 dark:text-surface-200 select-none">
                         <div class="flex items-center gap-2"><i data-lucide="mic" class="w-4 h-4 text-brand-500"></i> Auto-Duck</div>
@@ -9988,6 +10015,7 @@
             if (clip.type === 'audio') {
                 if (isHorizontal) {
                     const navItems = [
+                        ...(clip.isPlaceholder ? [{ id: 'cardAudioSource', name: 'Load Audio', icon: 'upload' }] : []),
                         { id: 'cardAudioAutoDuck', name: 'Auto-Duck', icon: 'mic' },
                         { id: 'cardAudioVolumeDuck', name: 'Volume Duck', icon: 'volume-1' },
                         { id: 'cardAudioVolume', name: 'Volume', icon: 'volume-2' },
@@ -11612,6 +11640,61 @@
                 // Fresh source — reset any give-up/retry state from a previous broken URL
                 clip._videoRetries = 0;
                 clip._videoGiveUpAt = 0;
+            } else if (clip.type === 'audio') {
+                // Loading a file into a mock audio placeholder turns it into a real
+                // audio clip: decode the buffer, compute the waveform peaks, and let
+                // the clip's envelope (trim/fades/speed/reverse) keep working from the
+                // new source window.
+                ensureAudioContext();
+                try {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+                    clip.buffer = audioBuffer;
+                    const pps = 100;
+                    const step = Math.floor(audioBuffer.sampleRate / pps);
+                    const data = audioBuffer.getChannelData(0);
+                    const peaks = [];
+                    for (let i = 0; i < data.length; i += step) {
+                        let max = 0, min = 0;
+                        for (let j = 0; j < step && i + j < data.length; j++) {
+                            const val = data[i + j];
+                            if (val > max) max = val;
+                            if (val < min) min = val;
+                        }
+                        peaks.push({ max, min });
+                    }
+                    clip.peaks = peaks;
+                    clip.peaksPerSecond = pps;
+                    clip.maxDuration = audioBuffer.duration;
+                    clip.duration = Math.max(0.1, audioBuffer.duration);
+                    clip.sourceOffset = 0;
+                    delete clip.trimStart;
+                    delete clip.trimEnd;
+                    delete clip.reverse;
+                    unbakeReverseBuffer(clip);
+                    const audioEl = new Audio(objectUrl);
+                    audioEl.crossOrigin = "anonymous";
+                    clip.audioEl = audioEl;
+                    clip.fileUrl = objectUrl;
+                    clip.title = file.name;
+                    clip.isPlaceholder = false;
+                    clip._audioRetries = 0;
+                    // Rebuild the effect chain for the new source so playback is clean.
+                    if (clip.audioNodes) {
+                        try { clip.audioNodes.source.disconnect(); } catch (e) {}
+                        clip.audioNodes = null;
+                    }
+                    buildAudioGraph(clip);
+                    applyAudioEffects(clip);
+                    if (clip.start + clip.duration > State.duration) {
+                        State.duration = Math.ceil(clip.start + clip.duration + 10);
+                        updateTimelineWidth();
+                    }
+                } catch (err) {
+                    console.warn('Failed to decode audio for mock clip:', err);
+                    URL.revokeObjectURL(objectUrl);
+                    return;
+                }
             }
 
             calcOverlaps();
@@ -11839,6 +11922,9 @@
                     <div class="flex items-center gap-2">
                         <button onclick="toggleAudioLibAutoplay()" class="p-1.5 rounded transition-colors ${State.audioLibAutoplay ? 'bg-brand-50 text-brand-500 dark:bg-brand-500/20' : 'text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800'}" title="Toggle Autoplay on Selection">
                             <i data-lucide="headphones" class="w-4 h-4"></i>
+                        </button>
+                        <button onclick="addMockAudioClip()" class="bg-surface-100 dark:bg-surface-800 hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-600 dark:text-surface-300 px-3 py-1.5 rounded-md text-xs font-bold transition-colors flex items-center gap-2" title="Add an empty audio placeholder to the timeline — load a file into it from its Properties tab">
+                            <i data-lucide="music" class="w-3 h-3"></i> Mock
                         </button>
                         <label class="cursor-pointer bg-brand-500 hover:bg-brand-600 text-white px-3 py-1.5 rounded-md text-xs font-bold transition-colors flex items-center gap-2">
                             <i data-lucide="upload" class="w-3 h-3"></i> Import
@@ -12247,6 +12333,39 @@
             renderClips();
             drawCanvas();
         }
+
+        // Add an empty placeholder audio clip — no buffer yet, so it renders as a
+        // dashed "load audio" mock on the timeline. The user loads a real file into
+        // it via the Load Audio card in the Properties tab (replaceClipSource).
+        window.addMockAudioClip = function() {
+            const duration = 5;
+            let audioTargetTrackId = getAvailableTrack('audio', State.currentTime, duration);
+            let targetTrack = State.tracks.find(t => t.id === audioTargetTrackId);
+            const clip = {
+                id: 'c_' + Date.now() + Math.random().toString(36).substr(2, 5),
+                type: 'audio',
+                title: 'Mock Audio',
+                duration: duration,
+                start: State.currentTime,
+                sourceOffset: 0,
+                speed: 1,
+                maxDuration: 3600,
+                trackId: audioTargetTrackId,
+                colorIndex: targetTrack ? targetTrack.colorIndex : 1,
+                isPlaceholder: true,
+                effects: { volume: 1, echo: 0.5, echoEnable: false, cartoon: 0.5, cartoonEnable: false, cinematic: 0.5, cinematicEnable: false, robot: 0.5, robotEnable: false, noiseRed: 0.5, noiseRedEnable: false }
+            };
+            State.clips.push(clip);
+            State.selectedClipId = clip.id;
+            State.multiSelectedClipIds = [clip.id];
+            if (State.currentTime + duration > State.duration) {
+                State.duration = Math.ceil(State.currentTime + duration + 10);
+                updateTimelineWidth();
+            }
+            calcOverlaps();
+            renderClips();
+            updateSidebarPanel();
+        };
 
         // ─────────────────────────────────────────────────────────────────────────────
         //  ELEMENT SFX — embedded sound on text / shape / image / math clips
@@ -18711,6 +18830,17 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 el.style.backgroundColor = palette.bg;
                 el.style.borderColor = palette.border;
 
+                // Mock audio: no buffer/peaks yet — dashed border + faint look so it
+                // reads as an empty placeholder, not a broken clip. Loading a file
+                // through the Source card clears isPlaceholder and restores the solid
+                // waveform rendering.
+                const isMockAudio = clip.type === 'audio' && clip.isPlaceholder && !clip.buffer && !(clip.peaks && clip.peaks.length > 0);
+                if (isMockAudio) {
+                    el.style.borderStyle = 'dashed';
+                    el.style.borderWidth = '1.5px';
+                    el.style.opacity = '0.85';
+                }
+
                 // Image thumbnails on timeline clips — reuse the already-loaded imageEl (no extra fetch);
                 // fall back to fileUrl so internet-URL images still preview (CSS backgrounds bypass CORS,
                 // unlike the canvas-facing imageEl which may be blocked by the remote server).
@@ -18955,6 +19085,11 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     ${textPreviewHtml}
                     ${shapePreviewHtml}
                     ${(isAudioClip ? hasWaveform : (hasSfxBand && hasWaveform)) ? `<canvas class="waveform-canvas absolute top-0 bottom-0 z-10 ${isAudioClip ? 'opacity-90' : 'opacity-40'}"></canvas>` : ''}
+                    ${isMockAudio ? `
+                    <div class="absolute inset-0 flex items-center justify-center gap-1.5 z-10 pointer-events-none select-none px-2" style="padding-top: 14px;">
+                        <i data-lucide="music" class="w-3 h-3 shrink-0" style="color: ${palette.text}"></i>
+                        <span class="text-[9px] font-bold truncate" style="color: ${palette.text}">Load audio — Source card</span>
+                    </div>` : ''}
                     ${keyframeDiamondsHtml}
                 `;
 
