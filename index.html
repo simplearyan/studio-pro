@@ -11702,12 +11702,29 @@
                 clip.peaks = peaks;
                 clip.peaksPerSecond = pps;
                 clip.maxDuration = audioBuffer.duration;
-                clip.duration = Math.max(0.1, audioBuffer.duration);
-                clip.sourceOffset = 0;
-                delete clip.trimStart;
-                delete clip.trimEnd;
-                delete clip.reverse;
-                unbakeReverseBuffer(clip);
+                if (clip._reimportRestore) {
+                    // Re-import of a real clip (restored as missing): keep its saved
+                    // window — split point, trim, fades, reverse — and just swap the
+                    // source buffer. Clamp so the window fits the new file.
+                    if (clip.sourceOffset == null) clip.sourceOffset = 0;
+                    clip.sourceOffset = Math.min(Math.max(0, clip.sourceOffset), Math.max(0, audioBuffer.duration - 0.05));
+                    const avail = Math.max(0.1, audioBuffer.duration - clip.sourceOffset);
+                    if (clip.duration == null) clip.duration = avail;
+                    clip.duration = Math.min(Math.max(0.1, clip.duration), avail);
+                    if (clip.trimStart != null && clip.trimEnd != null) {
+                        const span = Math.max(0.05, audioBuffer.duration);
+                        clip.trimEnd = Math.min(clip.trimEnd, span);
+                        clip.trimStart = Math.min(clip.trimStart, Math.max(0, clip.trimEnd - 0.05));
+                    }
+                } else {
+                    // Fresh mock placeholder → take the full source window.
+                    clip.duration = Math.max(0.1, audioBuffer.duration);
+                    clip.sourceOffset = 0;
+                    delete clip.trimStart;
+                    delete clip.trimEnd;
+                    delete clip.reverse;
+                    unbakeReverseBuffer(clip);
+                }
                 const audioEl = new Audio(objectUrl);
                 audioEl.crossOrigin = "anonymous";
                 clip.audioEl = audioEl;
@@ -11809,18 +11826,12 @@
                 clip._videoRetries = 0;
                 clip._videoGiveUpAt = 0;
                 // A video and its extracted audio track share one source file — if the
-                // audio companion is still a placeholder (missing media), re-link it from
-                // the same file so a single re-import restores the pair. Covers explicit
-                // links and legacy projects saved before linking existed.
+                // audio companion is still missing, restore it from the same file so a
+                // single re-import brings the pair back. The saved link state is left
+                // untouched: a pair that was deliberately unlinked stays unlinked.
                 const _comp = findAudioCompanion(clip);
                 if (_comp) {
-                    const _ok = await loadAudioFileIntoClip(_comp, file, objectUrl, { titleSuffix: ' (Audio)' });
-                    if (_ok) {
-                        clip.linkedClipIds = clip.linkedClipIds || [];
-                        _comp.linkedClipIds = _comp.linkedClipIds || [];
-                        if (!clip.linkedClipIds.includes(_comp.id)) clip.linkedClipIds.push(_comp.id);
-                        if (!_comp.linkedClipIds.includes(clip.id)) _comp.linkedClipIds.push(clip.id);
-                    }
+                    await loadAudioFileIntoClip(_comp, file, objectUrl, { titleSuffix: ' (Audio)' });
                 }
             } else if (clip.type === 'audio') {
                 // Loading a file into a mock audio placeholder turns it into a real
@@ -22314,6 +22325,13 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             if ((clip.type === 'video' || clip.type === 'audio' || clip.type === 'image') && !clip.isPlaceholder && !clip._mdMock) {
                 clip.isPlaceholder = true;
                 clip._missingMedia = true;
+                // Marks a real clip that needs its source re-imported (as opposed to a
+                // fresh mock placeholder). loadAudioFileIntoClip uses this to preserve
+                // the clip's saved window (split point, trim, fades, reverse) instead
+                // of resetting to the full source duration — a clip can be fed more
+                // than once per re-import, so the transient _missingMedia flag isn't
+                // enough.
+                clip._reimportRestore = true;
                 clip.fileName = c.fileName || c.title;
                 delete clip.fileUrl;
             }
@@ -22679,13 +22697,23 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             const unmatched = [];
             for (const f of files) {
                 const base = normFileName(f.name);
-                const idx = pool.findIndex(c => normFileName(c.fileName || c.title) === base);
-                if (idx >= 0) { matched.push({ clip: pool[idx], file: f }); pool.splice(idx, 1); }
-                else unmatched.push(f.name);
+                const firstIdx = pool.findIndex(c => normFileName(c.fileName || c.title) === base);
+                if (firstIdx < 0) { unmatched.push(f.name); continue; }
+                // One source file can back several clips — split halves and the linked
+                // audio all share the same base name — so feed every still-missing clip
+                // that matches, not just the first.
+                while (true) {
+                    const idx = pool.findIndex(c => normFileName(c.fileName || c.title) === base);
+                    if (idx < 0) break;
+                    matched.push({ clip: pool[idx], file: f });
+                    pool.splice(idx, 1);
+                }
             }
 
             let ok = 0, failed = 0;
             const linkedDone = new Set();
+            const matchedIds = new Set(matched.map(m => m.clip.id));
+            const missingBefore = new Set(missingMediaClips().map(c => c.id));
             for (const m of matched) {
                 try {
                     await replaceClipSource(m.clip.id, [m.file]);
@@ -22693,25 +22721,64 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     ok++;
                 } catch (e) { failed++; }
             }
-            // Linked companions (video + its extracted audio track) share the same
-            // source file — feed it to any still-missing partner after the name pass.
-            // Works both ways: a matched video feeds its audio companion, and a matched
-            // audio companion feeds its video (only when the file is actually a video).
+            // Companions (a video and its extracted audio track) share one source
+            // file — feed any still-missing partner after the name pass. Works both
+            // ways, whether the pair is explicitly linked or just matched by name
+            // (legacy projects saved before linking existed): a matched video feeds
+            // its audio companion, and a matched audio companion feeds its video
+            // (only when the file is actually a video).
+            const fedCompanions = [];
             for (const m of matched) {
                 const isVideoFile = (m.file.type || '').startsWith('video/');
-                for (const lid of (m.clip.linkedClipIds || [])) {
-                    const lc = State.clips.find(c => c.id === lid);
-                    if (!lc || linkedDone.has(lc.id) || !lc._missingMedia) continue;
-                    if ((m.clip.type === 'video' && lc.type === 'audio') || (m.clip.type === 'audio' && lc.type === 'video' && isVideoFile)) {
+                const base = normFileName(m.clip.fileName || m.clip.title);
+                const candidates = [];
+                if (m.clip.type === 'video') {
+                    for (const lid of (m.clip.linkedClipIds || [])) {
+                        const lc = State.clips.find(c => c.id === lid);
+                        if (lc && lc.type === 'audio' && !candidates.includes(lc)) candidates.push(lc);
+                    }
+                    for (const lc of State.clips) {
+                        if (lc.type === 'audio' && !candidates.includes(lc) &&
+                            normFileName(lc.fileName || lc.title) === base) candidates.push(lc);
+                    }
+                } else if (m.clip.type === 'audio' && isVideoFile) {
+                    for (const lid of (m.clip.linkedClipIds || [])) {
+                        const lc = State.clips.find(c => c.id === lid);
+                        if (lc && lc.type === 'video' && !candidates.includes(lc)) candidates.push(lc);
+                    }
+                    for (const lc of State.clips) {
+                        if (lc.type === 'video' && !candidates.includes(lc) &&
+                            normFileName(lc.fileName || lc.title) === base) candidates.push(lc);
+                    }
+                }
+                for (const lc of candidates) {
+                    if (lc.id === m.clip.id || linkedDone.has(lc.id) || !lc._missingMedia) continue;
+                    linkedDone.add(lc.id);
+                    try {
+                        await replaceClipSource(lc.id, [m.file]);
+                        lc._missingMedia = false;
+                        // No link-writing here: re-import must preserve the saved link
+                        // state, so a deliberately-unlinked pair stays unlinked.
+                        fedCompanions.push({ clipId: lc.id, toType: lc.type, fromTitle: m.clip.fileName || m.clip.title });
+                    } catch (e) { failed++; }
+                }
+            }
+            // replaceClipSource also feeds a video's audio companion internally (via
+            // findAudioCompanion) — count those in the summary too, so a video
+            // re-import that restored its audio shows both instead of undercounting.
+            for (const m of matched) {
+                if (m.clip.type !== 'video') continue;
+                const base = normFileName(m.clip.fileName || m.clip.title);
+                for (const lc of State.clips) {
+                    if (lc.type === 'audio' && !matchedIds.has(lc.id) && !linkedDone.has(lc.id) &&
+                        missingBefore.has(lc.id) && !lc._missingMedia && lc.buffer &&
+                        normFileName(lc.fileName || lc.title) === base) {
                         linkedDone.add(lc.id);
-                        try {
-                            await replaceClipSource(lc.id, [m.file]);
-                            lc._missingMedia = false;
-                            ok++;
-                        } catch (e) { failed++; }
+                        fedCompanions.push({ clipId: lc.id, toType: 'audio', fromTitle: m.clip.fileName || m.clip.title });
                     }
                 }
             }
+            ok += fedCompanions.length;
 
             calcOverlaps();
             renderClips();
@@ -22726,6 +22793,12 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 if (unmatched.length) parts.push(fromFolder
                     ? `${unmatched.length} unmatched (not in project)`
                     : `${unmatched.length} unmatched (${escapeHtmlBrief(unmatched.slice(0, 3).join(', '))}${unmatched.length > 3 ? '…' : ''})`);
+                if (fedCompanions.length) {
+                    const audioN = fedCompanions.filter(f => f.toType === 'audio').length;
+                    const videoN = fedCompanions.length - audioN;
+                    if (audioN) parts.push(`${audioN} audio track${audioN !== 1 ? 's' : ''} linked from video`);
+                    if (videoN) parts.push(`${videoN} video linked from audio`);
+                }
                 const lastFolderBtn = await lastReimportFolderBtnHtml();
                 body.innerHTML = `
                     <div class="rounded-lg bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-700/40 px-3 py-2.5 text-xs font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
