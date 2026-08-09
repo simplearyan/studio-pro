@@ -11547,7 +11547,7 @@
             if (!menu) {
                 menu = document.createElement('div');
                 menu.id = 'clipContextMenu';
-                menu.className = 'absolute bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 shadow-xl rounded-lg py-1.5 z-[1000] min-w-[160px] text-xs font-semibold text-surface-800 dark:text-surface-200';
+                menu.className = 'fixed bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 shadow-xl rounded-lg py-1.5 z-[1000] min-w-[160px] text-xs font-semibold text-surface-800 dark:text-surface-200';
                 document.body.appendChild(menu);
             }
             
@@ -11619,6 +11619,14 @@
             
             menu.innerHTML = itemsHtml;
             lucide.createIcons({ scope: menu });
+            
+            // Clamp to the viewport so a right-click near the bottom or right edge
+            // (e.g. on a lower track) doesn't cut the menu off-screen — flip it up
+            // or left when it would overflow.
+            const rect = menu.getBoundingClientRect();
+            const margin = 8;
+            if (rect.right + margin > window.innerWidth) menu.style.left = `${Math.max(margin, window.innerWidth - rect.width - margin)}px`;
+            if (rect.bottom + margin > window.innerHeight) menu.style.top = `${Math.max(margin, window.innerHeight - rect.height - margin)}px`;
             
             const outsideClickListener = (e) => {
                 if (!menu.contains(e.target)) {
