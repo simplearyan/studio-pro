@@ -5923,10 +5923,24 @@
             const last = r[r.length - 1];
             return acc + clampRampSpeed(last.v) * Math.max(0, tt - last.t);
         }
-        // Source position of the playhead at clip-local time t.
+        // Source position of the playhead at clip-local time t. Reversed clips play
+        // their source window backwards: the timeline maps to the window END minus the
+        // speed integral. The mirror only applies to the video-element mapping (buffer
+        // audio is reverse-baked and plays its already-reversed buffer forward, so its
+        // paths use clipSourcePosRaw below).
         function clipSourcePos(clip, localT) {
-            return (clip.sourceOffset || 0) + rampIntegral(clip, Math.max(0, localT));
+            const t = Math.max(0, localT);
+            if (clip && clip.reverse && !clip.reverseBaked) {
+                const end = (clip.sourceOffset || 0) + rampIntegral(clip, Math.max(0, clip.duration || 0));
+                return Math.max(0, end - rampIntegral(clip, t));
+            }
+            return (clip.sourceOffset || 0) + rampIntegral(clip, t);
         }
+        // Buffer-space mapping (no reverse mirror): reverse-baked clips already had
+        // their source window mirrored into the reversed buffer at bake time, so the
+        // plain integral is the correct buffer position for audio scheduling, silence
+        // removal, and trim lockstep.
+        const clipSourcePosRaw = (clip, localT) => (clip.sourceOffset || 0) + rampIntegral(clip, Math.max(0, localT));
         // Timeline seconds needed to consume `sourceDelta` source seconds from the
         // clip start (inverse of the integral — bisection, called rarely). Deltas
         // beyond the clip's current integral extrapolate at the ramp's end speed
@@ -6175,6 +6189,101 @@
             clip.pitchOrigTrimEnd = undefined;
         }
 
+        // ── Reverse (CapCut-style play-backwards) ──
+        // Video elements can't play at a negative rate, so reversed video is re-seeked
+        // to the mirrored source position every frame (preview + export — see
+        // clipSourcePos above). Buffer audio can't either, so audio clips get a baked
+        // reversed copy of the buffer with the source window mirrored into reversed
+        // space — the clip then plays the reversed buffer forward, so trim / fades /
+        // speed ramps / volume automation / export all keep working unchanged.
+        function reverseAudioBuffer(buffer) {
+            const out = new AudioBuffer({ length: buffer.length, sampleRate: buffer.sampleRate, numberOfChannels: buffer.numberOfChannels });
+            for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+                const src = buffer.getChannelData(ch);
+                const dst = out.getChannelData(ch);
+                for (let i = 0, n = src.length; i < n; i++) dst[i] = src[n - 1 - i];
+            }
+            return out;
+        }
+
+        function bakeReverseBuffer(clip) {
+            if (!clip || !clip.buffer || clip.reverseBaked) return;
+            const orig = clip.buffer;
+            const L = orig.duration;
+            const win = rampIntegral(clip, Math.max(0, clip.duration || 0));
+            const off = clip.sourceOffset !== undefined ? clip.sourceOffset : 0;
+            clip.revOrig = { buffer: orig, sourceOffset: off, trimStart: clip.trimStart, trimEnd: clip.trimEnd };
+            const rev = reverseAudioBuffer(orig);
+            clip.buffer = rev;
+            clip.reverseBaked = true;
+            // Mirror the source window into reversed space: orig position p ↦ L − p.
+            clip.sourceOffset = Math.max(0, Math.min(L, L - (off + win)));
+            if (clip.revOrig.trimStart !== undefined) {
+                clip.trimStart = Math.max(0, Math.min(L, L - (clip.revOrig.trimEnd !== undefined ? clip.revOrig.trimEnd : clip.revOrig.trimStart)));
+            }
+            if (clip.revOrig.trimEnd !== undefined) {
+                clip.trimEnd = Math.max(0, Math.min(L, L - (clip.revOrig.trimStart !== undefined ? clip.revOrig.trimStart : clip.revOrig.trimEnd)));
+            }
+            // Refresh the waveform so the peaks show the reversed audio.
+            clip.peaks = computeBufferPeaks(rev, clip.peaksPerSecond || 100);
+        }
+
+        function unbakeReverseBuffer(clip) {
+            if (!clip || !clip.revOrig) return;
+            clip.buffer = clip.revOrig.buffer;
+            clip.sourceOffset = clip.revOrig.sourceOffset;
+            clip.trimStart = clip.revOrig.trimStart;
+            clip.trimEnd = clip.revOrig.trimEnd;
+            clip.reverseBaked = false;
+            delete clip.revOrig;
+            if (clip.buffer) clip.peaks = computeBufferPeaks(clip.buffer, clip.peaksPerSecond || 100);
+        }
+
+        window.setClipReverse = (clipId, on) => {
+            const targetIds = (State.multiSelectedClipIds && State.multiSelectedClipIds.length > 0 && State.multiSelectedClipIds.includes(clipId))
+                ? State.multiSelectedClipIds
+                : [clipId];
+            // Expand to linked groups so reversing a video also reverses its linked
+            // audio companion (and vice versa), like CapCut / Premiere grouped clips.
+            const expanded = new Set();
+            targetIds.forEach(id => {
+                const clip = State.clips.find(c => c.id === id);
+                if (clip) {
+                    expanded.add(clip.id);
+                    getLinkedClipsGroup(clip).forEach(c => expanded.add(c.id));
+                }
+            });
+            expanded.forEach(id => {
+                const clip = State.clips.find(c => c.id === id);
+                if (!clip || (clip.type !== 'video' && clip.type !== 'audio')) return;
+                const enable = !!on;
+                if (enable === !!clip.reverse) return;
+                // Reverse and the pitch bake are mutually exclusive (both swap the
+                // buffer) — drop the pitch bake when enabling reverse, mirroring the
+                // existing ramp/pitch exclusion.
+                if (enable && clip.pitchBaked) unbakePitchBuffer(clip);
+                clip.reverse = enable;
+                if (enable) {
+                    if (clip.buffer) bakeReverseBuffer(clip);
+                } else {
+                    unbakeReverseBuffer(clip);
+                }
+                // Stop a running live source so the next frame rebuilds it with the
+                // (possibly swapped) buffer and the new mapping.
+                if (clip.isPlaying && clip.sourceNode) {
+                    try { clip.sourceNode.stop(); clip.sourceNode.disconnect(); } catch (e) {}
+                    clip.sourceNode = null;
+                    clip.isPlaying = false;
+                }
+            });
+            calcOverlaps();
+            renderClips();
+            syncMediaElements();
+            drawCanvas();
+            if (typeof drawAllWaveforms === 'function') drawAllWaveforms();
+            updateSidebarPanel();
+        };
+
         window.setClipPreservePitch = (clipId, on) => {
             const targetIds = (State.multiSelectedClipIds && State.multiSelectedClipIds.length > 0 && State.multiSelectedClipIds.includes(clipId))
                 ? State.multiSelectedClipIds
@@ -6187,6 +6296,12 @@
                     // A speed ramp and the pitch bake are mutually exclusive (the bake
                     // assumes a constant rate) — drop the ramp when enabling the toggle.
                     if (Array.isArray(clip.speedRamp) && clip.speedRamp.length >= 2) clip.speedRamp = undefined;
+                    // Reverse and the pitch bake are also mutually exclusive (both swap
+                    // the buffer) — turning preserve-pitch off drops the reverse state.
+                    if (clip.reverse) {
+                        clip.reverse = false;
+                        unbakeReverseBuffer(clip);
+                    }
                     const spd = clipSpeed(clip);
                     bakePitchBuffer(clip, spd);
                 } else if (!enable && clip.pitchBaked) {
@@ -9263,6 +9378,16 @@
                                 <div class="w-8 h-[18px] bg-surface-300 dark:bg-surface-600 rounded-full peer-checked:bg-brand-500 peer-checked:bg-gradient-to-r peer-checked:from-brand-400 peer-checked:to-brand-500 transition-colors duration-200 relative after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:w-[14px] after:h-[14px] after:bg-white after:rounded-full after:shadow-sm after:transition-transform after:duration-200 peer-checked:after:translate-x-[14px]"></div>
                             </label>
                         </div>
+                        <div class="flex items-center justify-between gap-2 pt-1 border-t border-surface-200 dark:border-surface-700">
+                            <div class="flex flex-col gap-0.5 min-w-0">
+                                <span class="text-[10px] font-bold text-surface-800 dark:text-surface-200 flex items-center gap-1"><i data-lucide="rotate-ccw" class="w-3 h-3"></i> Reverse</span>
+                                <span class="text-[8.5px] text-surface-500 dark:text-surface-300 leading-tight">Play the clip backwards from the end of its source window. Not available with preserve pitch.</span>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer shrink-0">
+                                <input type="checkbox" class="sr-only peer" ${clip.reverse ? 'checked' : ''} onchange="setClipReverse('${clip.id}', this.checked);">
+                                <div class="w-8 h-[18px] bg-surface-300 dark:bg-surface-600 rounded-full peer-checked:bg-brand-500 peer-checked:bg-gradient-to-r peer-checked:from-brand-400 peer-checked:to-brand-500 transition-colors duration-200 relative after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:w-[14px] after:h-[14px] after:bg-white after:rounded-full after:shadow-sm after:transition-transform after:duration-200 peer-checked:after:translate-x-[14px]"></div>
+                            </label>
+                        </div>
                     </div>
                 </details>` +
                 `<details id="cardAudioPitch" class="group bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 shadow-sm rounded-lg shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'} overflow-hidden flex flex-col" open>
@@ -10000,6 +10125,16 @@
                                 </div>
                                 <p class="text-[10px] text-surface-500 dark:text-surface-300 leading-relaxed">Speeds up or slows down this clip. The timeline length changes to fit the same source material — split before changing speed to keep surrounding clips in place.</p>
                                 ${speedRampHTML(clip)}
+                                <div class="flex items-center justify-between gap-2 pt-1 border-t border-surface-200 dark:border-surface-700">
+                                    <div class="flex flex-col gap-0.5 min-w-0">
+                                        <span class="text-[10px] font-bold text-surface-800 dark:text-surface-200 flex items-center gap-1"><i data-lucide="rotate-ccw" class="w-3 h-3"></i> Reverse</span>
+                                        <span class="text-[8.5px] text-surface-500 dark:text-surface-300 leading-tight">Play the clip backwards from the end of its source window.</span>
+                                    </div>
+                                    <label class="relative inline-flex items-center cursor-pointer shrink-0">
+                                        <input type="checkbox" class="sr-only peer" ${clip.reverse ? 'checked' : ''} onchange="setClipReverse('${clip.id}', this.checked);">
+                                        <div class="w-8 h-[18px] bg-surface-300 dark:bg-surface-600 rounded-full peer-checked:bg-brand-500 peer-checked:bg-gradient-to-r peer-checked:from-brand-400 peer-checked:to-brand-500 transition-colors duration-200 relative after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:w-[14px] after:h-[14px] after:bg-white after:rounded-full after:shadow-sm after:transition-transform after:duration-200 peer-checked:after:translate-x-[14px]"></div>
+                                    </label>
+                                </div>
                             </div>
                         </details>
                     `;
@@ -17933,7 +18068,10 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 ...clip,
                 id: 'c_' + Date.now() + Math.random().toString(36).substr(2, 5),
                 start: time,
-                sourceOffset: clipSourcePos(clip, leftDuration),
+                // Reversed video mirrors the source window (playback re-seeks backwards);
+                // reverse-baked audio already lives in mirrored buffer space, so it uses
+                // the plain integral. Identical for forward clips.
+                sourceOffset: (clip.reverse && !clip.reverseBaked) ? clipSourcePos(clip, leftDuration) : clipSourcePosRaw(clip, leftDuration),
                 duration: rightDuration,
                 audioEl: newAudioEl,
                 videoEl: newVideoEl,
@@ -18184,7 +18322,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             const silentRegions = [];
             
             const startSample = Math.floor(clip.sourceOffset * sampleRate);
-            const endSample = Math.floor(clipSourcePos(clip, clip.duration) * sampleRate);
+            const endSample = Math.floor(clipSourcePosRaw(clip, clip.duration) * sampleRate);
             const blockSize = Math.floor(sampleRate * 0.01);
             
             for (let i = startSample; i < endSample; i += blockSize) {
@@ -18249,7 +18387,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             });
             
             const finalValidStart = currentSrcTime;
-            const finalValidEnd = clipSourcePos(clip, clip.duration);
+            const finalValidEnd = clipSourcePosRaw(clip, clip.duration);
             if (finalValidEnd > finalValidStart) {
                 const duration = hasSpeedRamp(clip)
                     ? (clipTimeForSource(clip, finalValidEnd - (clip.sourceOffset || 0)) - clipTimeForSource(clip, finalValidStart - (clip.sourceOffset || 0)))
@@ -18693,15 +18831,16 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 // isn't 1×. renderClips() is re-run by setClipSpeed, so it updates live.
                 let speedBadgeHtml = '';
                 const badgeBase = clipUserSpeed(clip);
-                if ((clip.type === 'video' || clip.type === 'audio') && (Math.abs(badgeBase - 1) > 0.001 || hasSpeedRamp(clip))) {
+                if ((clip.type === 'video' || clip.type === 'audio') && (Math.abs(badgeBase - 1) > 0.001 || hasSpeedRamp(clip) || clip.reverse)) {
                     const spd = badgeBase;
-                    // A ramp means the speed varies — prefix with a tilde.
-                    const label = (hasSpeedRamp(clip) ? '~' : '') + String(parseFloat(spd.toFixed(2))) + '×';
+                    // A ramp means the speed varies — prefix with a tilde; reversed
+                    // clips get a ↺ marker.
+                    const label = (clip.reverse ? '↺ ' : '') + (hasSpeedRamp(clip) ? '~' : '') + String(parseFloat(spd.toFixed(2))) + '×';
                     // Clean plain-text readout (no pill) that matches the clip title
                     // style — slightly larger + bolder with the clip's accent color so
                     // it reads as a speed marker at a glance.
                     speedBadgeHtml = `
-                    <span class="text-[11px] font-extrabold leading-none shrink-0" style="color: ${palette.wave}; text-shadow: 0 1px 2px rgba(0,0,0,0.45);" title="Speed ${label} — change it in the Speed card">${label}</span>
+                    <span class="text-[11px] font-extrabold leading-none shrink-0" style="color: ${palette.wave}; text-shadow: 0 1px 2px rgba(0,0,0,0.45);" title="${clip.reverse ? 'Reversed · ' : ''}Speed ${label.replace('↺ ', '')} — change it in the Speed card">${label}</span>
                 `;
                 }
 
@@ -20952,9 +21091,9 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 const winEnd = clip.trimEnd !== undefined ? clip.trimEnd : prevEnd;
                 if (Math.abs(winStart - prevStart) < 0.001) {
                     clip.trimStart = Math.min(bufDur, Math.max(0, clip.sourceOffset));
-                    clip.trimEnd = Math.min(bufDur, Math.max(clip.trimStart || 0, clipSourcePos(clip, clip.duration)));
+                    clip.trimEnd = Math.min(bufDur, Math.max(clip.trimStart || 0, clipSourcePosRaw(clip, clip.duration)));
                 } else if (Math.abs(winEnd - prevEnd) < 0.001) {
-                    clip.trimEnd = Math.min(bufDur, Math.max(clip.trimStart !== undefined ? clip.trimStart : clip.sourceOffset, clipSourcePos(clip, clip.duration)));
+                    clip.trimEnd = Math.min(bufDur, Math.max(clip.trimStart !== undefined ? clip.trimStart : clip.sourceOffset, clipSourcePosRaw(clip, clip.duration)));
                 }
             }
             
@@ -21538,7 +21677,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                             clip.sourceNode.buffer = clip.buffer;
                             clip.sourceNode.playbackRate.value = clipSpeed(clip);
                             const pos = Math.max(0, State.currentTime - clip.start);
-                            const targetTime = clipSourcePos(clip, pos);
+                            const targetTime = clipSourcePosRaw(clip, pos);
                             if (clipHasEnvelope(clip) || hasVolumeAutomation(clip)) {
                                 // Trimmed + faded timeline audio (e.g. extracted SFX): bound
                                 // the source to trimEnd and shape the fades on a dedicated
@@ -21663,21 +21802,33 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         
                         const targetTime = clipSourcePos(clip, State.currentTime - clip.start);
                         
-                        seekMediaEl(el, targetTime, 0.25);
-                        
-                        // Speed ramps: nudge the element's playback rate every frame so
-                        // the video accelerates/decelerates with the ramp (the per-frame
-                        // integral re-seek above keeps it frame-accurate).
-                        if (hasSpeedRamp(clip)) {
-                            const pitch = (clip.effects && clip.effects.pitch !== undefined) ? clip.effects.pitch : 1;
-                            el.playbackRate = Math.max(0.05, pitch * rampSpeedAt(clip, State.currentTime - clip.start));
-                        }
-                        
-                        if (el.paused) {
-                            const p = el.play();
-                            if (p !== undefined) {
-                                clip.playPromise = p;
-                                p.catch(e => { clip.playPromise = null; console.warn("Auto-play prevented:", e); });
+                        if (clip.reverse) {
+                            // Reversed video: the element can't play backwards, so hold
+                            // it paused and re-seek it to the mirrored source position
+                            // every frame — drawCanvas runs right after this sync pass and
+                            // paints the exact sought frame.
+                            if (!el.paused) {
+                                if (clip.playPromise) { clip.playPromise.then(() => el.pause()).catch(()=>{}); }
+                                else { el.pause(); }
+                            }
+                            seekMediaEl(el, targetTime, 0.001);
+                        } else {
+                            seekMediaEl(el, targetTime, 0.25);
+                            
+                            // Speed ramps: nudge the element's playback rate every frame so
+                            // the video accelerates/decelerates with the ramp (the per-frame
+                            // integral re-seek above keeps it frame-accurate).
+                            if (hasSpeedRamp(clip)) {
+                                const pitch = (clip.effects && clip.effects.pitch !== undefined) ? clip.effects.pitch : 1;
+                                el.playbackRate = Math.max(0.05, pitch * rampSpeedAt(clip, State.currentTime - clip.start));
+                            }
+                            
+                            if (el.paused) {
+                                const p = el.play();
+                                if (p !== undefined) {
+                                    clip.playPromise = p;
+                                    p.catch(e => { clip.playPromise = null; console.warn("Auto-play prevented:", e); });
+                                }
                             }
                         }
                     } else {
@@ -21686,7 +21837,9 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                             else { el.pause(); }
                         }
                         if (isUpcoming) {
-                            seekMediaEl(el, clip.sourceOffset);
+                            // Pre-seek to the clip's first frame — the mirrored window
+                            // start for reversed clips.
+                            seekMediaEl(el, clipSourcePos(clip, 0));
                         } else if (!State.isPlaying && State.currentTime >= clip.start && State.currentTime <= clip.start + clip.duration) {
                             const targetTime = clipSourcePos(clip, State.currentTime - clip.start);
                             seekMediaEl(el, targetTime);
@@ -22323,6 +22476,25 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             
             if (State.speakerNode) State.speakerNode.gain.value = 0;
             
+            // Reversed (baked) audio can't play through the media element — mix the
+            // reversed buffer through the clip's effect chain into masterStreamNode
+            // (the element stays paused → silent, so no double audio).
+            const scheduleStdReverseBuffer = (clip, localStart) => {
+                if (!clip || !clip.buffer || clip.stdRevNode) return;
+                const src = audioCtx.createBufferSource();
+                src.buffer = clip.buffer;
+                src.playbackRate.value = clipSpeed(clip);
+                const off = Math.min(Math.max(0, clipSourcePosRaw(clip, Math.max(0, localStart))), Math.max(0, clip.buffer.duration - 0.01));
+                const end = Math.min(clip.buffer.duration, clipSourcePosRaw(clip, Math.max(0, clip.duration)));
+                const remaining = Math.max(0, end - off);
+                const chain = (clip.audioNodes && clip.audioNodes.volume) ? clip.audioNodes.volume
+                    : (clip.audioNodes && clip.audioNodes.vocalPocket) ? clip.audioNodes.vocalPocket
+                    : (State.masterStreamNode || audioCtx.destination);
+                src.connect(chain);
+                src.start(0, off, remaining);
+                clip.stdRevNode = src;
+            };
+
             State.clips.forEach(clip => {
                 const el = clip.audioEl || clip.videoEl;
                 if (el && clip.start < endTime && (clip.start + clip.duration) > startTime) {
@@ -22330,11 +22502,14 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     applyAudioEffects(clip);
                     
                     const offset = Math.max(0, startTime - clip.start);
-                    el.currentTime = clipSourcePos(clip, offset);
-                    
-                    if (startTime >= clip.start) {
-                        const p = el.play();
-                        if (p !== undefined) { clip.playPromise = p; p.catch(e=>{}); }
+                    if (clip.reverse && clip.buffer) {
+                        scheduleStdReverseBuffer(clip, offset);
+                    } else {
+                        el.currentTime = clipSourcePos(clip, offset);
+                        if (startTime >= clip.start) {
+                            const p = el.play();
+                            if (p !== undefined) { clip.playPromise = p; p.catch(e=>{}); }
+                        }
                     }
                 }
             });
@@ -22359,18 +22534,31 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     if (el) {
                         // Start media if playhead reaches its start
                         if (State.currentTime >= clip.start && (State.currentTime - dt) < clip.start) {
-                            el.currentTime = clip.sourceOffset;
-                            const p = el.play();
-                            if (p !== undefined) { clip.playPromise = p; p.catch(e=>{}); }
+                            if (clip.reverse && clip.buffer) {
+                                scheduleStdReverseBuffer(clip, 0);
+                            } else {
+                                // Mirrored for reversed video clips (element re-seeked
+                                // backwards by the sync pass below).
+                                el.currentTime = clipSourcePos(clip, 0);
+                                const p = el.play();
+                                if (p !== undefined) { clip.playPromise = p; p.catch(e=>{}); }
+                            }
                         }
-                        // Speed ramps: drive the element rate live during capture.
-                        if (el && !el.paused && hasSpeedRamp(clip)) {
+                        // Speed ramps: drive the element/buffer rate live during capture.
+                        if (hasSpeedRamp(clip)) {
                             const pitch = (clip.effects && clip.effects.pitch !== undefined) ? clip.effects.pitch : 1;
-                            el.playbackRate = Math.max(0.05, pitch * rampSpeedAt(clip, Math.max(0, State.currentTime - clip.start)));
+                            const rate = Math.max(0.05, pitch * rampSpeedAt(clip, Math.max(0, State.currentTime - clip.start)));
+                            if (clip.stdRevNode) { try { clip.stdRevNode.playbackRate.value = rate; } catch (e) {} }
+                            if (el && !el.paused) { el.playbackRate = rate; }
                         }
                         // Stop media if playhead passes it
                         if (State.currentTime > clip.start + clip.duration) {
-                            if (!el.paused) {
+                            if (clip.reverse && clip.buffer) {
+                                if (clip.stdRevNode) {
+                                    try { clip.stdRevNode.stop(); clip.stdRevNode.disconnect(); } catch (e) {}
+                                    clip.stdRevNode = null;
+                                }
+                            } else if (!el.paused) {
                                 if (clip.playPromise) { clip.playPromise.then(() => el.pause()).catch(()=>{}); }
                                 else { el.pause(); }
                             }
@@ -22572,7 +22760,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         // (with a speed ramp, the integral of the ramp).
                         let sourceOffset = isSfx
                             ? Math.max(0, clipStart - c.start)
-                            : clipSourcePos(c, clipStart - c.start);
+                            : clipSourcePosRaw(c, clipStart - c.start);
                         
                         const gainNode = offlineCtx.createGain();
                         const vol = isSfx
@@ -23012,7 +23200,9 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         if (Math.abs(drift) <= syncThreshold) continue;
                         // Fast mode captures faster than real time — the element is typically
                         // BEHIND; correct only when AHEAD (behind resolves as capture pauses).
-                        if (State.exportFastMode && drift < 0) continue;
+                        // Reversed clips always drift (the target moves backwards while the
+                        // element plays forward) so they must re-seek every frame regardless.
+                        if (State.exportFastMode && drift < 0 && !clip.reverse) continue;
                         await seekExportVideo(entry.el, syncTarget, syncThreshold);
                     }
                 }
