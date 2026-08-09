@@ -10847,16 +10847,16 @@
             
             const activeFilterCount = filtered.length;
             
-            // Helper: pick a category label + icon + gradient for a preset (with thumbnail fallback)
+            // Helper: pick a category label + icon + plain clip-theme color (PALETTES) for a preset (with thumbnail fallback)
             const presetMeta = (p) => {
-                if (p.category === 'Math') return { cat: 'Math', icon: 'sigma', grad: 'from-violet-500 to-fuchsia-500' };
-                if (p.category === 'Keyframe Path') return { cat: 'Keyframes', icon: 'key', grad: 'from-cyan-500 to-blue-600' };
-                if (p.type === 'text') return { cat: 'Text', icon: 'type', grad: 'from-indigo-500 to-violet-500' };
-                if (p.type === 'shape') return { cat: 'Shapes', icon: 'shapes', grad: 'from-emerald-500 to-teal-600' };
-                if (p.type === 'image') return { cat: 'Image', icon: 'image', grad: 'from-amber-500 to-orange-600' };
-                if (p.type === 'video') return { cat: 'Video', icon: 'video', grad: 'from-rose-500 to-red-600' };
-                if (p.type === 'scene') return { cat: 'Scene', icon: 'clapperboard', grad: 'from-fuchsia-500 to-pink-600' };
-                return { cat: p.type || 'Media', icon: 'film', grad: 'from-slate-500 to-slate-700' };
+                if (p.category === 'Math') return { cat: 'Math', icon: 'sigma', color: '#e9d5ff', accent: '#9333ea' };
+                if (p.category === 'Keyframe Path') return { cat: 'Keyframes', icon: 'key', color: '#e5e7eb', accent: '#4b5563' };
+                if (p.type === 'text') return { cat: 'Text', icon: 'type', color: '#bfdbfe', accent: '#2563eb' };
+                if (p.type === 'shape') return { cat: 'Shapes', icon: 'shapes', color: '#bbf7d0', accent: '#16a34a' };
+                if (p.type === 'image') return { cat: 'Image', icon: 'image', color: '#fef08a', accent: '#ca8a04' };
+                if (p.type === 'video') return { cat: 'Video', icon: 'video', color: '#fecaca', accent: '#dc2626' };
+                if (p.type === 'scene') return { cat: 'Scene', icon: 'clapperboard', color: '#e9d5ff', accent: '#9333ea' };
+                return { cat: p.type || 'Media', icon: 'film', color: '#e5e7eb', accent: '#4b5563' };
             };
             
             const escapeHtml = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -10929,7 +10929,7 @@
                     
                     const thumbContent = p.thumbnail
                         ? `<img src="${p.thumbnail}" alt="" loading="lazy">`
-                        : `<div class="thumb-fallback bg-gradient-to-br ${meta.grad}"><i data-lucide="${meta.icon}" class="w-7 h-7 text-white"></i></div>`;
+                        : `<div class="thumb-fallback" style="background-color: ${meta.color}"><i data-lucide="${meta.icon}" class="w-7 h-7" style="color: ${meta.accent}"></i></div>`;
                     
                     html += `
                         <div class="preset-card" onclick="addPresetToTimeline('${p.id}')" title="${escapeHtml(p.name)}">
