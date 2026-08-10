@@ -175,9 +175,43 @@ same clean fields, `vite build` ✓, console clean.
   key got a `duckThreshold2` id to avoid a collision.
 - `inputGoogleFont` and the hidden file inputs (replace source, texture, SFX) got `aria-label`s.
 
-**Not done (Phase 3 of the plan):** the interactive-switch-inside-`<summary>` fix — that's a
-separate structural change (move the header switch out of the `<summary>` DOM) and is NOT part
-of Phases 1–2. It stays for the next pass.
+**Phase 3 (the only error group) is done too — see §5c below.**
+
+---
+
+## 5c. Result — Phase 3 implemented (Aug 2026)
+
+Moved every interactive child OUT of the `<summary>` DOM (Option A from the plan): the header
+switch/button is now rendered as an absolutely-positioned sibling of the summary, pinned to
+the header band (`top-0 h-11` / `h-10`, `flex items-center`), so it stays *visually* in the
+header row but is no longer a descendant of the toggle-able `<summary>`.
+
+**Before → after (live DevTools-style scan of the whole document):**
+
+| Check | Before | After |
+|---|---:|---:|
+| Interactive elements inside `<summary>` | 51 | **0** |
+
+**Where the fix landed (index.html):**
+- `propCard` builder — the shared `rightSlot` (header switch / Reset button) moved out of the
+  summary; `details` gained `relative`. This single fix covers every migrated card (Color,
+  Stroke, Crop, Mask, Shadow, Texture, Extrude, …).
+- `letterStylesHTML` — the Clear-all button moved out.
+- `textBgHTML` Background card — the `bgEnable` toggle moved out.
+- `createAudioAccordion` builder — the `enableKey` toggle moved out.
+- Auto-Duck + Smart Volume Duck cards — the toggle buttons moved out.
+- `headingFxGroup` (Markdown) — the enable toggle moved out.
+- Markdown Heading + Text Style cards — the Style/Effects tab-switcher pills moved out
+  (positioned between the title and chevron).
+
+**Verified live:**
+- 0 interactive-in-summary across video/text/shape × all sub-tabs, the whole audio panel,
+  and the Markdown style tab — in both vertical (left) and horizontal (bottom) docks.
+- Regression: stroke toggle flips `strokeEnable` via click + keyboard (change event), the
+  Markdown fx toggle flips its config value, the Style/Effects pills still switch tabs, the
+  chevron still collapses accordions, `vite build` ✓, console clean.
+- Visual: switches/Reset buttons sit in the header row next to the chevron (screenshot-confirmed);
+  no layout shift; horizontal-dock cards keep the switch at the right edge.
 
 ---
 
