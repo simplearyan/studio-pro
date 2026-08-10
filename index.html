@@ -8145,9 +8145,12 @@
                 </div>
             `;
 
-            // Range input with a live fill track that follows the thumb
-            const propSlider = (key, val, min, max, step, fmt) => `
-                <input type="range" min="${min}" max="${max}" ${step ? `step="${step}"` : ''} value="${val}" class="w-full custom-slider" oninput="updateSliderFill(this); setClipEffect('${clip.id}', '${key}', this.value); this.previousElementSibling.querySelector('span:last-child > span').textContent = ${fmt}; drawCanvas();">
+            // Range input with a live fill track that follows the thumb.
+            // opts.setter overrides the default setClipEffect write (e.g. speed uses
+            // setClipSpeed); opts.onChange adds an extra change handler (e.g. the
+            // speed slider re-renders the panel when the timeline length changes).
+            const propSlider = (key, val, min, max, step, fmt, opts = {}) => `
+                <input type="range" min="${min}" max="${max}" ${step ? `step="${step}"` : ''} value="${val}" class="w-full custom-slider" oninput="updateSliderFill(this); ${opts.setter || `setClipEffect('${clip.id}', '${key}', this.value)`}; this.previousElementSibling.querySelector('span:last-child > span').textContent = ${fmt}; ${opts.setter ? '' : 'drawCanvas();'}" ${opts.onChange ? `onchange="${opts.onChange}"` : ''}>
             `;
 
             // Compact on/off switch for a card header (stays clickable when the
@@ -8162,7 +8165,10 @@
             // Labeled switch row inside a card body (CapCut "toggle with hint")
             const toggleRow = (label, hint, checked, onchange, cls = '') => `
                 <div class="flex items-center justify-between gap-2 ${cls}">
-                    <span class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">${label}</span>
+                    <div class="flex flex-col gap-0.5 min-w-0">
+                        <span class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">${label}</span>
+                        ${hint ? `<span class="text-[8.5px] text-surface-500 dark:text-surface-300 leading-tight">${hint}</span>` : ''}
+                    </div>
                     <label class="relative inline-flex items-center cursor-pointer shrink-0">
                         <input type="checkbox" class="sr-only peer" ${checked ? 'checked' : ''} onchange="${onchange}">
                         <div class="w-7 h-4 bg-surface-300 dark:bg-surface-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:peer-checked:bg-brand-500 peer-checked:bg-brand-500"></div>
@@ -8868,19 +8874,7 @@
                 const texFitting = fx.textureFitting || 'tile';
                 const texScale = fx.textureScale !== undefined ? fx.textureScale : 100;
                 const texSrc = fx.textureSrc || '';
-                textureHTML = `
-                    <details id="cardTexture" class="group bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 shadow-sm rounded-lg shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'} overflow-hidden flex flex-col" open>
-                        <summary class="flex items-center justify-between p-3 ${isHorizontal ? '' : 'cursor-pointer'} list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700 " onclick="${isHorizontal ? 'event.preventDefault();' : ''}">
-                            <div class="text-sm font-bold text-surface-800 dark:text-surface-200 flex items-center gap-2"><i data-lucide="grid" class="w-4 h-4 text-surface-500 dark:text-surface-300"></i> Texture</div>
-                            <div class="flex items-center gap-2">
-                                <label class="relative inline-flex items-center cursor-pointer" onclick="event.stopPropagation()">
-                                    <input type="checkbox" class="sr-only peer" ${texEnable ? 'checked' : ''} onchange="setClipEffect('${clip.id}', 'textureEnable', this.checked); updateSidebarPanel();">
-                                    <div class="w-7 h-4 bg-surface-300 dark:bg-surface-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:peer-checked:bg-brand-500 peer-checked:bg-brand-500"></div>
-                                </label>
-                                ${isHorizontal ? '' : '<i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>'}
-                            </div>
-                        </summary>
-                        <div class="p-3 flex flex-col gap-2.5 bg-surface-50 dark:bg-surface-900/50 flex-1">
+                textureHTML = propCard('cardTexture', 'grid', 'Texture', `
                             <div>
                                 <label class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">Presets</label>
                                 <div class="grid grid-cols-6 gap-1.5">
@@ -8897,13 +8891,7 @@
                                     <button onclick="const _c = State.clips.find(c => c.id === '${clip.id}'); if (_c) { _c.effects.textureSrc = null; _c.effects.textureEnable = false; _c._textureImg = null; _c._textureSrcLoaded = null; } updateSidebarPanel(); drawCanvas();" class="absolute top-0 right-0 bg-red-500 text-white text-[8px] leading-none w-4 h-4 flex items-center justify-center hover:bg-red-600" title="Remove texture">&times;</button>
                                 </div>
                             </div>
-                            <div>
-                                <div class="flex justify-between items-center mb-1.5">
-                                    <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Opacity</label>
-                                    <span class="text-xs font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-1.5 py-0.5 rounded shadow-sm">${texOpacity}%</span>
-                                </div>
-                                <input type="range" min="0" max="100" value="${texOpacity}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'textureOpacity', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + '%'; drawCanvas();">
-                            </div>
+                            ${propRow('Opacity', propSlider('textureOpacity', texOpacity, 0, 100, 1, "this.value + '%'", { onChange: 'updateSidebarPanel()' }), texOpacity + '%', { reset: propReset('textureOpacity', texOpacity, 50) })}
                             <div class="grid grid-cols-2 gap-2">
                                 <div>
                                     <label class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">Blend Mode</label>
@@ -8930,41 +8918,13 @@
                                     </select>
                                 </div>
                             </div>
-                            ${texFitting === 'tile' ? `
-                            <div>
-                                <div class="flex justify-between items-center mb-1.5">
-                                    <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Scale</label>
-                                    <span class="text-xs font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-1.5 py-0.5 rounded shadow-sm">${texScale}%</span>
-                                </div>
-                                <input type="range" min="10" max="300" value="${texScale}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'textureScale', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + '%'; drawCanvas();">
-                            </div>` : ''}
-                        </div>
-                    </details>
-                `;
+                            ${texFitting === 'tile' ? propRow('Scale', propSlider('textureScale', texScale, 10, 300, 1, "this.value + '%'", { onChange: 'updateSidebarPanel()' }), texScale + '%', { reset: propReset('textureScale', texScale, 100) }) : ''}
+                        `, { rightSlot: propSwitch('textureEnable', texEnable, `setClipEffect('${clip.id}', 'textureEnable', this.checked); updateSidebarPanel();`), bodyClass: texEnable ? '' : 'opacity-50 pointer-events-none' });
             }
 
-            const extrudeHTML = (clip.type === 'text' || clip.type === 'shape') ? `
-                <details id="cardExtrude" class="group bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 shadow-sm rounded-lg shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'} overflow-hidden flex flex-col" open>
-                    <summary class="flex items-center justify-between p-3 ${isHorizontal ? '' : 'cursor-pointer'} list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700 " onclick="${isHorizontal ? 'event.preventDefault();' : ''}">
-                        <div class="text-sm font-bold text-surface-800 dark:text-surface-200 flex items-center gap-2"><i data-lucide="box" class="w-4 h-4 text-surface-500 dark:text-surface-300"></i> Extrude 3D</div>
-                        <div class="flex items-center gap-2">
-                            <label class="relative inline-flex items-center cursor-pointer" onclick="event.stopPropagation()">
-                                <input type="checkbox" class="sr-only peer" ${fx.extrudeEnable ? 'checked' : ''} onchange="setClipEffect('${clip.id}', 'extrudeEnable', this.checked); updateSidebarPanel();">
-                                <div class="w-7 h-4 bg-surface-300 dark:bg-surface-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:peer-checked:bg-brand-500 peer-checked:bg-brand-500"></div>
-                            </label>
-                            ${isHorizontal ? '' : '<i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>'}
-                        </div>
-                    </summary>
-                    <div class="p-3 flex flex-col gap-2.5 bg-surface-50 dark:bg-surface-900/50 flex-1 ${!fx.extrudeEnable ? 'opacity-50 pointer-events-none' : ''}">
+            const extrudeHTML = (clip.type === 'text' || clip.type === 'shape') ? propCard('cardExtrude', 'box', 'Extrude 3D', `
+                        ${colorRow('extrudeColor', fx.extrudeColor || '#000000')}
                         <div>
-                            <label class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">Color</label>
-                            <div class="relative flex items-center bg-surface-50 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 rounded p-1.5 cursor-pointer shadow-inner w-full">
-                                <div class="w-6 h-6 rounded shadow-sm" style="background-color: ${fx.extrudeColor || '#000000'}"></div>
-                                <span class="ml-3 font-mono font-bold text-xs text-surface-700 dark:text-surface-200 uppercase">${fx.extrudeColor || '#000000'}</span>
-                                <input type="color" value="${fx.extrudeColor || '#000000'}" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full" oninput="setClipEffect('${clip.id}', 'extrudeColor', this.value); this.previousElementSibling.textContent = this.value; this.previousElementSibling.previousElementSibling.style.backgroundColor = this.value; drawCanvas();">
-                            </div>
-                        </div>
-                        <div class="mt-1">
                             <label class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">Direction</label>
                             <select class="w-full text-xs p-2 pl-3 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 appearance-none cursor-pointer font-bold text-surface-800 dark:text-surface-200" onchange="setClipEffect('${clip.id}', 'extrudeDir', this.value); drawCanvas();">
                                 <option value="br" ${(fx.extrudeDir || 'br') === 'br' ? 'selected' : ''}>Bottom Right</option>
@@ -8977,16 +8937,8 @@
                                 <option value="r" ${fx.extrudeDir === 'r' ? 'selected' : ''}>Right</option>
                             </select>
                         </div>
-                        <div class="mt-1">
-                            <div class="flex justify-between items-center mb-1.5">
-                                <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Depth</label>
-                                <span class="text-xs font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-2 py-0.5 rounded shadow-sm">${fx.extrudeDepth || 5}</span>
-                            </div>
-                            <input type="range" min="1" max="50" value="${fx.extrudeDepth || 5}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'extrudeDepth', this.value); this.previousElementSibling.querySelector('span').textContent = this.value; this.style.background = 'linear-gradient(to right, ${sliderFill} ' + (this.value/this.max)*100 + '%, ${sliderBg} ' + (this.value/this.max)*100 + '%)'; drawCanvas();">
-                        </div>
-                    </div>
-                </details>
-            ` : '';
+                        ${propRow('Depth', propSlider('extrudeDepth', fx.extrudeDepth || 5, 1, 50, 1, "this.value", { onChange: 'updateSidebarPanel()' }), fx.extrudeDepth || 5, { reset: propReset('extrudeDepth', fx.extrudeDepth || 5, 5) })}
+                    `, { rightSlot: propSwitch('extrudeEnable', fx.extrudeEnable, `setClipEffect('${clip.id}', 'extrudeEnable', this.checked); updateSidebarPanel();`), bodyClass: !fx.extrudeEnable ? 'opacity-50 pointer-events-none' : '' }) : '';
 
             const blendOpacity = fx.opacity !== undefined ? fx.opacity : 100;
             const blendingHTML = (clip.type === 'image' || clip.type === 'video' || clip.type === 'text' || clip.type === 'shape' || clip.type === 'scene') ? propCard('cardOpacity', 'layers', 'Opacity & Blending', `
@@ -10265,26 +10217,16 @@
                 let sourceHTML = '';
                 if (isImageOrVideo) {
                     const isPlaceholder = clip.isPlaceholder ? (clip._missingMedia ? (clip.fileName || clip.title || 'Missing file — re-import required') : 'Placeholder Gradient') : (clip.fileName || 'Imported File');
-                    sourceHTML = `
-                        <details id="cardSource" class="group bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 shadow-sm rounded-lg shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'} overflow-hidden flex flex-col" open>
-                            <summary class="flex items-center justify-between p-3 ${isHorizontal ? '' : 'cursor-pointer'} list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700 " onclick="${isHorizontal ? 'event.preventDefault();' : ''}">
-                                <div class="text-sm font-bold text-surface-800 dark:text-surface-200 flex items-center gap-2"><i data-lucide="link" class="w-4 h-4 text-surface-500 dark:text-surface-300"></i> Source Management</div>
-                                ${isHorizontal ? '' : '<i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>'}
-                            </summary>
-                            <div class="p-3 flex flex-col gap-3 bg-surface-50 dark:bg-surface-900/50 flex-1">
-                                <div>
-                                    <span class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">Active Source</span>
-                                    <span class="text-xs font-bold text-surface-800 dark:text-surface-100 block break-all bg-white dark:bg-surface-800/50 p-2 rounded border border-surface-200 dark:border-surface-700 shadow-sm">${isPlaceholder}</span>
-                                </div>
-                                <div>
-                                    <label class="cursor-pointer bg-brand-500 hover:bg-brand-600 text-white px-3 py-2 rounded text-xs font-bold transition-colors flex items-center justify-center gap-2 shadow-sm w-full">
-                                        <i data-lucide="upload" class="w-3.5 h-3.5"></i> Import / Replace File
-                                        <input type="file" accept="${clip.type === 'image' ? 'image/*' : 'video/*'}" class="hidden" onchange="replaceClipSource('${clip.id}', this.files)">
-                                    </label>
-                                </div>
+                    sourceHTML = propCard('cardSource', 'link', 'Source Management', `
+                            <div>
+                                <span class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">Active Source</span>
+                                <span class="text-xs font-bold text-surface-800 dark:text-surface-100 block break-all bg-white dark:bg-surface-800/50 p-2 rounded border border-surface-200 dark:border-surface-700 shadow-sm">${isPlaceholder}</span>
                             </div>
-                        </details>
-                    `;
+                            <label class="cursor-pointer bg-brand-500 hover:bg-brand-600 text-white px-3 py-2 rounded text-xs font-bold transition-colors flex items-center justify-center gap-2 shadow-sm w-full">
+                                <i data-lucide="upload" class="w-3.5 h-3.5"></i> Import / Replace File
+                                <input type="file" accept="${clip.type === 'image' ? 'image/*' : 'video/*'}" class="hidden" onchange="replaceClipSource('${clip.id}', this.files)">
+                            </label>
+                        `);
                 }
 
                 // ── Clip Speed (CapCut / Premiere-style speed up & down) ──
@@ -10292,38 +10234,18 @@
                 if (clip.type === 'video' || clip.type === 'audio') {
                     const curSpeed = clipSpeed(clip);
                     const speedDur = clip.duration;
-                    speedHTML = `
-                        <details id="cardSpeed" class="group bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 shadow-sm rounded-lg shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'} overflow-hidden flex flex-col" open>
-                            <summary class="flex items-center justify-between p-3 ${isHorizontal ? '' : 'cursor-pointer'} list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700 " onclick="${isHorizontal ? 'event.preventDefault();' : ''}">
-                                <div class="text-sm font-bold text-surface-800 dark:text-surface-200 flex items-center gap-2"><i data-lucide="gauge" class="w-4 h-4 text-surface-500 dark:text-surface-300"></i> Speed</div>
-                                ${isHorizontal ? '' : '<i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>'}
-                            </summary>
-                            <div class="p-3 flex flex-col gap-3 bg-surface-50 dark:bg-surface-900/50 flex-1">
-                                <div class="flex justify-between items-center">
-                                    <span class="text-xs font-bold text-surface-800 dark:text-surface-200">${curSpeed.toFixed(2)}×</span>
-                                    <span class="text-[10px] font-mono text-surface-500 dark:text-surface-300">Timeline ${speedDur.toFixed(2)}s · Source ${(speedDur * curSpeed).toFixed(2)}s</span>
-                                </div>
-                                <input type="range" min="0.25" max="4" step="0.05" value="${curSpeed}" class="w-full custom-slider" oninput="setClipSpeed('${clip.id}', this.value); this.previousElementSibling.querySelector('span:first-child').textContent = parseFloat(this.value).toFixed(2) + '×';" onchange="updateSidebarPanel();">
-                                <div class="flex flex-wrap gap-1">
-                                    ${[0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4].map(p => `
-                                        <button onclick="setClipSpeed('${clip.id}', ${p}); updateSidebarPanel(); event.stopPropagation();" class="flex-1 min-w-[40px] py-1 text-[10px] font-bold rounded-md border transition-all duration-150 ${Math.abs(curSpeed - p) < 0.01 ? 'bg-brand-500 text-white border-brand-500 shadow-sm' : 'bg-white dark:bg-surface-800 text-surface-600 dark:text-surface-300 border-surface-200 dark:border-surface-700 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-400'}">${p}×</button>
-                                    `).join('')}
-                                </div>
-                                <p class="text-[10px] text-surface-500 dark:text-surface-300 leading-relaxed">Speeds up or slows down this clip. The timeline length changes to fit the same source material — split before changing speed to keep surrounding clips in place.</p>
-                                ${speedRampHTML(clip)}
-                                <div class="flex items-center justify-between gap-2 pt-1 border-t border-surface-200 dark:border-surface-700">
-                                    <div class="flex flex-col gap-0.5 min-w-0">
-                                        <span class="text-[10px] font-bold text-surface-800 dark:text-surface-200 flex items-center gap-1"><i data-lucide="rotate-ccw" class="w-3 h-3"></i> Reverse</span>
-                                        <span class="text-[8.5px] text-surface-500 dark:text-surface-300 leading-tight">Play the clip backwards from the end of its source window.</span>
-                                    </div>
-                                    <label class="relative inline-flex items-center cursor-pointer shrink-0">
-                                        <input type="checkbox" class="sr-only peer" ${clip.reverse ? 'checked' : ''} onchange="setClipReverse('${clip.id}', this.checked);">
-                                        <div class="w-8 h-[18px] bg-surface-300 dark:bg-surface-600 rounded-full peer-checked:bg-brand-500 peer-checked:bg-gradient-to-r peer-checked:from-brand-400 peer-checked:to-brand-500 transition-colors duration-200 relative after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:w-[14px] after:h-[14px] after:bg-white after:rounded-full after:shadow-sm after:transition-transform after:duration-200 peer-checked:after:translate-x-[14px]"></div>
-                                    </label>
-                                </div>
+                    speedHTML = propCard('cardSpeed', 'gauge', 'Speed', `
+                            ${propRow('Speed', propSlider('speed', curSpeed, 0.25, 4, 0.05, "parseFloat(this.value).toFixed(2) + '×'", { setter: `setClipSpeed('${clip.id}', this.value)`, onChange: 'updateSidebarPanel()' }), `${curSpeed.toFixed(2)}×`, { reset: Math.abs(curSpeed - 1) < 0.001 ? '' : `<button type="button" onclick="setClipSpeed('${clip.id}', 1); updateSidebarPanel(); event.stopPropagation();" class="p-0.5 rounded text-surface-400 dark:text-surface-500 hover:text-brand-600 dark:hover:text-brand-400 transition-colors" title="Reset speed"><i data-lucide="rotate-ccw" class="w-3 h-3"></i></button>` })}
+                            <p class="text-[10px] font-mono text-surface-500 dark:text-surface-300">Timeline ${speedDur.toFixed(2)}s · Source ${(speedDur * curSpeed).toFixed(2)}s</p>
+                            <div class="flex flex-wrap gap-1">
+                                ${[0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4].map(p => `
+                                    <button onclick="setClipSpeed('${clip.id}', ${p}); updateSidebarPanel(); event.stopPropagation();" class="flex-1 min-w-[40px] py-1 text-[10px] font-bold rounded-md border transition-all duration-150 ${Math.abs(curSpeed - p) < 0.01 ? 'bg-brand-500 text-white border-brand-500 shadow-sm' : 'bg-white dark:bg-surface-800 text-surface-600 dark:text-surface-300 border-surface-200 dark:border-surface-700 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-400'}">${p}×</button>
+                                `).join('')}
                             </div>
-                        </details>
-                    `;
+                            <p class="text-[10px] text-surface-500 dark:text-surface-300 leading-relaxed">Speeds up or slows down this clip. The timeline length changes to fit the same source material — split before changing speed to keep surrounding clips in place.</p>
+                            ${speedRampHTML(clip)}
+                            ${toggleRow('Reverse', 'Play the clip backwards from the end of its source window.', clip.reverse, `setClipReverse('${clip.id}', this.checked);`)}
+                        `);
                 }
 
                 // ── Embedded SFX (sound attached to text / shape / image / math clips) ──
