@@ -10563,18 +10563,20 @@
                 s.style.background = `linear-gradient(to right, ${sliderFill} ${p}%, ${sliderBg} ${p}%)`;
             });
 
-            // Restore state
+            // Restore state. In horizontal docks cards are always expanded (summary
+            // clicks are prevented there and there's no chevron), so a restored closed
+            // state would trap the card collapsed with no way to reopen it — force open.
             const newDetails = sidebarContent.querySelectorAll('details');
             newDetails.forEach(d => {
                 const summary = d.querySelector('summary');
-                if (summary) {
-                    const title = summary.textContent.trim();
-                    const key = d.id || title;
-                    const saved = State.ui.detailsState[key] !== undefined ? State.ui.detailsState[key] : State.ui.detailsState[title];
-                    if (saved !== undefined) {
-                        if (saved) d.setAttribute('open', '');
-                        else d.removeAttribute('open');
-                    }
+                if (!summary) return;
+                if (isHorizontal) { d.setAttribute('open', ''); return; }
+                const title = summary.textContent.trim();
+                const key = d.id || title;
+                const saved = State.ui.detailsState[key] !== undefined ? State.ui.detailsState[key] : State.ui.detailsState[title];
+                if (saved !== undefined) {
+                    if (saved) d.setAttribute('open', '');
+                    else d.removeAttribute('open');
                 }
             });
 
