@@ -20123,15 +20123,22 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         return; 
                     }
                     
-                    // Arrow keys scroll the properties cards: horizontally in horizontal
-                    // docks (Left/Right), vertically in vertical docks (Up/Down).
+                    // Arrow keys + PageUp/PageDown + Home/End scroll the properties cards:
+                    // horizontally in horizontal docks (Left/Right, Page* / Home / End),
+                    // vertically in vertical docks (Up/Down, Page* / Home / End).
                     const container = document.getElementById('propertiesCardContainer');
                     if (container && !e.altKey && !e.ctrlKey && !e.shiftKey) {
                         const horizDock = State.inspector.dock === 'bottom' || State.inspector.dock === 'top';
+                        const pageSize = horizDock ? container.clientWidth : container.clientHeight;
+                        const maxScroll = Math.max(0, (horizDock ? container.scrollWidth : container.scrollHeight) - (horizDock ? container.clientWidth : container.clientHeight));
                         if (e.key === 'ArrowLeft') { e.preventDefault(); container.scrollBy({ left: -200, behavior: 'smooth' }); return; }
                         else if (e.key === 'ArrowRight') { e.preventDefault(); container.scrollBy({ left: 200, behavior: 'smooth' }); return; }
                         else if (e.key === 'ArrowUp' && !horizDock) { e.preventDefault(); container.scrollBy({ top: -200, behavior: 'smooth' }); return; }
                         else if (e.key === 'ArrowDown' && !horizDock) { e.preventDefault(); container.scrollBy({ top: 200, behavior: 'smooth' }); return; }
+                        else if (e.key === 'PageDown') { e.preventDefault(); container.scrollBy(horizDock ? { left: pageSize, behavior: 'smooth' } : { top: pageSize, behavior: 'smooth' }); return; }
+                        else if (e.key === 'PageUp') { e.preventDefault(); container.scrollBy(horizDock ? { left: -pageSize, behavior: 'smooth' } : { top: -pageSize, behavior: 'smooth' }); return; }
+                        else if (e.key === 'Home') { e.preventDefault(); container.scrollTo(horizDock ? { left: 0, behavior: 'smooth' } : { top: 0, behavior: 'smooth' }); return; }
+                        else if (e.key === 'End') { e.preventDefault(); container.scrollTo(horizDock ? { left: maxScroll, behavior: 'smooth' } : { top: maxScroll, behavior: 'smooth' }); return; }
                     }
                 }
                 
