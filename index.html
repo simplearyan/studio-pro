@@ -10532,9 +10532,19 @@
                     const basicCardHtml = isText
                         ? [textHTML, typographyHTML, spacingHTML, captionHTML, transformHTML, blendingHTML, speedHTML]
                         : [transformHTML, cropHTML, blendingHTML, speedHTML, textHTML, typographyHTML, spacingHTML, captionHTML, shapeHTML];
+                    // Adjust is also most-edited-first per type: video/image users live in
+                    // Color Correction, so it leads; text users reach for the outline (Stroke)
+                    // most — it's the readability workhorse — then the background box, then
+                    // shadow. Same shared id list feeds the jump chips.
+                    const adjustCardIds = isText
+                        ? ['cardStroke', 'cardTextBg', 'cardShadow']
+                        : ['cardColor', 'cardStroke', 'cardShadow'];
+                    const adjustCardHtml = isText
+                        ? [strokeHTML, textBgHTML, shadowHTML]
+                        : [colorHTML, strokeHTML, shadowHTML];
                     const groupCardsHtml = {
                         basic: basicCardHtml.filter(Boolean).join(''),
-                        adjust: [colorHTML, textBgHTML, strokeHTML, shadowHTML].filter(Boolean).join(''),
+                        adjust: adjustCardHtml.filter(Boolean).join(''),
                         effects: [maskHTML, letterStylesHTML, extrudeHTML, textureHTML, sfxHTML].filter(Boolean).join(''),
                         media: [sceneHTML, sourceHTML, systemFontsHTML, googleFontsHTML].filter(Boolean).join('')
                     };
@@ -10557,7 +10567,7 @@
                     // a chip row under the sub-tabs; horizontal dock: a narrow mini-rail.
                     const GROUP_CARD_ORDER = {
                         basic: basicCardIds,
-                        adjust: ['cardColor', 'cardTextBg', 'cardStroke', 'cardShadow'],
+                        adjust: adjustCardIds,
                         effects: ['cardMask', 'cardLetterStyles', 'cardExtrude', 'cardTexture', 'cardSfx'],
                         media: ['cardScene', 'cardSource', 'cardSystemFonts', 'cardGoogleFonts']
                     };
