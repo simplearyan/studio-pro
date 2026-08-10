@@ -8134,6 +8134,26 @@
                 <input type="range" min="${min}" max="${max}" ${step ? `step="${step}"` : ''} value="${val}" class="w-full custom-slider" oninput="updateSliderFill(this); setClipEffect('${clip.id}', '${key}', this.value); this.previousElementSibling.querySelector('span:last-child > span').textContent = ${fmt}; drawCanvas();">
             `;
 
+            // Compact on/off switch for a card header (stays clickable when the
+            // body is dimmed, so the user can re-enable a disabled feature)
+            const propSwitch = (key, checked, onchange) => `
+                <label class="relative inline-flex items-center cursor-pointer" onclick="event.stopPropagation()">
+                    <input type="checkbox" class="sr-only peer" ${checked ? 'checked' : ''} onchange="${onchange}">
+                    <div class="w-7 h-4 bg-surface-300 dark:bg-surface-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:peer-checked:bg-brand-500 peer-checked:bg-brand-500"></div>
+                </label>
+            `;
+
+            // Labeled switch row inside a card body (CapCut "toggle with hint")
+            const toggleRow = (label, hint, checked, onchange, cls = '') => `
+                <div class="flex items-center justify-between gap-2 ${cls}">
+                    <span class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">${label}</span>
+                    <label class="relative inline-flex items-center cursor-pointer shrink-0">
+                        <input type="checkbox" class="sr-only peer" ${checked ? 'checked' : ''} onchange="${onchange}">
+                        <div class="w-7 h-4 bg-surface-300 dark:bg-surface-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:peer-checked:bg-brand-500 peer-checked:bg-brand-500"></div>
+                    </label>
+                </div>
+            `;
+
             const isShape = clip.type === 'shape';
             let shapeHTML = '';
             if (isShape) {
@@ -9000,37 +9020,13 @@
                         </div>
                     `) : '';
 
-            const strokeHTML = (clip.type === 'text' || clip.type === 'shape' || clip.type === 'image' || clip.type === 'video') ? `
-                <details id="cardStroke" class="group bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 shadow-sm rounded-lg shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'} overflow-hidden flex flex-col" open>
-                    <summary class="flex items-center justify-between p-3 ${isHorizontal ? '' : 'cursor-pointer'} list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700 " onclick="${isHorizontal ? 'event.preventDefault();' : ''}">
-                        <div class="text-sm font-bold text-surface-800 dark:text-surface-200 flex items-center gap-2"><i data-lucide="edit-3" class="w-4 h-4 text-surface-500 dark:text-surface-300"></i> Stroke & Outline</div>
-                        <div class="flex items-center gap-2">
-                            <label class="relative inline-flex items-center cursor-pointer" onclick="event.stopPropagation()">
-                                <input type="checkbox" class="sr-only peer" ${strokeEnable ? 'checked' : ''} onchange="setClipEffect('${clip.id}', 'strokeEnable', this.checked); updateSidebarPanel();">
-                                <div class="w-7 h-4 bg-surface-300 dark:bg-surface-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:peer-checked:bg-brand-500 peer-checked:bg-brand-500"></div>
-                            </label>
-                            ${isHorizontal ? '' : '<i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>'}
-                        </div>
-                    </summary>
-                    <div class="p-3 flex flex-col gap-2.5 bg-surface-50 dark:bg-surface-900/50 flex-1 ${!strokeEnable ? 'opacity-50 pointer-events-none' : ''}">
-                        <div>
-                            <label class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">Stroke Color</label>
-                            <div class="relative flex items-center bg-surface-50 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 rounded p-1.5 cursor-pointer shadow-inner w-full">
-                                <div class="w-6 h-6 rounded shadow-sm" style="background-color: ${strokeColor}"></div>
-                                <span class="ml-3 font-mono font-bold text-xs text-surface-700 dark:text-surface-200 uppercase">${strokeColor}</span>
-                                <input type="color" value="${strokeColor}" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full" oninput="setClipEffect('${clip.id}', 'strokeColor', this.value); this.previousElementSibling.textContent = this.value; this.previousElementSibling.previousElementSibling.style.backgroundColor = this.value; drawCanvas();">
-                            </div>
-                        </div>
-                        <div class="mt-1">
-                            <div class="flex justify-between items-center mb-1.5">
-                                <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Stroke Width</label>
-                                <span class="text-xs font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-2 py-0.5 rounded shadow-sm">${strokeWidth}px</span>
-                            </div>
-                            <input type="range" min="1" max="50" value="${strokeWidth}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'strokeWidth', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + 'px'; drawCanvas();">
-                        </div>
-                    </div>
-                </details>
-            ` : '';
+            const strokeHTML = (clip.type === 'text' || clip.type === 'shape' || clip.type === 'image' || clip.type === 'video') ? propCard('cardStroke', 'edit-3', 'Stroke & Outline', `
+                        ${colorRow('strokeColor', strokeColor, 'Stroke Color')}
+                        ${propRow('Stroke Width', propSlider('strokeWidth', strokeWidth, 1, 50, 1, "this.value + 'px'"), strokeWidth + 'px', { reset: propReset('strokeWidth', strokeWidth, 4) })}
+                    `, {
+                        rightSlot: propSwitch('strokeEnable', strokeEnable, `setClipEffect('${clip.id}', 'strokeEnable', this.checked); updateSidebarPanel();`),
+                        bodyClass: !strokeEnable ? 'opacity-50 pointer-events-none' : ''
+                    }) : '';
 
             const cropEnable = fx.cropEnable !== undefined ? fx.cropEnable : true;
             const cropLeft = fx.cropLeft || 0;
@@ -9051,98 +9047,29 @@
             const maskFeather = fx.maskFeather !== undefined ? fx.maskFeather : 0;
             const maskInvert = fx.maskInvert || false;
 
-            const cropHTML = (clip.type === 'image' || clip.type === 'video') ? `
-                <details id="cardCrop" class="group bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 shadow-sm rounded-lg shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'} overflow-hidden flex flex-col" open>
-                    <summary class="flex items-center justify-between p-3 ${isHorizontal ? '' : 'cursor-pointer'} list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700 " onclick="${isHorizontal ? 'event.preventDefault();' : ''}">
-                        <div class="text-sm font-bold text-surface-800 dark:text-surface-200 flex items-center gap-2"><i data-lucide="crop" class="w-4 h-4 text-surface-500 dark:text-surface-300"></i> Crop & Zoom</div>
-                        <div class="flex items-center gap-2">
-                            <label class="relative inline-flex items-center cursor-pointer" onclick="event.stopPropagation()">
-                                <input type="checkbox" class="sr-only peer" ${cropEnable ? 'checked' : ''} onchange="setClipEffect('${clip.id}', 'cropEnable', this.checked); updateSidebarPanel(); drawCanvas();">
-                                <div class="w-7 h-4 bg-surface-300 dark:bg-surface-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:peer-checked:bg-brand-500 peer-checked:bg-brand-500"></div>
-                            </label>
-                            ${isHorizontal ? '' : '<i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>'}
-                        </div>
-                    </summary>
-                    <div class="p-3 flex flex-col gap-2.5 bg-surface-50 dark:bg-surface-900/50 flex-1 ${!cropEnable ? 'opacity-50 pointer-events-none' : ''}">
-                        <div class="grid grid-cols-2 gap-2">
-                            <div>
-                                <div class="flex justify-between items-center mb-1">
-                                    <label class="text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Crop Left</label>
-                                    <span class="text-xs font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-1.5 py-0.5 rounded shadow-sm">${cropLeft}%</span>
-                                </div>
-                                <input type="range" min="0" max="100" value="${cropLeft}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'cropLeft', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + '%'; drawCanvas();">
-                            </div>
-                            <div>
-                                <div class="flex justify-between items-center mb-1">
-                                    <label class="text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Crop Right</label>
-                                    <span class="text-xs font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-1.5 py-0.5 rounded shadow-sm">${cropRight}%</span>
-                                </div>
-                                <input type="range" min="0" max="100" value="${cropRight}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'cropRight', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + '%'; drawCanvas();">
-                            </div>
-                            <div>
-                                <div class="flex justify-between items-center mb-1">
-                                    <label class="text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Crop Top</label>
-                                    <span class="text-xs font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-1.5 py-0.5 rounded shadow-sm">${cropTop}%</span>
-                                </div>
-                                <input type="range" min="0" max="100" value="${cropTop}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'cropTop', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + '%'; drawCanvas();">
-                            </div>
-                            <div>
-                                <div class="flex justify-between items-center mb-1">
-                                    <label class="text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Crop Bottom</label>
-                                    <span class="text-xs font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-1.5 py-0.5 rounded shadow-sm">${cropBottom}%</span>
-                                </div>
-                                <input type="range" min="0" max="100" value="${cropBottom}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'cropBottom', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + '%'; drawCanvas();">
-                            </div>
-                        </div>
+            const cropHTML = (clip.type === 'image' || clip.type === 'video') ? propCard('cardCrop', 'crop', 'Crop & Zoom', `
+                        ${propPair(
+                            propRow('Crop Left', propSlider('cropLeft', cropLeft, 0, 100, 1, "this.value + '%'"), cropLeft + '%', { reset: propReset('cropLeft', cropLeft, 0) }),
+                            propRow('Crop Right', propSlider('cropRight', cropRight, 0, 100, 1, "this.value + '%'"), cropRight + '%', { reset: propReset('cropRight', cropRight, 0) })
+                        )}
+                        ${propPair(
+                            propRow('Crop Top', propSlider('cropTop', cropTop, 0, 100, 1, "this.value + '%'"), cropTop + '%', { reset: propReset('cropTop', cropTop, 0) }),
+                            propRow('Crop Bottom', propSlider('cropBottom', cropBottom, 0, 100, 1, "this.value + '%'"), cropBottom + '%', { reset: propReset('cropBottom', cropBottom, 0) })
+                        )}
                         <div class="w-full h-px bg-surface-200 dark:bg-surface-700 my-1.5"></div>
-                        <div>
-                            <div class="flex justify-between items-center mb-1.5">
-                                <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Framing Zoom</label>
-                                <span class="text-xs font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-2 py-0.5 rounded shadow-sm">${maskingZoom}%</span>
-                            </div>
-                            <input type="range" min="100" max="500" value="${maskingZoom}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'maskingZoom', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + '%'; drawCanvas();">
-                        </div>
-                        <div class="grid grid-cols-2 gap-2 mt-1">
-                            <div>
-                                <div class="flex justify-between items-center mb-1">
-                                    <label class="text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Framing Pan X</label>
-                                    <span class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-1 py-0.5 rounded shadow-sm">${framingPanX}%</span>
-                                </div>
-                                <input type="range" min="-100" max="100" value="${framingPanX}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'framingPanX', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + '%'; drawCanvas();">
-                            </div>
-                            <div>
-                                <div class="flex justify-between items-center mb-1">
-                                    <label class="text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Framing Pan Y</label>
-                                    <span class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-1 py-0.5 rounded shadow-sm">${framingPanY}%</span>
-                                </div>
-                                <input type="range" min="-100" max="100" value="${framingPanY}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'framingPanY', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + '%'; drawCanvas();">
-                            </div>
-                        </div>
+                        ${propRow('Framing Zoom', propSlider('maskingZoom', maskingZoom, 100, 500, 1, "this.value + '%'"), maskingZoom + '%', { reset: propReset('maskingZoom', maskingZoom, 100) })}
+                        ${propPair(
+                            propRow('Framing Pan X', propSlider('framingPanX', framingPanX, -100, 100, 1, "this.value + '%'"), framingPanX + '%', { reset: propReset('framingPanX', framingPanX, 0) }),
+                            propRow('Framing Pan Y', propSlider('framingPanY', framingPanY, -100, 100, 1, "this.value + '%'"), framingPanY + '%', { reset: propReset('framingPanY', framingPanY, 0) })
+                        )}
                         <div class="w-full h-px bg-surface-200 dark:bg-surface-700 my-1"></div>
-                        <div>
-                            <div class="flex justify-between items-center mb-1.5">
-                                <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Frame Zoom</label>
-                                <span class="text-xs font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-2 py-0.5 rounded shadow-sm">${frameZoom}%</span>
-                            </div>
-                            <input type="range" min="100" max="500" value="${frameZoom}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'frameZoom', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + '%'; drawCanvas();">
-                        </div>
-                    </div>
-                </details>
-            ` : '';
+                        ${propRow('Frame Zoom', propSlider('frameZoom', frameZoom, 100, 500, 1, "this.value + '%'"), frameZoom + '%', { reset: propReset('frameZoom', frameZoom, 100) })}
+                    `, {
+                        rightSlot: propSwitch('cropEnable', cropEnable, `setClipEffect('${clip.id}', 'cropEnable', this.checked); updateSidebarPanel(); drawCanvas();`),
+                        bodyClass: !cropEnable ? 'opacity-50 pointer-events-none' : ''
+                    }) : '';
 
-            const maskHTML = (clip.type === 'image' || clip.type === 'video') ? `
-                <details id="cardMask" class="group bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 shadow-sm rounded-lg shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'} overflow-hidden flex flex-col" open>
-                    <summary class="flex items-center justify-between p-3 ${isHorizontal ? '' : 'cursor-pointer'} list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700 " onclick="${isHorizontal ? 'event.preventDefault();' : ''}">
-                        <div class="text-sm font-bold text-surface-800 dark:text-surface-200 flex items-center gap-2"><i data-lucide="aperture" class="w-4 h-4 text-surface-500 dark:text-surface-300"></i> Masking</div>
-                        <div class="flex items-center gap-2">
-                            <label class="relative inline-flex items-center cursor-pointer" onclick="event.stopPropagation()">
-                                <input type="checkbox" class="sr-only peer" ${maskEnable ? 'checked' : ''} onchange="setClipEffect('${clip.id}', 'maskEnable', this.checked); updateSidebarPanel(); drawCanvas();">
-                                <div class="w-7 h-4 bg-surface-300 dark:bg-surface-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:peer-checked:bg-brand-500 peer-checked:bg-brand-500"></div>
-                            </label>
-                            ${isHorizontal ? '' : '<i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>'}
-                        </div>
-                    </summary>
-                    <div class="p-3 flex flex-col gap-2.5 bg-surface-50 dark:bg-surface-900/50 flex-1 ${!maskEnable ? 'opacity-50 pointer-events-none' : ''}">
+            const maskHTML = (clip.type === 'image' || clip.type === 'video') ? propCard('cardMask', 'aperture', 'Masking', `
                         <div>
                             <label class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">Mask Type</label>
                             <select class="w-full text-xs p-2 pl-3 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 appearance-none cursor-pointer font-bold text-surface-800 dark:text-surface-200" onchange="setClipEffect('${clip.id}', 'maskType', this.value); updateSidebarPanel(); drawCanvas();">
@@ -9153,58 +9080,22 @@
                         </div>
                         
                         <div class="${maskType === 'none' ? 'hidden' : 'flex flex-col gap-2.5'}">
-                            <div class="flex items-center justify-between mt-1">
-                                <span class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Invert Mask</span>
-                                <label class="relative inline-flex items-center cursor-pointer">
-                                    <input type="checkbox" class="sr-only peer" ${maskInvert ? 'checked' : ''} onchange="setClipEffect('${clip.id}', 'maskInvert', this.checked); drawCanvas();">
-                                    <div class="w-7 h-4 bg-surface-300 dark:bg-surface-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:peer-checked:bg-brand-500 peer-checked:bg-brand-500"></div>
-                                </label>
-                            </div>
-
+                            ${toggleRow('Invert Mask', null, maskInvert, `setClipEffect('${clip.id}', 'maskInvert', this.checked); drawCanvas();`)}
                             <div class="w-full h-px bg-surface-200 dark:bg-surface-700 my-1"></div>
-
-                            <div class="grid grid-cols-2 gap-2">
-                                <div>
-                                    <div class="flex justify-between items-center mb-1">
-                                        <label class="text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Mask Width</label>
-                                        <span class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-1 py-0.5 rounded shadow-sm">${maskWidth}%</span>
-                                    </div>
-                                    <input type="range" min="0" max="200" value="${maskWidth}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'maskWidth', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + '%'; drawCanvas();">
-                                </div>
-                                <div>
-                                    <div class="flex justify-between items-center mb-1">
-                                        <label class="text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Mask Height</label>
-                                        <span class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-1 py-0.5 rounded shadow-sm">${maskHeight}%</span>
-                                    </div>
-                                    <input type="range" min="0" max="200" value="${maskHeight}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'maskHeight', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + '%'; drawCanvas();">
-                                </div>
-                                <div>
-                                    <div class="flex justify-between items-center mb-1">
-                                        <label class="text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Mask Pan X</label>
-                                        <span class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-1 py-0.5 rounded shadow-sm">${maskX}%</span>
-                                    </div>
-                                    <input type="range" min="-100" max="100" value="${maskX}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'maskX', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + '%'; drawCanvas();">
-                                </div>
-                                <div>
-                                    <div class="flex justify-between items-center mb-1">
-                                        <label class="text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Mask Pan Y</label>
-                                        <span class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-1 py-0.5 rounded shadow-sm">${maskY}%</span>
-                                    </div>
-                                    <input type="range" min="-100" max="100" value="${maskY}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'maskY', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + '%'; drawCanvas();">
-                                </div>
-                            </div>
-
-                            <div>
-                                <div class="flex justify-between items-center mb-1">
-                                    <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Mask Feather</label>
-                                    <span class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-1.5 py-0.5 rounded shadow-sm">${maskFeather}px</span>
-                                </div>
-                                <input type="range" min="0" max="100" value="${maskFeather}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'maskFeather', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + 'px'; drawCanvas();">
-                            </div>
+                            ${propPair(
+                                propRow('Mask Width', propSlider('maskWidth', maskWidth, 0, 200, 1, "this.value + '%'"), maskWidth + '%', { reset: propReset('maskWidth', maskWidth, 50) }),
+                                propRow('Mask Height', propSlider('maskHeight', maskHeight, 0, 200, 1, "this.value + '%'"), maskHeight + '%', { reset: propReset('maskHeight', maskHeight, 50) })
+                            )}
+                            ${propPair(
+                                propRow('Mask Pan X', propSlider('maskX', maskX, -100, 100, 1, "this.value + '%'"), maskX + '%', { reset: propReset('maskX', maskX, 0) }),
+                                propRow('Mask Pan Y', propSlider('maskY', maskY, -100, 100, 1, "this.value + '%'"), maskY + '%', { reset: propReset('maskY', maskY, 0) })
+                            )}
+                            ${propRow('Mask Feather', propSlider('maskFeather', maskFeather, 0, 100, 1, "this.value + 'px'"), maskFeather + 'px', { reset: propReset('maskFeather', maskFeather, 0) })}
                         </div>
-                    </div>
-                </details>
-            ` : '';
+                    `, {
+                        rightSlot: propSwitch('maskEnable', maskEnable, `setClipEffect('${clip.id}', 'maskEnable', this.checked); updateSidebarPanel(); drawCanvas();`),
+                        bodyClass: !maskEnable ? 'opacity-50 pointer-events-none' : ''
+                    }) : '';
 
             // ── Color Correction card (image / video only) ────────────────────────
             // CapCut / Premiere-style grading: saturation, vibrance, hue, temperature,
@@ -9282,10 +9173,7 @@
                             propRow('Offset Y', propSlider('shadowY', shadowY, -100, 100, 1, 'this.value'), shadowY, { reset: propReset('shadowY', shadowY, 10) })
                         )}
                     `, {
-                        rightSlot: `<label class="relative inline-flex items-center cursor-pointer" onclick="event.stopPropagation()">
-                            <input type="checkbox" class="sr-only peer" ${shadowEnable ? 'checked' : ''} onchange="setClipEffect('${clip.id}', 'shadowEnable', this.checked); updateSidebarPanel();">
-                            <div class="w-7 h-4 bg-surface-300 dark:bg-surface-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:peer-checked:bg-brand-500 peer-checked:bg-brand-500"></div>
-                        </label>`,
+                        rightSlot: propSwitch('shadowEnable', shadowEnable, `setClipEffect('${clip.id}', 'shadowEnable', this.checked); updateSidebarPanel();`),
                         bodyClass: !shadowEnable ? 'opacity-50 pointer-events-none' : ''
                     });
 
