@@ -8037,25 +8037,27 @@
                 if (summary) State.ui.detailsState[d.id || summary.textContent.trim()] = d.open;
             });
 
-            // Save scroll positions
+            // Save scroll positions — only carry them across same-clip re-renders
+            // (e.g. slider drags that rebuild the panel). When the selected clip
+            // changes, reset so the new clip's panel opens at the top.
             const container = document.getElementById('propertiesCardContainer');
-            if (container) {
+            if (container && isSameClip) {
                 State.ui.propertiesScrollLeft = container.scrollLeft;
                 State.ui.propertiesScrollTop = container.scrollTop;
-            } else if (!isSameClip) {
+            } else {
                 State.ui.propertiesScrollLeft = 0;
                 State.ui.propertiesScrollTop = 0;
             }
             const nav = document.getElementById('propertiesLayoutNav');
-            if (nav) {
+            if (nav && isSameClip) {
                 State.ui.navScrollTop = nav.scrollTop;
-            } else if (!isSameClip) {
+            } else {
                 State.ui.navScrollTop = 0;
             }
-            if (sidebarContent) {
+            if (sidebarContent && isSameClip) {
                 State.ui.sidebarScrollLeft = sidebarContent.scrollLeft;
                 State.ui.sidebarScrollTop = sidebarContent.scrollTop;
-            } else if (!isSameClip) {
+            } else {
                 State.ui.sidebarScrollLeft = 0;
                 State.ui.sidebarScrollTop = 0;
             }
@@ -10509,7 +10511,10 @@
                     const navGroupOf = PROP_GROUP_OF;
                     const groupKeys = ['basic', 'adjust', 'effects', 'media']
                         .filter(k => navItems.some(i => (navGroupOf[i.id] || 'media') === k));
-                    if (!groupKeys.includes(State.ui.activePropGroup)) {
+                    // Fresh clip = fresh tab: a sub-tab picked for one clip (e.g. Adjust
+                    // on a text clip) must not stay highlighted when a different clip is
+                    // selected — reset to that clip's first group.
+                    if (!isSameClip || !groupKeys.includes(State.ui.activePropGroup)) {
                         State.ui.activePropGroup = groupKeys[0] || 'basic';
                     }
                     const activeGroup = State.ui.activePropGroup;
