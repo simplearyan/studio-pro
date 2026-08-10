@@ -7945,6 +7945,16 @@
             });
         }
 
+        // Keep the slider fill gradient in sync with the thumb while dragging
+        function updateSliderFill(el) {
+            const min = parseFloat(el.min) || 0;
+            const max = parseFloat(el.max) || 100;
+            const p = Math.max(0, Math.min(100, ((parseFloat(el.value) - min) / (max - min)) * 100));
+            const fill = isDarkMode ? '#ffffff' : '#111111';
+            const bg = isDarkMode ? '#404040' : '#e5e5e5';
+            el.style.background = `linear-gradient(to right, ${fill} ${p}%, ${bg} ${p}%)`;
+        }
+
         function updateSidebarPanel() {
             // Save state
             State.ui = State.ui || { detailsState: {} };
@@ -8065,6 +8075,64 @@
             // High Contrast Slider settings
             const sliderFill = isDarkMode ? '#ffffff' : '#111111';
             const sliderBg = isDarkMode ? '#404040' : '#e5e5e5';
+
+            // ── Shared builders (CapCut-density) ──────────────────────────────
+            // One card, one slider row, one color row — so every migrated card
+            // shares identical spacing, value chips and reset affordances.
+            const propCard = (id, icon, title, bodyHtml, opts = {}) => `
+                <details id="${id}" class="group bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 shadow-sm rounded-lg shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'} overflow-hidden flex flex-col" ${opts.open !== false ? 'open' : ''}>
+                    <summary class="flex items-center justify-between p-3 ${isHorizontal ? '' : 'cursor-pointer'} list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700" onclick="${isHorizontal ? 'event.preventDefault();' : ''}">
+                        <div class="text-sm font-bold text-surface-800 dark:text-surface-200 flex items-center gap-2 min-w-0 truncate"><i data-lucide="${icon}" class="w-4 h-4 text-surface-500 dark:text-surface-300 shrink-0"></i> ${title}</div>
+                        <div class="flex items-center gap-2 shrink-0">
+                            ${opts.rightSlot || ''}
+                            ${isHorizontal ? '' : '<i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>'}
+                        </div>
+                    </summary>
+                    <div class="p-3 flex flex-col gap-2.5 bg-surface-50 dark:bg-surface-900/50 flex-1 ${opts.bodyClass || ''}">
+                        ${bodyHtml}
+                    </div>
+                </details>
+            `;
+
+            // Label row + right-aligned value chip + (optional) reset button
+            const propRow = (label, inputHtml, valueHtml, opts = {}) => `
+                <div>
+                    <div class="flex justify-between items-center mb-1.5">
+                        <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">${label}</label>
+                        <span class="flex items-center gap-1.5">
+                            ${opts.reset || ''}
+                            <span class="text-xs font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-2 py-0.5 rounded shadow-sm">${valueHtml}</span>
+                        </span>
+                    </div>
+                    ${inputHtml}
+                </div>
+            `;
+
+            // Reset arrow — rendered only when the value differs from its default
+            const propReset = (key, cur, def) => {
+                if (Math.abs(cur - def) < 1e-9) return '';
+                return `<button type="button" onclick="setClipEffect('${clip.id}', '${key}', ${def}); updateSidebarPanel(); drawCanvas(); event.stopPropagation();" class="p-0.5 rounded text-surface-400 dark:text-surface-500 hover:text-brand-600 dark:hover:text-brand-400 transition-colors" title="Reset ${key}"><i data-lucide="rotate-ccw" class="w-3 h-3"></i></button>`;
+            };
+
+            // Two compact controls side by side (X / Y, Temp / Tint)
+            const propPair = (a, b) => `<div class="grid grid-cols-2 gap-2">${a}${b}</div>`;
+
+            // Color swatch + hex readout + invisible picker
+            const colorRow = (key, color, label = 'Color') => `
+                <div>
+                    <label class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">${label}</label>
+                    <div class="relative flex items-center bg-surface-50 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 rounded p-1.5 cursor-pointer shadow-inner w-full">
+                        <div class="w-6 h-6 rounded shadow-sm" style="background-color: ${color}"></div>
+                        <span class="ml-3 font-mono font-bold text-xs text-surface-700 dark:text-surface-200 uppercase">${color}</span>
+                        <input type="color" value="${color}" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full" oninput="setClipEffect('${clip.id}', '${key}', this.value); this.previousElementSibling.textContent = this.value; this.previousElementSibling.previousElementSibling.style.backgroundColor = this.value; drawCanvas();">
+                    </div>
+                </div>
+            `;
+
+            // Range input with a live fill track that follows the thumb
+            const propSlider = (key, val, min, max, step, fmt) => `
+                <input type="range" min="${min}" max="${max}" ${step ? `step="${step}"` : ''} value="${val}" class="w-full custom-slider" oninput="updateSliderFill(this); setClipEffect('${clip.id}', '${key}', this.value); this.previousElementSibling.querySelector('span:last-child > span').textContent = ${fmt}; drawCanvas();">
+            `;
 
             const isShape = clip.type === 'shape';
             let shapeHTML = '';
@@ -8884,20 +8952,9 @@
                 </details>
             ` : '';
 
-            const blendingHTML = (clip.type === 'image' || clip.type === 'video' || clip.type === 'text' || clip.type === 'shape' || clip.type === 'scene') ? `
-                <details id="cardOpacity" class="group bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 shadow-sm rounded-lg shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'} overflow-hidden flex flex-col" open>
-                    <summary class="flex items-center justify-between p-3 ${isHorizontal ? '' : 'cursor-pointer'} list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700 " onclick="${isHorizontal ? 'event.preventDefault();' : ''}">
-                        <div class="text-sm font-bold text-surface-800 dark:text-surface-200 flex items-center gap-2"><i data-lucide="layers" class="w-4 h-4 text-surface-500 dark:text-surface-300"></i> Opacity & Blending</div>
-                        ${isHorizontal ? '' : '<i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>'}
-                    </summary>
-                    <div class="p-3 flex flex-col gap-2.5 bg-surface-50 dark:bg-surface-900/50 flex-1">
-                        <div>
-                            <div class="flex justify-between items-center mb-1.5">
-                                <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Opacity</label>
-                                <span class="text-xs font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-2 py-0.5 rounded shadow-sm">${fx.opacity !== undefined ? fx.opacity : 100}%</span>
-                            </div>
-                            <input type="range" min="0" max="100" value="${fx.opacity !== undefined ? fx.opacity : 100}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'opacity', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + '%'; this.style.background = 'linear-gradient(to right, ${sliderFill} ' + (this.value/this.max)*100 + '%, ${sliderBg} ' + (this.value/this.max)*100 + '%)'; drawCanvas();">
-                        </div>
+            const blendOpacity = fx.opacity !== undefined ? fx.opacity : 100;
+            const blendingHTML = (clip.type === 'image' || clip.type === 'video' || clip.type === 'text' || clip.type === 'shape' || clip.type === 'scene') ? propCard('cardOpacity', 'layers', 'Opacity & Blending', `
+                        ${propRow('Opacity', propSlider('opacity', blendOpacity, 0, 100, 1, "this.value + '%'"), blendOpacity + '%', { reset: propReset('opacity', blendOpacity, 100) })}
                         <div>
                             <label class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">Blend Mode</label>
                             <select class="w-full text-xs p-2 pl-3 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 appearance-none cursor-pointer font-bold text-surface-800 dark:text-surface-200" onchange="setClipEffect('${clip.id}', 'blendMode', this.value); drawCanvas();">
@@ -8941,9 +8998,7 @@
                                 </optgroup>
                             </select>
                         </div>
-                    </div>
-                </details>
-            ` : '';
+                    `) : '';
 
             const strokeHTML = (clip.type === 'text' || clip.type === 'shape' || clip.type === 'image' || clip.type === 'video') ? `
                 <details id="cardStroke" class="group bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 shadow-sm rounded-lg shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'} overflow-hidden flex flex-col" open>
@@ -9155,76 +9210,37 @@
             // CapCut / Premiere-style grading: saturation, vibrance, hue, temperature,
             // tint, brightness, contrast and blur — all keyframe-able via the same
             // setClipEffect path used by every other numeric effect.
-            const colorHTML = (clip.type === 'image' || clip.type === 'video') ? `
-                <details id="cardColor" class="group bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 shadow-sm rounded-lg shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'} overflow-hidden flex flex-col" open>
-                    <summary class="flex items-center justify-between p-3 ${isHorizontal ? '' : 'cursor-pointer'} list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700 " onclick="${isHorizontal ? 'event.preventDefault();' : ''}">
-                        <div class="text-sm font-bold text-surface-800 dark:text-surface-200 flex items-center gap-2"><i data-lucide="palette" class="w-4 h-4 text-surface-500 dark:text-surface-300"></i> Color Correction</div>
-                        <div class="flex items-center gap-2">
-                            <button onclick="resetClipColor('${clip.id}'); event.stopPropagation();" class="text-[9px] font-bold text-surface-500 dark:text-surface-300 hover:text-brand-600 dark:hover:text-brand-400 border border-surface-200 dark:border-surface-700 rounded px-2 py-1 transition-colors" title="Reset all color controls">Reset</button>
-                            ${isHorizontal ? '' : '<i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>'}
-                        </div>
-                    </summary>
-                    <div class="p-3 flex flex-col gap-2.5 bg-surface-50 dark:bg-surface-900/50 flex-1">
+            const colorHTML = (clip.type === 'image' || clip.type === 'video') ? propCard('cardColor', 'palette', 'Color Correction', `
                         ${[
-                            ['colorSaturation', 'Saturation', 0, 200, '%'],
-                            ['colorVibrance', 'Vibrance', -100, 100, ''],
-                            ['colorHue', 'Hue', -180, 180, '°'],
-                            ['colorTemperature', 'Temperature', -100, 100, ''],
-                            ['colorTint', 'Tint', -100, 100, ''],
-                            ['colorBrightness', 'Brightness', 0, 200, '%'],
-                            ['colorContrast', 'Contrast', 0, 200, '%'],
-                            ['colorBlur', 'Blur', 0, 50, 'px']
-                        ].map(([key, label, min, max, unit]) => {
-                            const def = (key === 'colorSaturation' || key === 'colorBrightness' || key === 'colorContrast') ? 100 : 0;
+                            ['colorSaturation', 'Saturation', 0, 200, '%', 100],
+                            ['colorVibrance', 'Vibrance', -100, 100, '', 0],
+                            ['colorHue', 'Hue', -180, 180, '°', 0],
+                            ['colorBrightness', 'Brightness', 0, 200, '%', 100],
+                            ['colorContrast', 'Contrast', 0, 200, '%', 100],
+                            ['colorBlur', 'Blur', 0, 50, 'px', 0]
+                        ].map(([key, label, min, max, unit, def]) => {
                             const val = fx[key] !== undefined ? fx[key] : def;
-                            return `
-                        <div>
-                            <div class="flex justify-between items-center mb-1.5">
-                                <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">${label}</label>
-                                <span class="text-xs font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-2 py-0.5 rounded shadow-sm">${val}${unit}</span>
-                            </div>
-                            <input type="range" min="${min}" max="${max}" value="${val}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', '${key}', this.value); this.previousElementSibling.querySelector('span').textContent = parseFloat(this.value) + '${unit}'; drawCanvas();">
-                        </div>`;
+                            return propRow(label, propSlider(key, val, min, max, null, `parseFloat(this.value) + '${unit}'`), val + unit, { reset: propReset(key, val, def) });
                         }).join('')}
+                        ${(() => {
+                            const tempVal = fx.colorTemperature !== undefined ? fx.colorTemperature : 0;
+                            const tintVal = fx.colorTint !== undefined ? fx.colorTint : 0;
+                            return propPair(
+                                propRow('Temperature', propSlider('colorTemperature', tempVal, -100, 100, 1, 'parseFloat(this.value)'), tempVal, { reset: propReset('colorTemperature', tempVal, 0) }),
+                                propRow('Tint', propSlider('colorTint', tintVal, -100, 100, 1, 'parseFloat(this.value)'), tintVal, { reset: propReset('colorTint', tintVal, 0) })
+                            );
+                        })()}
                         <p class="text-[10px] text-surface-500 dark:text-surface-300 leading-relaxed pt-0.5">Adjusts the clip's color like CapCut / Premiere. All values are keyframe-able from the Animations tab.</p>
-                    </div>
-                </details>
-            ` : '';
+                    `, { rightSlot: `<button type="button" onclick="resetClipColor('${clip.id}'); event.stopPropagation();" class="text-[9px] font-bold text-surface-500 dark:text-surface-300 hover:text-brand-600 dark:hover:text-brand-400 border border-surface-200 dark:border-surface-700 rounded px-2 py-1 transition-colors" title="Reset all color controls">Reset</button>` }) : '';
 
             const scaleVal = fx.scale !== undefined ? fx.scale : 1;
             const rotateVal = fx.rotate !== undefined ? fx.rotate : 0;
             const radiusVal = fx.borderRadius !== undefined ? fx.borderRadius : 0;
 
-            const transformHTML = (clip.type === 'image' || clip.type === 'video' || clip.type === 'text' || clip.type === 'shape' || clip.type === 'scene') ? `
-                <details id="cardTransform" class="group bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 shadow-sm rounded-lg shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'} overflow-hidden flex flex-col" open>
-                    <summary class="flex items-center justify-between p-3 ${isHorizontal ? '' : 'cursor-pointer'} list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700 " onclick="${isHorizontal ? 'event.preventDefault();' : ''}">
-                        <div class="text-sm font-bold text-surface-800 dark:text-surface-200 flex items-center gap-2"><i data-lucide="maximize" class="w-4 h-4 text-surface-500 dark:text-surface-300"></i> Transform</div>
-                        ${isHorizontal ? '' : '<i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>'}
-                    </summary>
-                    <div class="p-3 flex flex-col gap-2.5 bg-surface-50 dark:bg-surface-900/50 flex-1">
-                        <div>
-                            <div class="flex justify-between items-center mb-1.5">
-                                <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Scale</label>
-                                <span class="text-xs font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-2 py-0.5 rounded shadow-sm">${Number(scaleVal).toFixed(2)}x</span>
-                            </div>
-                            <input type="range" min="0" max="3" step="0.05" value="${scaleVal}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'scale', this.value); this.previousElementSibling.querySelector('span').textContent = Number(this.value).toFixed(2) + 'x'; this.style.background = 'linear-gradient(to right, ${sliderFill} ' + (this.value/this.max)*100 + '%, ${sliderBg} ' + (this.value/this.max)*100 + '%)'; drawCanvas();">
-                        </div>
-                        <div>
-                            <div class="flex justify-between items-center mb-1.5">
-                                <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Rotate</label>
-                                <span class="text-xs font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-2 py-0.5 rounded shadow-sm">${rotateVal}°</span>
-                            </div>
-                            <input type="range" min="0" max="360" step="1" value="${rotateVal}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'rotate', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + '°'; this.style.background = 'linear-gradient(to right, ${sliderFill} ' + (this.value/this.max)*100 + '%, ${sliderBg} ' + (this.value/this.max)*100 + '%)'; drawCanvas();">
-                        </div>
-                        ${(clip.type === 'shape' && fx.shapeType === 'rect') || (clip.type !== 'text' && clip.type !== 'shape') ? `
-                        <div>
-                            <div class="flex justify-between items-center mb-1.5">
-                                <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Border Radius</label>
-                                <span class="text-xs font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-2 py-0.5 rounded shadow-sm">${radiusVal}px</span>
-                            </div>
-                            <input type="range" min="0" max="200" step="1" value="${radiusVal}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'borderRadius', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + 'px'; this.style.background = 'linear-gradient(to right, ${sliderFill} ' + (this.value/this.max)*100 + '%, ${sliderBg} ' + (this.value/this.max)*100 + '%)'; drawCanvas();">
-                        </div>
-                        ` : ''}
+            const transformHTML = (clip.type === 'image' || clip.type === 'video' || clip.type === 'text' || clip.type === 'shape' || clip.type === 'scene') ? propCard('cardTransform', 'maximize', 'Transform', `
+                        ${propRow('Scale', propSlider('scale', scaleVal, 0, 3, 0.05, "Number(this.value).toFixed(2) + 'x'"), Number(scaleVal).toFixed(2) + 'x', { reset: propReset('scale', scaleVal, 1) })}
+                        ${propRow('Rotate', propSlider('rotate', rotateVal, 0, 360, 1, "this.value + '°'"), rotateVal + '°', { reset: propReset('rotate', rotateVal, 0) })}
+                        ${((clip.type === 'shape' && fx.shapeType === 'rect') || (clip.type !== 'text' && clip.type !== 'shape')) ? propRow('Border Radius', propSlider('borderRadius', radiusVal, 0, 200, 1, "this.value + 'px'"), radiusVal + 'px', { reset: propReset('borderRadius', radiusVal, 0) }) : ''}
                         
                         <!-- Alignment & Flip Controls -->
                         <div class="mt-2 pt-2 border-t border-surface-200 dark:border-surface-700">
@@ -9256,56 +9272,22 @@
                                 </button>
                             </div>
                         </div>
-                    </div>
-                </details>
-            ` : '';
+                    `) : '';
 
-            const shadowHTML = `
-                <details id="cardShadow" class="group bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 shadow-sm rounded-lg shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'} overflow-hidden flex flex-col" open>
-                    <summary class="flex items-center justify-between p-3 ${isHorizontal ? '' : 'cursor-pointer'} list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700 " onclick="${isHorizontal ? 'event.preventDefault();' : ''}">
-                        <div class="text-sm font-bold text-surface-800 dark:text-surface-200 flex items-center gap-2"><i data-lucide="copy" class="w-4 h-4 text-surface-500 dark:text-surface-300"></i> Drop Shadow</div>
-                        <div class="flex items-center gap-2">
-                            <label class="relative inline-flex items-center cursor-pointer" onclick="event.stopPropagation()">
-                                <input type="checkbox" class="sr-only peer" ${shadowEnable ? 'checked' : ''} onchange="setClipEffect('${clip.id}', 'shadowEnable', this.checked); updateSidebarPanel();">
-                                <div class="w-7 h-4 bg-surface-300 dark:bg-surface-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:peer-checked:bg-brand-500 peer-checked:bg-brand-500"></div>
-                            </label>
-                            ${isHorizontal ? '' : '<i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>'}
-                        </div>
-                    </summary>
-                    
-                    <div class="p-3 flex flex-col gap-2.5 bg-surface-50 dark:bg-surface-900/50 flex-1 ${!shadowEnable ? 'opacity-50 pointer-events-none' : ''}">
-                        <div class="mb-2">
-                            <label class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">Shadow Color</label>
-                            <div class="relative flex items-center bg-surface-50 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 rounded p-1.5 cursor-pointer shadow-inner w-full">
-                                <div class="w-6 h-6 rounded shadow-sm" style="background-color: ${shadowColor}"></div>
-                                <span class="ml-3 font-mono font-bold text-xs text-surface-700 dark:text-surface-200 uppercase">${shadowColor}</span>
-                                <input type="color" value="${shadowColor}" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full" oninput="setClipEffect('${clip.id}', 'shadowColor', this.value); this.previousElementSibling.textContent = this.value; this.previousElementSibling.previousElementSibling.style.backgroundColor = this.value; drawCanvas();">
-                            </div>
-                        </div>
-                        <div>
-                            <div class="flex justify-between items-center mb-1.5">
-                                <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Blur</label>
-                                <span class="text-xs font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-2 py-0.5 rounded shadow-sm">${shadowBlur}</span>
-                            </div>
-                            <input type="range" min="0" max="100" value="${shadowBlur}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'shadowBlur', this.value); this.previousElementSibling.querySelector('span').textContent = this.value; this.style.background = 'linear-gradient(to right, ${sliderFill} ' + (this.value/this.max)*100 + '%, ${sliderBg} ' + (this.value/this.max)*100 + '%)'">
-                        </div>
-                        <div>
-                            <div class="flex justify-between items-center mb-1.5">
-                                <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Offset X</label>
-                                <span class="text-xs font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-2 py-0.5 rounded shadow-sm">${shadowX}</span>
-                            </div>
-                            <input type="range" min="-100" max="100" value="${shadowX}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'shadowX', this.value); this.previousElementSibling.querySelector('span').textContent = this.value; this.style.background = 'linear-gradient(to right, ${sliderFill} ' + ((this.value-(-100))/200)*100 + '%, ${sliderBg} ' + ((this.value-(-100))/200)*100 + '%)'">
-                        </div>
-                        <div>
-                            <div class="flex justify-between items-center mb-1.5">
-                                <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Offset Y</label>
-                                <span class="text-xs font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-2 py-0.5 rounded shadow-sm">${shadowY}</span>
-                            </div>
-                            <input type="range" min="-100" max="100" value="${shadowY}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'shadowY', this.value); this.previousElementSibling.querySelector('span').textContent = this.value; this.style.background = 'linear-gradient(to right, ${sliderFill} ' + ((this.value-(-100))/200)*100 + '%, ${sliderBg} ' + ((this.value-(-100))/200)*100 + '%)'">
-                        </div>
-                    </div>
-                </details>
-            `;
+            const shadowHTML = propCard('cardShadow', 'copy', 'Drop Shadow', `
+                        ${colorRow('shadowColor', shadowColor)}
+                        ${propRow('Blur', propSlider('shadowBlur', shadowBlur, 0, 100, 1, 'this.value'), shadowBlur, { reset: propReset('shadowBlur', shadowBlur, 20) })}
+                        ${propPair(
+                            propRow('Offset X', propSlider('shadowX', shadowX, -100, 100, 1, 'this.value'), shadowX, { reset: propReset('shadowX', shadowX, 0) }),
+                            propRow('Offset Y', propSlider('shadowY', shadowY, -100, 100, 1, 'this.value'), shadowY, { reset: propReset('shadowY', shadowY, 10) })
+                        )}
+                    `, {
+                        rightSlot: `<label class="relative inline-flex items-center cursor-pointer" onclick="event.stopPropagation()">
+                            <input type="checkbox" class="sr-only peer" ${shadowEnable ? 'checked' : ''} onchange="setClipEffect('${clip.id}', 'shadowEnable', this.checked); updateSidebarPanel();">
+                            <div class="w-7 h-4 bg-surface-300 dark:bg-surface-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:peer-checked:bg-brand-500 peer-checked:bg-brand-500"></div>
+                        </label>`,
+                        bodyClass: !shadowEnable ? 'opacity-50 pointer-events-none' : ''
+                    });
 
             const systemFontsHTML = isText ? `
                 <details id="cardSystemFonts" class="group bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 shadow-sm rounded-lg shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'} overflow-hidden flex flex-col" ${(State.ui && State.ui.detailsState && State.ui.detailsState['System Fonts (PC)']) ? 'open' : ''}>
