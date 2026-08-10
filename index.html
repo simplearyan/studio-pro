@@ -8156,11 +8156,16 @@
                 </details>
             `;
 
-            // Label row + right-aligned value chip + (optional) reset button
-            const propRow = (label, inputHtml, valueHtml, opts = {}) => `
+            // Label row + right-aligned value chip + (optional) reset button.
+            // propSlider/colorRow always emit id= on the control, so the label's
+            // `for` mirrors it — the association can never drift from the control.
+            const propRow = (label, inputHtml, valueHtml, opts = {}) => {
+                const idMatch = inputHtml.match(/id="([^"]+)"/);
+                const forId = idMatch ? idMatch[1] : '';
+                return `
                 <div>
                     <div class="flex justify-between items-center mb-1.5">
-                        <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">${label}</label>
+                        <label for="${forId}" class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">${label}</label>
                         <span class="flex items-center gap-1.5">
                             ${opts.reset || ''}
                             <span class="text-xs font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-2 py-0.5 rounded shadow-sm">${valueHtml}</span>
@@ -8169,6 +8174,7 @@
                     ${inputHtml}
                 </div>
             `;
+            };
 
             // Reset arrow — rendered only when the value differs from its default
             const propReset = (key, cur, def) => {
@@ -8182,11 +8188,11 @@
             // Color swatch + hex readout + invisible picker
             const colorRow = (key, color, label = 'Color') => `
                 <div>
-                    <label class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">${label}</label>
+                    <label for="${clip.id}_${key}" class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">${label}</label>
                     <div class="relative flex items-center bg-surface-50 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 rounded p-1.5 cursor-pointer shadow-inner w-full">
                         <div class="w-6 h-6 rounded shadow-sm" style="background-color: ${color}"></div>
                         <span class="ml-3 font-mono font-bold text-xs text-surface-700 dark:text-surface-200 uppercase">${color}</span>
-                        <input type="color" value="${color}" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full" oninput="setClipEffect('${clip.id}', '${key}', this.value); this.previousElementSibling.textContent = this.value; this.previousElementSibling.previousElementSibling.style.backgroundColor = this.value; drawCanvas();">
+                        <input type="color" id="${clip.id}_${key}" name="${key}" value="${color}" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full" oninput="setClipEffect('${clip.id}', '${key}', this.value); this.previousElementSibling.textContent = this.value; this.previousElementSibling.previousElementSibling.style.backgroundColor = this.value; drawCanvas();">
                     </div>
                 </div>
             `;
@@ -8196,31 +8202,34 @@
             // setClipSpeed); opts.onChange adds an extra change handler (e.g. the
             // speed slider re-renders the panel when the timeline length changes).
             const propSlider = (key, val, min, max, step, fmt, opts = {}) => `
-                <input type="range" min="${min}" max="${max}" ${step ? `step="${step}"` : ''} value="${val}" class="w-full custom-slider" oninput="updateSliderFill(this); ${opts.setter || `setClipEffect('${clip.id}', '${key}', this.value)`}; this.previousElementSibling.querySelector('span:last-child > span').textContent = ${fmt}; ${opts.setter ? '' : 'drawCanvas();'}" ${opts.onChange ? `onchange="${opts.onChange}"` : ''}>
+                <input type="range" id="${clip.id}_${key}" name="${key}" min="${min}" max="${max}" ${step ? `step="${step}"` : ''} value="${val}" class="w-full custom-slider" oninput="updateSliderFill(this); ${opts.setter || `setClipEffect('${clip.id}', '${key}', this.value)`}; this.previousElementSibling.querySelector('span:last-child > span').textContent = ${fmt}; ${opts.setter ? '' : 'drawCanvas();'}" ${opts.onChange ? `onchange="${opts.onChange}"` : ''}>
             `;
 
             // Compact on/off switch for a card header (stays clickable when the
             // body is dimmed, so the user can re-enable a disabled feature)
             const propSwitch = (key, checked, onchange) => `
                 <label class="relative inline-flex items-center cursor-pointer" onclick="event.stopPropagation()">
-                    <input type="checkbox" class="sr-only peer" ${checked ? 'checked' : ''} onchange="${onchange}">
+                    <input type="checkbox" id="${clip.id}_${key}" name="${key}" class="sr-only peer" ${checked ? 'checked' : ''} onchange="${onchange}">
                     <div class="w-7 h-4 bg-surface-300 dark:bg-surface-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:peer-checked:bg-brand-500 peer-checked:bg-brand-500"></div>
                 </label>
             `;
 
             // Labeled switch row inside a card body (CapCut "toggle with hint")
-            const toggleRow = (label, hint, checked, onchange, cls = '') => `
+            const toggleRow = (label, hint, checked, onchange, cls = '') => {
+                const idKey = label.toLowerCase().replace(/[^a-z0-9]+/g, '');
+                return `
                 <div class="flex items-center justify-between gap-2 ${cls}">
-                    <div class="flex flex-col gap-0.5 min-w-0">
+                    <label for="${clip.id}_${idKey}" class="flex flex-col gap-0.5 min-w-0 cursor-pointer">
                         <span class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">${label}</span>
                         ${hint ? `<span class="text-[8.5px] text-surface-500 dark:text-surface-300 leading-tight">${hint}</span>` : ''}
-                    </div>
+                    </label>
                     <label class="relative inline-flex items-center cursor-pointer shrink-0">
-                        <input type="checkbox" class="sr-only peer" ${checked ? 'checked' : ''} onchange="${onchange}">
+                        <input type="checkbox" id="${clip.id}_${idKey}" name="${idKey}" class="sr-only peer" ${checked ? 'checked' : ''} onchange="${onchange}">
                         <div class="w-7 h-4 bg-surface-300 dark:bg-surface-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:peer-checked:bg-brand-500 peer-checked:bg-brand-500"></div>
                     </label>
                 </div>
             `;
+            };
 
             const isShape = clip.type === 'shape';
             let shapeHTML = '';
@@ -8233,8 +8242,8 @@
                         </summary>
                         <div class="p-3 flex flex-col gap-3 bg-surface-50 dark:bg-surface-900/50 flex-1">
                             <div>
-                                <label class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">Shape Type</label>
-                                <select class="w-full text-xs p-2 pl-3 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 appearance-none cursor-pointer font-bold text-surface-800 dark:text-surface-200" onchange="setClipEffect('${clip.id}', 'shapeType', this.value); updateSidebarPanel();">
+                                <label for="${clip.id}_shapeType" class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">Shape Type</label>
+                                <select id="${clip.id}_shapeType" name="shapeType" class="w-full text-xs p-2 pl-3 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 appearance-none cursor-pointer font-bold text-surface-800 dark:text-surface-200" onchange="setClipEffect('${clip.id}', 'shapeType', this.value); updateSidebarPanel();">
                                     <option value="rect" ${fx.shapeType === 'rect' ? 'selected' : ''}>Rectangle</option>
                                     <option value="circle" ${fx.shapeType === 'circle' ? 'selected' : ''}>Circle / Oval</option>
                                     <option value="semicircle" ${fx.shapeType === 'semicircle' ? 'selected' : ''}>Semicircle</option>
@@ -8247,17 +8256,17 @@
                             <div class="mt-1 flex flex-col gap-3">
                                 <div>
                                     <div class="flex justify-between items-center mb-1.5">
-                                        <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Width</label>
+                                        <label for="${clip.id}_shapeWidth" class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Width</label>
                                         <span class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${fx.shapeWidth || 200}px</span>
                                     </div>
-                                    <input type="range" min="10" max="2000" value="${fx.shapeWidth || 200}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'shapeWidth', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + 'px'; drawCanvas();">
+                                    <input type="range" id="${clip.id}_shapeWidth" name="shapeWidth" min="10" max="2000" value="${fx.shapeWidth || 200}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'shapeWidth', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + 'px'; drawCanvas();">
                                 </div>
                                 <div>
                                     <div class="flex justify-between items-center mb-1.5">
-                                        <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Height</label>
+                                        <label for="${clip.id}_shapeHeight" class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Height</label>
                                         <span class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${fx.shapeHeight || 200}px</span>
                                     </div>
-                                    <input type="range" min="10" max="2000" value="${fx.shapeHeight || 200}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'shapeHeight', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + 'px'; drawCanvas();">
+                                    <input type="range" id="${clip.id}_shapeHeight" name="shapeHeight" min="10" max="2000" value="${fx.shapeHeight || 200}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'shapeHeight', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + 'px'; drawCanvas();">
                                 </div>
 
                                 ${fx.shapeType === 'polygon' ? `
@@ -8288,11 +8297,11 @@
                                 ` : ''}
 
                                 <div>
-                                    <label class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">Fill Color</label>
+                                    <label for="${clip.id}_fillColor" class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">Fill Color</label>
                                     <div class="relative flex items-center bg-surface-50 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 rounded p-1.5 cursor-pointer shadow-inner w-full">
                                         <div class="w-6 h-6 rounded shadow-sm" style="background-color: ${fx.fillColor || '#ffbb00'}"></div>
                                         <span class="ml-3 font-mono font-bold text-xs text-surface-700 dark:text-surface-200 uppercase">${fx.fillColor || '#ffbb00'}</span>
-                                        <input type="color" value="${fx.fillColor || '#ffbb00'}" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full" oninput="setClipEffect('${clip.id}', 'fillColor', this.value); this.previousElementSibling.textContent = this.value; this.previousElementSibling.previousElementSibling.style.backgroundColor = this.value; drawCanvas();">
+                                        <input type="color" id="${clip.id}_fillColor" name="fillColor" value="${fx.fillColor || '#ffbb00'}" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full" oninput="setClipEffect('${clip.id}', 'fillColor', this.value); this.previousElementSibling.textContent = this.value; this.previousElementSibling.previousElementSibling.style.backgroundColor = this.value; drawCanvas();">
                                     </div>
                                 </div>
                             </div>
@@ -8384,7 +8393,8 @@
                             ${isHorizontal ? '' : '<i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>'}
                         </summary>
                         <div class="p-3 flex flex-col gap-3 bg-surface-50 dark:bg-surface-900/50 flex-1">
-                            <textarea class="w-full h-20 bg-surface-50 dark:bg-surface-900/80 shadow-inner border border-surface-200 dark:border-surface-700 rounded-lg p-2 text-sm text-surface-900 dark:text-white outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500" oninput="const _c=State.clips.find(c=>c.id==='${clip.id}');if(_c){_c.text=this.value;if(_c.subtitleId){const _s=State.subtitles.find(s=>s.id===_c.subtitleId);if(_s){_s.text=this.value;saveSubtitlesToStorage();}}drawCanvas();renderClips();}">${clip.text}</textarea>
+                            <label for="${clip.id}_textContent" class="sr-only">Text content</label>
+                            <textarea id="${clip.id}_textContent" name="textContent" class="w-full h-20 bg-surface-50 dark:bg-surface-900/80 shadow-inner border border-surface-200 dark:border-surface-700 rounded-lg p-2 text-sm text-surface-900 dark:text-white outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500" oninput="const _c=State.clips.find(c=>c.id==='${clip.id}');if(_c){_c.text=this.value;if(_c.subtitleId){const _s=State.subtitles.find(s=>s.id===_c.subtitleId);if(_s){_s.text=this.value;saveSubtitlesToStorage();}}drawCanvas();renderClips();}">${clip.text}</textarea>
                             ${clip.subtitleId ? `
                             <button onclick="convertSubtitleClipToText('${clip.id}'); updateSidebarPanel(); updatePropertiesPanel(); renderSubtitlesPanel(); drawCanvas();" class="w-full py-1.5 px-2 text-[10px] font-bold rounded-lg bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 border border-brand-200 dark:border-brand-700 hover:bg-brand-100 dark:hover:bg-brand-900/50 transition-colors flex items-center justify-center gap-1.5">
                                 <i data-lucide="type" class="w-3 h-3"></i> Convert to Text Element
@@ -8430,19 +8440,19 @@
                                 ` : ''}
 
                                 <div>
-                                    <label class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">Casing</label>
-                                    <select class="w-full text-xs p-2 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner appearance-none font-bold text-surface-800 dark:text-surface-200 ${fx.renderAsMath ? 'opacity-50 cursor-not-allowed' : ''}" ${fx.renderAsMath ? 'disabled' : ''} onchange="setClipEffect('${clip.id}', 'textTransform', this.value)">
+                                    <label for="${clip.id}_textTransform" class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">Casing</label>
+                                    <select id="${clip.id}_textTransform" name="textTransform" class="w-full text-xs p-2 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner appearance-none font-bold text-surface-800 dark:text-surface-200 ${fx.renderAsMath ? 'opacity-50 cursor-not-allowed' : ''}" ${fx.renderAsMath ? 'disabled' : ''} onchange="setClipEffect('${clip.id}', 'textTransform', this.value)">
                                         <option value="none" ${(fx.textTransform || 'none') === 'none' ? 'selected' : ''}>As Typed</option>
                                         <option value="uppercase" ${fx.textTransform === 'uppercase' ? 'selected' : ''}>UPPERCASE</option>
                                         <option value="lowercase" ${fx.textTransform === 'lowercase' ? 'selected' : ''}>lowercase</option>
                                     </select>
                                 </div>
                                 <div class="mt-2">
-                                    <label class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">Color</label>
+                                    <label for="${clip.id}_typographyColor" class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">Color</label>
                                     <div class="relative flex items-center bg-surface-50 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 rounded p-1.5 cursor-pointer shadow-inner w-full">
                                         <div class="w-6 h-6 rounded shadow-sm" style="background-color: ${fx.fillColor || '#ffffff'}"></div>
                                         <span class="ml-3 font-mono font-bold text-xs text-surface-700 dark:text-surface-200 uppercase">${fx.fillColor || '#ffffff'}</span>
-                                        <input type="color" value="${fx.fillColor || '#ffffff'}" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full" oninput="setClipEffect('${clip.id}', 'fillColor', this.value); this.previousElementSibling.textContent = this.value; this.previousElementSibling.previousElementSibling.style.backgroundColor = this.value; drawCanvas();">
+                                        <input type="color" id="${clip.id}_typographyColor" name="fillColor" value="${fx.fillColor || '#ffffff'}" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full" oninput="setClipEffect('${clip.id}', 'fillColor', this.value); this.previousElementSibling.textContent = this.value; this.previousElementSibling.previousElementSibling.style.backgroundColor = this.value; drawCanvas();">
                                     </div>
                                 </div>
                             </div>
@@ -8457,9 +8467,9 @@
                             ${isHorizontal ? '' : '<i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>'}
                         </summary>
                         <div class="p-3 flex flex-col gap-3 bg-surface-50 dark:bg-surface-900/50 flex-1">
-                            <div>
-                                <label class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">Font</label>
-                                <select class="w-full text-xs p-2 pl-3 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 appearance-none cursor-pointer font-bold text-surface-800 dark:text-surface-200" onchange="setClipEffect('${clip.id}', 'fontFamily', this.value)">
+                                <div>
+                                <label for="${clip.id}_fontFamily" class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">Font</label>
+                                <select id="${clip.id}_fontFamily" name="fontFamily" class="w-full text-xs p-2 pl-3 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 appearance-none cursor-pointer font-bold text-surface-800 dark:text-surface-200" onchange="setClipEffect('${clip.id}', 'fontFamily', this.value)">
                                     ${fontOptionsHtml}
                                     ${customFontOptionsHtml}
                                     ${googleFontOptionsHtml}
@@ -8468,8 +8478,8 @@
                             </div>
                             <div class="grid grid-cols-3 gap-2 mt-1">
                                 <div class="col-span-1">
-                                    <label class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">Weight</label>
-                                    <select class="w-full text-xs p-2 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner appearance-none font-bold text-surface-800 dark:text-surface-200" onchange="setClipEffect('${clip.id}', 'fontWeight', parseInt(this.value))">
+                                    <label for="${clip.id}_fontWeight" class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">Weight</label>
+                                    <select id="${clip.id}_fontWeight" name="fontWeight" class="w-full text-xs p-2 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner appearance-none font-bold text-surface-800 dark:text-surface-200" onchange="setClipEffect('${clip.id}', 'fontWeight', parseInt(this.value))">
                                         <option value="400" ${fx.fontWeight === 400 ? 'selected' : ''}>Regular</option>
                                         <option value="600" ${fx.fontWeight === 600 ? 'selected' : ''}>SemiBold</option>
                                         <option value="700" ${fx.fontWeight === 700 ? 'selected' : ''}>Bold</option>
@@ -8477,15 +8487,15 @@
                                     </select>
                                 </div>
                                 <div class="col-span-1">
-                                    <label class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">Style</label>
-                                    <select class="w-full text-xs p-2 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner appearance-none font-bold text-surface-800 dark:text-surface-200" onchange="setClipEffect('${clip.id}', 'fontStyle', this.value)">
+                                    <label for="${clip.id}_fontStyle" class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">Style</label>
+                                    <select id="${clip.id}_fontStyle" name="fontStyle" class="w-full text-xs p-2 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner appearance-none font-bold text-surface-800 dark:text-surface-200" onchange="setClipEffect('${clip.id}', 'fontStyle', this.value)">
                                         <option value="normal" ${(fx.fontStyle || 'normal') === 'normal' ? 'selected' : ''}>Normal</option>
                                         <option value="italic" ${fx.fontStyle === 'italic' ? 'selected' : ''}>Italic</option>
                                     </select>
                                 </div>
                                 <div class="col-span-1">
-                                    <label class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">Decor</label>
-                                    <select class="w-full text-xs p-2 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner appearance-none font-bold text-surface-800 dark:text-surface-200" onchange="setClipEffect('${clip.id}', 'textDecoration', this.value)">
+                                    <label for="${clip.id}_textDecoration" class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">Decor</label>
+                                    <select id="${clip.id}_textDecoration" name="textDecoration" class="w-full text-xs p-2 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner appearance-none font-bold text-surface-800 dark:text-surface-200" onchange="setClipEffect('${clip.id}', 'textDecoration', this.value)">
                                         <option value="none" ${(fx.textDecoration || 'none') === 'none' ? 'selected' : ''}>None</option>
                                         <option value="underline" ${fx.textDecoration === 'underline' ? 'selected' : ''}>Under</option>
                                         <option value="line-through" ${fx.textDecoration === 'line-through' ? 'selected' : ''}>Strike</option>
@@ -8505,24 +8515,24 @@
                         <div class="p-3 flex flex-col gap-3 bg-surface-50 dark:bg-surface-900/50 flex-1">
                             <div>
                                 <div class="flex justify-between items-center mb-1.5">
-                                    <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Size</label>
+                                    <label for="${clip.id}_fontSize" class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Size</label>
                                     <span class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${fx.fontSize || 100}px</span>
                                 </div>
-                                <input type="range" min="10" max="400" value="${fx.fontSize || 100}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'fontSize', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + 'px'; drawCanvas();">
+                                <input type="range" id="${clip.id}_fontSize" name="fontSize" min="10" max="400" value="${fx.fontSize || 100}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'fontSize', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + 'px'; drawCanvas();">
                             </div>
                             <div>
                                 <div class="flex justify-between items-center mb-1.5">
-                                    <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Letter Spacing</label>
+                                    <label for="${clip.id}_letterSpacing" class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Letter Spacing</label>
                                     <span class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${fx.letterSpacing || 0}px</span>
                                 </div>
-                                <input type="range" min="-20" max="100" value="${fx.letterSpacing || 0}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'letterSpacing', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + 'px'; drawCanvas();">
+                                <input type="range" id="${clip.id}_letterSpacing" name="letterSpacing" min="-20" max="100" value="${fx.letterSpacing || 0}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'letterSpacing', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + 'px'; drawCanvas();">
                             </div>
                             <div>
                                 <div class="flex justify-between items-center mb-1.5">
-                                    <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Line Height</label>
+                                    <label for="${clip.id}_lineHeight" class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Line Height</label>
                                     <span class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${fx.lineHeight || 1.1}x</span>
                                 </div>
-                                <input type="range" min="0.5" max="3" step="0.1" value="${fx.lineHeight || 1.1}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'lineHeight', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + 'x'; drawCanvas();">
+                                <input type="range" id="${clip.id}_lineHeight" name="lineHeight" min="0.5" max="3" step="0.1" value="${fx.lineHeight || 1.1}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'lineHeight', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + 'x'; drawCanvas();">
                             </div>
                         </div>
                     </details>
@@ -8577,31 +8587,31 @@
                                     <div class="relative flex items-center bg-surface-50 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 rounded p-1 cursor-pointer shadow-inner flex-1">
                                         <div class="w-5 h-5 rounded shadow-sm" id="advWordColorSwatch"></div>
                                         <span id="advWordColorHex" class="ml-2 font-mono font-bold text-[10px] text-surface-700 dark:text-surface-200 uppercase"></span>
-                                        <input type="color" id="advWordColor" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full" oninput="document.getElementById('advWordColorSwatch').style.backgroundColor = this.value; document.getElementById('advWordColorHex').textContent = this.value; setLetterOverride('color', this.value);">
+                                        <input type="color" id="advWordColor" name="advWordColor" aria-label="Word color" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full" oninput="document.getElementById('advWordColorSwatch').style.backgroundColor = this.value; document.getElementById('advWordColorHex').textContent = this.value; setLetterOverride('color', this.value);">
                                     </div>
                                     <button onclick="setLetterOverride('color', null); window.syncLetterControlValues();" class="text-[9px] font-bold text-red-500 hover:text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-500/10 hover:bg-red-100 dark:hover:bg-red-500/20 px-1.5 py-0.5 rounded" title="Clear word color">Clear</button>
                                 </div>
                                 <div class="grid grid-cols-2 gap-1.5">
-                                    <select id="advWordFont" class="w-full text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 font-bold text-surface-800 dark:text-surface-200" onchange="setLetterOverride('fontFamily', this.value === '' ? null : this.value); window.syncLetterControlValues();">
+                                    <select id="advWordFont" name="advWordFont" aria-label="Word font" class="w-full text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 font-bold text-surface-800 dark:text-surface-200" onchange="setLetterOverride('fontFamily', this.value === '' ? null : this.value); window.syncLetterControlValues();">
                                         <option value="">Inherit font</option>
                                         ${fontOptionsHtml}
                                         ${customFontOptionsHtml}
                                         ${googleFontOptionsHtml}
                                         ${systemFontOptionsHtml}
                                     </select>
-                                    <select id="advWordWeight" class="w-full text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 font-bold text-surface-800 dark:text-surface-200" onchange="setLetterOverride('fontWeight', this.value === '' ? null : this.value); window.syncLetterControlValues();">
+                                    <select id="advWordWeight" name="advWordWeight" aria-label="Word weight" class="w-full text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 font-bold text-surface-800 dark:text-surface-200" onchange="setLetterOverride('fontWeight', this.value === '' ? null : this.value); window.syncLetterControlValues();">
                                         <option value="">Inherit weight</option>
                                         <option value="400">Regular</option>
                                         <option value="600">SemiBold</option>
                                         <option value="700">Bold</option>
                                         <option value="900">ExtraBold</option>
                                     </select>
-                                    <select id="advWordStyle" class="w-full text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 font-bold text-surface-800 dark:text-surface-200" onchange="setLetterOverride('fontStyle', this.value === '' ? null : this.value); window.syncLetterControlValues();">
+                                    <select id="advWordStyle" name="advWordStyle" aria-label="Word style" class="w-full text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 font-bold text-surface-800 dark:text-surface-200" onchange="setLetterOverride('fontStyle', this.value === '' ? null : this.value); window.syncLetterControlValues();">
                                         <option value="">Inherit style</option>
                                         <option value="normal">Normal</option>
                                         <option value="italic">Italic</option>
                                     </select>
-                                    <select id="advWordDeco" class="w-full text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 font-bold text-surface-800 dark:text-surface-200" onchange="setLetterOverride('fontDecoration', this.value === '' ? null : this.value); window.syncLetterControlValues();">
+                                    <select id="advWordDeco" name="advWordDeco" aria-label="Word decoration" class="w-full text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 font-bold text-surface-800 dark:text-surface-200" onchange="setLetterOverride('fontDecoration', this.value === '' ? null : this.value); window.syncLetterControlValues();">
                                         <option value="">Inherit decor</option>
                                         <option value="none">None</option>
                                         <option value="underline">Under</option>
@@ -8619,11 +8629,11 @@
                                     <div class="relative flex items-center bg-surface-50 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 rounded p-1 cursor-pointer shadow-inner flex-1">
                                         <div class="w-5 h-5 rounded shadow-sm" id="advLetterColorSwatch"></div>
                                         <span id="advLetterColorHex" class="ml-2 font-mono font-bold text-[10px] text-surface-700 dark:text-surface-200 uppercase"></span>
-                                        <input type="color" id="advLetterColor" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full" oninput="document.getElementById('advLetterColorSwatch').style.backgroundColor = this.value; document.getElementById('advLetterColorHex').textContent = this.value; setLetterOverride('color', this.value);">
+                                        <input type="color" id="advLetterColor" name="advLetterColor" aria-label="Letter color" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full" oninput="document.getElementById('advLetterColorSwatch').style.backgroundColor = this.value; document.getElementById('advLetterColorHex').textContent = this.value; setLetterOverride('color', this.value);">
                                     </div>
                                     <button onclick="setLetterOverride('color', null); window.syncLetterControlValues();" class="text-[9px] font-bold text-red-500 hover:text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-500/10 hover:bg-red-100 dark:hover:bg-red-500/20 px-1.5 py-0.5 rounded" title="Clear letter color">Clear</button>
                                 </div>
-                                <select id="advLetterFont" class="w-full text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 font-bold text-surface-800 dark:text-surface-200" onchange="setLetterOverride('fontFamily', this.value === '' ? null : this.value); window.syncLetterControlValues();">
+                                <select id="advLetterFont" name="advLetterFont" aria-label="Letter font" class="w-full text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 font-bold text-surface-800 dark:text-surface-200" onchange="setLetterOverride('fontFamily', this.value === '' ? null : this.value); window.syncLetterControlValues();">
                                     <option value="">Inherit font</option>
                                     ${fontOptionsHtml}
                                     ${customFontOptionsHtml}
@@ -8633,17 +8643,17 @@
                                 <div class="grid grid-cols-2 gap-1.5">
                                     <div>
                                         <div class="flex justify-between items-center mb-1">
-                                            <label class="text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Scale</label>
+                                            <label for="advLetterScale" class="text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Scale</label>
                                             <span id="advLetterScaleVal" class="text-[9px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1 py-0.5 rounded">1x</span>
                                         </div>
-                                        <input type="range" id="advLetterScale" min="0.1" max="5" step="0.1" value="1" class="w-full custom-slider" oninput="document.getElementById('advLetterScaleVal').textContent = this.value + 'x'; setLetterOverride('scale', parseFloat(this.value));">
+                                        <input type="range" id="advLetterScale" name="advLetterScale" min="0.1" max="5" step="0.1" value="1" class="w-full custom-slider" oninput="document.getElementById('advLetterScaleVal').textContent = this.value + 'x'; setLetterOverride('scale', parseFloat(this.value));">
                                     </div>
                                     <div>
                                         <div class="flex justify-between items-center mb-1">
-                                            <label class="text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Rotation</label>
+                                            <label for="advLetterRotation" class="text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Rotation</label>
                                             <span id="advLetterRotationVal" class="text-[9px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1 py-0.5 rounded">0°</span>
                                         </div>
-                                        <input type="range" id="advLetterRotation" min="-180" max="180" value="0" class="w-full custom-slider" oninput="document.getElementById('advLetterRotationVal').textContent = this.value + '°'; setLetterOverride('rotation', parseInt(this.value));">
+                                        <input type="range" id="advLetterRotation" name="advLetterRotation" min="-180" max="180" value="0" class="w-full custom-slider" oninput="document.getElementById('advLetterRotationVal').textContent = this.value + '°'; setLetterOverride('rotation', parseInt(this.value));">
                                     </div>
                                 </div>
                                 <button onclick="clearLetterOverride()" class="w-full py-1 text-[9px] font-bold text-red-500 hover:text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-500/10 hover:bg-red-100 dark:hover:bg-red-500/20 rounded border border-red-200 dark:border-red-500/20 uppercase">Reset Selection</button>
@@ -8681,7 +8691,7 @@
                             <div class="text-sm font-bold text-surface-800 dark:text-surface-200 flex items-center gap-2"><i data-lucide="square" class="w-4 h-4 text-surface-500 dark:text-surface-300"></i> Background</div>
                             <div class="flex items-center gap-2">
                                 <label class="relative inline-flex items-center cursor-pointer" onclick="event.stopPropagation()">
-                                    <input type="checkbox" class="sr-only peer" ${fx.bgEnable ? 'checked' : ''} onchange="setClipEffect('${clip.id}', 'bgEnable', this.checked); updateSidebarPanel();">
+                                    <input type="checkbox" id="${clip.id}_bgEnable" name="bgEnable" class="sr-only peer" ${fx.bgEnable ? 'checked' : ''} onchange="setClipEffect('${clip.id}', 'bgEnable', this.checked); updateSidebarPanel();">
                                     <div class="w-7 h-4 bg-surface-300 dark:bg-surface-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:peer-checked:bg-brand-500 peer-checked:bg-brand-500"></div>
                                 </label>
                                 ${isHorizontal ? '' : '<i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>'}
@@ -8690,35 +8700,35 @@
                         <div class="p-3 flex flex-col gap-2.5 bg-surface-50 dark:bg-surface-900/50 flex-1 ${!fx.bgEnable ? 'opacity-50 pointer-events-none' : ''}">
                             <div class="grid grid-cols-2 gap-2">
                                 <div>
-                                    <label class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">Fill Color</label>
+                                    <label for="${clip.id}_bgColor" class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">Fill Color</label>
                                     <div class="relative flex items-center bg-surface-50 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 rounded p-1.5 cursor-pointer shadow-inner w-full">
                                         <div class="w-6 h-6 rounded shadow-sm" style="background-color: ${bgColor}"></div>
                                         <span class="ml-2 font-mono font-bold text-[10px] text-surface-700 dark:text-surface-200 uppercase">${bgColor}</span>
-                                        <input type="color" value="${bgColor}" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full" oninput="setClipEffect('${clip.id}', 'bgColor', this.value); this.previousElementSibling.textContent = this.value; this.previousElementSibling.previousElementSibling.style.backgroundColor = this.value; drawCanvas();">
+                                        <input type="color" id="${clip.id}_bgColor" name="bgColor" value="${bgColor}" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full" oninput="setClipEffect('${clip.id}', 'bgColor', this.value); this.previousElementSibling.textContent = this.value; this.previousElementSibling.previousElementSibling.style.backgroundColor = this.value; drawCanvas();">
                                     </div>
                                 </div>
                                 <div>
                                     <div class="flex justify-between items-center mb-1.5">
-                                        <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Opacity</label>
+                                        <label for="${clip.id}_bgOpacity" class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Opacity</label>
                                         <span class="text-xs font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-1.5 py-0.5 rounded shadow-sm">${bgOpacityPct}%</span>
                                     </div>
-                                    <input type="range" min="0" max="100" value="${bgOpacityPct}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'bgOpacity', this.value/100); this.previousElementSibling.querySelector('span').textContent = this.value + '%'; drawCanvas();">
+                                    <input type="range" id="${clip.id}_bgOpacity" name="bgOpacity" min="0" max="100" value="${bgOpacityPct}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'bgOpacity', this.value/100); this.previousElementSibling.querySelector('span').textContent = this.value + '%'; drawCanvas();">
                                 </div>
                             </div>
                             <div class="grid grid-cols-2 gap-2">
                                 <div>
                                     <div class="flex justify-between items-center mb-1.5">
-                                        <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Padding</label>
+                                        <label for="${clip.id}_bgPadding" class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Padding</label>
                                         <span class="text-xs font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-1.5 py-0.5 rounded shadow-sm">${bgPadding}px</span>
                                     </div>
-                                    <input type="range" min="0" max="60" value="${bgPadding}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'bgPadding', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + 'px'; drawCanvas();">
+                                    <input type="range" id="${clip.id}_bgPadding" name="bgPadding" min="0" max="60" value="${bgPadding}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'bgPadding', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + 'px'; drawCanvas();">
                                 </div>
                                 <div>
                                     <div class="flex justify-between items-center mb-1.5">
-                                        <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Radius</label>
+                                        <label for="${clip.id}_bgRadius" class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Radius</label>
                                         <span class="text-xs font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-1.5 py-0.5 rounded shadow-sm">${bgRadius}px</span>
                                     </div>
-                                    <input type="range" min="0" max="60" value="${bgRadius}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'bgRadius', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + 'px'; drawCanvas();">
+                                    <input type="range" id="${clip.id}_bgRadius" name="bgRadius" min="0" max="60" value="${bgRadius}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'bgRadius', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + 'px'; drawCanvas();">
                                 </div>
                             </div>
 
@@ -8726,7 +8736,7 @@
                                 <div class="flex items-center justify-between mb-1.5">
                                     <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest flex items-center gap-1"><i data-lucide="edit-3" class="w-3 h-3"></i> Stroke</label>
                                     <label class="relative inline-flex items-center cursor-pointer">
-                                        <input type="checkbox" class="sr-only peer" ${bgStrokeEnable ? 'checked' : ''} onchange="setClipEffect('${clip.id}', 'bgStrokeEnable', this.checked); updateSidebarPanel();">
+                                        <input type="checkbox" id="${clip.id}_bgStrokeEnable" name="bgStrokeEnable" class="sr-only peer" ${bgStrokeEnable ? 'checked' : ''} onchange="setClipEffect('${clip.id}', 'bgStrokeEnable', this.checked); updateSidebarPanel();">
                                         <div class="w-7 h-4 bg-surface-300 dark:bg-surface-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:peer-checked:bg-brand-500 peer-checked:bg-brand-500"></div>
                                     </label>
                                 </div>
@@ -8734,14 +8744,14 @@
                                     <div class="relative flex items-center bg-surface-50 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 rounded p-1.5 cursor-pointer shadow-inner">
                                         <div class="w-5 h-5 rounded shadow-sm" style="background-color: ${bgStrokeColor}"></div>
                                         <span class="ml-2 font-mono font-bold text-[10px] text-surface-700 dark:text-surface-200 uppercase">${bgStrokeColor}</span>
-                                        <input type="color" value="${bgStrokeColor}" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full" oninput="setClipEffect('${clip.id}', 'bgStrokeColor', this.value); this.previousElementSibling.textContent = this.value; this.previousElementSibling.previousElementSibling.style.backgroundColor = this.value; drawCanvas();">
+                                        <input type="color" id="${clip.id}_bgStrokeColor" name="bgStrokeColor" aria-label="Box stroke color" value="${bgStrokeColor}" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full" oninput="setClipEffect('${clip.id}', 'bgStrokeColor', this.value); this.previousElementSibling.textContent = this.value; this.previousElementSibling.previousElementSibling.style.backgroundColor = this.value; drawCanvas();">
                                     </div>
                                     <div>
                                         <div class="flex justify-between items-center mb-1">
-                                            <label class="text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Width</label>
+                                            <label for="${clip.id}_bgStrokeWidth" class="text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Width</label>
                                             <span class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${bgStrokeWidth}px</span>
                                         </div>
-                                        <input type="range" min="1" max="30" value="${bgStrokeWidth}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'bgStrokeWidth', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + 'px'; drawCanvas();">
+                                        <input type="range" id="${clip.id}_bgStrokeWidth" name="bgStrokeWidth" min="1" max="30" value="${bgStrokeWidth}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'bgStrokeWidth', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + 'px'; drawCanvas();">
                                     </div>
                                 </div>
                             </div>
@@ -8750,7 +8760,7 @@
                                 <div class="flex items-center justify-between mb-1.5">
                                     <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest flex items-center gap-1"><i data-lucide="cloud-rain" class="w-3 h-3"></i> Drop Shadow</label>
                                     <label class="relative inline-flex items-center cursor-pointer">
-                                        <input type="checkbox" class="sr-only peer" ${bgShadowEnable ? 'checked' : ''} onchange="setClipEffect('${clip.id}', 'bgShadowEnable', this.checked); updateSidebarPanel();">
+                                        <input type="checkbox" id="${clip.id}_bgShadowEnable" name="bgShadowEnable" class="sr-only peer" ${bgShadowEnable ? 'checked' : ''} onchange="setClipEffect('${clip.id}', 'bgShadowEnable', this.checked); updateSidebarPanel();">
                                         <div class="w-7 h-4 bg-surface-300 dark:bg-surface-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:peer-checked:bg-brand-500 peer-checked:bg-brand-500"></div>
                                     </label>
                                 </div>
@@ -8758,28 +8768,28 @@
                                     <div class="relative flex items-center bg-surface-50 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 rounded p-1.5 cursor-pointer shadow-inner">
                                         <div class="w-5 h-5 rounded shadow-sm" style="background-color: ${bgShadowColor}"></div>
                                         <span class="ml-2 font-mono font-bold text-[10px] text-surface-700 dark:text-surface-200 uppercase">${bgShadowColor}</span>
-                                        <input type="color" value="${bgShadowColor}" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full" oninput="setClipEffect('${clip.id}', 'bgShadowColor', this.value); this.previousElementSibling.textContent = this.value; this.previousElementSibling.previousElementSibling.style.backgroundColor = this.value; drawCanvas();">
+                                        <input type="color" id="${clip.id}_bgShadowColor" name="bgShadowColor" aria-label="Box shadow color" value="${bgShadowColor}" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full" oninput="setClipEffect('${clip.id}', 'bgShadowColor', this.value); this.previousElementSibling.textContent = this.value; this.previousElementSibling.previousElementSibling.style.backgroundColor = this.value; drawCanvas();">
                                     </div>
                                     <div>
                                         <div class="flex justify-between items-center mb-1">
-                                            <label class="text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Blur</label>
+                                            <label for="${clip.id}_bgShadowBlur" class="text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Blur</label>
                                             <span class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${bgShadowBlur}px</span>
                                         </div>
-                                        <input type="range" min="0" max="60" value="${bgShadowBlur}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'bgShadowBlur', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + 'px'; drawCanvas();">
+                                        <input type="range" id="${clip.id}_bgShadowBlur" name="bgShadowBlur" min="0" max="60" value="${bgShadowBlur}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'bgShadowBlur', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + 'px'; drawCanvas();">
                                     </div>
                                     <div>
                                         <div class="flex justify-between items-center mb-1">
-                                            <label class="text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">X</label>
+                                            <label for="${clip.id}_bgShadowX" class="text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">X</label>
                                             <span class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${bgShadowX}px</span>
                                         </div>
-                                        <input type="range" min="-50" max="50" value="${bgShadowX}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'bgShadowX', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + 'px'; drawCanvas();">
+                                        <input type="range" id="${clip.id}_bgShadowX" name="bgShadowX" min="-50" max="50" value="${bgShadowX}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'bgShadowX', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + 'px'; drawCanvas();">
                                     </div>
                                     <div>
                                         <div class="flex justify-between items-center mb-1">
-                                            <label class="text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Y</label>
+                                            <label for="${clip.id}_bgShadowY" class="text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Y</label>
                                             <span class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${bgShadowY}px</span>
                                         </div>
-                                        <input type="range" min="-50" max="50" value="${bgShadowY}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'bgShadowY', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + 'px'; drawCanvas();">
+                                        <input type="range" id="${clip.id}_bgShadowY" name="bgShadowY" min="-50" max="50" value="${bgShadowY}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'bgShadowY', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + 'px'; drawCanvas();">
                                     </div>
                                 </div>
                             </div>
@@ -8788,7 +8798,7 @@
                                 <div class="flex items-center justify-between mb-1.5">
                                     <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest flex items-center gap-1"><i data-lucide="box" class="w-3 h-3"></i> 3D Extrude</label>
                                     <label class="relative inline-flex items-center cursor-pointer">
-                                        <input type="checkbox" class="sr-only peer" ${bgExtrudeEnable ? 'checked' : ''} onchange="setClipEffect('${clip.id}', 'bgExtrudeEnable', this.checked); updateSidebarPanel();">
+                                        <input type="checkbox" id="${clip.id}_bgExtrudeEnable" name="bgExtrudeEnable" class="sr-only peer" ${bgExtrudeEnable ? 'checked' : ''} onchange="setClipEffect('${clip.id}', 'bgExtrudeEnable', this.checked); updateSidebarPanel();">
                                         <div class="w-7 h-4 bg-surface-300 dark:bg-surface-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:peer-checked:bg-brand-500 peer-checked:bg-brand-500"></div>
                                     </label>
                                 </div>
@@ -8796,9 +8806,9 @@
                                     <div class="relative flex items-center bg-surface-50 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 rounded p-1.5 cursor-pointer shadow-inner">
                                         <div class="w-5 h-5 rounded shadow-sm" style="background-color: ${bgExtrudeColor}"></div>
                                         <span class="ml-2 font-mono font-bold text-[10px] text-surface-700 dark:text-surface-200 uppercase">${bgExtrudeColor}</span>
-                                        <input type="color" value="${bgExtrudeColor}" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full" oninput="setClipEffect('${clip.id}', 'bgExtrudeColor', this.value); this.previousElementSibling.textContent = this.value; this.previousElementSibling.previousElementSibling.style.backgroundColor = this.value; drawCanvas();">
+                                        <input type="color" id="${clip.id}_bgExtrudeColor" name="bgExtrudeColor" aria-label="3D extrude color" value="${bgExtrudeColor}" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full" oninput="setClipEffect('${clip.id}', 'bgExtrudeColor', this.value); this.previousElementSibling.textContent = this.value; this.previousElementSibling.previousElementSibling.style.backgroundColor = this.value; drawCanvas();">
                                     </div>
-                                    <select class="w-full text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 font-bold text-surface-800 dark:text-surface-200" onchange="setClipEffect('${clip.id}', 'bgExtrudeDir', this.value); drawCanvas();">
+                                    <select id="${clip.id}_bgExtrudeDir" name="bgExtrudeDir" aria-label="3D extrude direction" class="w-full text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 font-bold text-surface-800 dark:text-surface-200" onchange="setClipEffect('${clip.id}', 'bgExtrudeDir', this.value); drawCanvas();">
                                         <option value="br" ${bgExtrudeDir === 'br' ? 'selected' : ''}>BR</option>
                                         <option value="bl" ${bgExtrudeDir === 'bl' ? 'selected' : ''}>BL</option>
                                         <option value="tr" ${bgExtrudeDir === 'tr' ? 'selected' : ''}>TR</option>
@@ -8810,10 +8820,10 @@
                                     </select>
                                     <div class="col-span-2">
                                         <div class="flex justify-between items-center mb-1">
-                                            <label class="text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Depth</label>
+                                            <label for="${clip.id}_bgExtrudeDepth" class="text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Depth</label>
                                             <span class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${bgExtrudeDepth}px</span>
                                         </div>
-                                        <input type="range" min="1" max="50" value="${bgExtrudeDepth}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'bgExtrudeDepth', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + 'px'; drawCanvas();">
+                                        <input type="range" id="${clip.id}_bgExtrudeDepth" name="bgExtrudeDepth" min="1" max="50" value="${bgExtrudeDepth}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'bgExtrudeDepth', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + 'px'; drawCanvas();">
                                     </div>
                                 </div>
                             </div>
@@ -8931,7 +8941,7 @@
                             </div>
                             <div class="flex items-center gap-2">
                                 <button onclick="document.getElementById('textureUpload_${clip.id}').click()" class="flex-1 text-[10px] font-bold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-500/10 hover:bg-brand-100 dark:hover:bg-brand-500/20 px-2 py-1.5 rounded border border-brand-200 dark:border-brand-500/20 flex items-center justify-center gap-1.5"><i data-lucide="upload" class="w-3 h-3"></i> Upload Texture</button>
-                                <input type="file" id="textureUpload_${clip.id}" accept="image/*" class="hidden" onchange="handleTextureUpload('${clip.id}', this)">
+                                <input type="file" id="textureUpload_${clip.id}" name="textureUpload" aria-label="Upload texture image" accept="image/*" class="hidden" onchange="handleTextureUpload('${clip.id}', this)">
                                 <div class="relative w-10 h-10 border border-surface-200 dark:border-surface-700 rounded overflow-hidden ${texSrc ? '' : 'hidden'} shrink-0">
                                     <img src="${texSrc}" class="w-full h-full object-cover">
                                     <button onclick="const _c = State.clips.find(c => c.id === '${clip.id}'); if (_c) { _c.effects.textureSrc = null; _c.effects.textureEnable = false; _c._textureImg = null; _c._textureSrcLoaded = null; } updateSidebarPanel(); drawCanvas();" class="absolute top-0 right-0 bg-red-500 text-white text-[8px] leading-none w-4 h-4 flex items-center justify-center hover:bg-red-600" title="Remove texture">&times;</button>
@@ -8940,8 +8950,8 @@
                             ${propRow('Opacity', propSlider('textureOpacity', texOpacity, 0, 100, 1, "this.value + '%'", { onChange: 'updateSidebarPanel()' }), texOpacity + '%', { reset: propReset('textureOpacity', texOpacity, 50) })}
                             <div class="grid grid-cols-2 gap-2">
                                 <div>
-                                    <label class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">Blend Mode</label>
-                                    <select class="w-full text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 font-bold text-surface-800 dark:text-surface-200" onchange="setClipEffect('${clip.id}', 'textureBlendMode', this.value); drawCanvas();">
+                                    <label for="${clip.id}_textureBlendMode" class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">Blend Mode</label>
+                                    <select id="${clip.id}_textureBlendMode" name="textureBlendMode" class="w-full text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 font-bold text-surface-800 dark:text-surface-200" onchange="setClipEffect('${clip.id}', 'textureBlendMode', this.value); drawCanvas();">
                                         <option value="multiply" ${texBlend === 'multiply' ? 'selected' : ''}>Multiply</option>
                                         <option value="overlay" ${texBlend === 'overlay' ? 'selected' : ''}>Overlay</option>
                                         <option value="soft-light" ${texBlend === 'soft-light' ? 'selected' : ''}>Soft Light</option>
@@ -8957,8 +8967,8 @@
                                     </select>
                                 </div>
                                 <div>
-                                    <label class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">Fitting</label>
-                                    <select class="w-full text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 font-bold text-surface-800 dark:text-surface-200" onchange="setClipEffect('${clip.id}', 'textureFitting', this.value); updateSidebarPanel();">
+                                    <label for="${clip.id}_textureFitting" class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">Fitting</label>
+                                    <select id="${clip.id}_textureFitting" name="textureFitting" class="w-full text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 font-bold text-surface-800 dark:text-surface-200" onchange="setClipEffect('${clip.id}', 'textureFitting', this.value); updateSidebarPanel();">
                                         <option value="tile" ${texFitting === 'tile' ? 'selected' : ''}>Tile</option>
                                         <option value="stretch" ${texFitting === 'stretch' ? 'selected' : ''}>Stretch</option>
                                     </select>
@@ -8971,8 +8981,8 @@
             const extrudeHTML = (clip.type === 'text' || clip.type === 'shape') ? propCard('cardExtrude', 'box', 'Extrude 3D', `
                         ${colorRow('extrudeColor', fx.extrudeColor || '#000000')}
                         <div>
-                            <label class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">Direction</label>
-                            <select class="w-full text-xs p-2 pl-3 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 appearance-none cursor-pointer font-bold text-surface-800 dark:text-surface-200" onchange="setClipEffect('${clip.id}', 'extrudeDir', this.value); drawCanvas();">
+                            <label for="${clip.id}_extrudeDir" class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">Direction</label>
+                            <select id="${clip.id}_extrudeDir" name="extrudeDir" class="w-full text-xs p-2 pl-3 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 appearance-none cursor-pointer font-bold text-surface-800 dark:text-surface-200" onchange="setClipEffect('${clip.id}', 'extrudeDir', this.value); drawCanvas();">
                                 <option value="br" ${(fx.extrudeDir || 'br') === 'br' ? 'selected' : ''}>Bottom Right</option>
                                 <option value="bl" ${fx.extrudeDir === 'bl' ? 'selected' : ''}>Bottom Left</option>
                                 <option value="tr" ${fx.extrudeDir === 'tr' ? 'selected' : ''}>Top Right</option>
@@ -8990,8 +9000,8 @@
             const blendingHTML = (clip.type === 'image' || clip.type === 'video' || clip.type === 'text' || clip.type === 'shape' || clip.type === 'scene') ? propCard('cardOpacity', 'layers', 'Opacity & Blending', `
                         ${propRow('Opacity', propSlider('opacity', blendOpacity, 0, 100, 1, "this.value + '%'"), blendOpacity + '%', { reset: propReset('opacity', blendOpacity, 100) })}
                         <div>
-                            <label class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">Blend Mode</label>
-                            <select class="w-full text-xs p-2 pl-3 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 appearance-none cursor-pointer font-bold text-surface-800 dark:text-surface-200" onchange="setClipEffect('${clip.id}', 'blendMode', this.value); drawCanvas();">
+                            <label for="${clip.id}_blendMode" class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">Blend Mode</label>
+                            <select id="${clip.id}_blendMode" name="blendMode" class="w-full text-xs p-2 pl-3 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 appearance-none cursor-pointer font-bold text-surface-800 dark:text-surface-200" onchange="setClipEffect('${clip.id}', 'blendMode', this.value); drawCanvas();">
                                 <option value="source-over" ${(fx.blendMode || 'source-over') === 'source-over' ? 'selected' : ''}>Normal (Source Over)</option>
                                 <optgroup label="Darken" class="bg-white dark:bg-surface-800 text-surface-800 dark:text-surface-200 font-bold">
                                     <option value="multiply" ${fx.blendMode === 'multiply' ? 'selected' : ''}>Multiply</option>
@@ -9085,8 +9095,8 @@
 
             const maskHTML = (clip.type === 'image' || clip.type === 'video') ? propCard('cardMask', 'aperture', 'Masking', `
                         <div>
-                            <label class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">Mask Type</label>
-                            <select class="w-full text-xs p-2 pl-3 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 appearance-none cursor-pointer font-bold text-surface-800 dark:text-surface-200" onchange="setClipEffect('${clip.id}', 'maskType', this.value); updateSidebarPanel(); drawCanvas();">
+                            <label for="${clip.id}_maskType" class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">Mask Type</label>
+                            <select id="${clip.id}_maskType" name="maskType" class="w-full text-xs p-2 pl-3 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 appearance-none cursor-pointer font-bold text-surface-800 dark:text-surface-200" onchange="setClipEffect('${clip.id}', 'maskType', this.value); updateSidebarPanel(); drawCanvas();">
                                 <option value="none" ${maskType === 'none' ? 'selected' : ''}>None</option>
                                 <option value="circle" ${maskType === 'circle' ? 'selected' : ''}>Circle Shape</option>
                                 <option value="rectangle" ${maskType === 'rectangle' ? 'selected' : ''}>Rectangle Shape</option>
@@ -9248,7 +9258,8 @@
                     </summary>
                     <div class="p-3 flex flex-col gap-3 bg-surface-50 dark:bg-surface-900/50 flex-1">
                         <div class="flex gap-2">
-                            <input type="text" id="inputGoogleFont" placeholder="e.g. Poppins, Roboto" class="flex-1 text-xs px-2 py-1.5 bg-surface-50 dark:bg-surface-900/80 border border-surface-200 dark:border-surface-700 rounded shadow-inner text-surface-800 dark:text-surface-200 outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 font-bold" onkeydown="if(event.key === 'Enter') importGoogleFontFromInput();">
+                            <label for="inputGoogleFont" class="sr-only">Import Google Font</label>
+                            <input type="text" id="inputGoogleFont" name="inputGoogleFont" aria-label="Import Google Font" placeholder="e.g. Poppins, Roboto" class="flex-1 text-xs px-2 py-1.5 bg-surface-50 dark:bg-surface-900/80 border border-surface-200 dark:border-surface-700 rounded shadow-inner text-surface-800 dark:text-surface-200 outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 font-bold" onkeydown="if(event.key === 'Enter') importGoogleFontFromInput();">
                             <button onclick="importGoogleFontFromInput()" id="btnImportGoogleFont" class="bg-brand-600 hover:bg-brand-700 text-white p-1.5 rounded flex items-center justify-center shadow-sm" title="Add Google Font">
                                 <i data-lucide="plus" class="w-4 h-4"></i>
                             </button>
@@ -9294,7 +9305,7 @@
                         <div class="flex items-center gap-2">
                             ${enableKey ? `
                             <label class="relative inline-flex items-center cursor-pointer" onclick="event.stopPropagation()">
-                                <input type="checkbox" class="sr-only peer" ${enabled ? 'checked' : ''} onchange="setClipEffect('${clip.id}', '${enableKey}', this.checked); updateSidebarPanel();">
+                                <input type="checkbox" id="${clip.id}_${enableKey}" name="${enableKey}" class="sr-only peer" ${enabled ? 'checked' : ''} onchange="setClipEffect('${clip.id}', '${enableKey}', this.checked); updateSidebarPanel();">
                                 <div class="w-7 h-4 bg-surface-300 dark:bg-surface-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:peer-checked:bg-brand-500 peer-checked:bg-brand-500"></div>
                             </label>
                             ` : ''}
@@ -9305,10 +9316,10 @@
                     <div class="p-3 flex flex-col gap-2.5 bg-surface-50 dark:bg-surface-900/50 flex-1 ${(enableKey && !enabled) ? 'opacity-50 pointer-events-none' : ''}">
                         <div>
                             <div class="flex justify-between items-center mb-1.5">
-                                <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Intensity</label>
+                                <label for="${clip.id}_${valKey}" class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Intensity</label>
                                 <span class="text-xs font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-2 py-0.5 rounded shadow-sm">${Math.round(val * 100)}%</span>
                             </div>
-                            <input type="range" min="0" max="${id === 'volume' ? '2' : '1'}" step="0.05" value="${val}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', '${valKey}', this.value); this.previousElementSibling.querySelector('span').textContent = Math.round(this.value * 100) + '%'; this.style.background = 'linear-gradient(to right, ${sliderFill} ' + (this.value/this.max)*100 + '%, ${sliderBg} ' + (this.value/this.max)*100 + '%)'">
+                            <input type="range" id="${clip.id}_${valKey}" name="${valKey}" min="0" max="${id === 'volume' ? '2' : '1'}" step="0.05" value="${val}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', '${valKey}', this.value); this.previousElementSibling.querySelector('span').textContent = Math.round(this.value * 100) + '%'; this.style.background = 'linear-gradient(to right, ${sliderFill} ' + (this.value/this.max)*100 + '%, ${sliderBg} ' + (this.value/this.max)*100 + '%)'">
                         </div>
                     </div>
                 </details>
@@ -9355,7 +9366,7 @@
                         <span class="text-xs font-bold text-surface-800 dark:text-surface-100 block break-all bg-surface-50 dark:bg-surface-900/50 p-2 rounded border border-surface-200 dark:border-surface-700 shadow-sm">Mock audio — no file loaded yet</span>
                         <label class="cursor-pointer bg-brand-500 hover:bg-brand-600 text-white px-3 py-2 rounded text-xs font-bold transition-colors flex items-center justify-center gap-2 shadow-sm w-full">
                             <i data-lucide="upload" class="w-3.5 h-3.5"></i> Load Audio File
-                            <input type="file" accept="audio/*,video/*" class="hidden" onchange="replaceClipSource('${clip.id}', this.files)">
+                            <input type="file" id="replaceSource_${clip.id}" name="replaceSource" aria-label="Replace clip source" accept="audio/*,video/*" class="hidden" onchange="replaceClipSource('${clip.id}', this.files)">
                         </label>
                         <p class="text-[9px] text-surface-500 dark:text-surface-300 leading-relaxed">Pick a sound file to turn this placeholder into a real audio clip — the waveform, duration, trim and fades appear automatically.</p>
                     </div>
@@ -9375,22 +9386,22 @@
                         </div>
                         <div class="flex flex-col gap-1.5 ${autoDuck ? '' : 'opacity-50 pointer-events-none'}">
                             <div class="flex justify-between items-center text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase">
-                                <span>Frequency</span>
+                                <label for="${clip.id}_autoDuckFreq">Frequency</label>
                                 <span>${autoDuckFreq} Hz</span>
                             </div>
-                            <input type="range" min="100" max="10000" step="100" value="${autoDuckFreq}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'autoDuckFreq', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = this.value + ' Hz';">
+                            <input type="range" id="${clip.id}_autoDuckFreq" name="autoDuckFreq" min="100" max="10000" step="100" value="${autoDuckFreq}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'autoDuckFreq', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = this.value + ' Hz';">
                             
                             <div class="flex justify-between items-center text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase mt-2">
-                                <span>Detection Threshold</span>
+                                <label for="${clip.id}_duckThreshold">Detection Threshold</label>
                                 <span>${Math.round((duckThreshold / 255) * 100)}%</span>
                             </div>
-                            <input type="range" min="1" max="255" step="1" value="${duckThreshold}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'duckThreshold', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = Math.round((this.value / 255) * 100) + '%';">
+                            <input type="range" id="${clip.id}_duckThreshold" name="duckThreshold" min="1" max="255" step="1" value="${duckThreshold}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'duckThreshold', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = Math.round((this.value / 255) * 100) + '%';">
                             
                             <div class="flex justify-between items-center text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase mt-2">
-                                <span>Cut Volume</span>
+                                <label for="${clip.id}_autoDuckGain">Cut Volume</label>
                                 <span>${autoDuckGain} dB</span>
                             </div>
-                            <input type="range" min="-48" max="-3" step="1" value="${autoDuckGain}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'autoDuckGain', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = this.value + ' dB';">
+                            <input type="range" id="${clip.id}_autoDuckGain" name="autoDuckGain" min="-48" max="-3" step="1" value="${autoDuckGain}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'autoDuckGain', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = this.value + ' dB';">
                         </div>
                     </div>
                 </details>` +
@@ -9409,40 +9420,40 @@
                         </div>
                         <div class="flex flex-col gap-1.5 ${volumeDuck ? '' : 'opacity-50 pointer-events-none'}">
                             <div class="flex justify-between items-center text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase">
-                                <span>Detection Threshold</span>
+                                <label for="${clip.id}_duckThreshold2">Detection Threshold</label>
                                 <span>${Math.round((duckThreshold / 255) * 100)}%</span>
                             </div>
-                            <input type="range" min="1" max="255" step="1" value="${duckThreshold}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'duckThreshold', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = Math.round((this.value / 255) * 100) + '%';">
+                            <input type="range" id="${clip.id}_duckThreshold2" name="duckThreshold" min="1" max="255" step="1" value="${duckThreshold}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'duckThreshold', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = Math.round((this.value / 255) * 100) + '%';">
 
                             <div class="flex justify-between items-center text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase mt-2">
-                                <span>Duck Volume</span>
+                                <label for="${clip.id}_volumeDuckGain">Duck Volume</label>
                                 <span>${Math.round(volumeDuckGain * 100)}%</span>
                             </div>
-                            <input type="range" min="0" max="1" step="0.05" value="${volumeDuckGain}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'volumeDuckGain', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = Math.round(this.value * 100) + '%';">
+                            <input type="range" id="${clip.id}_volumeDuckGain" name="volumeDuckGain" min="0" max="1" step="0.05" value="${volumeDuckGain}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'volumeDuckGain', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = Math.round(this.value * 100) + '%';">
                             
                             <div class="flex justify-between items-center text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase mt-2">
-                                <span>Recovery Volume</span>
+                                <label for="${clip.id}_volumeDuckRecovery">Recovery Volume</label>
                                 <span>${Math.round(volumeDuckRecovery * 100)}%</span>
                             </div>
-                            <input type="range" min="0" max="2" step="0.05" value="${volumeDuckRecovery}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'volumeDuckRecovery', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = Math.round(this.value * 100) + '%';">
+                            <input type="range" id="${clip.id}_volumeDuckRecovery" name="volumeDuckRecovery" min="0" max="2" step="0.05" value="${volumeDuckRecovery}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'volumeDuckRecovery', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = Math.round(this.value * 100) + '%';">
 
                             <div class="flex justify-between items-center text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase mt-2">
-                                <span>Release Delay</span>
+                                <label for="${clip.id}_volumeDuckRelease">Release Delay</label>
                                 <span>${(volumeDuckRelease / 1000).toFixed(1)}s</span>
                             </div>
-                            <input type="range" min="0" max="5000" step="100" value="${volumeDuckRelease}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'volumeDuckRelease', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = (this.value / 1000).toFixed(1) + 's';">
+                            <input type="range" id="${clip.id}_volumeDuckRelease" name="volumeDuckRelease" min="0" max="5000" step="100" value="${volumeDuckRelease}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'volumeDuckRelease', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = (this.value / 1000).toFixed(1) + 's';">
 
                             <div class="flex justify-between items-center text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase mt-2">
-                                <span>Fade In Duration</span>
+                                <label for="${clip.id}_volumeDuckFadeIn">Fade In Duration</label>
                                 <span>${Number(volumeDuckFadeIn).toFixed(2)}s</span>
                             </div>
-                            <input type="range" min="0.05" max="3" step="0.05" value="${volumeDuckFadeIn}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'volumeDuckFadeIn', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = Number(this.value).toFixed(2) + 's';">
+                            <input type="range" id="${clip.id}_volumeDuckFadeIn" name="volumeDuckFadeIn" min="0.05" max="3" step="0.05" value="${volumeDuckFadeIn}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'volumeDuckFadeIn', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = Number(this.value).toFixed(2) + 's';">
 
                             <div class="flex justify-between items-center text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase mt-2">
-                                <span>Fade Out Duration</span>
+                                <label for="${clip.id}_volumeDuckFadeOut">Fade Out Duration</label>
                                 <span>${Number(volumeDuckFadeOut).toFixed(2)}s</span>
                             </div>
-                            <input type="range" min="0.05" max="5" step="0.05" value="${volumeDuckFadeOut}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'volumeDuckFadeOut', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = Number(this.value).toFixed(2) + 's';">
+                            <input type="range" id="${clip.id}_volumeDuckFadeOut" name="volumeDuckFadeOut" min="0.05" max="5" step="0.05" value="${volumeDuckFadeOut}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'volumeDuckFadeOut', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = Number(this.value).toFixed(2) + 's';">
                         </div>
                     </div>
                 </details>` +
@@ -9461,29 +9472,29 @@
                                 </span>
                             </div>
                             <div class="flex justify-between items-center mb-1.5">
-                                <label class="text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Start</label>
+                                <label for="${clip.id}_envTrimStart" class="text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Start</label>
                                 <span class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${envTrimStart.toFixed(2)}s</span>
                             </div>
-                            <input type="range" min="0" max="${envBufDur}" step="0.01" value="${envTrimStart}" class="w-full custom-slider" oninput="setClipTrim('${clip.id}', 'start', this.value); this.previousElementSibling.querySelector('span').textContent = parseFloat(this.value).toFixed(2) + 's';" onchange="setClipTrim('${clip.id}', 'start', this.value, true);">
+                            <input type="range" id="${clip.id}_envTrimStart" name="envTrimStart" min="0" max="${envBufDur}" step="0.01" value="${envTrimStart}" class="w-full custom-slider" oninput="setClipTrim('${clip.id}', 'start', this.value); this.previousElementSibling.querySelector('span').textContent = parseFloat(this.value).toFixed(2) + 's';" onchange="setClipTrim('${clip.id}', 'start', this.value, true);">
                             <div class="flex justify-between items-center mb-1.5 mt-1.5">
-                                <label class="text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">End</label>
+                                <label for="${clip.id}_envTrimEnd" class="text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">End</label>
                                 <span class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${envTrimEnd.toFixed(2)}s</span>
                             </div>
-                            <input type="range" min="0" max="${envBufDur}" step="0.01" value="${envTrimEnd}" class="w-full custom-slider" oninput="setClipTrim('${clip.id}', 'end', this.value); this.previousElementSibling.querySelector('span').textContent = parseFloat(this.value).toFixed(2) + 's';" onchange="setClipTrim('${clip.id}', 'end', this.value, true);">
+                            <input type="range" id="${clip.id}_envTrimEnd" name="envTrimEnd" min="0" max="${envBufDur}" step="0.01" value="${envTrimEnd}" class="w-full custom-slider" oninput="setClipTrim('${clip.id}', 'end', this.value); this.previousElementSibling.querySelector('span').textContent = parseFloat(this.value).toFixed(2) + 's';" onchange="setClipTrim('${clip.id}', 'end', this.value, true);">
                         </div>
                         <div>
                             <div class="flex justify-between items-center mb-1.5">
-                                <label class="text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Fade In</label>
+                                <label for="${clip.id}_envFadeIn" class="text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Fade In</label>
                                 <span class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${envFadeIn.toFixed(1)}s</span>
                             </div>
-                            <input type="range" min="0" max="${envFadeMax}" step="0.05" value="${envFadeIn}" class="w-full custom-slider" oninput="setClipFade('${clip.id}', 'in', this.value); this.previousElementSibling.querySelector('span').textContent = parseFloat(this.value).toFixed(1) + 's';" onchange="setClipFade('${clip.id}', 'in', this.value, true);">
+                            <input type="range" id="${clip.id}_envFadeIn" name="envFadeIn" min="0" max="${envFadeMax}" step="0.05" value="${envFadeIn}" class="w-full custom-slider" oninput="setClipFade('${clip.id}', 'in', this.value); this.previousElementSibling.querySelector('span').textContent = parseFloat(this.value).toFixed(1) + 's';" onchange="setClipFade('${clip.id}', 'in', this.value, true);">
                         </div>
                         <div>
                             <div class="flex justify-between items-center mb-1.5">
-                                <label class="text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Fade Out</label>
+                                <label for="${clip.id}_envFadeOut" class="text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Fade Out</label>
                                 <span class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${envFadeOut.toFixed(1)}s</span>
                             </div>
-                            <input type="range" min="0" max="${envFadeMax}" step="0.05" value="${envFadeOut}" class="w-full custom-slider" oninput="setClipFade('${clip.id}', 'out', this.value); this.previousElementSibling.querySelector('span').textContent = parseFloat(this.value).toFixed(1) + 's';" onchange="setClipFade('${clip.id}', 'out', this.value, true);">
+                            <input type="range" id="${clip.id}_envFadeOut" name="envFadeOut" min="0" max="${envFadeMax}" step="0.05" value="${envFadeOut}" class="w-full custom-slider" oninput="setClipFade('${clip.id}', 'out', this.value); this.previousElementSibling.querySelector('span').textContent = parseFloat(this.value).toFixed(1) + 's';" onchange="setClipFade('${clip.id}', 'out', this.value, true);">
                         </div>
                         <div>
                             <label class="block text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1.5">Fade Curve</label>
@@ -9513,22 +9524,22 @@
                     <div class="p-3 bg-white dark:bg-surface-800 flex flex-col gap-3">
                         <div class="flex flex-col gap-1.5">
                             <div class="flex justify-between items-center text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase">
-                                <span>Highs (Treble)</span>
+                                <label for="${clip.id}_eqHigh">Highs (Treble)</label>
                                 <span>${eqHigh} dB</span>
                             </div>
-                            <input type="range" min="-24" max="24" step="1" value="${eqHigh}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'eqHigh', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = this.value + ' dB';">
+                            <input type="range" id="${clip.id}_eqHigh" name="eqHigh" min="-24" max="24" step="1" value="${eqHigh}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'eqHigh', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = this.value + ' dB';">
                             
                             <div class="flex justify-between items-center text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase mt-2">
-                                <span>Mids</span>
+                                <label for="${clip.id}_eqMid">Mids</label>
                                 <span>${eqMid} dB</span>
                             </div>
-                            <input type="range" min="-24" max="24" step="1" value="${eqMid}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'eqMid', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = this.value + ' dB';">
+                            <input type="range" id="${clip.id}_eqMid" name="eqMid" min="-24" max="24" step="1" value="${eqMid}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'eqMid', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = this.value + ' dB';">
                             
                             <div class="flex justify-between items-center text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase mt-2">
-                                <span>Lows (Bass)</span>
+                                <label for="${clip.id}_eqLow">Lows (Bass)</label>
                                 <span>${eqLow} dB</span>
                             </div>
-                            <input type="range" min="-24" max="24" step="1" value="${eqLow}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'eqLow', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = this.value + ' dB';">
+                            <input type="range" id="${clip.id}_eqLow" name="eqLow" min="-24" max="24" step="1" value="${eqLow}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'eqLow', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = this.value + ' dB';">
                         </div>
                     </div>
                 </details>` +
@@ -9539,10 +9550,10 @@
                     <div class="p-3 bg-white dark:bg-surface-800 flex flex-col gap-3">
                         <div class="flex flex-col gap-1.5">
                             <div class="flex justify-between items-center text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase">
-                                <span>Multiplier</span>
+                                <label for="${clip.id}_speed">Multiplier</label>
                                 <span>${clipUserSpeed(clip).toFixed(2)}x</span>
                             </div>
-                            <input type="range" min="0.25" max="4" step="0.05" value="${clipUserSpeed(clip)}" class="w-full custom-slider" oninput="setClipSpeed('${clip.id}', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = parseFloat(this.value).toFixed(2) + 'x';" onchange="updateSidebarPanel();">
+                            <input type="range" id="${clip.id}_speed" name="speed" min="0.25" max="4" step="0.05" value="${clipUserSpeed(clip)}" class="w-full custom-slider" oninput="setClipSpeed('${clip.id}', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = parseFloat(this.value).toFixed(2) + 'x';" onchange="updateSidebarPanel();">
                             <div class="flex flex-wrap gap-1">
                                 ${[0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4].map(p => `
                                     <button onclick="setClipSpeed('${clip.id}', ${p}); updateSidebarPanel(); event.stopPropagation();" class="flex-1 min-w-[36px] py-1 text-[9px] font-bold rounded-md border transition-all duration-150 ${Math.abs(clipUserSpeed(clip) - p) < 0.01 ? 'bg-brand-500 text-white border-brand-500 shadow-sm' : 'bg-surface-50 dark:bg-surface-900 text-surface-600 dark:text-surface-300 border-surface-200 dark:border-surface-700 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-400'}">${p}×</button>
@@ -9557,7 +9568,7 @@
                                 <span class="text-[8.5px] text-surface-500 dark:text-surface-300 leading-tight">Keep the voice/music at its original pitch when sped up or slowed down.</span>
                             </div>
                             <label class="relative inline-flex items-center cursor-pointer shrink-0">
-                                <input type="checkbox" class="sr-only peer" ${clip.pitchBaked ? 'checked' : ''} onchange="setClipPreservePitch('${clip.id}', this.checked);">
+                                <input type="checkbox" id="${clip.id}_pitchBaked" name="pitchBaked" class="sr-only peer" ${clip.pitchBaked ? 'checked' : ''} onchange="setClipPreservePitch('${clip.id}', this.checked);">
                                 <div class="w-8 h-[18px] bg-surface-300 dark:bg-surface-600 rounded-full peer-checked:bg-brand-500 peer-checked:bg-gradient-to-r peer-checked:from-brand-400 peer-checked:to-brand-500 transition-colors duration-200 relative after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:w-[14px] after:h-[14px] after:bg-white after:rounded-full after:shadow-sm after:transition-transform after:duration-200 peer-checked:after:translate-x-[14px]"></div>
                             </label>
                         </div>
@@ -9567,7 +9578,7 @@
                                 <span class="text-[8.5px] text-surface-500 dark:text-surface-300 leading-tight">Play the clip backwards from the end of its source window. Not available with preserve pitch.</span>
                             </div>
                             <label class="relative inline-flex items-center cursor-pointer shrink-0">
-                                <input type="checkbox" class="sr-only peer" ${clip.reverse ? 'checked' : ''} onchange="setClipReverse('${clip.id}', this.checked);">
+                                <input type="checkbox" id="${clip.id}_reverse" name="reverse" class="sr-only peer" ${clip.reverse ? 'checked' : ''} onchange="setClipReverse('${clip.id}', this.checked);">
                                 <div class="w-8 h-[18px] bg-surface-300 dark:bg-surface-600 rounded-full peer-checked:bg-brand-500 peer-checked:bg-gradient-to-r peer-checked:from-brand-400 peer-checked:to-brand-500 transition-colors duration-200 relative after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:w-[14px] after:h-[14px] after:bg-white after:rounded-full after:shadow-sm after:transition-transform after:duration-200 peer-checked:after:translate-x-[14px]"></div>
                             </label>
                         </div>
@@ -9580,10 +9591,10 @@
                     <div class="p-3 bg-white dark:bg-surface-800 flex flex-col gap-3">
                         <div class="flex flex-col gap-1.5">
                             <div class="flex justify-between items-center text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase">
-                                <span>Multiplier</span>
+                                <label for="${clip.id}_pitch">Multiplier</label>
                                 <span>${pitch.toFixed(2)}x</span>
                             </div>
-                            <input type="range" min="0.5" max="2.0" step="0.05" value="${pitch}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'pitch', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = parseFloat(this.value).toFixed(2) + 'x';">
+                            <input type="range" id="${clip.id}_pitch" name="pitch" min="0.5" max="2.0" step="0.05" value="${pitch}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'pitch', this.value); this.previousElementSibling.querySelector('span:last-child').textContent = parseFloat(this.value).toFixed(2) + 'x';">
                         </div>
                     </div>
                 </details>` +
@@ -9604,16 +9615,16 @@
                                 <div class="flex items-center justify-between">
                                     <div class="text-[11px] font-bold text-surface-800 dark:text-surface-200 flex items-center gap-2"><i data-lucide="${ef.icon}" class="w-3.5 h-3.5 text-surface-500 dark:text-surface-300"></i> ${ef.title}</div>
                                     <label class="relative inline-flex items-center cursor-pointer" onclick="event.stopPropagation()">
-                                        <input type="checkbox" class="sr-only peer" ${ef.enabled ? 'checked' : ''} onchange="setClipEffect('${clip.id}', '${ef.enableKey}', this.checked); updateSidebarPanel();">
+                                        <input type="checkbox" id="${clip.id}_${ef.enableKey}" name="${ef.enableKey}" class="sr-only peer" ${ef.enabled ? 'checked' : ''} onchange="setClipEffect('${clip.id}', '${ef.enableKey}', this.checked); updateSidebarPanel();">
                                         <div class="w-7 h-4 bg-surface-300 dark:bg-surface-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:peer-checked:bg-brand-500 peer-checked:bg-brand-500"></div>
                                     </label>
                                 </div>
                                 <div class="${ef.enabled ? '' : 'opacity-50 pointer-events-none'}">
                                     <div class="flex justify-between items-center mb-1">
-                                        <label class="text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Intensity</label>
+                                        <label for="${clip.id}_${ef.key}" class="text-[9px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Intensity</label>
                                         <span class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-1.5 py-0.5 rounded shadow-sm">${Math.round(ef.val * 100)}%</span>
                                     </div>
-                                    <input type="range" min="0" max="1" step="0.05" value="${ef.val}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', '${ef.key}', this.value); this.previousElementSibling.querySelector('span').textContent = Math.round(this.value * 100) + '%'; this.style.background = 'linear-gradient(to right, ${sliderFill} ' + (this.value/this.max)*100 + '%, ${sliderBg} ' + (this.value/this.max)*100 + '%)'">
+                                    <input type="range" id="${clip.id}_${ef.key}" name="${ef.key}" min="0" max="1" step="0.05" value="${ef.val}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', '${ef.key}', this.value); this.previousElementSibling.querySelector('span').textContent = Math.round(this.value * 100) + '%'; this.style.background = 'linear-gradient(to right, ${sliderFill} ' + (this.value/this.max)*100 + '%, ${sliderBg} ' + (this.value/this.max)*100 + '%)'">
                                 </div>
                             </div>
                         `).join('')}
@@ -10270,7 +10281,7 @@
                             </div>
                             <label class="cursor-pointer bg-brand-500 hover:bg-brand-600 text-white px-3 py-2 rounded text-xs font-bold transition-colors flex items-center justify-center gap-2 shadow-sm w-full">
                                 <i data-lucide="upload" class="w-3.5 h-3.5"></i> Import / Replace File
-                                <input type="file" accept="${clip.type === 'image' ? 'image/*' : 'video/*'}" class="hidden" onchange="replaceClipSource('${clip.id}', this.files)">
+                                <input type="file" id="replaceSource_${clip.id}" name="replaceSource" aria-label="Replace clip source" accept="${clip.type === 'image' ? 'image/*' : 'video/*'}" class="hidden" onchange="replaceClipSource('${clip.id}', this.files)">
                             </label>
                         `);
                 }
@@ -10444,7 +10455,7 @@
                                 ` : `
                                     <label class="cursor-pointer bg-brand-500 hover:bg-brand-600 text-white px-3 py-2 rounded text-xs font-bold transition-colors flex items-center justify-center gap-2 shadow-sm">
                                         <i data-lucide="upload" class="w-3.5 h-3.5"></i> Import Sound Effect
-                                        <input type="file" accept="audio/*" class="hidden" onchange="importClipSfx('${clip.id}', this.files)">
+                                        <input type="file" id="sfxUpload_${clip.id}" name="sfxUpload" aria-label="Import sound effect" accept="audio/*" class="hidden" onchange="importClipSfx('${clip.id}', this.files)">
                                     </label>
                                     <p class="text-[10px] text-surface-500 dark:text-surface-300 leading-relaxed">Attach a sound effect to this element — it stays with the element when duplicated, and can be extracted to the timeline as a linked audio clip.</p>
                                 `}
@@ -11207,7 +11218,7 @@
                                     </button>
                                 </div>
                                 ${activeKf ? `
-                                    <select onchange="adjustKeyframeEasing('${clip.id}', '${p.key}', ${kfIndex}, this.value)" 
+                                    <select aria-label="Easing for ${p.key} keyframe" name="kfEase_${p.key}_${kfIndex}" onchange="adjustKeyframeEasing('${clip.id}', '${p.key}', ${kfIndex}, this.value)" 
                                             class="text-[9px] font-semibold py-0.5 px-1.5 border border-surface-200 dark:border-surface-700 rounded-md bg-white dark:bg-surface-800 text-surface-600 dark:text-surface-300 focus:outline-none cursor-pointer">
                                         <option value="linear" ${activeKf.ease === 'linear' ? 'selected' : ''}>Linear</option>
                                         <option value="easeIn" ${activeKf.ease === 'easeIn' ? 'selected' : ''}>Ease In</option>
@@ -14537,12 +14548,13 @@
             const lblCls = 'text-[10px] font-bold text-surface-700 dark:text-surface-200 uppercase tracking-widest';
             const rowLabel = (t, icon) => `<span class="flex items-center gap-1.5 shrink-0 ${lblCls}"><i data-lucide="${icon}" class="w-3 h-3 text-brand-500 dark:text-brand-400 shrink-0"></i>${t}</span>`;
             const hexOk = (v) => typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v);
-            const colorBox = (k, def) => `<div class="relative w-7 h-7 shrink-0 rounded-md border border-surface-200 dark:border-surface-700 overflow-hidden"><input type="color" value="${hexOk(val(k)) ? val(k) : def}" class="absolute inset-0 w-full h-full cursor-pointer" oninput="${put(k, 'this.value')}"></div>`;
+            const idp = (k) => `${clipId || 'global'}_${k}`;
+            const colorBox = (k, def) => `<div class="relative w-7 h-7 shrink-0 rounded-md border border-surface-200 dark:border-surface-700 overflow-hidden"><input type="color" id="${idp(k)}" name="${k}" value="${hexOk(val(k)) ? val(k) : def}" class="absolute inset-0 w-full h-full cursor-pointer" oninput="${put(k, 'this.value')}"></div>`;
             const toggleRow = (k, title, sub) => `<div class="sub-style-group flex items-center gap-2.5 min-w-0">
-                <label class="flex items-center gap-2 cursor-pointer shrink-0 select-none"><input type="checkbox" ${val(k) ? 'checked' : ''} class="rounded text-brand-500 focus:ring-brand-500" onchange="${putToggle(k, 'this.checked')}"><span class="text-xs font-bold text-surface-800 dark:text-surface-100">${title}</span></label>
+                <label class="flex items-center gap-2 cursor-pointer shrink-0 select-none"><input type="checkbox" id="${idp(k)}" name="${k}" ${val(k) ? 'checked' : ''} class="rounded text-brand-500 focus:ring-brand-500" onchange="${putToggle(k, 'this.checked')}"><span class="text-xs font-bold text-surface-800 dark:text-surface-100">${title}</span></label>
                 <div class="flex items-center gap-2 flex-1 min-w-0 ${val(k) ? '' : 'opacity-40 pointer-events-none'}">${sub}</div>
             </div>`;
-            const sliderRow = (k, min, max, valExpr, badgeExpr, cur) => `<input type="range" min="${min}" max="${max}" step="1" value="${cur}" class="flex-1 custom-slider min-w-0" oninput="${put(k, valExpr)}; this.closest('.sub-style-group').querySelector('[data-v]').textContent = ${badgeExpr};">`;
+            const sliderRow = (k, min, max, valExpr, badgeExpr, cur) => `<input type="range" id="${idp(k)}" name="${k}" min="${min}" max="${max}" step="1" value="${cur}" class="flex-1 custom-slider min-w-0" oninput="${put(k, valExpr)}; this.closest('.sub-style-group').querySelector('[data-v]').textContent = ${badgeExpr};">`;
             if (group === 'scale') {
                 const pct = Math.round((val('scale') !== undefined ? val('scale') : 1) * 100);
                 return `<div class="sub-style-group flex items-center gap-2.5 min-w-0">
@@ -14610,8 +14622,8 @@
                     ${badge(d + 'px')}
                 `)}
                 <div class="flex items-center gap-2 ${val('bgExtrudeEnable') ? '' : 'opacity-40 pointer-events-none'}">
-                    <span class="${lblCls} shrink-0">Direction</span>
-                    <select class="flex-1 text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 focus:outline-none focus:border-brand-500 font-bold text-surface-800 dark:text-surface-200" onchange="${put('bgExtrudeDir', 'this.value')}">
+                    <label for="${clipId || 'global'}_bgExtrudeDir" class="${lblCls} shrink-0">Direction</label>
+                    <select id="${clipId || 'global'}_bgExtrudeDir" name="bgExtrudeDir" class="flex-1 text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 focus:outline-none focus:border-brand-500 font-bold text-surface-800 dark:text-surface-200" onchange="${put('bgExtrudeDir', 'this.value')}">
                         <option value="br" ${dir==='br'?'selected':''}>Bottom-Right</option>
                         <option value="bl" ${dir==='bl'?'selected':''}>Bottom-Left</option>
                         <option value="tr" ${dir==='tr'?'selected':''}>Top-Right</option>
@@ -14627,8 +14639,8 @@
                     ${badge(op + '%')}
                 `)}
                 <div class="flex items-center gap-2 ${val('textureEnable') ? '' : 'opacity-40 pointer-events-none'}">
-                    <span class="${lblCls} shrink-0">Blend</span>
-                    <select class="flex-1 text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 focus:outline-none focus:border-brand-500 font-bold text-surface-800 dark:text-surface-200" onchange="${put('textureBlendMode', 'this.value')}">
+                    <label for="${clipId || 'global'}_textureBlendMode" class="${lblCls} shrink-0">Blend</label>
+                    <select id="${clipId || 'global'}_textureBlendMode" name="textureBlendMode" class="flex-1 text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 focus:outline-none focus:border-brand-500 font-bold text-surface-800 dark:text-surface-200" onchange="${put('textureBlendMode', 'this.value')}">
                         <option value="multiply" ${bm==='multiply'?'selected':''}>Multiply</option>
                         <option value="screen" ${bm==='screen'?'selected':''}>Screen</option>
                         <option value="overlay" ${bm==='overlay'?'selected':''}>Overlay</option>
