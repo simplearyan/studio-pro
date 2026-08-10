@@ -970,6 +970,9 @@
                     <button onclick="rebuildAudioSystem()" class="p-1.5 rounded text-surface-400 hover:text-brand-500 dark:hover:text-brand-400 hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors shrink-0" title="Sync Audio Output (Headphones / Speakers)">
                         <i data-lucide="headphones" class="w-4 h-4"></i>
                     </button>
+                    <button onclick="saveElementAsPreset()" class="p-1.5 rounded text-surface-400 hover:text-brand-500 dark:hover:text-brand-400 hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors shrink-0" title="Save as Preset">
+                        <i data-lucide="heart" class="w-4 h-4"></i>
+                    </button>
                     <button id="btnToggleWidth" class="p-1.5 rounded text-surface-400 hover:text-surface-900 dark:hover:text-white hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors" title="Toggle Width">
                         <i data-lucide="minimize-2" id="iconWidth" class="w-4 h-4"></i>
                     </button>
@@ -2500,6 +2503,31 @@
                     btn.classList.add('text-surface-500', 'dark:text-surface-300', 'border-transparent', 'font-semibold');
                 }
             });
+        };
+
+        // Shared CapCut-style segmented sub-tab bar. tabs: [{ key, label, icon }];
+        // activeKey selects the pill; selectFn is the global click-handler name,
+        // invoked as selectFn('key'). rail=true renders a vertical stack of
+        // full-width chips (the left rail in horizontal docks); rail=false renders
+        // the horizontal segmented control used in vertical docks. Returns the
+        // track + chips HTML — callers wrap it in their own container.
+        window.subTabBar = (tabs, activeKey, selectFn, rail = false) => {
+            const base = "py-1.5 px-3 rounded-md text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer";
+            const activeCls = `${base} ${rail ? 'w-full' : 'flex-1'} bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm border border-surface-200/60 dark:border-surface-600/60`;
+            const inactiveCls = `${base} ${rail ? 'w-full' : 'flex-1'} text-surface-500 hover:text-surface-800 dark:hover:text-surface-200 hover:bg-white/60 dark:hover:bg-surface-800/60`;
+            const trackCls = rail
+                ? "flex flex-col gap-1 w-full"
+                : "flex items-center gap-1 bg-surface-100 dark:bg-surface-900/60 p-1 rounded-lg flex-1 min-w-0";
+            return `
+                <div class="${trackCls}">
+                    ${tabs.map(t => {
+                        const active = t.key === activeKey;
+                        return `<button type="button" onclick="${selectFn}('${t.key}'); event.stopPropagation();" class="${active ? activeCls : inactiveCls}" title="${t.label}">
+                            <i data-lucide="${t.icon}" class="w-3.5 h-3.5 shrink-0 ${active ? 'text-surface-900 dark:text-white' : 'text-surface-600 dark:text-surface-300'}"></i>${t.label}
+                        </button>`;
+                    }).join('')}
+                </div>
+            `;
         };
 
         window.setPropGroup = (key) => {
@@ -10481,38 +10509,15 @@
                         media: [sceneHTML, sourceHTML, speedHTML, textHTML, captionHTML, typographyHTML, spacingHTML, shapeHTML, sfxHTML].filter(Boolean).join('')
                     };
 
-                    const chipBase = "py-1.5 px-3 rounded-md text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer";
-                    const chipActiveBar = `${chipBase} flex-1 bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm border border-surface-200/50 dark:border-surface-600/50 ring-1 ring-brand-500/20`;
-                    const chipInactiveBar = `${chipBase} flex-1 text-surface-500 hover:text-surface-800 dark:hover:text-surface-200 hover:bg-white/60 dark:hover:bg-surface-800/60`;
-                    const chipActiveRail = `${chipBase} w-full bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm border border-surface-200/50 dark:border-surface-600/50 ring-1 ring-brand-500/20`;
-                    const chipInactiveRail = `${chipBase} w-full text-surface-500 hover:text-surface-800 dark:hover:text-surface-200 hover:bg-white/60 dark:hover:bg-surface-800/60`;
-                    const chip = (key, rail) => {
-                        const m = groupMeta[key];
-                        const active = key === activeGroup;
-                        const cls = rail ? (active ? chipActiveRail : chipInactiveRail) : (active ? chipActiveBar : chipInactiveBar);
-                        const iconCls = active ? 'text-brand-500' : 'text-surface-600 dark:text-surface-300';
-                        return `<button type="button" onclick="setPropGroup('${key}'); event.stopPropagation();" class="${cls}" title="${m.label}">
-                            <i data-lucide="${m.icon}" class="w-3.5 h-3.5 shrink-0 ${iconCls}"></i>${m.label}
-                        </button>`;
-                    };
+                    const propTabs = groupKeys.map(k => ({ key: k, ...groupMeta[k] }));
 
                     const propTabBar = isHorizontal ? `
-                        <div id="propertiesLayoutNav" class="w-24 bg-surface-100 dark:bg-surface-900/60 border-r border-surface-200 dark:border-surface-700 flex flex-col gap-1.5 p-2 shrink-0 overflow-y-auto no-scrollbar">
-                            <div class="flex flex-col gap-1 bg-surface-50 dark:bg-surface-900/40 p-1 rounded-xl border border-surface-200 dark:border-surface-700/80 shadow-inner">
-                                ${groupKeys.map(k => chip(k, true)).join('')}
-                            </div>
-                            <button onclick="saveElementAsPreset()" class="flex items-center justify-center gap-1.5 mt-auto px-2 py-1.5 rounded-md text-[10px] font-bold text-brand-600 dark:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-950/20 transition-colors" title="Save as Preset">
-                                <i data-lucide="heart" class="w-3.5 h-3.5 shrink-0"></i><span>Save</span>
-                            </button>
+                        <div id="propertiesLayoutNav" class="w-24 bg-surface-100 dark:bg-surface-900/60 border-r border-surface-200 dark:border-surface-700 flex flex-col gap-1 p-2 shrink-0 overflow-y-auto no-scrollbar">
+                            ${subTabBar(propTabs, activeGroup, 'setPropGroup', true)}
                         </div>
                     ` : `
-                        <div id="propertiesLayoutNav" class="flex flex-row items-center gap-2 p-2 px-4 overflow-x-auto shrink-0 w-full bg-surface-100 dark:bg-surface-900/60 border-b border-surface-200 dark:border-surface-700 no-scrollbar">
-                            <div class="flex items-center gap-1 bg-surface-50 dark:bg-surface-900/40 p-1 rounded-xl border border-surface-200 dark:border-surface-700/80 shadow-inner flex-1 min-w-0">
-                                ${groupKeys.map(k => chip(k, false)).join('')}
-                            </div>
-                            <button onclick="saveElementAsPreset()" class="flex items-center gap-1 px-3 py-1.5 text-[10px] font-bold border border-brand-500/20 text-brand-600 dark:text-brand-400 rounded-md transition-colors shrink-0 hover:bg-brand-50 dark:hover:bg-brand-950/20" title="Save as Preset">
-                                <i data-lucide="heart" class="w-3.5 h-3.5"></i><span>Save Preset</span>
-                            </button>
+                        <div id="propertiesLayoutNav" class="flex flex-row items-center px-4 py-2 shrink-0 w-full overflow-x-auto no-scrollbar">
+                            ${subTabBar(propTabs, activeGroup, 'setPropGroup', false)}
                         </div>
                     `;
                     
@@ -11027,12 +11032,13 @@
             }
         };
 
-        window.saveElementAsPreset = function() {
-            if (!State.selectedClipId) {
+        window.saveElementAsPreset = function(clipId) {
+            const targetId = clipId || State.selectedClipId;
+            if (!targetId) {
                 alert("Please select a clip on the timeline first to save its properties as a preset.");
                 return;
             }
-            const clip = State.clips.find(c => c.id === State.selectedClipId);
+            const clip = State.clips.find(c => c.id === targetId);
             if (!clip) return;
 
             const name = prompt("Enter a name for this custom preset:", `${clip.title || clip.type.toUpperCase()} Custom Preset`);
@@ -11525,7 +11531,7 @@
             if (!menu) {
                 menu = document.createElement('div');
                 menu.id = 'clipContextMenu';
-                menu.className = 'fixed bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 shadow-xl rounded-lg py-1.5 z-[1000] min-w-[160px] text-xs font-semibold text-surface-800 dark:text-surface-200';
+                menu.className = 'fixed bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700/80 shadow-2xl rounded-xl p-1 z-[1000] min-w-[190px] text-xs font-semibold text-surface-800 dark:text-surface-200';
                 document.body.appendChild(menu);
             }
             
@@ -11537,33 +11543,46 @@
             const hasMulti = State.multiSelectedClipIds && State.multiSelectedClipIds.length > 1;
             
             let itemsHtml = '';
+
+            // CapCut-style menu: rounded hover pills, muted icons, red reserved for
+            // destructive actions.
+            const it = "w-full text-left px-2.5 py-1.5 rounded-md hover:bg-surface-100 dark:hover:bg-surface-700/70 flex items-center gap-2.5 transition-colors";
+            const itIcon = "w-3.5 h-3.5 text-surface-400 dark:text-surface-500";
+
+            if (!hasMulti) {
+                itemsHtml += `
+                    <button onclick="saveElementAsPreset('${clip.id}'); hideClipContextMenu();" class="${it} text-brand-600 dark:text-brand-400">
+                        <i data-lucide="heart" class="w-3.5 h-3.5"></i> Save as Preset
+                    </button>
+                `;
+            }
             
             if (hasMulti) {
                 itemsHtml += `
-                    <button onclick="linkSelectedClips(); hideClipContextMenu();" class="w-full text-left px-3 py-2 hover:bg-surface-100 dark:hover:bg-surface-700 flex items-center gap-2">
-                        <i data-lucide="link" class="w-3.5 h-3.5 text-brand-500"></i> Link Selected Clips
+                    <button onclick="linkSelectedClips(); hideClipContextMenu();" class="${it}">
+                        <i data-lucide="link" class="${itIcon}"></i> Link Selected Clips
                     </button>
                 `;
             }
             
             if (isLinked) {
                 itemsHtml += `
-                    <button onclick="unlinkClip('${clip.id}'); hideClipContextMenu();" class="w-full text-left px-3 py-2 hover:bg-surface-100 dark:hover:bg-surface-700 flex items-center gap-2 text-red-500 dark:text-red-400">
+                    <button onclick="unlinkClip('${clip.id}'); hideClipContextMenu();" class="${it} text-red-500 dark:text-red-400">
                         <i data-lucide="link-2" class="w-3.5 h-3.5"></i> Unlink Clip
                     </button>
-                    <button onclick="unlinkGroup('${clip.id}'); hideClipContextMenu();" class="w-full text-left px-3 py-2 hover:bg-surface-100 dark:hover:bg-surface-700 flex items-center gap-2 text-red-500 dark:text-red-400">
+                    <button onclick="unlinkGroup('${clip.id}'); hideClipContextMenu();" class="${it} text-red-500 dark:text-red-400">
                         <i data-lucide="unlink" class="w-3.5 h-3.5"></i> Unlink Group
                     </button>
-                    <button onclick="selectLinkedGroup('${clip.id}'); hideClipContextMenu();" class="w-full text-left px-3 py-2 hover:bg-surface-100 dark:hover:bg-surface-700 flex items-center gap-2">
-                        <i data-lucide="scan" class="w-3.5 h-3.5 text-brand-500"></i> Select Linked Group
+                    <button onclick="selectLinkedGroup('${clip.id}'); hideClipContextMenu();" class="${it}">
+                        <i data-lucide="scan" class="${itIcon}"></i> Select Linked Group
                     </button>
                 `;
             }
             
             if (clip.subtitleId) {
                 itemsHtml += `
-                    <button onclick="convertSubtitleClipToText('${clip.id}'); hideClipContextMenu();" class="w-full text-left px-3 py-2 hover:bg-surface-100 dark:hover:bg-surface-700 flex items-center gap-2">
-                        <i data-lucide="type" class="w-3.5 h-3.5 text-brand-500"></i> Convert to Text Element
+                    <button onclick="convertSubtitleClipToText('${clip.id}'); hideClipContextMenu();" class="${it}">
+                        <i data-lucide="type" class="${itIcon}"></i> Convert to Text Element
                     </button>
                 `;
             }
@@ -11571,15 +11590,15 @@
             if (clip.type === 'audio') {
                 itemsHtml += `
                     <div class="border-t border-surface-200 dark:border-surface-700 my-1"></div>
-                    <button onclick="copyClipAutomation('${clip.id}'); hideClipContextMenu();" class="w-full text-left px-3 py-2 hover:bg-surface-100 dark:hover:bg-surface-700 flex items-center gap-2">
-                        <i data-lucide="clipboard-copy" class="w-3.5 h-3.5 text-brand-500"></i> Copy Envelope (Trim, Fades, Volume)
+                    <button onclick="copyClipAutomation('${clip.id}'); hideClipContextMenu();" class="${it}">
+                        <i data-lucide="clipboard-copy" class="${itIcon}"></i> Copy Envelope (Trim, Fades, Volume)
                     </button>
                     ${automationClipboard ? `
-                    <button onclick="pasteClipAutomation('${clip.id}', false); hideClipContextMenu();" class="w-full text-left px-3 py-2 hover:bg-surface-100 dark:hover:bg-surface-700 flex items-center gap-2">
-                        <i data-lucide="clipboard-paste" class="w-3.5 h-3.5 text-brand-500"></i> Paste Envelope
+                    <button onclick="pasteClipAutomation('${clip.id}', false); hideClipContextMenu();" class="${it}">
+                        <i data-lucide="clipboard-paste" class="${itIcon}"></i> Paste Envelope
                     </button>
-                    <button onclick="pasteClipAutomation('${clip.id}', true); hideClipContextMenu();" class="w-full text-left px-3 py-2 hover:bg-surface-100 dark:hover:bg-surface-700 flex items-center gap-2">
-                        <i data-lucide="scaling" class="w-3.5 h-3.5 text-brand-500"></i> Paste Envelope (Match Duration)
+                    <button onclick="pasteClipAutomation('${clip.id}', true); hideClipContextMenu();" class="${it}">
+                        <i data-lucide="scaling" class="${itIcon}"></i> Paste Envelope (Match Duration)
                     </button>
                     ` : ''}
                 `;
@@ -11587,10 +11606,10 @@
 
             itemsHtml += `
                 <div class="border-t border-surface-200 dark:border-surface-700 my-1"></div>
-                <button onclick="duplicateClipAction('${clip.id}'); hideClipContextMenu();" class="w-full text-left px-3 py-2 hover:bg-surface-100 dark:hover:bg-surface-700 flex items-center gap-2">
-                    <i data-lucide="copy" class="w-3.5 h-3.5 text-surface-500"></i> Duplicate Clip
+                <button onclick="duplicateClipAction('${clip.id}'); hideClipContextMenu();" class="${it}">
+                    <i data-lucide="copy" class="${itIcon}"></i> Duplicate Clip
                 </button>
-                <button onclick="deleteClipAction('${clip.id}'); hideClipContextMenu();" class="w-full text-left px-3 py-2 hover:bg-surface-100 dark:hover:bg-surface-700 flex items-center gap-2 text-red-500">
+                <button onclick="deleteClipAction('${clip.id}'); hideClipContextMenu();" class="${it} text-red-500 dark:text-red-400">
                     <i data-lucide="trash-2" class="w-3.5 h-3.5 flex-shrink-0"></i> Delete Clip
                 </button>
             `;
@@ -20047,8 +20066,12 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     return;
                 }
 
-                // Properties card jump shortcuts
+                // Properties sub-tab + card jump shortcuts
                 if (State.sidebarTab === 'properties') {
+                    // 1/2/3 jump straight to a sub-tab (CapCut-style numbered sections)
+                    if (k === '1') { e.preventDefault(); setPropGroup('transform'); return; }
+                    else if (k === '2') { e.preventDefault(); setPropGroup('appearance'); return; }
+                    else if (k === '3') { e.preventDefault(); setPropGroup('media'); return; }
                     if (k === 't') { e.preventDefault(); scrollToPropertyCard('cardTransform'); return; }
                     else if (k === 'y') { e.preventDefault(); scrollToPropertyCard('cardTypography'); return; }
                     else if (k === 'g') { e.preventDefault(); scrollToPropertyCard('cardSpacing'); return; }
