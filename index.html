@@ -2465,32 +2465,47 @@
             const isHorizontal = container.classList.contains('flex-row');
             
             nav.querySelectorAll('button').forEach(btn => {
+                // Skip group headers and action buttons (Save Preset)
+                if (btn.classList.contains('nav-group-toggle') || btn.getAttribute('data-nav-action') === '1') return;
+
                 const isBtnActive = btn.id === `navBtn_${activeCardId}`;
+                const isPrimary = btn.getAttribute('data-nav-primary') === '1';
                 
-                // Clear active style classes
+                // Clear any previous active / weight state
                 btn.classList.remove(
                     'bg-white', 'dark:bg-surface-700', 'dark:bg-surface-800',
                     'text-brand-600', 'dark:text-brand-400', 
                     'text-surface-900', 'dark:text-white',
-                    'shadow-sm', 'border-surface-200', 'dark:border-surface-700', 'dark:border-surface-600'
+                    'text-surface-500', 'dark:text-surface-300',
+                    'text-surface-700', 'dark:text-surface-100',
+                    'shadow-sm', 'border-surface-200', 'dark:border-surface-700', 'dark:border-surface-600',
+                    'border-transparent', 'font-bold', 'font-semibold'
                 );
                 
-                // Reset inactive state classes
-                btn.classList.add('text-surface-500', 'dark:text-surface-300', 'border-transparent');
-                
                 if (isBtnActive) {
-                    btn.classList.remove('text-surface-500', 'dark:text-surface-300', 'border-transparent');
                     btn.classList.add(
                         'bg-white', 'dark:bg-surface-700', 
                         'text-surface-900', 'dark:text-white', 
-                        'shadow-sm', 'border-surface-200', 'dark:border-surface-600'
+                        'shadow-sm', 'border-surface-200', 'dark:border-surface-600',
+                        'font-bold'
                     );
                     
                     if (!isHorizontal) {
                         window.scrollNavBtnIntoView(`navBtn_${activeCardId}`);
                     }
+                } else if (isPrimary) {
+                    btn.classList.add('text-surface-700', 'dark:text-surface-100', 'border-transparent', 'font-bold');
+                } else {
+                    btn.classList.add('text-surface-500', 'dark:text-surface-300', 'border-transparent', 'font-semibold');
                 }
             });
+        };
+
+        window.toggleNavGroup = (key) => {
+            State.ui = State.ui || {};
+            State.ui.navGroups = State.ui.navGroups || { transform: true, appearance: true, media: true };
+            State.ui.navGroups[key] = !State.ui.navGroups[key];
+            updateSidebarPanel();
         };
 
         window.scrollToPropertyCard = (cardId) => {
@@ -7958,6 +7973,7 @@
         function updateSidebarPanel() {
             // Save state
             State.ui = State.ui || { detailsState: {} };
+            State.ui.navGroups = State.ui.navGroups || { transform: true, appearance: true, media: true };
             const isSameClip = State.ui.lastSelectedClipId === State.selectedClipId;
             State.ui.lastSelectedClipId = State.selectedClipId;
 
@@ -10502,28 +10518,65 @@
                 if (navItems.length > 1) {
                     sidebarContent.className = "flex overflow-hidden bg-surface-50 dark:bg-surface-900 w-full flex-1 min-h-0 " + (isHorizontal ? "flex-row" : "flex-col");
                     
+                    // Group the nav into Transform / Appearance / Media sections;
+                    // Transform + Speed are primary (bolder), the rest secondary.
+                    State.ui.navGroups = State.ui.navGroups || { transform: true, appearance: true, media: true };
+                    const navGroupOf = {
+                        cardScene: 'media', cardTransform: 'transform', cardCaption: 'media',
+                        cardContent: 'media', cardTypography: 'media', cardSpacing: 'media',
+                        cardLetterStyles: 'appearance', cardTextBg: 'appearance',
+                        cardSource: 'media', cardCrop: 'transform', cardMask: 'transform', cardColor: 'appearance',
+                        cardSpeed: 'media', cardStroke: 'appearance', cardExtrude: 'appearance',
+                        cardOpacity: 'appearance', cardShadow: 'appearance', cardTexture: 'appearance',
+                        cardSystemFonts: 'appearance', cardGoogleFonts: 'appearance', cardSfx: 'media'
+                    };
+                    const navGroups = [
+                        { key: 'transform', label: 'Transform' },
+                        { key: 'appearance', label: 'Appearance' },
+                        { key: 'media', label: 'Media' }
+                    ].map(g => ({ ...g, items: navItems.filter(i => (navGroupOf[i.id] || 'media') === g.key) }))
+                     .filter(g => g.items.length > 0);
+
+                    const navGroupBtn = (g) => `
+                        <button type="button" onclick="toggleNavGroup('${g.key}'); event.stopPropagation();" class="nav-group-toggle flex items-center gap-0.5 ${isHorizontal ? 'w-full justify-between px-2 py-1 rounded' : 'px-1.5 py-1 rounded shrink-0'} text-[8.5px] font-bold uppercase tracking-widest text-surface-400 dark:text-surface-500 hover:text-surface-600 dark:hover:text-surface-300 transition-colors" title="Collapse / expand ${g.label}">
+                            <span>${g.label}</span>
+                            <i data-lucide="chevron-down" class="w-3 h-3 shrink-0 transition-transform ${State.ui.navGroups[g.key] ? '' : '-rotate-90'}"></i>
+                        </button>
+                    `;
+                    const navItemBtn = (item, rail) => {
+                        const primary = item.id === 'cardTransform' || item.id === 'cardSpeed';
+                        return `
+                            <button onclick="scrollToPropertyCard('${item.id}'); event.stopPropagation();" id="navBtn_${item.id}" data-nav-primary="${primary ? '1' : '0'}" class="${rail ? 'text-left px-2.5 py-1.5 w-full' : 'px-3 py-1 rounded-md shrink-0'} text-[10px] border border-transparent rounded transition-colors flex items-center gap-1.5 hover:text-surface-900 dark:hover:text-surface-100 ${primary ? 'text-surface-700 dark:text-surface-100 font-bold' : 'text-surface-500 dark:text-surface-300 font-semibold'}" title="${item.name}">
+                                <i data-lucide="${item.icon}" class="w-3.5 h-3.5 shrink-0 opacity-70"></i>
+                                <span class="truncate">${item.name}</span>
+                            </button>
+                        `;
+                    };
+
                     const navHtml = isHorizontal ? `
                         <div id="propertiesLayoutNav" class="w-32 bg-surface-100 dark:bg-surface-900/60 border-r border-surface-200 dark:border-surface-700 flex flex-col gap-1 p-2 shrink-0 overflow-y-auto no-scrollbar">
-                            ${navItems.map(item => `
-                                <button onclick="scrollToPropertyCard('${item.id}'); event.stopPropagation();" id="navBtn_${item.id}" class="text-left text-[10px] font-bold border border-transparent text-surface-500 dark:text-surface-300 hover:text-surface-900 dark:hover:text-surface-100 px-2.5 py-1.5 rounded transition-colors flex items-center gap-1.5 w-full" title="${item.name}">
-                                    <i data-lucide="${item.icon}" class="w-3.5 h-3.5 shrink-0 opacity-70"></i>
-                                    <span class="truncate">${item.name}</span>
-                                </button>
+                            ${navGroups.map(g => `
+                                <div class="flex flex-col gap-0.5">
+                                    ${navGroupBtn(g)}
+                                    <div class="flex flex-col gap-0.5 ${State.ui.navGroups[g.key] ? '' : 'hidden'}">
+                                        ${g.items.map(item => navItemBtn(item, true)).join('')}
+                                    </div>
+                                </div>
                             `).join('')}
-                            <button onclick="saveElementAsPreset()" class="text-left text-[10px] font-bold border border-transparent text-brand-600 dark:text-brand-400 hover:text-brand-700 dark:hover:text-brand-300 px-2.5 py-1.5 rounded transition-colors flex items-center gap-1.5 w-full mt-auto" title="Save as Preset">
+                            <button onclick="saveElementAsPreset()" data-nav-action="1" class="text-left text-[10px] font-bold border border-transparent text-brand-600 dark:text-brand-400 hover:text-brand-700 dark:hover:text-brand-300 px-2.5 py-1.5 rounded transition-colors flex items-center gap-1.5 w-full mt-auto" title="Save as Preset">
                                 <i data-lucide="heart" class="w-3.5 h-3.5 shrink-0 opacity-70"></i>
                                 <span class="truncate">Save Preset</span>
                             </button>
                         </div>
                     ` : `
-                        <div id="propertiesLayoutNav" class="flex flex-row items-center gap-1.5 p-2 px-4 overflow-x-auto shrink-0 w-full bg-transparent no-scrollbar">
-                            ${navItems.map(item => `
-                                <button onclick="scrollToPropertyCard('${item.id}'); event.stopPropagation();" id="navBtn_${item.id}" class="flex items-center gap-1 px-3 py-1 text-[10px] font-bold border border-transparent rounded-md transition-colors shrink-0 text-surface-500 dark:text-surface-300 hover:text-surface-900 dark:hover:text-surface-100" title="${item.name}">
-                                    <i data-lucide="${item.icon}" class="w-3.5 h-3.5 shrink-0 opacity-70"></i>
-                                    <span>${item.name}</span>
-                                </button>
+                        <div id="propertiesLayoutNav" class="flex flex-row items-center gap-1 p-2 px-4 overflow-x-auto shrink-0 w-full bg-transparent no-scrollbar">
+                            ${navGroups.map(g => `
+                                ${navGroupBtn(g)}
+                                <div class="flex flex-row items-center gap-1 ${State.ui.navGroups[g.key] ? '' : 'hidden'}">
+                                    ${g.items.map(item => navItemBtn(item, false)).join('')}
+                                </div>
                             `).join('')}
-                            <button onclick="saveElementAsPreset()" class="flex items-center gap-1 px-3 py-1 text-[10px] font-bold border border-brand-500/20 text-brand-600 dark:text-brand-400 rounded-md transition-colors shrink-0 hover:bg-brand-50 dark:hover:bg-brand-950/20 ml-auto" title="Save as Preset">
+                            <button onclick="saveElementAsPreset()" data-nav-action="1" class="flex items-center gap-1 px-3 py-1 text-[10px] font-bold border border-brand-500/20 text-brand-600 dark:text-brand-400 rounded-md transition-colors shrink-0 hover:bg-brand-50 dark:hover:bg-brand-950/20 ml-auto" title="Save as Preset">
                                 <i data-lucide="heart" class="w-3.5 h-3.5 shrink-0 opacity-70"></i>
                                 <span>Save Preset</span>
                             </button>
