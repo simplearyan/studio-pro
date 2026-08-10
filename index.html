@@ -10520,9 +10520,20 @@
                         media: { label: 'Media', icon: 'film' }
                     };
 
-                    // Only the active group's cards, preserving each group's render order
+                    // Only the active group's cards, preserving each group's render order.
+                    // Text/math clips flip Basic: the text-editing cards sit on top and the
+                    // positioning cards (Transform, Blending) drop to the bottom — matching
+                    // CapCut, where the most-tweaked controls are visible first. The same
+                    // ordered id list feeds the jump chips (GROUP_CARD_ORDER) so both stay
+                    // in sync; keyboard card-jumps (T/Y/G/O/X/B) are group-aware and unaffected.
+                    const basicCardIds = isText
+                        ? ['cardContent', 'cardTypography', 'cardSpacing', 'cardCaption', 'cardTransform', 'cardOpacity', 'cardSpeed']
+                        : ['cardTransform', 'cardCrop', 'cardOpacity', 'cardSpeed', 'cardContent', 'cardTypography', 'cardSpacing', 'cardCaption'];
+                    const basicCardHtml = isText
+                        ? [textHTML, typographyHTML, spacingHTML, captionHTML, transformHTML, blendingHTML, speedHTML]
+                        : [transformHTML, cropHTML, blendingHTML, speedHTML, textHTML, typographyHTML, spacingHTML, captionHTML, shapeHTML];
                     const groupCardsHtml = {
-                        basic: [transformHTML, cropHTML, blendingHTML, speedHTML, textHTML, typographyHTML, spacingHTML, captionHTML, shapeHTML].filter(Boolean).join(''),
+                        basic: basicCardHtml.filter(Boolean).join(''),
                         adjust: [colorHTML, textBgHTML, strokeHTML, shadowHTML].filter(Boolean).join(''),
                         effects: [maskHTML, letterStylesHTML, extrudeHTML, textureHTML, sfxHTML].filter(Boolean).join(''),
                         media: [sceneHTML, sourceHTML, systemFontsHTML, googleFontsHTML].filter(Boolean).join('')
@@ -10545,7 +10556,7 @@
                     // scrolls that card into view (reuses scrollToPropertyCard). Vertical dock:
                     // a chip row under the sub-tabs; horizontal dock: a narrow mini-rail.
                     const GROUP_CARD_ORDER = {
-                        basic: ['cardTransform', 'cardCrop', 'cardOpacity', 'cardSpeed', 'cardContent', 'cardTypography', 'cardSpacing', 'cardCaption'],
+                        basic: basicCardIds,
                         adjust: ['cardColor', 'cardTextBg', 'cardStroke', 'cardShadow'],
                         effects: ['cardMask', 'cardLetterStyles', 'cardExtrude', 'cardTexture', 'cardSfx'],
                         media: ['cardScene', 'cardSource', 'cardSystemFonts', 'cardGoogleFonts']
