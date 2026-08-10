@@ -2522,13 +2522,15 @@
                 <div class="${trackCls}">
                     ${tabs.map(t => {
                         const active = t.key === activeKey;
-                        return `<button type="button" onclick="${selectFn}('${t.key}'); event.stopPropagation();" class="${active ? activeCls : inactiveCls}" title="${t.label}">
+                        return `<button type="button" onclick="${selectFn}('${t.key}'); event.stopPropagation();" class="${active ? activeCls : inactiveCls}" title="${t.title || t.label}">
                             <i data-lucide="${t.icon}" class="w-3.5 h-3.5 shrink-0 ${active ? 'text-surface-900 dark:text-white' : 'text-surface-600 dark:text-surface-300'}"></i>${t.label}
                         </button>`;
                     }).join('')}
                 </div>
             `;
         };
+
+
 
         window.setPropGroup = (key) => {
             State.ui = State.ui || {};
@@ -2539,13 +2541,13 @@
         // card id → Properties sub-tab group — single source of truth, used by the
         // sub-tab renderer and by scrollToPropertyCard's group-aware jump.
         const PROP_GROUP_OF = {
-            cardScene: 'media', cardTransform: 'transform', cardCaption: 'media',
-            cardContent: 'media', cardTypography: 'media', cardSpacing: 'media',
-            cardLetterStyles: 'appearance', cardTextBg: 'appearance',
-            cardSource: 'media', cardCrop: 'transform', cardMask: 'transform', cardColor: 'appearance',
-            cardSpeed: 'media', cardStroke: 'appearance', cardExtrude: 'appearance',
-            cardOpacity: 'appearance', cardShadow: 'appearance', cardTexture: 'appearance',
-            cardSystemFonts: 'appearance', cardGoogleFonts: 'appearance', cardSfx: 'media'
+            cardTransform: 'basic', cardCrop: 'basic', cardOpacity: 'basic',
+            cardSpeed: 'basic', cardContent: 'basic', cardTypography: 'basic',
+            cardSpacing: 'basic', cardCaption: 'basic',
+            cardColor: 'adjust', cardTextBg: 'adjust', cardStroke: 'adjust', cardShadow: 'adjust',
+            cardMask: 'effects', cardLetterStyles: 'effects', cardExtrude: 'effects',
+            cardTexture: 'effects', cardSfx: 'effects',
+            cardScene: 'media', cardSource: 'media', cardSystemFonts: 'media', cardGoogleFonts: 'media'
         };
 
         window.scrollToPropertyCard = (cardId) => {
@@ -10495,30 +10497,39 @@
                 if (navItems.length > 1) {
                     sidebarContent.className = "flex overflow-hidden bg-surface-50 dark:bg-surface-900 w-full flex-1 min-h-0 " + (isHorizontal ? "flex-row" : "flex-col");
 
-                    // CapCut-style sub-tabs: Transform / Appearance / Media filter which
+                    // CapCut-style sub-tabs: Basic / Adjust / Effects / Media filter which
                     // cards render — only the active group's cards exist in the DOM.
-                    State.ui.activePropGroup = State.ui.activePropGroup || 'transform';
+                    State.ui.activePropGroup = State.ui.activePropGroup || 'basic';
+                    // Migrate saved group keys from the old 3-tab naming (transform/appearance)
+                    // so stale localStorage values don't render an empty tab.
+                    const PROP_GROUP_MIGRATE = { transform: 'basic', appearance: 'effects' };
+                    if (PROP_GROUP_MIGRATE[State.ui.activePropGroup]) {
+                        State.ui.activePropGroup = PROP_GROUP_MIGRATE[State.ui.activePropGroup];
+                    }
                     const navGroupOf = PROP_GROUP_OF;
-                    const groupKeys = ['transform', 'appearance', 'media']
+                    const groupKeys = ['basic', 'adjust', 'effects', 'media']
                         .filter(k => navItems.some(i => (navGroupOf[i.id] || 'media') === k));
                     if (!groupKeys.includes(State.ui.activePropGroup)) {
-                        State.ui.activePropGroup = groupKeys[0] || 'transform';
+                        State.ui.activePropGroup = groupKeys[0] || 'basic';
                     }
                     const activeGroup = State.ui.activePropGroup;
                     const groupMeta = {
-                        transform: { label: 'Transform', icon: 'move' },
-                        appearance: { label: 'Appearance', icon: 'palette' },
+                        basic: { label: 'Basic', icon: 'sliders' },
+                        adjust: { label: 'Adjust', icon: 'sun' },
+                        effects: { label: 'Effects', icon: 'sparkles' },
                         media: { label: 'Media', icon: 'film' }
                     };
 
                     // Only the active group's cards, preserving each group's render order
                     const groupCardsHtml = {
-                        transform: [transformHTML, cropHTML, maskHTML].filter(Boolean).join(''),
-                        appearance: [letterStylesHTML, textBgHTML, colorHTML, strokeHTML, extrudeHTML, blendingHTML, shadowHTML, textureHTML, systemFontsHTML, googleFontsHTML].filter(Boolean).join(''),
-                        media: [sceneHTML, sourceHTML, speedHTML, textHTML, captionHTML, typographyHTML, spacingHTML, shapeHTML, sfxHTML].filter(Boolean).join('')
+                        basic: [transformHTML, cropHTML, blendingHTML, speedHTML, textHTML, typographyHTML, spacingHTML, captionHTML, shapeHTML].filter(Boolean).join(''),
+                        adjust: [colorHTML, textBgHTML, strokeHTML, shadowHTML].filter(Boolean).join(''),
+                        effects: [maskHTML, letterStylesHTML, extrudeHTML, textureHTML, sfxHTML].filter(Boolean).join(''),
+                        media: [sceneHTML, sourceHTML, systemFontsHTML, googleFontsHTML].filter(Boolean).join('')
                     };
 
-                    const propTabs = groupKeys.map(k => ({ key: k, ...groupMeta[k] }));
+                    // Tab chips carry a shortcut hint in their tooltip ("Basic (1)")
+                    const propTabs = groupKeys.map((k, idx) => ({ key: k, ...groupMeta[k], title: `${groupMeta[k].label} (${idx + 1})` }));
 
                     const propTabBar = isHorizontal ? `
                         <div id="propertiesLayoutNav" class="w-24 bg-surface-100 dark:bg-surface-900/60 border-r border-surface-200 dark:border-surface-700 flex flex-col gap-1 p-2 shrink-0 overflow-y-auto no-scrollbar">
@@ -20092,10 +20103,11 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
 
                 // Properties sub-tab + card jump shortcuts
                 if (State.sidebarTab === 'properties') {
-                    // 1/2/3 jump straight to a sub-tab (CapCut-style numbered sections)
-                    if (k === '1') { e.preventDefault(); setPropGroup('transform'); return; }
-                    else if (k === '2') { e.preventDefault(); setPropGroup('appearance'); return; }
-                    else if (k === '3') { e.preventDefault(); setPropGroup('media'); return; }
+                    // 1/2/3/4 jump straight to a sub-tab (CapCut-style numbered sections)
+                    if (k === '1') { e.preventDefault(); setPropGroup('basic'); return; }
+                    else if (k === '2') { e.preventDefault(); setPropGroup('adjust'); return; }
+                    else if (k === '3') { e.preventDefault(); setPropGroup('effects'); return; }
+                    else if (k === '4') { e.preventDefault(); setPropGroup('media'); return; }
                     if (k === 't') { e.preventDefault(); scrollToPropertyCard('cardTransform'); return; }
                     else if (k === 'y') { e.preventDefault(); scrollToPropertyCard('cardTypography'); return; }
                     else if (k === 'g') { e.preventDefault(); scrollToPropertyCard('cardSpacing'); return; }
