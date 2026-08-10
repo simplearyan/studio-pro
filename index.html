@@ -513,6 +513,13 @@
                 flex-shrink: 0;
             }
 
+            /* Markdown Media: highlight a Script sounds row while a file hovers it */
+            .md-drop-over {
+                border-color: #8b5cf6 !important;
+                box-shadow: 0 0 0 1px #8b5cf6;
+                background-color: rgba(139, 92, 246, 0.08) !important;
+            }
+
             /* ── Blade Tool (CapCut-style razor) ─────────────────────────── */
             #tracksContent.blade-mode,
             #tracksContent.blade-mode .clip,
@@ -16753,9 +16760,13 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 const importBtn = `
                             <button type="button" onclick="document.getElementById('mdAudioNameInput').dataset.name='${norm}'; document.getElementById('mdAudioNameInput').click();" class="shrink-0 px-2.5 py-1 rounded-md text-[10px] font-bold transition-colors ${asset ? 'text-surface-500 dark:text-surface-300 hover:text-white hover:bg-surface-500/80 border border-surface-300 dark:border-surface-600' : 'bg-amber-500/90 hover:bg-amber-500 text-white shadow-sm'}" title="${asset ? 'Replace the sound for ' + raw : 'Import the sound for ' + raw}">${asset ? 'Replace' : 'Import'}</button>
                 `;
+                // Drag-and-drop onto the row imports the sound for this alt: the
+                // row highlights while a file hovers it, and dropping an audio file
+                // calls the same upsert path as the Import button.
+                const dropAttrs = `ondragover="event.preventDefault(); this.classList.add('md-drop-over');" ondragleave="this.classList.remove('md-drop-over');" ondrop="event.preventDefault(); event.stopPropagation(); this.classList.remove('md-drop-over'); const f=[...(event.dataTransfer.files||[])].find(x=>(x.type||'').startsWith('audio/')); if(f) importMarkdownAudioFor('${norm}', [f]);" title="Drop an audio file here to ${asset ? 'replace' : 'import'} the sound for [audio:${raw}]";`;
                 if (asset) {
                     return `
-                        <div class="flex items-center gap-2 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg p-2 shadow-sm">
+                        <div class="flex items-center gap-2 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg p-2 shadow-sm" ${dropAttrs}>
                             <i data-lucide="music-2" class="w-3.5 h-3.5 shrink-0 text-emerald-500"></i>
                             <span class="flex-1 min-w-0 truncate text-[11px] font-bold text-surface-800 dark:text-surface-200" title="[audio:${raw}]">${raw}</span>
                             <button type="button" onclick="playMarkdownAudio('${asset.id}', this)" class="w-6 h-6 shrink-0 rounded-full bg-surface-100 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 flex items-center justify-center text-surface-600 dark:text-surface-300 hover:text-brand-500 transition-colors" title="Preview ${raw}">
@@ -16766,7 +16777,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         </div>`;
                 }
                 return `
-                        <div class="flex items-center gap-2 bg-amber-50/70 dark:bg-amber-500/10 border border-amber-300/70 dark:border-amber-500/30 rounded-lg p-2">
+                        <div class="flex items-center gap-2 bg-amber-50/70 dark:bg-amber-500/10 border border-amber-300/70 dark:border-amber-500/30 rounded-lg p-2" ${dropAttrs}>
                             <i data-lucide="music" class="w-3.5 h-3.5 shrink-0 text-amber-500"></i>
                             <span class="flex-1 min-w-0 truncate text-[11px] font-bold text-surface-800 dark:text-surface-200" title="[audio:${raw}]">${raw}</span>
                             <span class="text-[9px] font-semibold text-amber-600 dark:text-amber-400 shrink-0">not imported</span>
@@ -16777,7 +16788,10 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 <div class="flex-1 overflow-y-auto p-3 flex flex-col gap-3">
                     <input type="file" id="mdAudioNameInput" accept="audio/*" class="hidden" onchange="importMarkdownAudioFor(this.dataset.name, this.files); this.value='';">
                     <div class="flex flex-col gap-1.5 shrink-0">
-                        <label class="text-[10px] font-bold text-surface-700 dark:text-surface-200 uppercase tracking-widest">Script sounds</label>
+                        <div class="flex items-center justify-between">
+                            <label class="text-[10px] font-bold text-surface-700 dark:text-surface-200 uppercase tracking-widest">Script sounds</label>
+                            <span class="text-[8px] font-medium text-surface-400 dark:text-surface-500">or drop a file on a row</span>
+                        </div>
                         ${scriptSoundRows ? `
                         <div class="flex flex-col gap-1.5">${scriptSoundRows}</div>` : `
                         <div class="text-[10px] text-surface-500 dark:text-surface-300 bg-white dark:bg-surface-800 border border-dashed border-surface-300 dark:border-surface-700 rounded-lg p-3 leading-snug">
