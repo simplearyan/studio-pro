@@ -8900,6 +8900,19 @@
                         const inheritLabel = capCfg[key] !== undefined && capCfg[key] !== '' ? `Global (${capCfg[key]})` : 'Global';
                         return `<select class="w-full text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 focus:outline-none focus:border-brand-500 font-bold" onchange="if(this.value==='__inherit__'){setSubCaptionAnim('${clip.id}','${key}','__inherit__')}else{setClipEffect('${clip.id}','${key}',this.value); drawCanvas();}">${optsHtml}<option value="__inherit__" ${!hasOv(key) ? 'selected' : ''}>${inheritLabel}</option></select>`;
                     };
+                    const capFullEdit = !!capSub.fullEdit;
+                    const capFullEditToggle = `
+                        <div class="flex items-center justify-between gap-2 ${capFullEdit ? '' : 'border-b border-surface-200 dark:border-surface-700 pb-2'}">
+                            <label for="${clip.id}_capFullEdit" class="flex flex-col gap-0.5 cursor-pointer min-w-0">
+                                <span class="text-[10px] font-bold text-surface-600 dark:text-surface-300 uppercase tracking-widest">Full text editing</span>
+                                <span class="text-[8.5px] text-surface-500 dark:text-surface-300 leading-tight">${capFullEdit ? 'Using the standard text-clip cards below — still linked, the global style still flows into fields you don\'t override.' : 'Edit with the standard text-clip cards (Typography, Sizing, Letter Styles, Background, Extrude…) — still linked to the captions system.'}</span>
+                            </label>
+                            <label class="relative inline-flex items-center cursor-pointer shrink-0">
+                                <input type="checkbox" id="${clip.id}_capFullEdit" name="capFullEdit" class="sr-only peer" ${capFullEdit ? 'checked' : ''} onchange="setSubtitleFullEdit('${clip.id}', this.checked)">
+                                <div class="w-7 h-4 bg-surface-300 dark:bg-surface-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:peer-checked:bg-brand-500 peer-checked:bg-brand-500"></div>
+                            </label>
+                        </div>
+                    `;
                     captionHTML = `
                     <details id="cardCaption" class="group bg-white dark:bg-surface-800 border border-brand-300 dark:border-brand-600 shadow-sm rounded-lg shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'} overflow-hidden flex flex-col" open>
                         <summary class="flex items-center justify-between px-3 py-2 ${isHorizontal ? '' : 'cursor-pointer'} list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700 " onclick="${isHorizontal ? 'event.preventDefault();' : ''}">
@@ -8907,6 +8920,8 @@
                             ${isHorizontal ? '' : '<i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>'}
                         </summary>
                         <div class="px-3 py-2 flex flex-col gap-2 bg-surface-50 dark:bg-surface-900/50 flex-1">
+                            ${capFullEditToggle}
+                            ${capFullEdit ? '' : `
                             <p class="text-[10px] text-surface-500 dark:text-surface-300 leading-relaxed">This clip stays linked to the captions system — edits here only affect this caption. Changes to the global style still apply to every field you don't override.</p>
                             <div class="border-t border-surface-200 dark:border-surface-700 pt-3 flex flex-col gap-2">
                                 <div class="text-[10px] font-bold text-surface-700 dark:text-surface-200 uppercase tracking-widest flex items-center gap-1.5"><i data-lucide="palette" class="w-3 h-3"></i>Style</div>
@@ -8963,6 +8978,7 @@
                             <button onclick="resetSubtitleClipStyle('${clip.id}')" class="w-full py-1.5 px-2 text-[10px] font-bold rounded-lg bg-surface-100 dark:bg-surface-800 hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-600 dark:text-surface-300 transition-colors flex items-center justify-center gap-1.5">
                                 <i data-lucide="rotate-ccw" class="w-3 h-3"></i> Reset to Global Style
                             </button>
+                            `}
                         </div>
                     </details>
                 `;
@@ -9092,7 +9108,7 @@
                         </div>
                     `) : '';
 
-            const strokeHTML = (clip.type === 'text' || clip.type === 'shape' || clip.type === 'image' || clip.type === 'video') ? propCard('cardStroke', 'edit-3', 'Stroke & Outline', `
+            let strokeHTML = (clip.type === 'text' || clip.type === 'shape' || clip.type === 'image' || clip.type === 'video') ? propCard('cardStroke', 'edit-3', 'Stroke & Outline', `
                         ${colorRow('strokeColor', strokeColor, 'Stroke Color')}
                         ${propRow('Stroke Width', propSlider('strokeWidth', strokeWidth, 1, 50, 1, "this.value + 'px'"), strokeWidth + 'px', { reset: propReset('strokeWidth', strokeWidth, 4) })}
                     `, {
@@ -9237,7 +9253,7 @@
                         </div>
                     `) : '';
 
-            const shadowHTML = propCard('cardShadow', 'copy', 'Drop Shadow', `
+            let shadowHTML = propCard('cardShadow', 'copy', 'Drop Shadow', `
                         ${colorRow('shadowColor', shadowColor)}
                         ${propRow('Blur', propSlider('shadowBlur', shadowBlur, 0, 100, 1, 'this.value'), shadowBlur, { reset: propReset('shadowBlur', shadowBlur, 20) })}
                         ${propPair(
@@ -10510,6 +10526,23 @@
                             </div>
                         </details>
                     `;
+                }
+
+                // Phase C: caption clips have two editing modes. Compact (default): the
+                // Caption card is the one-stop editor, so the duplicated generic text cards
+                // (Typography, Sizing, Letter Styles, Background, Stroke, Shadow) are hidden.
+                // Full text editing: the Caption card shrinks to a banner and the standard
+                // text-clip cards take over. Both stay linked — edits mirror into sub.effects.
+                if (clip.subtitleId) {
+                    const _capSub2 = State.subtitles.find(s => s.id === clip.subtitleId);
+                    if (_capSub2 && !_capSub2.fullEdit) {
+                        typographyHTML = '';
+                        spacingHTML = '';
+                        letterStylesHTML = '';
+                        textBgHTML = '';
+                        strokeHTML = '';
+                        shadowHTML = '';
+                    }
                 }
 
                 // Compile navigation items for Properties tab
@@ -14538,6 +14571,18 @@
             drawCanvas();
             updateSidebarPanel();
             renderSubtitlesPanel();
+        };
+
+        // Phase C: switch a caption between the compact Caption card and full text-clip
+        // editing — reversible, stays linked (all edits still mirror into sub.effects).
+        window.setSubtitleFullEdit = function(clipId, on) {
+            const clip = State.clips.find(c => c.id === clipId);
+            const sub = clip && clip.subtitleId ? State.subtitles.find(s => s.id === clip.subtitleId) : null;
+            if (!sub) return;
+            sub.fullEdit = !!on;
+            saveSubtitlesToStorage();
+            updateSidebarPanel();
+            drawCanvas();
         };
 
         // Clear EVERY caption's overrides so the global style applies uniformly — the
