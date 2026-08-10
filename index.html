@@ -1044,7 +1044,7 @@
             subtitles: [],
             subtitleSubTab: 'captions', // 'captions' | 'style'
             captionsVisible: true,
-            markdownSubTab: 'content', // 'content' | 'style'
+            markdownSubTab: 'content', // 'content' | 'style' | 'media'
             markdownConfig: {
                 headingFontFamily: 'Rubik',
                 headingFontSize: 60,
@@ -1106,7 +1106,8 @@
                 imageAnimIn: 'fadeIn',
                 trackMode: 'auto', // 'auto' (by type) | 'script' (by script order)
                 startAt: 'playhead', // 'playhead' | 'zero' | '30' | '60' | 'custom'
-                startAtCustom: 0 // seconds when startAt === 'custom'
+                startAtCustom: 0, // seconds when startAt === 'custom'
+                mediaAudio: [] // named embedded-audio assets for the Media sub-tab: { id, name, duration, data (base64 WAV) }
             },
             subtitleEditingId: null,
             markdownText: '',
@@ -15870,7 +15871,7 @@ Paste any **video URL** \u2014 or use \`![alt](mock:video)\` while you design. I
             showcase: MARKDOWN_PRESET_SHOWCASE
         };
 
-        const MARKDOWN_HELP_TEXT = 'Write **Markdown** with `## Heading` for titles, `![alt](url)` for images, `![alt](mock)` for mock image placeholders, `![alt](mock:video)` for mock video placeholders, `![alt](video.mp4)` or `[video](url)` for real videos, `$$latex$$` for image-based math equations, and text for paragraphs. Add a position tag at the end of any heading / image / video / math / text line: `[left]`, `[right]`, `[top]`, `[bottom]`, `[top-left]`, `[top-right]`, `[bottom-left]`, `[bottom-right]`, `[center-left]`, `[center-right]`. Elements sharing the same side stack with the Element Gap spacing. Use `---` to separate slides.';
+        const MARKDOWN_HELP_TEXT = 'Write **Markdown** with `## Heading` for titles, `![alt](url)` for images, `![alt](mock)` for mock image placeholders, `![alt](mock:video)` for mock video placeholders, `![alt](video.mp4)` or `[video](url)` for real videos, `$$latex$$` for image-based math equations, and text for paragraphs. Add a position tag at the end of any heading / image / video / math / text line: `[left]`, `[right]`, `[top]`, `[bottom]`, `[top-left]`, `[top-right]`, `[bottom-left]`, `[bottom-right]`, `[center-left]`, `[center-right]`. Elements sharing the same side stack with the Element Gap spacing. Attach a sound imported in the Media tab by adding `[audio:name]` at the end of any line — e.g. `## Wow [audio:whoosh]` or `![Logo](mock) [audio:ding]`. Use `---` to separate slides.';
 
         window.setMarkdownSubTab = function(tab) {
             State.markdownSubTab = tab;
@@ -16589,6 +16590,43 @@ Use --- to separate slides
 Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</textarea>
                 </div>
             `;
+
+            // Media sub-tab: named embedded-audio assets. Sounds imported here are
+            // referenced in the script by name — `[audio:name]` at the end of any
+            // heading / text / image / video / math line — and every generated clip
+            // that carries the tag plays the shared sound (no per-element imports).
+            const mediaAssets = mdAudioAssets();
+            const mediaHtml = `
+                <div class="flex-1 overflow-y-auto p-3 flex flex-col gap-3">
+                    <div class="flex items-center gap-2 shrink-0">
+                        <button type="button" onclick="document.getElementById('mdAudioFileInput').click()" class="flex-1 py-2 px-3 bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-sm">
+                            <i data-lucide="music" class="w-3.5 h-3.5"></i> Import Audio
+                        </button>
+                        <input type="file" id="mdAudioFileInput" accept="audio/*" multiple class="hidden" onchange="importMarkdownAudio(this.files); this.value='';">
+                    </div>
+                    <div class="text-[10px] text-surface-500 dark:text-surface-300 bg-surface-100 dark:bg-surface-800 rounded-lg p-2 border border-surface-200 dark:border-surface-700 leading-snug">
+                        <i data-lucide="info" class="w-3 h-3 inline-block mr-1"></i>Import a sound once, then reuse it on any element by adding <code>[audio:name]</code> at the end of a heading, text or image line — e.g. <code>## Wow [audio:whoosh]</code> or <code>![Logo](mock) [audio:ding]</code>.
+                    </div>
+                    ${mediaAssets.length ? `
+                    <div class="flex flex-col gap-2">
+                        ${mediaAssets.map(a => `
+                        <div class="flex items-center gap-2 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg p-2 shadow-sm">
+                            <button type="button" onclick="playMarkdownAudio('${a.id}', this)" class="w-7 h-7 shrink-0 rounded-full bg-surface-100 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 flex items-center justify-center text-surface-600 dark:text-surface-300 hover:text-brand-500 transition-colors" title="Preview">
+                                <i data-lucide="play" class="w-3 h-3"></i>
+                            </button>
+                            <input value="${String(a.name).replace(/"/g, '&quot;')}" onchange="renameMarkdownAudio('${a.id}', this.value)" class="flex-1 min-w-0 text-[11px] font-bold text-surface-800 dark:text-surface-200 bg-transparent border border-transparent focus:border-brand-500 focus:bg-white dark:focus:bg-surface-900 rounded px-1 py-0.5 outline-none transition-colors" title="Click to rename — reference the new name in the script">
+                            <span class="text-[9px] font-mono text-surface-400 shrink-0">${a.sfxMissing ? 'runtime' : ((a.duration || 0).toFixed(1) + 's')}</span>
+                            <button type="button" onclick="deleteMarkdownAudio('${a.id}')" class="w-6 h-6 shrink-0 rounded flex items-center justify-center text-surface-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" title="Remove">
+                                <i data-lucide="trash-2" class="w-3 h-3"></i>
+                            </button>
+                        </div>`).join('')}
+                    </div>` : `
+                    <div class="text-center text-[10px] font-semibold text-surface-400 dark:text-surface-500 bg-white dark:bg-surface-800 border border-dashed border-surface-300 dark:border-surface-700 rounded-lg p-6">
+                        <i data-lucide="music-2" class="w-5 h-5 mx-auto mb-2 opacity-50"></i>
+                        No sounds yet — import an MP3, WAV or OGG to attach it to elements by name.
+                    </div>`}
+                </div>
+            `;
             
             let html = `
                 <div class="flex flex-col w-full flex-1 min-h-0">
@@ -16599,8 +16637,11 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         <button onclick="setMarkdownSubTab('style')" class="` + (subTab === 'style' ? activeBtnClass : inactiveBtnClass) + `">
                             <i data-lucide="settings" class="w-3.5 h-3.5 inline-block mr-1"></i>Style
                         </button>
+                        <button onclick="setMarkdownSubTab('media')" class="` + (subTab === 'media' ? activeBtnClass : inactiveBtnClass) + `">
+                            <i data-lucide="music" class="w-3.5 h-3.5 inline-block mr-1"></i>Media
+                        </button>
                     </div>
-                    ` + (subTab === 'content' ? contentHtml : styleHtml) + `
+                    ` + (subTab === 'content' ? contentHtml : (subTab === 'media' ? mediaHtml : styleHtml)) + `
                 </div>
             `;
             
@@ -16651,6 +16692,136 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             drawCanvas();
         }
 
+        // ── Markdown Media: named embedded-audio assets ────────────────────────────
+        // Sounds imported in the Markdown → Media sub-tab are stored in
+        // State.markdownConfig.mediaAudio (name + base64 WAV data so they survive
+        // reload and project save). Decoded AudioBuffers / object URLs are cached
+        // here at runtime so every generated clip can share ONE buffer instead of
+        // re-decoding per clip.
+        const _mdAudioCache = {};
+        let _mdAudioPreviewNode = null;
+        function mdAudioAssets() { return State.markdownConfig.mediaAudio || (State.markdownConfig.mediaAudio = []); }
+        function _ensureMdAudioAsset(asset) {
+            if (!asset) return null;
+            if (_mdAudioCache[asset.id]) return _mdAudioCache[asset.id];
+            if (!asset.data) return null;
+            const entry = { buffer: null, url: null, ready: false, pending: [] };
+            _mdAudioCache[asset.id] = entry;
+            try {
+                const bytes = bytesFromBase64(asset.data);
+                ensureAudioContext();
+                // decodeAudioData detaches the buffer — hand it a copy
+                audioCtx.decodeAudioData(bytes.slice(0)).then(buf => {
+                    entry.buffer = buf;
+                    entry.url = URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' }));
+                    entry.ready = true;
+                    entry.pending.forEach(fn => { try { fn(entry); } catch(e){} });
+                    entry.pending = [];
+                }).catch(() => {});
+            } catch (e) {}
+            return entry;
+        }
+        // Attach a shared media asset to a freshly built markdown clip by reference
+        // name (case-insensitive). If the asset isn't decoded yet, the clip is filled
+        // in as soon as the async decode completes.
+        function withMdAudio(clip, name) {
+            if (!name || clip.sfx) return clip;
+            const asset = mdAudioAssets().find(a => String(a.name).toLowerCase() === String(name).toLowerCase());
+            if (!asset) return clip;
+            const entry = _ensureMdAudioAsset(asset);
+            clip._mdAudioRef = asset.id;
+            clip.sfx = {
+                name: asset.name,
+                url: entry ? entry.url : null,
+                buffer: entry ? entry.buffer : null,
+                duration: asset.duration || 0,
+                volume: 1, trimStart: 0, trimEnd: asset.duration || 0, fadeCurve: 'linear'
+            };
+            if (entry && !entry.ready) {
+                entry.pending.push(e => {
+                    if (!clip.sfx) return;
+                    clip.sfx.buffer = e.buffer;
+                    clip.sfx.url = e.url;
+                    clip.sfx.duration = e.buffer.duration;
+                    clip.sfx.trimEnd = e.buffer.duration;
+                    drawCanvas();
+                });
+            }
+            return clip;
+        }
+        window.importMarkdownAudio = async function(files) {
+            if (!files || !files.length) return;
+            ensureAudioContext();
+            const assets = mdAudioAssets();
+            for (const file of files) {
+                try {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const buffer = await audioCtx.decodeAudioData(arrayBuffer);
+                    const id = 'mda_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+                    let baseName = (file.name.replace(/\.[^.]+$/, '') || 'sound').toLowerCase()
+                        .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'sound';
+                    let name = baseName, n = 2;
+                    while (assets.some(a => a.name.toLowerCase() === name.toLowerCase())) { name = baseName + '-' + n; n++; }
+                    const asset = { id, name, duration: buffer.duration };
+                    try {
+                        const bytes = audioBufferToWavBytes(buffer);
+                        if (bytes.byteLength <= SFX_EMBED_MAX) asset.data = base64FromBytes(bytes);
+                        else asset.sfxMissing = true;
+                    } catch (e) { asset.sfxMissing = true; }
+                    _mdAudioCache[id] = { buffer, url: URL.createObjectURL(file), ready: true, pending: [] };
+                    assets.push(asset);
+                } catch (err) {
+                    console.error('Markdown audio import failed:', err);
+                }
+            }
+            saveMarkdownConfig();
+            renderMarkdownPanel();
+        };
+        window.renameMarkdownAudio = function(id, name) {
+            const assets = mdAudioAssets();
+            const asset = assets.find(a => a.id === id);
+            if (!asset) return;
+            name = (name || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'sound';
+            let candidate = name, n = 2;
+            while (assets.some(a => a.id !== id && a.name.toLowerCase() === candidate.toLowerCase())) { candidate = name + '-' + n; n++; }
+            asset.name = candidate;
+            saveMarkdownConfig();
+            renderMarkdownPanel();
+        };
+        window.deleteMarkdownAudio = function(id) {
+            const assets = mdAudioAssets();
+            const idx = assets.findIndex(a => a.id === id);
+            if (idx === -1) return;
+            if (_mdAudioPreviewNode) { try { _mdAudioPreviewNode.stop(); } catch(e){} _mdAudioPreviewNode = null; }
+            assets.splice(idx, 1);
+            delete _mdAudioCache[id];
+            saveMarkdownConfig();
+            renderMarkdownPanel();
+        };
+        window.playMarkdownAudio = function(id, btn) {
+            ensureAudioContext();
+            const asset = mdAudioAssets().find(a => a.id === id);
+            if (!asset) return;
+            if (_mdAudioPreviewNode) {
+                try { _mdAudioPreviewNode.stop(); } catch(e){}
+                _mdAudioPreviewNode = null;
+                if (btn) { const ic = btn.querySelector('svg'); if (ic) ic.remove(); btn.insertAdjacentHTML('afterbegin', '<i data-lucide="play" class="w-3 h-3"></i>'); lucide.createIcons(); }
+                return;
+            }
+            const entry = _ensureMdAudioAsset(asset);
+            if (!entry || !entry.buffer) return;
+            const src = audioCtx.createBufferSource();
+            src.buffer = entry.buffer;
+            src.connect(State.speakerNode || audioCtx.destination);
+            src.start();
+            _mdAudioPreviewNode = src;
+            src.onended = () => {
+                _mdAudioPreviewNode = null;
+                if (btn && btn.isConnected) { const ic = btn.querySelector('svg'); if (ic) ic.remove(); btn.insertAdjacentHTML('afterbegin', '<i data-lucide="play" class="w-3 h-3"></i>'); lucide.createIcons(); }
+            };
+            if (btn) { const ic = btn.querySelector('svg'); if (ic) ic.remove(); btn.insertAdjacentHTML('afterbegin', '<i data-lucide="square" class="w-3 h-3"></i>'); lucide.createIcons(); }
+        };
+
         window.parseMarkdownToClips = function() {
             // Prefer the live textarea (Content tab), but fall back to the last saved
             // State.markdownText so the generator also works from the Style sub-tab
@@ -16683,7 +16854,25 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             
             for (let i = 0; i < lines.length; i++) {
                 const rawLine = lines[i];
-                const line = rawLine.trim();
+                let line = rawLine.trim();
+                
+                // Embedded-audio tag: `[audio:name]` on the line (optionally combined
+                // with a position tag in either order — `[top] [audio:name]` or
+                // `[audio:name] [top]`). Stripped before the position-tag regexes below
+                // so headings / text / images / videos / math can each carry a sound.
+                let lineAudio = null;
+                const mdAudioPosMatch = line.match(/\s*\[audio:([^\]]+)\]\s*\[(top-left|top-right|bottom-left|bottom-right|center-left|center-right|left|right|top|bottom|center)\]\s*$/i);
+                if (mdAudioPosMatch) {
+                    lineAudio = mdAudioPosMatch[1].trim();
+                    // Re-append the position tag so the POS_RE handling below still applies it
+                    line = line.slice(0, mdAudioPosMatch.index).trim() + ' [' + mdAudioPosMatch[2] + ']';
+                } else {
+                    const mdAudioMatch = line.match(/\s*\[audio:([^\]]+)\]\s*$/i);
+                    if (mdAudioMatch) {
+                        lineAudio = mdAudioMatch[1].trim();
+                        line = line.slice(0, mdAudioMatch.index).trim();
+                    }
+                }
                 
                 // Separator = new slide
                 if (line === '---' || line === '___' || line === '***') {
@@ -16703,8 +16892,8 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     const latex = mathMatch[1].trim();
                     if (latex) {
                         const mIdx = currentSlide.maths.length;
-                        currentSlide.maths.push({ latex, pos, idx: mIdx });
-                        currentSlide.elements.push({ kind: 'math', latex, pos, idx: mIdx });
+                        currentSlide.maths.push({ latex, pos, idx: mIdx, audioName: lineAudio });
+                        currentSlide.elements.push({ kind: 'math', latex, pos, idx: mIdx, audioName: lineAudio });
                     }
                     continue;
                 }
@@ -16715,7 +16904,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     const posMatch = line.slice(vidMatch[0].length).match(POS_RE);
                     const pos = posMatch ? posMatch[1] : null;
                     const vIdx = currentSlide.videos.length;
-                    const v = { url: vidMatch[1].trim(), alt: '', pos, idx: vIdx, mock: false };
+                    const v = { url: vidMatch[1].trim(), alt: '', pos, idx: vIdx, mock: false, audioName: lineAudio };
                     currentSlide.videos.push(v);
                     currentSlide.elements.push({ kind: 'video', ...v });
                     continue;
@@ -16734,11 +16923,11 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     const mediaKind = classifyMediaUrl(rawUrl);
                     if (mediaKind === 'video' || mediaKind === 'mock-video') {
                         const vIdx = currentSlide.videos.length;
-                        const v = { url: mediaKind === 'mock-video' ? '' : rawUrl, alt, pos, idx: vIdx, mock: mediaKind === 'mock-video' };
+                        const v = { url: mediaKind === 'mock-video' ? '' : rawUrl, alt, pos, idx: vIdx, mock: mediaKind === 'mock-video', audioName: lineAudio };
                         currentSlide.videos.push(v);
                         currentSlide.elements.push({ kind: 'video', ...v });
                     } else {
-                        const img = { url: mediaKind === 'mock-image' ? '' : rawUrl, alt, pos, mock: mediaKind === 'mock-image' };
+                        const img = { url: mediaKind === 'mock-image' ? '' : rawUrl, alt, pos, mock: mediaKind === 'mock-image', audioName: lineAudio };
                         currentSlide.images.push(img);
                         currentSlide.elements.push({ kind: 'image', ...img });
                     }
@@ -16761,7 +16950,8 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     }
                     currentSlide.heading = headingText;
                     currentSlide.headingPos = headingPos;
-                    currentSlide.elements.push({ kind: 'heading', pos: headingPos });
+                    currentSlide.headingAudio = lineAudio;
+                    currentSlide.elements.push({ kind: 'heading', pos: headingPos, audioName: lineAudio });
                     continue;
                 }
                 
@@ -16781,13 +16971,17 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     let lastEl = currentSlide.elements[currentSlide.elements.length - 1];
                     if (lastEl && lastEl.kind === 'text') {
                         lastEl.text += (lastEl.text ? '\n' : '') + textLine;
-                        // Keep a position tag found on any later line of the same paragraph
+                        // Keep a position tag / audio tag found on any later line of the same paragraph
                         if (tPos && !lastEl.pos) lastEl.pos = tPos;
+                        if (lineAudio && !lastEl.audioName) lastEl.audioName = lineAudio;
                     }
                     else {
-                        lastEl = { kind: 'text', text: textLine, pos: tPos };
+                        lastEl = { kind: 'text', text: textLine, pos: tPos, audioName: lineAudio };
                         currentSlide.elements.push(lastEl);
                     }
+                    // Sync the slide-level audio reference (used by auto-track mode) with
+                    // the run so a tag on any line of the paragraph sounds the whole clip
+                    if (lineAudio && !currentSlide.textAudio) currentSlide.textAudio = lineAudio;
                     // Sync the slide-level position (used by auto-track mode) with the run
                     // so a tag on any line of the paragraph positions the whole text clip
                     if (tPos) currentSlide.textPos = tPos;
@@ -16928,7 +17122,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             // ── Shared clip builders (identical output in both track modes) ───────────
             // Note: mdPosOffsets is defined at module level (used by applyMarkdownStyle too).
             function mdHeadingClip(slide, index, id, start, dur, trackId, colorIndex) {
-                return {
+                return withMdAudio({
                     id: id + '_heading',
                     sceneId: State.activeSceneId || null,
                     trackId: trackId,
@@ -16953,7 +17147,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         animIn: cfg.headingAnimIn || 'fadeIn', animOut: 'none', animLoop: 'none', animInDur: 0.5, animOutDur: 0.5, animEase: 'easeOut',
                         animTextIn: 'none', animTextOut: 'none', animTextLoop: 'none', animTextEase: 'easeOut', animTextStagger: 'letter', animTextInDur: 0.5, animTextOutDur: 0.5, flashColor: '#ffe600'
                     }
-                };
+                }, slide.headingAudio);
             }
             function mdTextClip(slide, index, id, start, dur, trackId, colorIndex, elPos) {
                 const raw = slide.text || '';
@@ -16995,7 +17189,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 }
                 const wordOverrides = {};
                 mdWords.forEach(wi => { wordOverrides[wi] = { fontWeight: 700 }; });
-                return {
+                return withMdAudio({
                     id: id + '_text',
                     sceneId: State.activeSceneId || null,
                     trackId: trackId,
@@ -17021,10 +17215,10 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         animTextIn: 'none', animTextOut: 'none', animTextLoop: 'none', animTextEase: 'easeOut', animTextStagger: 'word', animTextInDur: 0.3, animTextOutDur: 0.3, flashColor: '#ffe600',
                         wordOverrides: Object.keys(wordOverrides).length ? wordOverrides : undefined
                     }
-                };
+                }, slide.textAudio);
             }
             function mdMathClip(el, index, id, start, dur, trackId, colorIndex) {
-                return {
+                return withMdAudio({
                     id: id + '_math' + (el.idx !== undefined ? el.idx : ''),
                     sceneId: State.activeSceneId || null,
                     trackId: trackId,
@@ -17052,7 +17246,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         animIn: cfg.mathAnimIn || 'fadeIn', animOut: 'none', animLoop: 'none', animInDur: 0.5, animOutDur: 0.3, animEase: 'easeOut',
                         animTextIn: 'none', animTextOut: 'none', animTextLoop: 'none', animTextEase: 'easeOut', animTextStagger: 'letter', animTextInDur: 1.0, animTextOutDur: 1.0, flashColor: '#ffe600'
                     }
-                };
+                }, el.audioName);
             }
             function mdImageClip(img, index, imgIdx, id, start, dur, trackId, colorIndex) {
                 const isMock = !!img.mock;
@@ -17062,7 +17256,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     imgEl.onerror = function(){};
                     imgEl.src = img.url;
                 }
-                return {
+                return withMdAudio({
                     id: id + '_image' + imgIdx,
                     sceneId: State.activeSceneId || null,
                     trackId: trackId,
@@ -17091,7 +17285,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         maskType: 'none', maskWidth: 50, maskHeight: 50, maskX: 0, maskY: 0, maskFeather: 0, maskInvert: false,
                         opacity: 100, blendMode: 'source-over'
                     }
-                };
+                }, img.audioName);
             }
             function mdVideoClip(v, index, vIdx, id, start, dur, trackId, colorIndex) {
                 const isMock = !!v.mock;
@@ -17110,7 +17304,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     videoEl.addEventListener('loadeddata', () => { videoEl._mdLoaded = true; drawCanvas(); });
                     videoEl.addEventListener('seeked', () => { videoEl._mdLoaded = true; });
                 }
-                return {
+                return withMdAudio({
                     id: id + '_video' + (v.idx !== undefined ? v.idx : vIdx),
                     sceneId: State.activeSceneId || null,
                     trackId: trackId,
@@ -17141,7 +17335,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         opacity: 100, blendMode: 'source-over',
                         volume: 100, mute: false
                     }
-                };
+                }, v.audioName);
             }
             
             slides.forEach((slide, index) => {
@@ -17170,10 +17364,11 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         if (el.kind === 'heading') {
                             slide._headingStackIdx = el._stackIdx;
                             State.clips.push(mdHeadingClip(slide, index, id, clipStart, slideDuration, trackId, colorIndex));
-                        } else if (el.kind === 'text') {
+                        } else                        if (el.kind === 'text') {
                             // Use this run's own text so text split by images stays independent
                             const runSlide = Object.assign({}, slide, { text: el.text || slide.text || '' });
                             runSlide._textStackIdx = el._stackIdx;
+                            runSlide.textAudio = el.audioName || slide.textAudio;
                             const { tStart, tDur } = mdTextTiming(clipStart, slideDuration);
                             State.clips.push(mdTextClip(runSlide, index, id, tStart, tDur, trackId, colorIndex, el.pos));
                         } else if (el.kind === 'image') {
