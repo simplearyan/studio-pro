@@ -20123,18 +20123,15 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         return; 
                     }
                     
-                    // Arrow keys scroll properties panel horizontally when in horizontal dock
+                    // Arrow keys scroll the properties cards: horizontally in horizontal
+                    // docks (Left/Right), vertically in vertical docks (Up/Down).
                     const container = document.getElementById('propertiesCardContainer');
-                    if (container) {
-                        if (e.key === 'ArrowLeft' && !e.altKey && !e.ctrlKey && !e.shiftKey) {
-                            e.preventDefault();
-                            container.scrollBy({ left: -200, behavior: 'smooth' });
-                            return;
-                        } else if (e.key === 'ArrowRight' && !e.altKey && !e.ctrlKey && !e.shiftKey) {
-                            e.preventDefault();
-                            container.scrollBy({ left: 200, behavior: 'smooth' });
-                            return;
-                        }
+                    if (container && !e.altKey && !e.ctrlKey && !e.shiftKey) {
+                        const horizDock = State.inspector.dock === 'bottom' || State.inspector.dock === 'top';
+                        if (e.key === 'ArrowLeft') { e.preventDefault(); container.scrollBy({ left: -200, behavior: 'smooth' }); return; }
+                        else if (e.key === 'ArrowRight') { e.preventDefault(); container.scrollBy({ left: 200, behavior: 'smooth' }); return; }
+                        else if (e.key === 'ArrowUp' && !horizDock) { e.preventDefault(); container.scrollBy({ top: -200, behavior: 'smooth' }); return; }
+                        else if (e.key === 'ArrowDown' && !horizDock) { e.preventDefault(); container.scrollBy({ top: 200, behavior: 'smooth' }); return; }
                     }
                 }
                 
