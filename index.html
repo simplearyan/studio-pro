@@ -13714,58 +13714,68 @@
             
             if (State.sidebarTab !== 'markdown') updateSidebarPanel(); 
 
-const isVis = !clip.hidden;
+            const fx = clip.effects || {};
+            const isVis = !clip.hidden;
+            const flipHActive = fx.flipH ? 'bg-brand-500/10 text-brand-600 dark:bg-brand-500/15 dark:text-brand-400' : '';
+            const flipVActive = fx.flipV ? 'bg-brand-500/10 text-brand-600 dark:bg-brand-500/15 dark:text-brand-400' : '';
             if (clip.type === 'audio') {
                 const vol = clip.effects.volume !== undefined ? clip.effects.volume : 1;
                 headerProperties.innerHTML = `
-                    <div class="flex items-center gap-2 pl-3 shrink-0 max-w-[150px]">
-                        <div class="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm" style="background-color: ${PALETTES[clip.colorIndex].wave}"></div>
-                        <span class="text-[12px] font-bold text-surface-700 dark:text-surface-300 truncate">${clip.title}</span>
-                    </div>
-                    <div class="w-px h-4 bg-surface-200 dark:bg-surface-700 mx-1"></div>
-                    <div class="flex items-center gap-1 sm:gap-2 bg-surface-100 dark:bg-surface-800 p-1 rounded-lg border border-surface-200 dark:border-surface-700 shrink-0">
-                        <i data-lucide="volume-2" class="w-4 h-4 text-surface-500 dark:text-surface-300 ml-1"></i>
+                    <div class="flex items-center gap-1.5 sm:gap-2 bg-surface-100 dark:bg-surface-800 p-1 rounded-lg border border-surface-200 dark:border-surface-700 shrink-0">
+                        <button onclick="saveElementAsPreset()" class="p-1.5 rounded-md text-brand-600 dark:text-brand-400 hover:bg-white dark:hover:bg-surface-900 transition-colors" title="Save as Preset">
+                            <i data-lucide="heart" class="w-3.5 h-3.5"></i>
+                        </button>
+                        <div class="w-px h-4 bg-surface-200 dark:bg-surface-700 mx-0.5"></div>
+                        <i data-lucide="volume-2" class="w-4 h-4 text-surface-500 dark:text-surface-300 ml-0.5"></i>
                         <span class="text-[11px] font-mono font-bold text-surface-700 dark:text-surface-300 w-8 text-center">${Math.round(vol * 100)}%</span>
                         <div class="w-px h-4 bg-surface-200 dark:bg-surface-700 mx-0.5"></div>
-                        <button onclick="handleScaleUp()" class="p-1 rounded-md text-surface-500 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white hover:bg-white dark:hover:bg-surface-900" title="Volume Up (+)">
+                        <button onclick="handleScaleUp()" class="p-1.5 rounded-md text-surface-500 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white hover:bg-white dark:hover:bg-surface-900 transition-colors" title="Volume Up (+)">
                             <i data-lucide="plus" class="w-3.5 h-3.5"></i>
                         </button>
-                        <button onclick="handleScaleDown()" class="p-1 rounded-md text-surface-500 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white hover:bg-white dark:hover:bg-surface-900" title="Volume Down (-)">
+                        <button onclick="handleScaleDown()" class="p-1.5 rounded-md text-surface-500 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white hover:bg-white dark:hover:bg-surface-900 transition-colors" title="Volume Down (-)">
                             <i data-lucide="minus" class="w-3.5 h-3.5"></i>
                         </button>
+                    </div>
+                    <div class="hidden lg:flex items-center gap-2 pl-3 border-l border-surface-200 dark:border-surface-700 shrink-0 max-w-[150px]">
+                        <div class="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm" style="background-color: ${PALETTES[clip.colorIndex].wave}"></div>
+                        <span class="text-[12px] font-bold text-surface-700 dark:text-surface-300 truncate">${clip.title}</span>
                     </div>
                 `;
             } else {
                 headerProperties.innerHTML = `
                     <div class="flex items-center gap-1.5 sm:gap-2 bg-surface-100 dark:bg-surface-800 p-1 rounded-lg border border-surface-200 dark:border-surface-700 shrink-0">
-                        <button onclick="handleScaleUp()" class="p-1.5 rounded-md text-surface-500 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white hover:bg-white dark:hover:bg-surface-900" title="Scale Up (+)">
+                        <button onclick="saveElementAsPreset()" class="p-1.5 rounded-md text-brand-600 dark:text-brand-400 hover:bg-white dark:hover:bg-surface-900 transition-colors" title="Save as Preset">
+                            <i data-lucide="heart" class="w-4 h-4"></i>
+                        </button>
+                        <div class="w-px h-4 bg-surface-200 dark:bg-surface-700 mx-0.5"></div>
+                        <button onclick="handleScaleUp()" class="p-1.5 rounded-md text-surface-500 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white hover:bg-white dark:hover:bg-surface-900 transition-colors" title="Scale Up (+)">
                             <i data-lucide="zoom-in" class="w-4 h-4"></i>
                         </button>
-                        <button onclick="handleScaleDown()" class="p-1.5 rounded-md text-surface-500 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white hover:bg-white dark:hover:bg-surface-900" title="Scale Down (-)">
+                        <button onclick="handleScaleDown()" class="p-1.5 rounded-md text-surface-500 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white hover:bg-white dark:hover:bg-surface-900 transition-colors" title="Scale Down (-)">
                             <i data-lucide="zoom-out" class="w-4 h-4"></i>
                         </button>
                         <div class="w-px h-4 bg-surface-200 dark:bg-surface-700 mx-0.5"></div>
-                        <button onclick="handleRotate()" class="p-1.5 rounded-md text-surface-500 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white hover:bg-white dark:hover:bg-surface-900" title="Rotate (R)">
+                        <button onclick="handleRotate()" class="p-1.5 rounded-md text-surface-500 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white hover:bg-white dark:hover:bg-surface-900 transition-colors" title="Rotate (R)">
                             <i data-lucide="rotate-cw" class="w-4 h-4"></i>
                         </button>
-                        <button onclick="handleFlipH()" class="p-1.5 rounded-md text-surface-500 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white hover:bg-white dark:hover:bg-surface-900" title="Flip Horizontal (H)">
+                        <button onclick="handleFlipH()" class="p-1.5 rounded-md text-surface-500 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white hover:bg-white dark:hover:bg-surface-900 transition-colors ${flipHActive}" title="Flip Horizontal (H)">
                             <i data-lucide="flip-horizontal" class="w-4 h-4"></i>
                         </button>
-                        <button onclick="handleFlipV()" class="p-1.5 rounded-md text-surface-500 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white hover:bg-white dark:hover:bg-surface-900" title="Flip Vertical (V)">
+                        <button onclick="handleFlipV()" class="p-1.5 rounded-md text-surface-500 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white hover:bg-white dark:hover:bg-surface-900 transition-colors ${flipVActive}" title="Flip Vertical (V)">
                             <i data-lucide="flip-vertical" class="w-4 h-4"></i>
                         </button>
                         <div class="w-px h-4 bg-surface-200 dark:bg-surface-700 mx-0.5"></div>
-                        <button onclick="handleCenterH()" class="p-1.5 rounded-md text-surface-500 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white hover:bg-white dark:hover:bg-surface-900" title="Center Horizontally (Shift+H)">
+                        <button onclick="handleCenterH()" class="p-1.5 rounded-md text-surface-500 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white hover:bg-white dark:hover:bg-surface-900 transition-colors" title="Center Horizontally (Shift+H)">
                             <i data-lucide="align-horizontal-space-around" class="w-4 h-4"></i>
                         </button>
-                        <button onclick="handleCenterV()" class="p-1.5 rounded-md text-surface-500 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white hover:bg-white dark:hover:bg-surface-900" title="Center Vertically (Shift+V)">
+                        <button onclick="handleCenterV()" class="p-1.5 rounded-md text-surface-500 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white hover:bg-white dark:hover:bg-surface-900 transition-colors" title="Center Vertically (Shift+V)">
                             <i data-lucide="align-vertical-space-around" class="w-4 h-4"></i>
                         </button>
                         <div class="w-px h-4 bg-surface-200 dark:bg-surface-700 mx-0.5"></div>
-                        <button onclick="handleToggleVis()" class="p-1.5 rounded-md text-surface-500 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white hover:bg-white dark:hover:bg-surface-900" title="Toggle Visibility (\\)">
+                        <button onclick="handleToggleVis()" class="p-1.5 rounded-md text-surface-500 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white hover:bg-white dark:hover:bg-surface-900 transition-colors" title="Toggle Visibility (\\)">
                             <i data-lucide="${isVis ? 'eye' : 'eye-off'}" class="w-4 h-4"></i>
                         </button>
-                        <button onclick="deleteSelectedClip()" class="p-1.5 rounded-md text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30" title="Delete (Del/Backspace)">
+                        <button onclick="deleteSelectedClip()" class="p-1.5 rounded-md text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors" title="Delete (Del/Backspace)">
                             <i data-lucide="trash-2" class="w-4 h-4"></i>
                         </button>
                     </div>
