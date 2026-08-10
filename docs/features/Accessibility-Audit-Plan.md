@@ -215,6 +215,36 @@ header row but is no longer a descendant of the toggle-able `<summary>`.
 
 ---
 
+## 5d. Result — export modal + timeline toolbar sweep (Aug 2026)
+
+Phase 4-style sweep of the remaining non-Properties areas the plan flagged.
+
+**Timeline toolbar:** already clean — it contains no form fields (every control is a
+`<button>` with a `title`, which supplies an accessible name), so nothing to fix there.
+
+**Export modal (3 fields fixed, index.html):**
+- `exportStartTime` / `exportEndTime` — the visible labels had no `for`; added
+  `for="exportStartTime"` / `for="exportEndTime"` so the association is explicit.
+- `exportCustomFps` — placeholder-only (placeholder is **not** a valid label source);
+  added `aria-label="Custom frame rate (1-240 fps)"`.
+- `exportVideoSeek` (success-player seek bar) — added `aria-label="Seek in exported video"`
+  alongside its existing `title`.
+
+**Document-wide live scan (accurate rule: placeholder doesn't count as a label):**
+
+| Check | Before this sweep | After |
+|---|---:|---:|
+| Form field without `id`/`name` | 0 | 0 |
+| Unlabeled form field (incl. export modal open, custom FPS + custom range unhidden) | 2 | **0** |
+| Interactive element inside `<summary>` | 0 | 0 |
+
+**Verified live:** modal opens with 17 visible form fields, all labeled; radio groups
+(Format/Resolution/Frame Rate/Scope) still switch, Start Time input still editable, label
+`for` matches the input id, `vite build` ✓, console clean. All three issue groups are now
+at **0 document-wide** with any clip selected and the export modal open or closed.
+
+---
+
 ## 6. Implementation plan
 
 ### Phase 1 — Add `id` + `name` to every form field (fix #1, 12 → 0)
