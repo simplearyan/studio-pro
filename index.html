@@ -4476,7 +4476,17 @@
                 placeholder.classList.add('hidden');
                 canvas.classList.remove('hidden');
 
+                // Layering is track-local: zIndex only breaks ties between clips on
+                // the SAME track (the simple "which overlapping clip is on top"
+                // control). Across tracks the timeline stack decides — the top-most
+                // track (lowest index) draws on top. Clips draw in array order,
+                // first = bottom, so lower zIndex sorts first.
                 activeVisualClips.sort((a, b) => {
+                    if (a.trackId === b.trackId) {
+                        const za = a.zIndex || 0;
+                        const zb = b.zIndex || 0;
+                        if (za !== zb) return za - zb;
+                    }
                     const idxA = State.tracks.findIndex(t => t.id === a.trackId);
                     const idxB = State.tracks.findIndex(t => t.id === b.trackId);
                     return idxB - idxA; 
@@ -11686,6 +11696,46 @@
             }
         };
 
+        // ── Same-track layering (simple overlap control) ──────────────────────────
+        // When two clips overlap on the SAME track, the higher zIndex draws on top
+        // (the drawCanvas sort breaks same-track ties by zIndex only, so layers
+        // never leak across tracks). zIndex is a plain serialized clip field, so
+        // the choice survives save/load and applies to export.
+        function sameTrackOverlapGroup(clip) {
+            if (!clip || !clip.trackId) return [];
+            return State.clips.filter(c => c.trackId === clip.trackId && c !== clip &&
+                clip.start < c.start + c.duration - 0.01 && clip.start + clip.duration > c.start + 0.01);
+        }
+        function clipIsTopOfTrack(clip, group) {
+            const zi = clip.zIndex || 0;
+            const myIdx = State.clips.indexOf(clip);
+            return !group.some(o => {
+                const oz = o.zIndex || 0;
+                if (oz !== zi) return oz > zi;
+                return State.clips.indexOf(o) > myIdx;
+            });
+        }
+        // toTop: true = bring on top of the track's overlap group, false = send
+        // behind, undefined = flip the clip's current layer.
+        window.toggleClipLayer = function(clipId, toTop) {
+            const clip = State.clips.find(c => c.id === clipId);
+            if (!clip) return;
+            const group = sameTrackOverlapGroup(clip);
+            if (!group.length) return;
+            const wantTop = toTop !== undefined ? !!toTop : !clipIsTopOfTrack(clip, group);
+            if (wantTop) {
+                let mx = 0;
+                group.forEach(o => { const z = o.zIndex || 0; if (z > mx) mx = z; });
+                clip.zIndex = mx + 1;
+            } else {
+                let mn = 0;
+                group.forEach(o => { const z = o.zIndex || 0; if (z < mn) mn = z; });
+                clip.zIndex = mn - 1;
+            }
+            drawCanvas();
+            renderClips();
+        };
+
         window.showClipContextMenu = function(clip, x, y) {
             let menu = document.getElementById('clipContextMenu');
             if (!menu) {
@@ -11701,6 +11751,10 @@
             
             const isLinked = clip.linkedClipIds && clip.linkedClipIds.length > 0;
             const hasMulti = State.multiSelectedClipIds && State.multiSelectedClipIds.length > 1;
+            // Simple same-track layering: only when this clip overlaps another clip
+            // on the SAME track do we offer the on-top/behind control.
+            const overlapGroup = sameTrackOverlapGroup(clip);
+            const layerLabel = overlapGroup.length ? (clipIsTopOfTrack(clip, overlapGroup) ? 'On Top' : 'Behind') : null;
             
             let itemsHtml = '';
 
@@ -11714,6 +11768,19 @@
                     <button onclick="saveElementAsPreset('${clip.id}'); hideClipContextMenu();" class="${it} text-brand-600 dark:text-brand-400">
                         <i data-lucide="heart" class="w-3.5 h-3.5"></i> Save as Preset
                     </button>
+                    ${overlapGroup.length ? `
+                    <div class="border-t border-surface-200 dark:border-surface-700 my-1"></div>
+                    <div class="px-2.5 py-1 text-[10px] uppercase tracking-wide text-surface-400 dark:text-surface-500 flex items-center gap-1.5">
+                        <i data-lucide="${layerLabel === 'On Top' ? 'bring-to-front' : 'send-to-back'}" class="w-3 h-3"></i>
+                        Layer: ${layerLabel} — overlapping clip on this track
+                    </div>
+                    <button onclick="toggleClipLayer('${clip.id}', true); hideClipContextMenu();" class="${it}">
+                        <i data-lucide="bring-to-front" class="${itIcon}"></i> Bring to Front
+                    </button>
+                    <button onclick="toggleClipLayer('${clip.id}', false); hideClipContextMenu();" class="${it}">
+                        <i data-lucide="send-to-back" class="${itIcon}"></i> Send to Back
+                    </button>
+                    ` : ''}
                 `;
             }
             
@@ -13878,6 +13945,10 @@
             const isVis = !clip.hidden;
             const flipHActive = fx.flipH ? 'bg-brand-500/10 text-brand-600 dark:bg-brand-500/15 dark:text-brand-400' : '';
             const flipVActive = fx.flipV ? 'bg-brand-500/10 text-brand-600 dark:bg-brand-500/15 dark:text-brand-400' : '';
+            // Same-track layering: a single toggle button appears only when this clip
+            // overlaps another clip on its own track.
+            const hdrOverlap = sameTrackOverlapGroup(clip);
+            const hdrOnTop = hdrOverlap.length ? clipIsTopOfTrack(clip, hdrOverlap) : null;
             if (clip.type === 'audio') {
                 const vol = clip.effects.volume !== undefined ? clip.effects.volume : 1;
                 headerProperties.innerHTML = `
@@ -13924,6 +13995,12 @@
                         <button onclick="handleFlipV()" class="p-1.5 rounded-md text-surface-500 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white hover:bg-white dark:hover:bg-surface-900 transition-colors ${flipVActive}" title="Flip Vertical (V)">
                             <i data-lucide="flip-vertical" class="w-4 h-4"></i>
                         </button>
+                        ${hdrOverlap.length ? `
+                        <div class="w-px h-4 bg-surface-200 dark:bg-surface-700 mx-0.5"></div>
+                        <button onclick="toggleClipLayer('${clip.id}')" class="p-1.5 rounded-md transition-colors ${hdrOnTop ? 'text-brand-600 dark:text-brand-400 bg-brand-500/10 dark:bg-brand-500/15' : 'text-surface-500 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white hover:bg-white dark:hover:bg-surface-900'}" title="${hdrOnTop ? 'Layer: On Top — click to send behind' : 'Layer: Behind — click to bring on top'}">
+                            <i data-lucide="${hdrOnTop ? 'bring-to-front' : 'send-to-back'}" class="w-4 h-4"></i>
+                        </button>
+                        ` : ''}
                         <div class="w-px h-4 bg-surface-200 dark:bg-surface-700 mx-0.5"></div>
                         <button onclick="handleCenterH()" class="p-1.5 rounded-md text-surface-500 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white hover:bg-white dark:hover:bg-surface-900 transition-colors" title="Center Horizontally (Shift+H)">
                             <i data-lucide="align-horizontal-space-around" class="w-4 h-4"></i>
@@ -17669,21 +17746,22 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             const active = subs.filter(s => !s.hidden && time >= s.startTime && time < s.endTime);
             if (!active.length) return;
 
-            // Resolve overlapping captions by z-order, mirroring how regular clips
-            // overlap: the clip on the top-most track (lowest track index) wins,
-            // and within the same track the later-added subtitle wins (drawn on top).
+            // Resolve overlapping captions mirroring regular clips: the top-most
+            // track (lowest track index) wins; within the SAME track, higher
+            // clip.zIndex (the on-top layer) wins, then the later-added subtitle.
             // A subtitle without a timeline clip (no syncSubtitlesToClips yet) is
-            // treated as bottom-most (999) so synced captions take precedence.
+            // treated as bottom-most so synced captions take precedence.
             const trackIdxOf = {};
             State.tracks.forEach((t, i) => { trackIdxOf[t.id] = i; });
             let sub = active[0];
             let bestKey = null;
             active.forEach(s => {
                 const clip = State.clips.find(c => c.subtitleId === s.id);
+                const zi = clip ? (clip.zIndex || 0) : -Infinity;
                 const ti = (clip && trackIdxOf[clip.trackId] !== undefined) ? trackIdxOf[clip.trackId] : 999;
                 const arr = subs.indexOf(s);
-                if (bestKey === null || ti < bestKey.ti || (ti === bestKey.ti && arr > bestKey.arr)) {
-                    bestKey = { ti, arr };
+                if (bestKey === null || ti < bestKey.ti || (ti === bestKey.ti && zi > bestKey.zi) || (ti === bestKey.ti && zi === bestKey.zi && arr > bestKey.arr)) {
+                    bestKey = { zi, ti, arr };
                     sub = s;
                 }
             });
@@ -19640,6 +19718,18 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 el.style.backgroundColor = palette.bg;
                 el.style.borderColor = palette.border;
 
+                // Same-track overlap stacking: give the on-top clip a higher
+                // z-index so the timeline visually mirrors the canvas — the on-top
+                // clip covers the overlap region, the behind clip is tucked under
+                // it. renderClips() re-runs on every layer toggle, so the visual
+                // flips live.
+                let layerOnTop = null;
+                if (clip.overlapping) {
+                    const grp = sameTrackOverlapGroup(clip);
+                    layerOnTop = grp.length ? clipIsTopOfTrack(clip, grp) : true;
+                    el.style.zIndex = layerOnTop ? '60' : '10';
+                }
+
                 // Mock audio: no buffer/peaks yet — dashed border + faint look so it
                 // reads as an empty placeholder, not a broken clip. Loading a file
                 // through the Source card clears isPlaceholder and restores the solid
@@ -19784,6 +19874,18 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 `;
                 }
 
+                // Layer marker — shown only when this clip overlaps another clip on
+                // the SAME track: clean bold accent-colored text (no pill), matching
+                // the speed badge, telling the user whether it draws on top of the
+                // overlap or is hidden behind it.
+                let layerBadgeHtml = '';
+                if (clip.overlapping) {
+                    const onTop = layerOnTop !== null ? layerOnTop : true;
+                    layerBadgeHtml = `
+                    <span class="text-[11px] font-extrabold leading-none shrink-0" style="color: ${palette.wave}; text-shadow: 0 1px 2px rgba(0,0,0,0.45);" title="Overlapping clip on this track — currently ${onTop ? 'draws ON TOP' : 'hidden BEHIND the other clip'} — right-click the clip → Bring to Front / Send to Back">${onTop ? 'TOP' : 'BACK'}</span>
+                `;
+                }
+
                 let headerContent = '';
                 if (showHeader) {
                     if (clip.type === 'audio') {
@@ -19794,6 +19896,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                                 <span class="text-[10px] font-semibold truncate" style="color: ${palette.text}">${headerTitle}</span>
                                 ${linkIconHtml}
                                 ${sfxIconHtml}
+                                ${layerBadgeHtml}
                                 ${speedBadgeHtml}
                             </div>
                             <button onclick="openBeatDetection('${clip.id}'); event.stopPropagation();" class="p-0.5 rounded hover:bg-black/20 dark:hover:bg-white/20 transition-all pointer-events-auto flex items-center justify-center shrink-0 cursor-pointer" title="Beat Detection">
@@ -19808,6 +19911,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                             <span class="text-[10px] font-semibold truncate" style="color: ${palette.text}">${headerTitle}</span>
                             ${linkIconHtml}
                             ${sfxIconHtml}
+                            ${layerBadgeHtml}
                             ${speedBadgeHtml}
                         </div>
                         `;
