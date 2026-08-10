@@ -793,7 +793,7 @@
                 <!-- Canvas Wrapper -->
                 <div id="previewWrapper" class="flex-1 w-full relative p-2 sm:p-4 flex items-center justify-center bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-surface-200 to-surface-100 dark:from-surface-900 dark:to-surface-950 overflow-hidden">
                     <!-- Aspect Ratio Box -->
-                    <div id="canvasAspectWrapper" class="relative rounded-lg shadow-2xl border border-surface-700 overflow-visible ring-1 ring-white/5 shrink-0" style="background-color: #231F20;">
+                    <div id="canvasAspectWrapper" class="relative shadow-lg border border-surface-300 dark:border-surface-700/80 overflow-visible shrink-0" style="background-color: #231F20;">
                         <canvas id="renderCanvas" class="absolute inset-0 w-full h-full object-contain hidden"></canvas>
                         <div id="domBoundingBoxContainer" class="absolute inset-0 pointer-events-none z-50"></div>
                         <div class="absolute inset-0 pointer-events-none" id="previewPlaceholder"></div>
@@ -1093,10 +1093,6 @@
                 mathOffset: 0,
                 mdGap: 8, // % spacing between elements stacked on the same side/position
                 mockShowAltText: true, // show the markdown alt text on mock image/video placeholders
-                mockImageColor1: '#ff7e5f',
-                mockImageColor2: '#feb47b',
-                mockVideoColor1: '#6a11cb',
-                mockVideoColor2: '#2575fc',
                 mathFontSize: 56,
                 mathColor: '#ffffff',
                 mathAnimIn: 'fadeIn',
@@ -5476,12 +5472,9 @@
                         // Proportional layout scale — 1× at ~600px, ~1.8× on a 1080p canvas
                         // so the chip/icon/text read well at any canvas size.
                         const mk = isMdCard ? 1 : Math.max(0.9, Math.min(2.2, Math.min(w, h) / 600));
-
-                        if (borderRadius > 0 && ctx.roundRect) {
-                            ctx.beginPath();
-                            ctx.roundRect(-dw/2, -dh/2, dw, dh, borderRadius);
-                            ctx.clip();
-                        }
+                        // NOTE: the clip's borderRadius effect is intentionally NOT applied
+                        // to the placeholder — the card stays square so stacked mocks never
+                        // show mixed radii. The radius returns once real media loads.
 
                         // Mock card uses the clip's TIMELINE THEME colors (PALETTES) so it
                         // visually matches its clip in the timeline; text is the theme's dark
@@ -5494,23 +5487,35 @@
                         const cardRadius = 0; // square card — no border radius
                         const cardPath = (x, y, w2, h2, r) => { ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(x, y, w2, h2, r); else ctx.rect(x, y, w2, h2); };
 
-                        // Themed card: clean solid pastel fill — no gradient, no border
+                        // Themed card: clean solid pastel fill — no gradient, no border.
+                        // The placeholder is drawn OPAQUE (it stands in for opaque media);
+                        // clip opacity / animation alpha apply to the content layer only,
+                        // so a clip behind a translucent placeholder never bleeds through.
+                        const contentAlpha = ctx.globalAlpha;
+                        ctx.globalAlpha = 1;
                         cardPath(-dw/2, -dh/2, dw, dh, cardRadius);
                         ctx.fillStyle = pal.bg || '#e5e7eb';
                         ctx.fill();
+                        ctx.globalAlpha = contentAlpha;
 
                         const textC = pal.text || '#1f2937';
 
-                        // Type chip (top-left): MOCK IMAGE / MOCK VIDEO — dark pill + white text
-                        ctx.font = `bold ${Math.round(14 * mk)}px "Inter", sans-serif`;
-                        const chipW = ctx.measureText(genericLabel).width + 28 * mk;
+                        // Type chip (top-right): subtle outline pill — no solid fill
+                        ctx.font = `bold ${Math.round(11 * mk)}px "Inter", sans-serif`;
+                        const chipW = ctx.measureText(genericLabel).width + 24 * mk;
+                        const chipH = 22 * mk;
+                        const chipX = -dw/2 + dw - chipW - 14 * mk;
+                        const chipY = -dh/2 + 14 * mk;
+                        ctx.strokeStyle = textC;
+                        ctx.globalAlpha = contentAlpha * 0.5;
+                        ctx.lineWidth = Math.max(1, 1.5 * mk);
+                        cardPath(chipX, chipY, chipW, chipH, chipH / 2);
+                        ctx.stroke();
+                        ctx.globalAlpha = contentAlpha;
                         ctx.fillStyle = textC;
-                        cardPath(-dw/2 + 16 * mk, -dh/2 + 14 * mk, chipW, 30 * mk, 7 * mk);
-                        ctx.fill();
-                        ctx.fillStyle = '#ffffff';
                         ctx.textAlign = 'left';
                         ctx.textBaseline = 'middle';
-                        ctx.fillText(genericLabel, -dw/2 + (16 + 14) * mk, -dh/2 + 29 * mk);
+                        ctx.fillText(genericLabel, chipX + 12 * mk, chipY + chipH / 2);
 
                         // Center icon: picture frame for images, play button for videos
                         // (theme color). Drawn in its own scaled space so the whole icon
@@ -5554,7 +5559,7 @@
                         }
                         ctx.restore();
 
-                        // Alt text — extra big and clear, wrapped to two lines (theme text color)
+                        // Alt text — hero line (theme text color), wrapped to two lines
                         let labelText = genericLabel;
                         if (clip._missingMedia && clip.title) {
                             // Show WHICH file is missing so the user knows what to re-import
@@ -5563,7 +5568,7 @@
                             const alt = ((clip.title || '') + '').trim();
                             if (alt) labelText = alt;
                         }
-                        ctx.font = `bold ${Math.round(42 * mk)}px "Inter", sans-serif`;
+                        ctx.font = `bold ${Math.round(34 * mk)}px "Inter", sans-serif`;
                         ctx.fillStyle = textC;
                         const wrapMockText = (str, max) => {
                             const words = str.split(/\s+/).filter(Boolean);
@@ -5584,14 +5589,17 @@
                             });
                         };
                         const altLines = labelText === genericLabel ? [labelText] : wrapMockText(labelText, isMdCard ? 16 : Math.max(16, Math.round(24 * mk)));
-                        const altY0 = -14 * mk;
-                        const lineH = 42 * mk;
+                        const altY0 = -12 * mk;
+                        const lineH = 34 * mk;
                         altLines.forEach((ln, i) => ctx.fillText(ln, 0, altY0 + i * lineH));
 
-                        // Duration — big, clear mono timecode (theme text color)
-                        const durY = altY0 + altLines.length * lineH + 16 * mk;
-                        ctx.font = `bold ${Math.round(26 * mk)}px "JetBrains Mono", "Courier New", monospace`;
+                        // Meta row — timecode + contextual hint on ONE smaller, softer line
+                        const metaY = altY0 + altLines.length * lineH + 14 * mk;
+                        const hintStr = clip._mdMedia ? (clip._mdMock ? "Mock from markdown \u2014 edit alt text in script" : "Loading media \u2026") : (clip.type === 'video' ? "Loading media \u2026" : "Replace source in Properties tab");
+                        ctx.globalAlpha = contentAlpha * 0.75;
                         ctx.fillStyle = textC;
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
                         const formatClipTime = (seconds) => {
                             const mins = Math.floor(seconds / 60);
                             const secs = Math.floor(seconds % 60);
@@ -5599,24 +5607,22 @@
                             return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${ms.toString().padStart(2, '0')}`;
                         };
                         const tcStr = `${formatClipTime(Math.max(0, clipTime))} / ${formatClipTime(clip.duration)}`;
-                        ctx.fillText(tcStr, 0, durY);
+                        ctx.font = `bold ${Math.round(20 * mk)}px "JetBrains Mono", "Courier New", monospace`;
+                        const tcW = ctx.measureText(tcStr).width;
+                        ctx.font = `600 ${Math.round(20 * mk)}px "Inter", sans-serif`;
+                        const hintW = ctx.measureText(hintStr).width;
+                        const gap = 12 * mk;
+                        const groupX = -(tcW + gap + hintW) / 2;
+                        ctx.font = `bold ${Math.round(20 * mk)}px "JetBrains Mono", "Courier New", monospace`;
+                        ctx.fillText(tcStr, groupX + tcW / 2, metaY);
+                        ctx.font = `600 ${Math.round(20 * mk)}px "Inter", sans-serif`;
+                        ctx.fillText(hintStr, groupX + tcW + gap + hintW / 2, metaY);
+                        ctx.globalAlpha = contentAlpha;
 
-                        ctx.font = `600 ${Math.round(18 * mk)}px "Inter", sans-serif`;
-                        ctx.globalAlpha = aState.animAlpha * (opacity / 100) * 0.8;
-                        if (clip._mdMedia) ctx.fillText(clip._mdMock ? "Mock from markdown \u2014 edit alt text in script" : "Loading media \u2026", 0, durY + 34 * mk);
-                        else if (clip.type === 'video') ctx.fillText("Loading media \u2026", 0, durY + 34 * mk);
-                        else ctx.fillText("Replace source in Properties tab", 0, durY + 34 * mk);
-                        ctx.globalAlpha = aState.animAlpha * (opacity / 100);
-
-                        if (clip.effects.strokeEnable) {
-                            ctx.strokeStyle = clip.effects.strokeColor || '#ffffff';
-                            ctx.lineWidth = (clip.effects.strokeWidth || 4) * 2;
-                            ctx.beginPath();
-                            if (ctx.roundRect) ctx.roundRect(-dw/2, -dh/2, dw, dh, cardRadius);
-                            else ctx.rect(-dw/2, -dh/2, dw, dh);
-                            ctx.stroke();
-                        }
-
+                        // NOTE: the stroke ring (strokeEnable) is intentionally skipped
+                        // while mocking — a thick outline on a placeholder reads like an
+                        // error state. It returns once real media loads. The DOM bounding
+                        // box below (selection overlay) is untouched — it's deliberate.
                         ctx.restore();
 
                         if (((State.multiSelectedClipIds && State.multiSelectedClipIds.includes(clip.id)) || clip.id === State.selectedClipId) && !State.isExporting && !targetCtx) {
