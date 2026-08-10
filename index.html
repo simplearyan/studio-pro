@@ -2465,8 +2465,9 @@
             const isHorizontal = container.classList.contains('flex-row');
             
             nav.querySelectorAll('button').forEach(btn => {
-                // Skip group headers and action buttons (Save Preset)
-                if (btn.classList.contains('nav-group-toggle') || btn.getAttribute('data-nav-action') === '1') return;
+                // Only real nav items carry navBtn_ ids — skip sub-tab chips, group
+                // headers and action buttons so their styling is never touched.
+                if (!(btn.id || '').startsWith('navBtn_')) return;
 
                 const isBtnActive = btn.id === `navBtn_${activeCardId}`;
                 const isPrimary = btn.getAttribute('data-nav-primary') === '1';
@@ -2501,11 +2502,22 @@
             });
         };
 
-        window.toggleNavGroup = (key) => {
+        window.setPropGroup = (key) => {
             State.ui = State.ui || {};
-            State.ui.navGroups = State.ui.navGroups || { transform: true, appearance: true, media: true };
-            State.ui.navGroups[key] = !State.ui.navGroups[key];
+            State.ui.activePropGroup = key;
             updateSidebarPanel();
+        };
+
+        // card id → Properties sub-tab group — single source of truth, used by the
+        // sub-tab renderer and by scrollToPropertyCard's group-aware jump.
+        const PROP_GROUP_OF = {
+            cardScene: 'media', cardTransform: 'transform', cardCaption: 'media',
+            cardContent: 'media', cardTypography: 'media', cardSpacing: 'media',
+            cardLetterStyles: 'appearance', cardTextBg: 'appearance',
+            cardSource: 'media', cardCrop: 'transform', cardMask: 'transform', cardColor: 'appearance',
+            cardSpeed: 'media', cardStroke: 'appearance', cardExtrude: 'appearance',
+            cardOpacity: 'appearance', cardShadow: 'appearance', cardTexture: 'appearance',
+            cardSystemFonts: 'appearance', cardGoogleFonts: 'appearance', cardSfx: 'media'
         };
 
         window.scrollToPropertyCard = (cardId) => {
@@ -2516,7 +2528,14 @@
                 State.isProgrammaticScrolling = false;
             }, 100);
             const container = document.getElementById('propertiesCardContainer');
-            const card = document.getElementById(cardId);
+            let card = document.getElementById(cardId);
+            // Sub-tab filter: if the target card lives in another group, switch to
+            // that group first so the jump (keyboard T/Y/G/O/X/B, audio nav) lands.
+            if (!card && PROP_GROUP_OF[cardId] && State.ui.activePropGroup !== PROP_GROUP_OF[cardId]) {
+                State.ui.activePropGroup = PROP_GROUP_OF[cardId];
+                updateSidebarPanel();
+                card = document.getElementById(cardId);
+            }
             
             if (card) {
                 card.open = true;
@@ -7973,7 +7992,6 @@
         function updateSidebarPanel() {
             // Save state
             State.ui = State.ui || { detailsState: {} };
-            State.ui.navGroups = State.ui.navGroups || { transform: true, appearance: true, media: true };
             const isSameClip = State.ui.lastSelectedClipId === State.selectedClipId;
             State.ui.lastSelectedClipId = State.selectedClipId;
 
@@ -7986,7 +8004,7 @@
             const currentDetails = sidebarContent.querySelectorAll('details');
             currentDetails.forEach(d => {
                 const summary = d.querySelector('summary');
-                if (summary) State.ui.detailsState[summary.textContent.trim()] = d.open;
+                if (summary) State.ui.detailsState[d.id || summary.textContent.trim()] = d.open;
             });
 
             // Save scroll positions
@@ -9146,7 +9164,7 @@
                     });
 
             const systemFontsHTML = isText ? `
-                <details id="cardSystemFonts" class="group bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 shadow-sm rounded-lg shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'} overflow-hidden flex flex-col" ${(State.ui && State.ui.detailsState && State.ui.detailsState['System Fonts (PC)']) ? 'open' : ''}>
+                <details id="cardSystemFonts" class="group bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 shadow-sm rounded-lg shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'} overflow-hidden flex flex-col" ${(State.ui && State.ui.detailsState && State.ui.detailsState['cardSystemFonts']) ? 'open' : ''}>
                     <summary class="flex items-center justify-between p-3 ${isHorizontal ? '' : 'cursor-pointer'} list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700 " onclick="${isHorizontal ? 'event.preventDefault();' : ''}">
                         <div class="text-sm font-bold text-surface-800 dark:text-surface-200 flex items-center gap-2"><i data-lucide="laptop" class="w-4 h-4 text-surface-500 dark:text-surface-300"></i> System Fonts (PC)</div>
                         ${isHorizontal ? '' : '<i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>'}
@@ -9195,7 +9213,7 @@
             ` : '';
 
             const googleFontsHTML = isText ? `
-                <details id="cardGoogleFonts" class="group bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 shadow-sm rounded-lg shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'} overflow-hidden flex flex-col" ${(State.ui && State.ui.detailsState && State.ui.detailsState['Google Fonts']) ? 'open' : ''}>
+                <details id="cardGoogleFonts" class="group bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 shadow-sm rounded-lg shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'} overflow-hidden flex flex-col" ${(State.ui && State.ui.detailsState && State.ui.detailsState['cardGoogleFonts']) ? 'open' : ''}>
                     <summary class="flex items-center justify-between p-3 ${isHorizontal ? '' : 'cursor-pointer'} list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700 " onclick="${isHorizontal ? 'event.preventDefault();' : ''}">
                         <div class="text-sm font-bold text-surface-800 dark:text-surface-200 flex items-center gap-2"><i data-lucide="globe" class="w-4 h-4 text-surface-500 dark:text-surface-300"></i> Google Fonts</div>
                         ${isHorizontal ? '' : '<i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>'}
@@ -10439,150 +10457,72 @@
                 if (sfxHTML) navItems.push({ id: 'cardSfx', name: 'Sound FX', icon: 'volume-2' });
                 if (navItems.length > 1) {
                     sidebarContent.className = "flex overflow-hidden bg-surface-50 dark:bg-surface-900 w-full flex-1 min-h-0 " + (isHorizontal ? "flex-row" : "flex-col");
-                    
-                    // Group the nav into Transform / Appearance / Media sections;
-                    // Transform + Speed are primary (bolder), the rest secondary.
-                    State.ui.navGroups = State.ui.navGroups || { transform: true, appearance: true, media: true };
-                    const navGroupOf = {
-                        cardScene: 'media', cardTransform: 'transform', cardCaption: 'media',
-                        cardContent: 'media', cardTypography: 'media', cardSpacing: 'media',
-                        cardLetterStyles: 'appearance', cardTextBg: 'appearance',
-                        cardSource: 'media', cardCrop: 'transform', cardMask: 'transform', cardColor: 'appearance',
-                        cardSpeed: 'media', cardStroke: 'appearance', cardExtrude: 'appearance',
-                        cardOpacity: 'appearance', cardShadow: 'appearance', cardTexture: 'appearance',
-                        cardSystemFonts: 'appearance', cardGoogleFonts: 'appearance', cardSfx: 'media'
-                    };
-                    const navGroups = [
-                        { key: 'transform', label: 'Transform' },
-                        { key: 'appearance', label: 'Appearance' },
-                        { key: 'media', label: 'Media' }
-                    ].map(g => ({ ...g, items: navItems.filter(i => (navGroupOf[i.id] || 'media') === g.key) }))
-                     .filter(g => g.items.length > 0);
 
-                    const navGroupBtn = (g) => `
-                        <button type="button" onclick="toggleNavGroup('${g.key}'); event.stopPropagation();" class="nav-group-toggle flex items-center gap-0.5 ${isHorizontal ? 'w-full justify-between px-2 py-1 rounded' : 'px-1.5 py-1 rounded shrink-0'} text-[8.5px] font-bold uppercase tracking-widest text-surface-400 dark:text-surface-500 hover:text-surface-600 dark:hover:text-surface-300 transition-colors" title="Collapse / expand ${g.label}">
-                            <span>${g.label}</span>
-                            <i data-lucide="chevron-down" class="w-3 h-3 shrink-0 transition-transform ${State.ui.navGroups[g.key] ? '' : '-rotate-90'}"></i>
-                        </button>
-                    `;
-                    const navItemBtn = (item, rail) => {
-                        const primary = item.id === 'cardTransform' || item.id === 'cardSpeed';
-                        return `
-                            <button onclick="scrollToPropertyCard('${item.id}'); event.stopPropagation();" id="navBtn_${item.id}" data-nav-primary="${primary ? '1' : '0'}" class="${rail ? 'text-left px-2.5 py-1.5 w-full' : 'px-3 py-1 rounded-md shrink-0'} text-[10px] border border-transparent rounded transition-colors flex items-center gap-1.5 hover:text-surface-900 dark:hover:text-surface-100 ${primary ? 'text-surface-700 dark:text-surface-100 font-bold' : 'text-surface-500 dark:text-surface-300 font-semibold'}" title="${item.name}">
-                                <i data-lucide="${item.icon}" class="w-3.5 h-3.5 shrink-0 opacity-70"></i>
-                                <span class="truncate">${item.name}</span>
-                            </button>
-                        `;
+                    // CapCut-style sub-tabs: Transform / Appearance / Media filter which
+                    // cards render — only the active group's cards exist in the DOM.
+                    State.ui.activePropGroup = State.ui.activePropGroup || 'transform';
+                    const navGroupOf = PROP_GROUP_OF;
+                    const groupKeys = ['transform', 'appearance', 'media']
+                        .filter(k => navItems.some(i => (navGroupOf[i.id] || 'media') === k));
+                    if (!groupKeys.includes(State.ui.activePropGroup)) {
+                        State.ui.activePropGroup = groupKeys[0] || 'transform';
+                    }
+                    const activeGroup = State.ui.activePropGroup;
+                    const groupMeta = {
+                        transform: { label: 'Transform', icon: 'move' },
+                        appearance: { label: 'Appearance', icon: 'palette' },
+                        media: { label: 'Media', icon: 'film' }
                     };
 
-                    const navHtml = isHorizontal ? `
-                        <div id="propertiesLayoutNav" class="w-32 bg-surface-100 dark:bg-surface-900/60 border-r border-surface-200 dark:border-surface-700 flex flex-col gap-1 p-2 shrink-0 overflow-y-auto no-scrollbar">
-                            ${navGroups.map(g => `
-                                <div class="flex flex-col gap-0.5">
-                                    ${navGroupBtn(g)}
-                                    <div class="flex flex-col gap-0.5 ${State.ui.navGroups[g.key] ? '' : 'hidden'}">
-                                        ${g.items.map(item => navItemBtn(item, true)).join('')}
-                                    </div>
-                                </div>
-                            `).join('')}
-                            <button onclick="saveElementAsPreset()" data-nav-action="1" class="text-left text-[10px] font-bold border border-transparent text-brand-600 dark:text-brand-400 hover:text-brand-700 dark:hover:text-brand-300 px-2.5 py-1.5 rounded transition-colors flex items-center gap-1.5 w-full mt-auto" title="Save as Preset">
-                                <i data-lucide="heart" class="w-3.5 h-3.5 shrink-0 opacity-70"></i>
-                                <span class="truncate">Save Preset</span>
+                    // Only the active group's cards, preserving each group's render order
+                    const groupCardsHtml = {
+                        transform: [transformHTML, cropHTML, maskHTML].filter(Boolean).join(''),
+                        appearance: [letterStylesHTML, textBgHTML, colorHTML, strokeHTML, extrudeHTML, blendingHTML, shadowHTML, textureHTML, systemFontsHTML, googleFontsHTML].filter(Boolean).join(''),
+                        media: [sceneHTML, sourceHTML, speedHTML, textHTML, captionHTML, typographyHTML, spacingHTML, shapeHTML, sfxHTML].filter(Boolean).join('')
+                    };
+
+                    const chipBase = "py-1.5 px-3 rounded-md text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer";
+                    const chipActiveBar = `${chipBase} flex-1 bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm border border-surface-200/50 dark:border-surface-600/50 ring-1 ring-brand-500/20`;
+                    const chipInactiveBar = `${chipBase} flex-1 text-surface-500 hover:text-surface-800 dark:hover:text-surface-200 hover:bg-white/60 dark:hover:bg-surface-800/60`;
+                    const chipActiveRail = `${chipBase} w-full bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm border border-surface-200/50 dark:border-surface-600/50 ring-1 ring-brand-500/20`;
+                    const chipInactiveRail = `${chipBase} w-full text-surface-500 hover:text-surface-800 dark:hover:text-surface-200 hover:bg-white/60 dark:hover:bg-surface-800/60`;
+                    const chip = (key, rail) => {
+                        const m = groupMeta[key];
+                        const active = key === activeGroup;
+                        const cls = rail ? (active ? chipActiveRail : chipInactiveRail) : (active ? chipActiveBar : chipInactiveBar);
+                        const iconCls = active ? 'text-brand-500' : 'text-surface-600 dark:text-surface-300';
+                        return `<button type="button" onclick="setPropGroup('${key}'); event.stopPropagation();" class="${cls}" title="${m.label}">
+                            <i data-lucide="${m.icon}" class="w-3.5 h-3.5 shrink-0 ${iconCls}"></i>${m.label}
+                        </button>`;
+                    };
+
+                    const propTabBar = isHorizontal ? `
+                        <div id="propertiesLayoutNav" class="w-24 bg-surface-100 dark:bg-surface-900/60 border-r border-surface-200 dark:border-surface-700 flex flex-col gap-1.5 p-2 shrink-0 overflow-y-auto no-scrollbar">
+                            <div class="flex flex-col gap-1 bg-surface-50 dark:bg-surface-900/40 p-1 rounded-xl border border-surface-200 dark:border-surface-700/80 shadow-inner">
+                                ${groupKeys.map(k => chip(k, true)).join('')}
+                            </div>
+                            <button onclick="saveElementAsPreset()" class="flex items-center justify-center gap-1.5 mt-auto px-2 py-1.5 rounded-md text-[10px] font-bold text-brand-600 dark:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-950/20 transition-colors" title="Save as Preset">
+                                <i data-lucide="heart" class="w-3.5 h-3.5 shrink-0"></i><span>Save</span>
                             </button>
                         </div>
                     ` : `
-                        <div id="propertiesLayoutNav" class="flex flex-row items-center gap-1 p-2 px-4 overflow-x-auto shrink-0 w-full bg-transparent no-scrollbar">
-                            ${navGroups.map(g => `
-                                ${navGroupBtn(g)}
-                                <div class="flex flex-row items-center gap-1 ${State.ui.navGroups[g.key] ? '' : 'hidden'}">
-                                    ${g.items.map(item => navItemBtn(item, false)).join('')}
-                                </div>
-                            `).join('')}
-                            <button onclick="saveElementAsPreset()" data-nav-action="1" class="flex items-center gap-1 px-3 py-1 text-[10px] font-bold border border-brand-500/20 text-brand-600 dark:text-brand-400 rounded-md transition-colors shrink-0 hover:bg-brand-50 dark:hover:bg-brand-950/20 ml-auto" title="Save as Preset">
-                                <i data-lucide="heart" class="w-3.5 h-3.5 shrink-0 opacity-70"></i>
-                                <span>Save Preset</span>
+                        <div id="propertiesLayoutNav" class="flex flex-row items-center gap-2 p-2 px-4 overflow-x-auto shrink-0 w-full bg-surface-100 dark:bg-surface-900/60 border-b border-surface-200 dark:border-surface-700 no-scrollbar">
+                            <div class="flex items-center gap-1 bg-surface-50 dark:bg-surface-900/40 p-1 rounded-xl border border-surface-200 dark:border-surface-700/80 shadow-inner flex-1 min-w-0">
+                                ${groupKeys.map(k => chip(k, false)).join('')}
+                            </div>
+                            <button onclick="saveElementAsPreset()" class="flex items-center gap-1 px-3 py-1.5 text-[10px] font-bold border border-brand-500/20 text-brand-600 dark:text-brand-400 rounded-md transition-colors shrink-0 hover:bg-brand-50 dark:hover:bg-brand-950/20" title="Save as Preset">
+                                <i data-lucide="heart" class="w-3.5 h-3.5"></i><span>Save Preset</span>
                             </button>
                         </div>
                     `;
                     
                     const cardsHtml = `
                         <div id="propertiesCardContainer" class="p-4 flex gap-6 min-w-0 ${isHorizontal ? 'flex-row overflow-x-auto flex-1 no-scrollbar' : 'flex-col overflow-y-auto flex-1 w-full properties-scroll-container'}">
-                            ${sceneHTML}
-                            ${sourceHTML}
-                            ${speedHTML}
-                            ${transformHTML}
-                            ${isText ? textHTML : ''}
-                            ${captionHTML}
-                            ${isText ? typographyHTML : ''}
-                            ${isText ? spacingHTML : ''}
-                            ${isText ? letterStylesHTML : ''}
-                            ${isText ? textBgHTML : ''}
-                            ${isShape ? shapeHTML : ''}
-                            ${cropHTML}
-                            ${maskHTML}
-                            ${colorHTML}
-                            ${strokeHTML}
-                            ${extrudeHTML}
-                            ${blendingHTML}
-                            ${shadowHTML}
-                            ${textureHTML}
-                            ${sfxHTML}
-                            ${isText ? systemFontsHTML : ''}
-                            ${isText ? googleFontsHTML : ''}
+                            ${groupCardsHtml[activeGroup] || ''}
                         </div>
                     `;
                     
-                    sidebarContent.innerHTML = navHtml + cardsHtml;
-                    
-                    // Style the active button corresponding to the first item or active card
-                    setTimeout(() => {
-                        const activeId = State.activePropertyCardId || navItems[0].id;
-                        window.updateActivePropertyNav(activeId);
-                        
-                        // Scroll spy implementation to auto-highlight nav button on scroll
-                        const cardContainer = document.getElementById('propertiesCardContainer');
-                        if (cardContainer) {
-                            let scrollTimeout = null;
-                            cardContainer.addEventListener('scroll', () => {
-                                if (State.isProgrammaticScrolling) {
-                                    if (State.programmaticScrollTimeout) clearTimeout(State.programmaticScrollTimeout);
-                                    State.programmaticScrollTimeout = setTimeout(() => {
-                                        State.isProgrammaticScrolling = false;
-                                    }, 250);
-                                    return;
-                                }
-                                if (scrollTimeout) clearTimeout(scrollTimeout);
-                                scrollTimeout = setTimeout(() => {
-                                    const containerRect = cardContainer.getBoundingClientRect();
-                                    const cards = cardContainer.querySelectorAll('details');
-                                    let bestCardId = null;
-                                    let bestDiff = Infinity;
-                                    
-                                    cards.forEach(c => {
-                                        const rect = c.getBoundingClientRect();
-                                        let diff;
-                                        if (isHorizontal) {
-                                            const cCenter = rect.left + rect.width / 2;
-                                            const containerCenter = containerRect.left + containerRect.width / 2;
-                                            diff = Math.abs(cCenter - containerCenter);
-                                        } else {
-                                            diff = Math.abs(rect.top - containerRect.top);
-                                        }
-                                        
-                                        if (diff < bestDiff) {
-                                            bestDiff = diff;
-                                            bestCardId = c.id;
-                                        }
-                                    });
-                                    
-                                    if (bestCardId && State.activePropertyCardId !== bestCardId) {
-                                        State.activePropertyCardId = bestCardId;
-                                        window.updateActivePropertyNav(bestCardId);
-                                    }
-                                }, 50);
-                            });
-                        }
-                    }, 0);
+                    sidebarContent.innerHTML = propTabBar + cardsHtml;
                 } else {
                     sidebarContent.className = "flex flex-col gap-3 p-4 w-full flex-1 min-h-0 overflow-y-auto";
                     sidebarContent.innerHTML = sceneHTML + sourceHTML + transformHTML + (isText ? (textHTML + typographyHTML + spacingHTML + letterStylesHTML + textBgHTML) : '') + (isShape ? shapeHTML : '') + cropHTML + maskHTML + strokeHTML + extrudeHTML + blendingHTML + shadowHTML + textureHTML + (isText ? systemFontsHTML : '') + (isText ? googleFontsHTML : '');
@@ -10604,8 +10544,10 @@
                 const summary = d.querySelector('summary');
                 if (summary) {
                     const title = summary.textContent.trim();
-                    if (State.ui.detailsState[title] !== undefined) {
-                        if (State.ui.detailsState[title]) d.setAttribute('open', '');
+                    const key = d.id || title;
+                    const saved = State.ui.detailsState[key] !== undefined ? State.ui.detailsState[key] : State.ui.detailsState[title];
+                    if (saved !== undefined) {
+                        if (saved) d.setAttribute('open', '');
                         else d.removeAttribute('open');
                     }
                 }
