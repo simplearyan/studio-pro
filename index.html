@@ -8871,6 +8871,12 @@
                             <div class="border-t border-surface-200 dark:border-surface-700 pt-3 flex flex-col gap-2">
                                 <div class="text-[10px] font-bold text-surface-700 dark:text-surface-200 uppercase tracking-widest flex items-center gap-1.5"><i data-lucide="palette" class="w-3 h-3"></i>Style</div>
                                 ${captionPresetStripHtml('clip', clip.id)}
+                                ${captionStyleControlHtml('font', 'clip', clip.id)}
+                                ${captionStyleControlHtml('size', 'clip', clip.id)}
+                                ${captionStyleControlHtml('weight', 'clip', clip.id)}
+                                ${captionStyleControlHtml('style', 'clip', clip.id)}
+                                ${captionStyleControlHtml('lineHeight', 'clip', clip.id)}
+                                ${captionStyleControlHtml('letterSpacing', 'clip', clip.id)}
                                 ${captionStyleControlHtml('scale', 'clip', clip.id)}
                                 ${captionStyleControlHtml('color', 'clip', clip.id)}
                                 ${captionStyleControlHtml('stroke', 'clip', clip.id)}
@@ -14595,11 +14601,33 @@
         window.captionStyleControlHtml = function(group, mode, clipId) {
             const cfg = State.subtitleConfig;
             let ef = cfg;
+            let subEf = null;
             if (mode === 'clip' && clipId) {
                 const c = State.clips.find(x => x.id === clipId);
                 const s = c && c.subtitleId ? State.subtitles.find(x => x.id === c.subtitleId) : null;
                 ef = { ...cfg, ...(s && s.effects ? s.effects : {}) };
+                subEf = (s && s.effects) || null;
             }
+            // Per-field "Global / revert" chip (clip mode only): shows "Global" while the
+            // caption inherits the global style, and a revert arrow when this caption has
+            // overridden the field (drops just that override via setSubCaptionAnim).
+            const isOv = (k) => !!subEf && subEf[k] !== undefined;
+            const anyOv = (keys) => !!subEf && keys.some(k => subEf[k] !== undefined);
+            const inheritChip = (k, def) => {
+                if (mode !== 'clip' || !clipId) return '';
+                if (isOv(k)) {
+                    const gv = cfg[k] !== undefined ? cfg[k] : def;
+                    return `<button type="button" onclick="setSubCaptionAnim('${clipId}','${k}','__inherit__'); updateSidebarPanel(); drawCanvas();" class="p-0.5 rounded text-surface-400 dark:text-surface-500 hover:text-brand-600 dark:hover:text-brand-400 transition-colors shrink-0" title="Reset to global (${gv})"><i data-lucide="rotate-ccw" class="w-3 h-3"></i></button>`;
+                }
+                return `<span class="text-[9px] font-bold text-surface-400 dark:text-surface-500 uppercase tracking-wider shrink-0" title="Follows the global style">Global</span>`;
+            };
+            const inheritChipGroup = (keys, title) => {
+                if (mode !== 'clip' || !clipId) return '';
+                if (anyOv(keys)) {
+                    return `<button type="button" onclick="${keys.map(k => `setSubCaptionAnim('${clipId}','${k}','__inherit__')`).join(';')}; updateSidebarPanel(); drawCanvas();" class="p-0.5 rounded text-surface-400 dark:text-surface-500 hover:text-brand-600 dark:hover:text-brand-400 transition-colors shrink-0" title="Reset ${title} to global"><i data-lucide="rotate-ccw" class="w-3 h-3"></i></button>`;
+                }
+                return `<span class="text-[9px] font-bold text-surface-400 dark:text-surface-500 uppercase tracking-wider shrink-0" title="Follows the global style">Global</span>`;
+            };
             const val = (k) => (ef[k] !== undefined ? ef[k] : cfg[k]);
             const put = (k, v) => mode === 'clip'
                 ? `setClipEffect('${clipId}', '${k}', ${v}); drawCanvas();`
@@ -14611,17 +14639,19 @@
             const lblCls = 'text-[10px] font-bold text-surface-700 dark:text-surface-200 uppercase tracking-widest';
             const rowLabel = (t, icon) => `<span class="flex items-center gap-1.5 shrink-0 ${lblCls}"><i data-lucide="${icon}" class="w-3 h-3 text-brand-500 dark:text-brand-400 shrink-0"></i>${t}</span>`;
             const hexOk = (v) => typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v);
-            const idp = (k) => `${clipId || 'global'}_${k}`;
+            const idp = (k) => `${clipId || 'global'}_cap_${k}`;
             const colorBox = (k, def) => `<div class="relative w-7 h-7 shrink-0 rounded-md border border-surface-200 dark:border-surface-700 overflow-hidden"><input type="color" id="${idp(k)}" name="${k}" value="${hexOk(val(k)) ? val(k) : def}" class="absolute inset-0 w-full h-full cursor-pointer" oninput="${put(k, 'this.value')}"></div>`;
-            const toggleRow = (k, title, sub) => `<div class="sub-style-group flex items-center gap-2.5 min-w-0">
+            const toggleRow = (k, title, sub, chip = '') => `<div class="sub-style-group flex items-center gap-2.5 min-w-0">
                 <label class="flex items-center gap-2 cursor-pointer shrink-0 select-none"><input type="checkbox" id="${idp(k)}" name="${k}" ${val(k) ? 'checked' : ''} class="rounded text-brand-500 focus:ring-brand-500" onchange="${putToggle(k, 'this.checked')}"><span class="text-xs font-bold text-surface-800 dark:text-surface-100">${title}</span></label>
                 <div class="flex items-center gap-2 flex-1 min-w-0 ${val(k) ? '' : 'opacity-40 pointer-events-none'}">${sub}</div>
+                ${chip}
             </div>`;
             const sliderRow = (k, min, max, valExpr, badgeExpr, cur) => `<input type="range" id="${idp(k)}" name="${k}" min="${min}" max="${max}" step="1" value="${cur}" class="flex-1 custom-slider min-w-0" oninput="${put(k, valExpr)}; this.closest('.sub-style-group').querySelector('[data-v]').textContent = ${badgeExpr};">`;
             if (group === 'scale') {
                 const pct = Math.round((val('scale') !== undefined ? val('scale') : 1) * 100);
                 return `<div class="sub-style-group flex items-center gap-2.5 min-w-0">
                     ${rowLabel('Scale', 'scan')}
+                    ${inheritChip('scale', '1')}
                     <div class="flex items-center gap-2 flex-1 min-w-0">
                         ${sliderRow('scale', 10, 300, 'this.value / 100', '(this.value / 100).toFixed(2) + \'x\'', pct)}
                         ${badge((pct / 100).toFixed(2) + 'x')}
@@ -14631,6 +14661,7 @@
             if (group === 'color') {
                 return `<div class="sub-style-group flex items-center gap-2.5 min-w-0">
                     ${rowLabel('Color', 'palette')}
+                    ${inheritChip('fillColor', '#ffffff')}
                     <div class="flex-1"></div>
                     ${colorBox('fillColor', '#ffffff')}
                 </div>`;
@@ -14641,7 +14672,7 @@
                     ${colorBox('strokeColor', '#000000')}
                     ${sliderRow('strokeWidth', 0, 12, 'parseInt(this.value)', 'this.value + \'px\'', w)}
                     ${badge(w + 'px')}
-                `);
+                `, inheritChipGroup(['strokeEnable', 'strokeColor', 'strokeWidth'], 'Stroke'));
             }
             if (group === 'shadow') {
                 const b = val('shadowBlur') !== undefined ? val('shadowBlur') : 4;
@@ -14649,7 +14680,7 @@
                     ${colorBox('shadowColor', '#000000')}
                     ${sliderRow('shadowBlur', 0, 20, 'parseInt(this.value)', 'this.value + \'px\'', b)}
                     ${badge(b + 'px')}
-                `);
+                `, inheritChipGroup(['shadowEnable', 'shadowColor', 'shadowBlur', 'shadowX', 'shadowY'], 'Shadow'));
             }
             if (group === 'bg') {
                 const op = Math.round((val('bgOpacity') !== undefined ? val('bgOpacity') : 0.5) * 100);
@@ -14657,8 +14688,88 @@
                     ${colorBox('bgColor', '#000000')}
                     ${sliderRow('bgOpacity', 0, 100, 'this.value / 100', 'this.value + \'%\'', op)}
                     ${badge(op + '%')}
-                `);
+                `, inheritChipGroup(['bgEnable', 'bgColor', 'bgOpacity'], 'Background'));
             }
+            // ── Typography + spacing groups (per-caption overrides, same schema as the
+            // text-clip Typography / Sizing cards — mirrored via subtitleEffectMap) ──
+            if (group === 'font') {
+                const cur = val('fontFamily') || 'Inter';
+                const sysOpts = (State.importedSystemFonts || []).map(f => `<option value="${f}" ${cur === f ? 'selected' : ''}>${f} (PC)</option>`).join('');
+                const gOpts = (State.googleFonts || []).map(f => `<option value="${f}" ${cur === f ? 'selected' : ''}>${f} (Google)</option>`).join('');
+                return `<div class="sub-style-group flex items-center gap-2.5 min-w-0">
+                    ${rowLabel('Font', 'type')}
+                    ${inheritChip('fontFamily', 'Inter')}
+                    <div class="flex-1"></div>
+                    <select id="${idp('fontFamily')}" name="fontFamily" class="flex-1 min-w-0 text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 focus:outline-none focus:border-brand-500 font-bold text-surface-800 dark:text-surface-200" onchange="${put('fontFamily', 'this.value')}">
+                        <option value="Inter" ${cur === 'Inter' ? 'selected' : ''}>Inter (Default)</option>
+                        <option value="Arial" ${cur === 'Arial' ? 'selected' : ''}>Arial</option>
+                        <option value="Roboto" ${cur === 'Roboto' ? 'selected' : ''}>Roboto</option>
+                        <option value="Rubik" ${cur === 'Rubik' ? 'selected' : ''}>Rubik</option>
+                        ${sysOpts}
+                        ${gOpts}
+                    </select>
+                </div>`;
+            }
+            if (group === 'size') {
+                const s = val('fontSize') !== undefined ? val('fontSize') : 36;
+                return `<div class="sub-style-group flex items-center gap-2.5 min-w-0">
+                    ${rowLabel('Size', 'maximize')}
+                    ${inheritChip('fontSize', '36')}
+                    <div class="flex items-center gap-2 flex-1 min-w-0">
+                        ${sliderRow('fontSize', 10, 400, 'parseInt(this.value)', 'this.value + \'px\'', s)}
+                        ${badge(s + 'px')}
+                    </div>
+                </div>`;
+            }
+            if (group === 'weight') {
+                const w = val('fontWeight') !== undefined ? val('fontWeight') : 700;
+                return `<div class="sub-style-group flex items-center gap-2.5 min-w-0">
+                    ${rowLabel('Weight', 'bold')}
+                    ${inheritChip('fontWeight', '700')}
+                    <div class="flex-1"></div>
+                    <select id="${idp('fontWeight')}" name="fontWeight" class="w-24 text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 focus:outline-none focus:border-brand-500 font-bold text-surface-800 dark:text-surface-200" onchange="${put('fontWeight', 'parseInt(this.value)')}">
+                        <option value="400" ${w === 400 ? 'selected' : ''}>Regular</option>
+                        <option value="600" ${w === 600 ? 'selected' : ''}>SemiBold</option>
+                        <option value="700" ${w === 700 ? 'selected' : ''}>Bold</option>
+                        <option value="900" ${w === 900 ? 'selected' : ''}>ExtraBold</option>
+                    </select>
+                </div>`;
+            }
+            if (group === 'style') {
+                const st = val('fontStyle') || 'normal';
+                return `<div class="sub-style-group flex items-center gap-2.5 min-w-0">
+                    ${rowLabel('Style', 'italic')}
+                    ${inheritChip('fontStyle', 'normal')}
+                    <div class="flex-1"></div>
+                    <select id="${idp('fontStyle')}" name="fontStyle" class="w-24 text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 focus:outline-none focus:border-brand-500 font-bold text-surface-800 dark:text-surface-200" onchange="${put('fontStyle', 'this.value')}">
+                        <option value="normal" ${st === 'normal' ? 'selected' : ''}>Normal</option>
+                        <option value="italic" ${st === 'italic' ? 'selected' : ''}>Italic</option>
+                    </select>
+                </div>`;
+            }
+            if (group === 'lineHeight') {
+                const lh = val('lineHeight') !== undefined ? val('lineHeight') : 1.3;
+                return `<div class="sub-style-group flex items-center gap-2.5 min-w-0">
+                    ${rowLabel('Line Height', 'pilcrow')}
+                    ${inheritChip('lineHeight', '1.3')}
+                    <div class="flex items-center gap-2 flex-1 min-w-0">
+                        ${sliderRow('lineHeight', 50, 300, 'this.value / 100', '(this.value / 100).toFixed(2) + \'x\'', Math.round(lh * 100))}
+                        ${badge(lh.toFixed(2) + 'x')}
+                    </div>
+                </div>`;
+            }
+            if (group === 'letterSpacing') {
+                const ls = val('letterSpacing') !== undefined ? val('letterSpacing') : 0;
+                return `<div class="sub-style-group flex items-center gap-2.5 min-w-0">
+                    ${rowLabel('Letter Spacing', 'pilcrow')}
+                    ${inheritChip('letterSpacing', '0')}
+                    <div class="flex items-center gap-2 flex-1 min-w-0">
+                        ${sliderRow('letterSpacing', -20, 100, 'parseInt(this.value)', 'this.value + \'px\'', ls)}
+                        ${badge(ls + 'px')}
+                    </div>
+                </div>`;
+            }
+
             // ── Advanced background-box / texture groups (global config only) ──
             if (group === 'bgStroke') {
                 const w = val('bgStrokeWidth') !== undefined ? val('bgStrokeWidth') : 4;
