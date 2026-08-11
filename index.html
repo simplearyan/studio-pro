@@ -12320,6 +12320,16 @@
             container.innerHTML = html;
         }
 
+        // A sound is usable when it has a decoded buffer or a source to decode
+        // from (embedded base64 or a live File). Items with none of those — e.g.
+        // an incomplete/older save — are treated like missing so the UI disables
+        // play/Add with the amber note instead of silently doing nothing on click.
+        function audioLibUsable(a) {
+            if (!a) return false;
+            if (a.buffer) return true;
+            return !!(a.data || a.file);
+        }
+
         function renderAudioLibrary(container) {
             // All groups present in the library (SFX/Music always offered, customs follow).
             const customGroups = [...new Set(State.audioLibrary.map(a => a.group).filter(Boolean))].filter(g => g !== 'SFX' && g !== 'Music');
@@ -12372,13 +12382,13 @@
 
             // Missing-sounds banner (large files that couldn't be embedded into the
             // project) with the Re-import buttons, plus a transient result line.
-            const missingCount = State.audioLibrary.filter(a => a.sfxMissing).length;
+            const missingCount = State.audioLibrary.filter(a => !audioLibUsable(a)).length;
             if (missingCount > 0) {
                 html += `
                     <div class="flex flex-col gap-1.5 shrink-0 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2">
                         <div class="flex items-center gap-2 text-[11px] font-bold text-amber-600 dark:text-amber-400 flex-wrap">
                             <i data-lucide="alert-triangle" class="w-3.5 h-3.5 shrink-0"></i>
-                            <span title="Files too large to embed in the project — re-import them from your computer">${missingCount} sound${missingCount === 1 ? '' : 's'} ${missingCount === 1 ? 'needs' : 'need'} re-import</span>
+                            <span title="Missing audio file — re-import it from your computer to play or add">${missingCount} sound${missingCount === 1 ? '' : 's'} ${missingCount === 1 ? 'needs' : 'need'} re-import</span>
                             <span class="flex items-center gap-2.5 ml-auto">
                                 <label class="cursor-pointer flex items-center gap-1 text-[10px] font-bold text-amber-700 dark:text-amber-300 hover:underline transition-colors">
                                     <i data-lucide="upload" class="w-3 h-3"></i> Select Files
@@ -12475,11 +12485,11 @@
                 if (audio) {
                     // sfxMissing entries (too large to embed) have nothing to play/add
                     // until the user re-imports the file — reflect that in the UI.
-                    const usable = !(audio.sfxMissing && !audio.buffer);
+                    const usable = audioLibUsable(audio);
                     html += `
                         <div id="audioLibDetailPanel" class="mt-auto pt-4 border-t border-surface-200 dark:border-surface-700 flex flex-col gap-3 shrink-0">
-                            <div class="flex items-center justify-between">
-                                <div class="flex items-center gap-1.5 min-w-0 flex-1">
+                            <div class="flex items-center justify-between gap-2">
+                                <div class="flex items-center gap-2 min-w-0 flex-1">
                                     <span id="audioLibNameText" class="text-sm font-bold text-surface-900 dark:text-white truncate" title="${esc(audio.name)}">${esc(audio.name)}</span>
                                     <button onclick="startAudioLibRename()" class="p-1 rounded text-surface-400 hover:text-brand-500 hover:bg-surface-100 dark:hover:bg-surface-700 shrink-0 transition-colors" title="Rename">
                                         <i data-lucide="pencil" class="w-3 h-3"></i>
@@ -12489,37 +12499,38 @@
                                     </button>
                                 </div>
                                 <div class="flex items-center gap-2 shrink-0">
-                                    <button onclick="toggleAudioLibPlayback()" class="p-1.5 rounded-full ${audio.isPlaying ? 'bg-red-50 text-red-500 hover:bg-red-100' : 'bg-brand-50 dark:bg-surface-800 text-brand-600 dark:text-brand-400 hover:bg-brand-100'} transition-colors${usable ? '' : ' opacity-40 pointer-events-none'}">
+                                    <button onclick="toggleAudioLibPlayback()" class="p-1.5 rounded-full border transition-colors ${audio.isPlaying ? 'bg-red-50 text-red-500 hover:bg-red-100' : 'bg-brand-50 dark:bg-surface-800 text-brand-600 dark:text-brand-400 hover:bg-brand-100'} ${usable ? 'border-transparent' : 'border-surface-300 dark:border-surface-600 opacity-40 pointer-events-none'}">
                                         <i data-lucide="${audio.isPlaying ? 'square' : 'play'}" class="w-4 h-4 fill-current"></i>
                                     </button>
-                                    <button onclick="addAudioLibToTimeline()" class="bg-surface-900 dark:bg-white text-white dark:text-surface-900 px-3 py-1.5 rounded text-xs font-bold hover:opacity-90 transition-opacity flex items-center gap-1${usable ? '' : ' opacity-40 pointer-events-none'}">
+                                    <button onclick="addAudioLibToTimeline()" class="bg-surface-900 dark:bg-white text-white dark:text-surface-900 px-3 py-1.5 rounded text-xs font-bold hover:opacity-90 transition-opacity flex items-center gap-1 border ${usable ? 'border-transparent' : 'border-surface-400/40 dark:border-surface-500/40 opacity-40 pointer-events-none'}">
                                         <i data-lucide="plus" class="w-3 h-3"></i> Add
                                     </button>
                                 </div>
                             </div>
-                            <div class="flex items-center justify-between gap-2">
+                            <div class="flex items-center justify-between gap-2 border-t border-surface-200 dark:border-surface-700 pt-3">
                                 <span class="text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-wider">Group</span>
-                                <select onchange="setAudioLibItemGroup(this.value)" class="bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-xs font-semibold text-surface-700 dark:text-surface-300 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-brand-500 max-w-[160px]" title="Move this sound to a group">
+                                <select onchange="setAudioLibItemGroup(this.value)" class="cursor-pointer bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-xs font-semibold text-surface-700 dark:text-surface-300 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-brand-500 max-w-[160px]" title="Move this sound to a group">
                                     <option value="">No group</option>
                                     ${allGroups.map(g => `<option value="${esc(g)}" ${audio.group === g ? 'selected' : ''}>${esc(g)}</option>`).join('')}
                                 </select>
                             </div>
-                            ${!usable ? `<p class="text-[10px] text-amber-600 dark:text-amber-400 leading-snug">This file is too large to embed in the project — re-import it from your computer to play or add it.</p>` : ''}
-                            
-                            <div class="relative w-full h-16 bg-surface-100 dark:bg-surface-800 rounded select-none" id="audioLibWaveformContainer" onmousedown="startAudioLibTrim(event, 'new')">
-                                <canvas id="audioLibWaveform" class="absolute inset-0 w-full h-full rounded"></canvas>
-                                <div id="audioLibTrimOverlay" class="absolute inset-y-0 border-x-2 border-surface-900 dark:border-white pointer-events-none"></div>
-                                <div id="audioLibHandleL" class="absolute top-0 bottom-0 w-4 -ml-2 cursor-ew-resize flex flex-col justify-between items-center group z-10" onmousedown="startAudioLibTrim(event, 'left')">
-                                    <div class="w-2 h-2 bg-surface-900 dark:bg-white rounded-full -mt-1 shadow-sm transform group-hover:scale-125 transition-transform"></div>
-                                    <div class="w-2 h-2 bg-surface-900 dark:bg-white rounded-full -mb-1 shadow-sm transform group-hover:scale-125 transition-transform"></div>
+                            ${!usable ? `<p class="text-[10px] text-amber-600 dark:text-amber-400 leading-snug">This sound's audio file is missing — re-import it from your computer to play or add it.</p>` : ''}
+                            <div class="flex flex-col gap-1.5">
+                                <span class="text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-wider">Trim</span>
+                                <div class="relative w-full h-16 bg-surface-100 dark:bg-surface-800 rounded select-none" id="audioLibWaveformContainer" onmousedown="startAudioLibTrim(event, 'new')">
+                                    <canvas id="audioLibWaveform" class="absolute inset-0 w-full h-full rounded"></canvas>
+                                    <div id="audioLibTrimOverlay" class="absolute inset-y-0 border-x-2 border-surface-900 dark:border-white pointer-events-none"></div>
+                                    <div id="audioLibHandleL" class="absolute top-0 bottom-0 w-4 -ml-2 cursor-ew-resize flex flex-col justify-between items-center group z-10" onmousedown="startAudioLibTrim(event, 'left')">
+                                        <div class="w-1.5 h-1.5 bg-surface-900 dark:bg-white rounded-full -mt-1 shadow-sm ring-1 ring-transparent group-hover:ring-brand-500/80 group-hover:scale-125 transition-all"></div>
+                                        <div class="w-1.5 h-1.5 bg-surface-900 dark:bg-white rounded-full -mb-1 shadow-sm ring-1 ring-transparent group-hover:ring-brand-500/80 group-hover:scale-125 transition-all"></div>
+                                    </div>
+                                    <div id="audioLibHandleR" class="absolute top-0 bottom-0 w-4 -ml-2 cursor-ew-resize flex flex-col justify-between items-center group z-10" onmousedown="startAudioLibTrim(event, 'right')">
+                                        <div class="w-1.5 h-1.5 bg-surface-900 dark:bg-white rounded-full -mt-1 shadow-sm ring-1 ring-transparent group-hover:ring-brand-500/80 group-hover:scale-125 transition-all"></div>
+                                        <div class="w-1.5 h-1.5 bg-surface-900 dark:bg-white rounded-full -mb-1 shadow-sm ring-1 ring-transparent group-hover:ring-brand-500/80 group-hover:scale-125 transition-all"></div>
+                                    </div>
+                                    <div id="audioLibPlayhead" class="absolute top-0 bottom-0 w-[2px] bg-red-500 shadow-[0_0_6px_2px_rgba(239,68,68,0.35)] pointer-events-none hidden z-20"></div>
                                 </div>
-                                <div id="audioLibHandleR" class="absolute top-0 bottom-0 w-4 -ml-2 cursor-ew-resize flex flex-col justify-between items-center group z-10" onmousedown="startAudioLibTrim(event, 'right')">
-                                    <div class="w-2 h-2 bg-surface-900 dark:bg-white rounded-full -mt-1 shadow-sm transform group-hover:scale-125 transition-transform"></div>
-                                    <div class="w-2 h-2 bg-surface-900 dark:bg-white rounded-full -mb-1 shadow-sm transform group-hover:scale-125 transition-transform"></div>
-                                </div>
-                                <div id="audioLibPlayhead" class="absolute top-0 bottom-0 w-[2px] bg-red-500 pointer-events-none hidden z-20"></div>
                             </div>
-                            
 
                         </div>
                     `;
@@ -12718,6 +12729,18 @@
                 .sort((a, b) => (a._lastUsed || 0) - (b._lastUsed || 0));
             for (const a of evictable) {
                 if (_audioLibDecodedBytes <= AUDIO_LIB_MEM_CAP) break;
+                // Snapshot the decoded buffer NOW, before dropping it, so the item
+                // stays embeddable in the project JSON after eviction. Otherwise a
+                // small file whose buffer was evicted before the next save would
+                // serialize with no data at all — a ghost that can't even be
+                // re-imported by name (the re-import matches by original filename).
+                if (!a.data && !a.sfxMissing) {
+                    try {
+                        const bytes = audioBufferToWavBytes(a.buffer);
+                        if (bytes.byteLength <= SFX_EMBED_MAX) a.data = base64FromBytes(bytes);
+                        else a.sfxMissing = true;
+                    } catch (e) { a.sfxMissing = true; }
+                }
                 _audioLibDecodedBytes -= audioLibBufferBytes(a);
                 a.buffer = null;
                 delete _audioLibBufferCache[a.id];
@@ -12918,7 +12941,11 @@
             const menu = document.getElementById('audioLibContextMenu');
             if (!menu) return;
             const outsideClickListener = (e) => {
-                if (!menu.contains(e.target)) {
+                // A target that left the DOM was inside the menu when clicked — it
+                // got detached by a menu re-render (the two-click delete confirm
+                // swaps the button in place). Treating that as an "outside" click
+                // wiped the confirm state and hid the menu mid-flow.
+                if (!menu.contains(e.target) && document.contains(e.target)) {
                     hideAudioLibContextMenu();
                     document.removeEventListener('click', outsideClickListener);
                 }
@@ -13094,7 +13121,11 @@
 
         async function reimportAudioLibrary(files) {
             const audioFiles = [...(files || [])].filter(isImportableAudioFile);
-            const missing = State.audioLibrary.filter(a => a.sfxMissing);
+            // Match against EVERY non-usable item — not just sfxMissing ones. The
+            // banner counts anything without a playable source (decoded buffer,
+            // embedded data, or live file), and older saves can contain ghosts
+            // (no data, no sfxMissing flag) that still need re-importing.
+            const missing = State.audioLibrary.filter(a => !audioLibUsable(a));
             if (!missing.length || !audioFiles.length) return;
             if (!audioCtx) audioCtx = new AudioContext();
             if (audioCtx.state === 'suspended') audioCtx.resume();
@@ -13490,27 +13521,31 @@
             const panel = document.getElementById('audioLibDetailPanel');
             const audio = State.audioLibrary.find(a => a.id === State.selectedAudioLibId);
             if (!panel || !audio) return;
-            const usable = !(audio.sfxMissing && !audio.buffer);
+            const usable = audioLibUsable(audio);
             const nameEl = document.getElementById('audioLibNameText');
             if (nameEl) { nameEl.textContent = audio.name; nameEl.title = audio.name; }
             const groupSel = panel.querySelector('select[onchange^="setAudioLibItemGroup"]');
             if (groupSel) groupSel.value = audio.group || '';
             const playBtn = panel.querySelector('button[onclick="toggleAudioLibPlayback()"]');
             if (playBtn) {
-                playBtn.className = `p-1.5 rounded-full ${audio.isPlaying ? 'bg-red-50 text-red-500 hover:bg-red-100' : 'bg-brand-50 dark:bg-surface-800 text-brand-600 dark:text-brand-400 hover:bg-brand-100'} transition-colors${usable ? '' : ' opacity-40 pointer-events-none'}`;
+                playBtn.className = `p-1.5 rounded-full border transition-colors ${audio.isPlaying ? 'bg-red-50 text-red-500 hover:bg-red-100' : 'bg-brand-50 dark:bg-surface-800 text-brand-600 dark:text-brand-400 hover:bg-brand-100'} ${usable ? 'border-transparent' : 'border-surface-300 dark:border-surface-600 opacity-40 pointer-events-none'}`;
                 const ic = playBtn.querySelector('svg.lucide, [data-lucide]');
                 if (ic) ic.className = `lucide lucide-${audio.isPlaying ? 'square' : 'play'} w-4 h-4 fill-current`;
             }
             const addBtn = panel.querySelector('button[onclick="addAudioLibToTimeline()"]');
-            if (addBtn) addBtn.className = `bg-surface-900 dark:bg-white text-white dark:text-surface-900 px-3 py-1.5 rounded text-xs font-bold hover:opacity-90 transition-opacity flex items-center gap-1${usable ? '' : ' opacity-40 pointer-events-none'}`;
+            if (addBtn) addBtn.className = `bg-surface-900 dark:bg-white text-white dark:text-surface-900 px-3 py-1.5 rounded text-xs font-bold hover:opacity-90 transition-opacity flex items-center gap-1 border ${usable ? 'border-transparent' : 'border-surface-400/40 dark:border-surface-500/40 opacity-40 pointer-events-none'}`;
             const amber = panel.querySelector('p.text-amber-600');
             if (amber) amber.remove();
             if (!usable) {
                 const p = document.createElement('p');
                 p.className = 'text-[10px] text-amber-600 dark:text-amber-400 leading-snug';
-                p.textContent = 'This file is too large to embed in the project — re-import it from your computer to play or add it.';
+                p.textContent = "This sound's audio file is missing — re-import it from your computer to play or add it.";
+                // The waveform now lives inside the Trim zone (a wrapper div), so
+                // anchor on that wrapper to keep the note above the Trim section.
                 const wave = panel.querySelector('#audioLibWaveformContainer');
-                if (wave) panel.insertBefore(p, wave);
+                const anchor = wave ? (wave.parentElement !== panel ? wave.parentElement : wave) : null;
+                if (anchor) panel.insertBefore(p, anchor);
+                else panel.appendChild(p);
             }
         }
 
@@ -13690,18 +13725,23 @@
                 playhead.classList.remove('hidden');
                 const w = container.clientWidth;
                 
-                function loop() {
+                // Drive the playhead from the audio clock on a timer, NOT rAF:
+                // rAF is throttled/frozen in backgrounded webContents (Electron
+                // preview), which left the playhead stuck even though the audio
+                // kept playing — and short clips ended before the first frame.
+                // The clock keeps ticking regardless, so a delayed tick still
+                // lands at the right position (or stops when past the trim end).
+                function step() {
                     if (!audio.isPlaying) return;
-                    let currentPlayTime = audioCtx.currentTime - audioLibStartTime;
+                    const currentPlayTime = audioCtx.currentTime - audioLibStartTime;
                     if (currentPlayTime >= audio.outPoint) {
                         stopAudioLibPlayback();
                         return;
                     }
                     const px = (currentPlayTime / audio.duration) * w;
                     playhead.style.left = `${px}px`;
-                    audioLibAnimationFrame = requestAnimationFrame(loop);
                 }
-                audioLibAnimationFrame = requestAnimationFrame(loop);
+                audioLibAnimationFrame = setInterval(step, 50);
             }
             
             audioLibSource.onended = () => {
@@ -13724,7 +13764,7 @@
                 audioLibSource = null;
             }
             if (audioLibAnimationFrame) {
-                cancelAnimationFrame(audioLibAnimationFrame);
+                clearInterval(audioLibAnimationFrame);
                 audioLibAnimationFrame = null;
             }
             const playhead = document.getElementById('audioLibPlayhead');
