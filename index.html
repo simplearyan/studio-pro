@@ -12474,7 +12474,10 @@
             }
 
             container.innerHTML = html;
-            lucide.createIcons();
+            // Scope the icon pass to this container — updateSidebarPanel already
+            // creates icons document-wide, so re-scanning the whole page here is
+            // pure waste on every selection.
+            lucide.createIcons({ scope: container });
             
             if (State.selectedAudioLibId) {
                 drawAudioLibWaveform();
@@ -12560,7 +12563,7 @@
                     updateSidebarPanel();
                     return;
                 }
-                State.audioLibrary.push({
+                const item = {
                     id: 'lib_' + Math.random().toString(36).substr(2, 9),
                     name: file.name,
                     file: file,
@@ -12570,8 +12573,11 @@
                     inPoint: 0,
                     outPoint: audioBuffer.duration,
                     isPlaying: false,
-                    group: entry.group || ''
-                });
+                    group: entry.group || '',
+                    _lastUsed: Date.now()
+                };
+                State.audioLibrary.push(item);
+                _audioLibDecodedBytes += audioLibBufferBytes(item);
                 if (_audioLibImport) _audioLibImport.done++;
                 updateSidebarPanel();
             }
@@ -12587,6 +12593,8 @@
             }
             await Promise.all(runners);
             _audioLibImport = null;
+            // Bounded RAM: drop the coldest decoded buffers once the cap is passed.
+            audioLibEvictBuffers();
             updateSidebarPanel();
         }
 
@@ -12626,6 +12634,31 @@
         // sfxMissing. On restore, buffers decode lazily on first play/add so the
         // whole library isn't decoded at load time.
         let _audioLibBufferCache = {};
+
+        // ── Decoded-buffer memory budget ──
+        // Every imported file keeps its decoded AudioBuffer in RAM; heavy tracks
+        // (5–10 min) are ~100–200 MB each, so a big import can pin gigabytes and
+        // make selection feel laggy from GC pressure. We track the decoded bytes
+        // and evict the least-recently-used buffers (keeping the selected one) once
+        // a cap is passed; evicted items decode on demand on next play/add.
+        const AUDIO_LIB_MEM_CAP = 384 * 1024 * 1024;
+        let _audioLibDecodedBytes = 0;
+        function audioLibBufferBytes(a) {
+            if (!a || !a.buffer) return 0;
+            return a.buffer.length * (a.buffer.numberOfChannels || 1) * 4;
+        }
+        function audioLibEvictBuffers() {
+            if (_audioLibDecodedBytes <= AUDIO_LIB_MEM_CAP) return;
+            const evictable = State.audioLibrary
+                .filter(a => a.buffer && !a.isPlaying && a.id !== State.selectedAudioLibId)
+                .sort((a, b) => (a._lastUsed || 0) - (b._lastUsed || 0));
+            for (const a of evictable) {
+                if (_audioLibDecodedBytes <= AUDIO_LIB_MEM_CAP) break;
+                _audioLibDecodedBytes -= audioLibBufferBytes(a);
+                a.buffer = null;
+                delete _audioLibBufferCache[a.id];
+            }
+        }
         function libraryItemToJSON(a) {
             const out = {
                 id: a.id, name: a.name, group: a.group || '',
@@ -12671,7 +12704,9 @@
         function ensureAudioLibBuffer(audio) {
             if (!audio) return Promise.resolve(null);
             if (audio.buffer) return Promise.resolve({ buffer: audio.buffer, file: audio.file });
-            if (!audio.data) return Promise.resolve(null);
+            // Nothing to decode from: evicted/restored items have either embedded
+            // base64 data or a live File to re-read.
+            if (!audio.data && !audio.file) return Promise.resolve(null);
             const cached = _audioLibBufferCache[audio.id];
             if (cached && cached.ready) {
                 audio.buffer = cached.buffer;
@@ -12687,15 +12722,24 @@
             const entry = _audioLibBufferCache[audio.id] = { ready: false, promise: null, buffer: null, file: null };
             entry.promise = (async () => {
                 try {
-                    const bytes = bytesFromBase64(audio.data);
                     ensureAudioContext();
-                    const buf = await audioCtx.decodeAudioData(bytes.slice(0));
-                    const file = new File([bytes], audio.name || 'sound.wav', { type: 'audio/wav' });
+                    let buf, file = audio.file;
+                    if (audio.data) {
+                        const bytes = bytesFromBase64(audio.data);
+                        buf = await audioCtx.decodeAudioData(bytes.slice(0));
+                        file = new File([bytes], audio.name || 'sound.wav', { type: 'audio/wav' });
+                    } else {
+                        // Evicted session item — re-decode from the original file.
+                        const ab = await audio.file.arrayBuffer();
+                        buf = await audioCtx.decodeAudioData(ab);
+                    }
                     entry.buffer = buf;
                     entry.file = file;
                     entry.ready = true;
                     audio.buffer = buf;
                     audio.file = audio.file || file;
+                    audio._lastUsed = Date.now();
+                    _audioLibDecodedBytes += audioLibBufferBytes(audio);
                     return { buffer: buf, file: file };
                 } catch (e) {
                     return null;
@@ -12934,9 +12978,13 @@
         // Core delete: remove a set of library sounds, clearing their decode cache.
         function deleteAudioLibSounds(ids) {
             if (!ids || !ids.length) return;
-            stopAudioLibPlayback();
+            stopAudioLibPlayback(true);
+            ids.forEach(i => {
+                const a = State.audioLibrary.find(x => x.id === i);
+                if (a) _audioLibDecodedBytes -= audioLibBufferBytes(a);
+                delete _audioLibBufferCache[i];
+            });
             State.audioLibrary = State.audioLibrary.filter(a => !ids.includes(a.id));
-            ids.forEach(i => delete _audioLibBufferCache[i]);
             if (ids.includes(State.selectedAudioLibId)) State.selectedAudioLibId = null;
             State.audioLibMultiIds = State.audioLibMultiIds.filter(i => !ids.includes(i));
             updateSidebarPanel();
@@ -13052,12 +13100,13 @@
         }
 
         function selectAudioLibItem(id) {
-            stopAudioLibPlayback();
+            stopAudioLibPlayback(true); // skip the internal re-render — we render once below
             State.selectedAudioLibId = id;
+            const audio = State.audioLibrary.find(a => a.id === id);
+            if (audio) audio._lastUsed = Date.now(); // LRU hint for buffer eviction
             updateSidebarPanel();
             
             if (State.audioLibAutoplay) {
-                const audio = State.audioLibrary.find(a => a.id === id);
                 if (audio) playAudioLibItem(audio);
             }
         }
@@ -13071,9 +13120,13 @@
             
             const ctx = canvas.getContext('2d');
             const dpr = window.devicePixelRatio || 1;
-            canvas.width = canvas.clientWidth * dpr;
-            canvas.height = canvas.clientHeight * dpr;
-            ctx.scale(dpr, dpr);
+            // Only reallocate the backing store when its size actually changed —
+            // reallocating on every selection forces a full canvas wipe + GC churn.
+            const cw = Math.max(1, Math.round(canvas.clientWidth * dpr));
+            const ch = Math.max(1, Math.round(canvas.clientHeight * dpr));
+            if (canvas.width !== cw) canvas.width = cw;
+            if (canvas.height !== ch) canvas.height = ch;
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
             
             const w = canvas.clientWidth;
             const h = canvas.clientHeight;
@@ -13205,7 +13258,7 @@
         }
 
         async function playAudioLibItem(audio) {
-            // Restored items carry only embedded base64 — decode lazily before playback.
+            // Restored/evicted items carry no decoded buffer — decode lazily before playback.
             if (!audio.buffer) {
                 const dec = await ensureAudioLibBuffer(audio);
                 if (!dec) return;
@@ -13213,7 +13266,8 @@
             if (!audioCtx) audioCtx = new AudioContext();
             if (audioCtx.state === 'suspended') audioCtx.resume();
             
-            stopAudioLibPlayback();
+            stopAudioLibPlayback(true); // skip the internal re-render — we render once below
+            audio._lastUsed = Date.now(); // LRU hint for buffer eviction
             
             audioLibSource = audioCtx.createBufferSource();
             audioLibSource.buffer = audio.buffer;
@@ -13254,11 +13308,12 @@
             };
         }
 
-        function stopAudioLibPlayback() {
+        function stopAudioLibPlayback(noRender) {
             const audio = State.audioLibrary.find(a => a.id === State.selectedAudioLibId);
             if (audio) {
                 audio.isPlaying = false;
-                updateSidebarPanel();
+                // The hot select path already re-renders itself — skip the extra one.
+                if (!noRender) updateSidebarPanel();
             }
             
             if (audioLibSource) {
@@ -13271,19 +13326,23 @@
             }
             const playhead = document.getElementById('audioLibPlayhead');
             if (playhead) playhead.classList.add('hidden');
+            // Free decoded buffers that haven't been touched in a while — keeps
+            // selection snappy after importing many heavy files (bounded RAM).
+            audioLibEvictBuffers();
         }
 
         async function addAudioLibToTimeline() {
             const audio = State.audioLibrary.find(a => a.id === State.selectedAudioLibId);
             if (!audio) return;
             
-            // Restored items carry only embedded base64 — decode lazily before use.
+            // Restored/evicted items carry no decoded buffer — decode lazily before use.
             if (!audio.buffer || !audio.file) {
                 const dec = await ensureAudioLibBuffer(audio);
                 if (!dec) return;
             }
+            audio._lastUsed = Date.now(); // LRU hint for buffer eviction
             
-            stopAudioLibPlayback();
+            stopAudioLibPlayback(true);
             
             const trimmedDuration = audio.outPoint - audio.inPoint;
             
