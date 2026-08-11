@@ -12321,6 +12321,10 @@
             const allGroups = ['SFX', 'Music', ...customGroups];
             const esc = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
             const visibleAudio = State.audioLibrary.filter(a => !State.audioLibGroup || a.group === State.audioLibGroup);
+            // Remembered audio folder (from the FS Access handle) — surfaced in the
+            // Import/Folder tooltips so users see where the picker will open.
+            const lastFolderName = _audioReimportDirHandle ? String(_audioReimportDirHandle.name || '') : '';
+            const lastFolderHint = lastFolderName ? ` — opens ${esc(lastFolderName.length > 26 ? lastFolderName.slice(0, 26) + '…' : lastFolderName)}` : '';
 
             let html = `
                 <div class="flex items-center justify-between shrink-0">
@@ -12332,10 +12336,10 @@
                         <button onclick="addMockAudioClip()" class="bg-surface-100 dark:bg-surface-800 hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-600 dark:text-surface-300 px-3 py-1.5 rounded-md text-xs font-bold transition-colors flex items-center gap-2" title="Add an empty audio placeholder to the timeline — load a file into it from its Properties tab">
                             <i data-lucide="music" class="w-3 h-3"></i> Mock
                         </button>
-                        <button onclick="pickAudioLibraryImportFolder()" class="bg-surface-100 dark:bg-surface-800 hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-600 dark:text-surface-300 px-3 py-1.5 rounded-md text-xs font-bold transition-colors flex items-center gap-2${_audioLibImport ? ' opacity-40 pointer-events-none' : ''}" title="${_audioLibImport ? 'Import in progress…' : 'Import a whole folder — sounds are grouped by the folder name (e.g. a Music folder lands in Music)'}"${_audioLibImport ? ' disabled' : ''}>
+                        <button onclick="pickAudioLibraryImportFolder()" class="bg-surface-100 dark:bg-surface-800 hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-600 dark:text-surface-300 px-3 py-1.5 rounded-md text-xs font-bold transition-colors flex items-center gap-2${_audioLibImport ? ' opacity-40 pointer-events-none' : ''}" title="${_audioLibImport ? 'Import in progress…' : `Import a whole folder${lastFolderHint} — sounds are grouped by the folder name (e.g. a Music folder lands in Music)`}"${_audioLibImport ? ' disabled' : ''}>
                             <i data-lucide="folder-plus" class="w-3 h-3"></i> Folder
                         </button>
-                        <button onclick="pickAudioLibraryImportFiles()" class="bg-brand-500 hover:bg-brand-600 text-white px-3 py-1.5 rounded-md text-xs font-bold transition-colors flex items-center gap-2${_audioLibImport ? ' opacity-40 pointer-events-none' : ''}" title="${_audioLibImport ? 'Import in progress…' : 'Import audio files'}"${_audioLibImport ? ' disabled' : ''}>
+                        <button onclick="pickAudioLibraryImportFiles()" class="bg-brand-500 hover:bg-brand-600 text-white px-3 py-1.5 rounded-md text-xs font-bold transition-colors flex items-center gap-2${_audioLibImport ? ' opacity-40 pointer-events-none' : ''}" title="${_audioLibImport ? 'Import in progress…' : `Import audio files${lastFolderHint}`}"${_audioLibImport ? ' disabled' : ''}>
                             <i data-lucide="upload" class="w-3 h-3"></i> Import
                         </button>
                     </div>
