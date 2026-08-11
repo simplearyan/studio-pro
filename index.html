@@ -12333,9 +12333,9 @@
 
             html += `
                 <div class="flex items-center gap-1.5 flex-wrap shrink-0">
-                    <button onclick="setAudioLibGroup('')" class="px-2.5 py-1 rounded-full text-[10px] font-bold transition-colors ${!State.audioLibGroup ? 'bg-surface-900 dark:bg-white text-white dark:text-surface-900' : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-700'}" title="All sounds">All</button>
+                    <button onclick="setAudioLibGroup(this.dataset.g)" data-g="" ondragover="audioLibDragOver(event, this)" ondragleave="audioLibDragLeave(this)" ondrop="audioLibDropOnGroup(event, this.dataset.g)" class="px-2.5 py-1 rounded-full text-[10px] font-bold transition-colors ${!State.audioLibGroup ? 'bg-surface-900 dark:bg-white text-white dark:text-surface-900' : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-700'}" title="All sounds — drop a sound here to clear its group">All</button>
                     ${allGroups.map(g => `
-                        <button onclick="setAudioLibGroup(this.dataset.g)" data-g="${esc(g)}" class="px-2.5 py-1 rounded-full text-[10px] font-bold transition-colors ${State.audioLibGroup === g ? 'bg-surface-900 dark:bg-white text-white dark:text-surface-900' : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-700'}">${esc(g)}</button>
+                        <button onclick="setAudioLibGroup(this.dataset.g)" data-g="${esc(g)}" ondragover="audioLibDragOver(event, this)" ondragleave="audioLibDragLeave(this)" ondrop="audioLibDropOnGroup(event, this.dataset.g)" class="px-2.5 py-1 rounded-full text-[10px] font-bold transition-colors ${State.audioLibGroup === g ? 'bg-surface-900 dark:bg-white text-white dark:text-surface-900' : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-700'}" title="Drop a sound here to move it to ${esc(g)}">${esc(g)}</button>
                     `).join('')}
                     <button onclick="addAudioLibGroup()" class="w-6 h-6 rounded-full bg-surface-100 dark:bg-surface-800 text-surface-500 hover:text-brand-500 flex items-center justify-center transition-colors" title="New group">
                         <i data-lucide="plus" class="w-3 h-3"></i>
@@ -12363,7 +12363,7 @@
                     const isSelected = State.selectedAudioLibId === audio.id;
                     const durationStr = formatTime(audio.duration).split('.')[0];
                     html += `
-                        <div onclick="selectAudioLibItem('${audio.id}')" class="flex items-center justify-between p-2 rounded cursor-pointer transition-colors ${isSelected ? 'bg-brand-50 dark:bg-brand-500/10 border border-brand-200 dark:border-brand-500/30' : 'bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 hover:border-brand-300'}">
+                        <div draggable="true" ondragstart="audioLibDragStart(event, '${audio.id}')" ondragend="audioLibDragEnd()" onclick="selectAudioLibItem('${audio.id}')" class="flex items-center justify-between p-2 rounded cursor-pointer transition-colors ${isSelected ? 'bg-brand-50 dark:bg-brand-500/10 border border-brand-200 dark:border-brand-500/30' : 'bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 hover:border-brand-300'}" title="Drag onto a group chip to move it">
                             <div class="flex items-center gap-2 truncate">
                                 <i data-lucide="${isSelected && audio.isPlaying ? 'pause-circle' : 'music'}" class="w-4 h-4 ${isSelected ? 'text-brand-500' : 'text-surface-400'} shrink-0"></i>
                                 <span class="text-sm font-medium truncate flex-1 ${isSelected ? 'text-brand-600 dark:text-brand-400' : 'text-surface-700 dark:text-surface-300'}">${audio.name}</span>
@@ -12378,6 +12378,9 @@
             if (State.selectedAudioLibId) {
                 const audio = State.audioLibrary.find(a => a.id === State.selectedAudioLibId);
                 if (audio) {
+                    // sfxMissing entries (too large to embed) have nothing to play/add
+                    // until the user re-imports the file — reflect that in the UI.
+                    const usable = !(audio.sfxMissing && !audio.buffer);
                     html += `
                         <div class="mt-auto pt-4 border-t border-surface-200 dark:border-surface-700 flex flex-col gap-3 shrink-0">
                             <div class="flex items-center justify-between">
@@ -12388,10 +12391,10 @@
                                     </button>
                                 </div>
                                 <div class="flex items-center gap-2 shrink-0">
-                                    <button onclick="toggleAudioLibPlayback()" class="p-1.5 rounded-full ${audio.isPlaying ? 'bg-red-50 text-red-500 hover:bg-red-100' : 'bg-brand-50 dark:bg-surface-800 text-brand-600 dark:text-brand-400 hover:bg-brand-100'} transition-colors">
+                                    <button onclick="toggleAudioLibPlayback()" class="p-1.5 rounded-full ${audio.isPlaying ? 'bg-red-50 text-red-500 hover:bg-red-100' : 'bg-brand-50 dark:bg-surface-800 text-brand-600 dark:text-brand-400 hover:bg-brand-100'} transition-colors${usable ? '' : ' opacity-40 pointer-events-none'}">
                                         <i data-lucide="${audio.isPlaying ? 'square' : 'play'}" class="w-4 h-4 fill-current"></i>
                                     </button>
-                                    <button onclick="addAudioLibToTimeline()" class="bg-surface-900 dark:bg-white text-white dark:text-surface-900 px-3 py-1.5 rounded text-xs font-bold hover:opacity-90 transition-opacity flex items-center gap-1">
+                                    <button onclick="addAudioLibToTimeline()" class="bg-surface-900 dark:bg-white text-white dark:text-surface-900 px-3 py-1.5 rounded text-xs font-bold hover:opacity-90 transition-opacity flex items-center gap-1${usable ? '' : ' opacity-40 pointer-events-none'}">
                                         <i data-lucide="plus" class="w-3 h-3"></i> Add
                                     </button>
                                 </div>
@@ -12403,6 +12406,7 @@
                                     ${allGroups.map(g => `<option value="${esc(g)}" ${audio.group === g ? 'selected' : ''}>${esc(g)}</option>`).join('')}
                                 </select>
                             </div>
+                            ${!usable ? `<p class="text-[10px] text-amber-600 dark:text-amber-400 leading-snug">This file is too large to embed in the project — re-import it from your computer to play or add it.</p>` : ''}
                             
                             <div class="relative w-full h-16 bg-surface-100 dark:bg-surface-800 rounded select-none" id="audioLibWaveformContainer" onmousedown="startAudioLibTrim(event, 'new')">
                                 <canvas id="audioLibWaveform" class="absolute inset-0 w-full h-full rounded"></canvas>
@@ -12521,6 +12525,91 @@
             }
         }
 
+        // ── Library persistence (project JSON round-trip) ──
+        // The library holds live File/AudioBuffer objects, so it can't be serialized
+        // as-is. On save, small sounds (<= SFX_EMBED_MAX WAV bytes) are embedded as
+        // base64 just like the markdown media assets; larger ones are marked
+        // sfxMissing. On restore, buffers decode lazily on first play/add so the
+        // whole library isn't decoded at load time.
+        let _audioLibBufferCache = {};
+        function libraryItemToJSON(a) {
+            const out = {
+                id: a.id, name: a.name, group: a.group || '',
+                duration: a.duration, inPoint: a.inPoint || 0, outPoint: a.outPoint || a.duration || 0,
+                peaks: Array.isArray(a.peaks) ? a.peaks : []
+            };
+            if (a.buffer) {
+                try {
+                    const bytes = audioBufferToWavBytes(a.buffer);
+                    if (bytes.byteLength <= SFX_EMBED_MAX) out.data = base64FromBytes(bytes);
+                    else out.sfxMissing = true;
+                } catch (e) { out.sfxMissing = true; }
+            } else if (a.data) {
+                // Already-embedded (restored) item — round-trips as-is without re-encoding.
+                out.data = a.data;
+                if (a.sfxMissing) out.sfxMissing = true;
+            } else if (a.sfxMissing) {
+                out.sfxMissing = true;
+            }
+            return out;
+        }
+        function restoreAudioLibrary(list) {
+            if (!Array.isArray(list)) return [];
+            return list.map(a => ({
+                id: a.id || 'lib_' + Math.random().toString(36).substr(2, 9),
+                name: a.name || 'Sound',
+                group: a.group || '',
+                duration: a.duration || 0,
+                inPoint: a.inPoint || 0,
+                outPoint: a.outPoint || a.duration || 0,
+                peaks: Array.isArray(a.peaks) && a.peaks.length ? a.peaks : Array(200).fill(0.3),
+                data: a.data || null,
+                sfxMissing: !!a.sfxMissing,
+                file: null,
+                buffer: null,
+                isPlaying: false
+            }));
+        }
+        // Lazily decode an embedded library item's buffer (and rebuild its File) on
+        // first play/add. Returns { buffer, file } or null when there's nothing to
+        // decode (sfxMissing items). A single in-flight promise is shared by
+        // concurrent callers, and the item itself is hydrated on success.
+        function ensureAudioLibBuffer(audio) {
+            if (!audio) return Promise.resolve(null);
+            if (audio.buffer) return Promise.resolve({ buffer: audio.buffer, file: audio.file });
+            if (!audio.data) return Promise.resolve(null);
+            const cached = _audioLibBufferCache[audio.id];
+            if (cached && cached.ready) {
+                audio.buffer = cached.buffer;
+                audio.file = audio.file || cached.file;
+                return Promise.resolve({ buffer: cached.buffer, file: cached.file });
+            }
+            if (cached && cached.promise) {
+                return cached.promise.then(dec => {
+                    if (dec) { audio.buffer = dec.buffer; audio.file = audio.file || dec.file; }
+                    return dec;
+                });
+            }
+            const entry = _audioLibBufferCache[audio.id] = { ready: false, promise: null, buffer: null, file: null };
+            entry.promise = (async () => {
+                try {
+                    const bytes = bytesFromBase64(audio.data);
+                    ensureAudioContext();
+                    const buf = await audioCtx.decodeAudioData(bytes.slice(0));
+                    const file = new File([bytes], audio.name || 'sound.wav', { type: 'audio/wav' });
+                    entry.buffer = buf;
+                    entry.file = file;
+                    entry.ready = true;
+                    audio.buffer = buf;
+                    audio.file = audio.file || file;
+                    return { buffer: buf, file: file };
+                } catch (e) {
+                    return null;
+                }
+            })();
+            return entry.promise;
+        }
+
         window.startAudioLibRename = function() {
             const audio = State.audioLibrary.find(a => a.id === State.selectedAudioLibId);
             const el = document.getElementById('audioLibNameText');
@@ -12578,6 +12667,49 @@
                 stopAudioLibPlayback();
             }
             updateSidebarPanel();
+        };
+
+        // ── Drag a library sound onto a group chip to move it ──
+        let _audioLibDragId = null;
+        window.audioLibDragStart = function(e, id) {
+            _audioLibDragId = id;
+            e.dataTransfer.effectAllowed = 'move';
+            try { e.dataTransfer.setData('text/plain', id); } catch (err) {}
+        };
+        window.audioLibDragOver = function(e, chip) {
+            if (!_audioLibDragId) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            chip.classList.add('ring-1', 'ring-brand-500');
+        };
+        window.audioLibDragLeave = function(chip) {
+            chip.classList.remove('ring-1', 'ring-brand-500');
+        };
+        window.audioLibDropOnGroup = function(e, group) {
+            e.preventDefault();
+            e.stopPropagation();
+            audioLibDragLeave(e.currentTarget);
+            const id = _audioLibDragId;
+            _audioLibDragId = null;
+            if (!id) return;
+            const audio = State.audioLibrary.find(a => a.id === id);
+            if (!audio) return;
+            audio.group = group || '';
+            // Same visibility rules as the detail dropdown, but for the dragged item
+            // (which may not be the selected one).
+            const leavesFilter = State.audioLibGroup && audio.group !== State.audioLibGroup;
+            if (State.selectedAudioLibId === audio.id && leavesFilter) {
+                State.selectedAudioLibId = null;
+                stopAudioLibPlayback();
+            } else if (!leavesFilter) {
+                // It stays visible — select it so the user sees where it landed.
+                stopAudioLibPlayback();
+                State.selectedAudioLibId = audio.id;
+            }
+            updateSidebarPanel();
+        };
+        window.audioLibDragEnd = function() {
+            _audioLibDragId = null;
         };
 
         function toggleAudioLibAutoplay() {
@@ -12738,7 +12870,12 @@
             }
         }
 
-        function playAudioLibItem(audio) {
+        async function playAudioLibItem(audio) {
+            // Restored items carry only embedded base64 — decode lazily before playback.
+            if (!audio.buffer) {
+                const dec = await ensureAudioLibBuffer(audio);
+                if (!dec) return;
+            }
             if (!audioCtx) audioCtx = new AudioContext();
             if (audioCtx.state === 'suspended') audioCtx.resume();
             
@@ -12805,6 +12942,12 @@
         async function addAudioLibToTimeline() {
             const audio = State.audioLibrary.find(a => a.id === State.selectedAudioLibId);
             if (!audio) return;
+            
+            // Restored items carry only embedded base64 — decode lazily before use.
+            if (!audio.buffer || !audio.file) {
+                const dec = await ensureAudioLibBuffer(audio);
+                if (!dec) return;
+            }
             
             stopAudioLibPlayback();
             
@@ -23619,7 +23762,11 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 markdownConfig: State.markdownConfig,
                 markdownText: State.markdownText,
                 subtitleGen: State.subtitleGen,
-                subtitleFix: State.subtitleFix
+                subtitleFix: State.subtitleFix,
+                audioLibGroup: State.audioLibGroup || '',
+                // Small sounds are embedded as base64 WAV (<= SFX_EMBED_MAX) so the
+                // library survives the round-trip; large files restore as sfxMissing.
+                audioLibrary: State.audioLibrary.map(libraryItemToJSON)
             };
         }
 
@@ -23732,6 +23879,16 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             if (data.markdownText !== undefined) State.markdownText = data.markdownText;
             if (data.subtitleGen) State.subtitleGen = Object.assign({}, State.subtitleGen, data.subtitleGen);
             if (data.subtitleFix) State.subtitleFix = Object.assign({}, State.subtitleFix, data.subtitleFix);
+
+            // Restore the audio library from the project. Embedded sounds decode
+            // lazily on first play/add; sfxMissing entries keep their name/group/trim
+            // so the user can re-import them. The previous session's library and
+            // decode cache are replaced, not merged.
+            State.audioLibrary = restoreAudioLibrary(data.audioLibrary);
+            State.selectedAudioLibId = null;
+            State.audioLibGroup = data.audioLibGroup || '';
+            _audioLibBufferCache = {};
+            stopAudioLibPlayback();
 
             State.selectedClipId = null;
             State.multiSelectedClipIds = [];
