@@ -12482,6 +12482,9 @@
                                     <button onclick="startAudioLibRename()" class="p-1 rounded text-surface-400 hover:text-brand-500 hover:bg-surface-100 dark:hover:bg-surface-700 shrink-0 transition-colors" title="Rename">
                                         <i data-lucide="pencil" class="w-3 h-3"></i>
                                     </button>
+                                    <button onclick="startAudioLibFileReplace('${audio.id}')" class="p-1 rounded text-surface-400 hover:text-brand-500 hover:bg-surface-100 dark:hover:bg-surface-700 shrink-0 transition-colors" title="Replace file — swap this sound's audio without re-importing as new">
+                                        <i data-lucide="refresh-cw" class="w-3 h-3"></i>
+                                    </button>
                                 </div>
                                 <div class="flex items-center gap-2 shrink-0">
                                     <button onclick="toggleAudioLibPlayback()" class="p-1.5 rounded-full ${audio.isPlaying ? 'bg-red-50 text-red-500 hover:bg-red-100' : 'bg-brand-50 dark:bg-surface-800 text-brand-600 dark:text-brand-400 hover:bg-brand-100'} transition-colors${usable ? '' : ' opacity-40 pointer-events-none'}">
@@ -12950,6 +12953,10 @@
                 <button onclick="hideAudioLibContextMenu(); startAudioLibRowRename('${id}');" class="${it}">
                     <i data-lucide="pencil" class="${itIcon}"></i> Rename
                 </button>
+                ${multiCount === 1 ? `
+                <button onclick="hideAudioLibContextMenu(); startAudioLibFileReplace('${id}');" class="${it}">
+                    <i data-lucide="refresh-cw" class="${itIcon}"></i> Replace file…
+                </button>` : ''}
                 <div class="border-t border-surface-200 dark:border-surface-700 my-1"></div>
                 <div class="px-2.5 py-1 text-[10px] uppercase tracking-wide text-surface-400 dark:text-surface-500 flex items-center gap-1.5">
                     <i data-lucide="folder" class="w-3 h-3"></i> Move to group${multiCount > 1 ? ` (${multiCount})` : ''}
@@ -13212,6 +13219,51 @@
             const files = await collectReimportFiles(handle);
             if (!files.length) return;
             await reimportAudioLibrary(files);
+        };
+
+        // ── Per-item Replace file ──
+        // Swap a library sound's file in place (like the script-sounds Replace):
+        // keeps id, group and display name; updates sourceName so future
+        // re-imports match the new file; clamps the trim window to the new
+        // duration; byte accounting + cache + eviction stay consistent. Works on
+        // missing items too (acts as a direct per-item re-import).
+        window.startAudioLibFileReplace = function(id) {
+            const inp = document.createElement('input');
+            inp.type = 'file';
+            inp.accept = 'audio/*,video/*';
+            inp.className = 'hidden';
+            inp.onchange = () => { replaceAudioLibFile(id, inp.files); inp.remove(); };
+            document.body.appendChild(inp);
+            inp.click();
+        };
+        window.replaceAudioLibFile = async function(id, files) {
+            const audio = State.audioLibrary.find(a => a.id === id);
+            const file = files && files[0];
+            if (!audio || !file) return;
+            stopAudioLibPlayback(true);
+            try {
+                if (!audioCtx) audioCtx = new AudioContext();
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                const arrayBuffer = await file.arrayBuffer();
+                const buf = await audioCtx.decodeAudioData(arrayBuffer);
+                _audioLibDecodedBytes -= audioLibBufferBytes(audio);
+                audio.buffer = buf;
+                audio.file = file;
+                audio.sourceName = file.name;
+                audio.sfxMissing = false;
+                delete audio.data; // a stale embedded copy must not survive an eviction
+                audio.duration = buf.duration;
+                audio.peaks = computePeaks(buf.getChannelData(0), 200);
+                if (audio.outPoint > buf.duration) audio.outPoint = buf.duration;
+                if (audio.inPoint > audio.outPoint) audio.inPoint = 0;
+                audio._lastUsed = Date.now();
+                _audioLibDecodedBytes += audioLibBufferBytes(audio);
+                _audioLibBufferCache[audio.id] = { ready: true, buffer: buf, file: file };
+                audioLibEvictBuffers();
+                updateSidebarPanel();
+            } catch (err) {
+                console.warn('Replace file failed:', err);
+            }
         };
 
         // ── Regular Import/Folder buttons use the same remembered audio folder ──
