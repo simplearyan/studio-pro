@@ -12350,6 +12350,33 @@
                 `;
             }
 
+            // Missing-sounds banner (large files that couldn't be embedded into the
+            // project) with the Re-import buttons, plus a transient result line.
+            const missingCount = State.audioLibrary.filter(a => a.sfxMissing).length;
+            if (missingCount > 0) {
+                html += `
+                    <div class="flex flex-col gap-2 shrink-0 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2">
+                        <div class="flex items-center gap-2 text-[11px] font-bold text-amber-600 dark:text-amber-400">
+                            <i data-lucide="alert-triangle" class="w-3.5 h-3.5 shrink-0"></i>
+                            <span>${missingCount} sound${missingCount === 1 ? '' : 's'} need re-import — too large to embed in the project</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <label class="cursor-pointer flex items-center gap-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-700 dark:text-amber-300 px-2.5 py-1 rounded-md text-[10px] font-bold transition-colors">
+                                <i data-lucide="upload" class="w-3 h-3"></i> Select Files
+                                <input type="file" accept="audio/*,video/*" multiple class="hidden" onchange="reimportAudioLibraryFiles(this)">
+                            </label>
+                            <label class="cursor-pointer flex items-center gap-1.5 border border-amber-500/40 hover:border-amber-400 text-amber-700 dark:text-amber-300 px-2.5 py-1 rounded-md text-[10px] font-bold transition-colors">
+                                <i data-lucide="folder-open" class="w-3 h-3"></i> Select Folder
+                                <input type="file" accept="audio/*,video/*" multiple webkitdirectory class="hidden" onchange="reimportAudioLibraryFolder(this)">
+                            </label>
+                            <span class="ml-auto text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">${esc(_audioLibReimportStatus || '')}</span>
+                        </div>
+                    </div>
+                `;
+            } else if (_audioLibReimportStatus) {
+                html += `<div class="shrink-0 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 px-1">${esc(_audioLibReimportStatus)}</div>`;
+            }
+
             html += `
                 <div class="flex items-center gap-1.5 flex-wrap shrink-0">
                     <button onclick="setAudioLibGroup(this.dataset.g)" data-g="" ondragover="audioLibDragOver(event, this)" ondragleave="audioLibDragLeave(this)" ondrop="audioLibDropOnGroup(event, this.dataset.g)" class="px-2.5 py-1 rounded-full text-[10px] font-bold transition-colors ${!State.audioLibGroup ? 'bg-surface-900 dark:bg-white text-white dark:text-surface-900' : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-700'}" title="All sounds — drop a sound here to clear its group">All</button>
@@ -12566,6 +12593,7 @@
                 const item = {
                     id: 'lib_' + Math.random().toString(36).substr(2, 9),
                     name: file.name,
+                    sourceName: file.name, // original filename — survives renames, used for re-import matching
                     file: file,
                     buffer: audioBuffer,
                     duration: audioBuffer.duration,
@@ -12661,7 +12689,7 @@
         }
         function libraryItemToJSON(a) {
             const out = {
-                id: a.id, name: a.name, group: a.group || '',
+                id: a.id, name: a.name, sourceName: a.sourceName || a.name, group: a.group || '',
                 duration: a.duration, inPoint: a.inPoint || 0, outPoint: a.outPoint || a.duration || 0,
                 peaks: Array.isArray(a.peaks) ? a.peaks : []
             };
@@ -12685,6 +12713,7 @@
             return list.map(a => ({
                 id: a.id || 'lib_' + Math.random().toString(36).substr(2, 9),
                 name: a.name || 'Sound',
+                sourceName: a.sourceName || a.name || 'Sound',
                 group: a.group || '',
                 duration: a.duration || 0,
                 inPoint: a.inPoint || 0,
@@ -12915,49 +12944,72 @@
             attachAudioLibMenuClose();
         };
 
-        // Right-click a group chip: delete the whole folder. Sounds inside become
-        // ungrouped (never deleted) — the folder is just a label.
-        window.showAudioLibGroupMenu = function(e, g) {
-            if (!g) return;
-            const menu = audioLibMenuEl();
-            menu.style.left = `${e.clientX}px`;
-            menu.style.top = `${e.clientY}px`;
+        // Right-click a group chip: delete the whole folder. Deleting a folder
+        // REMOVES the sounds inside it (not just ungrouping them) — with a
+        // two-click confirm so an accidental right-click can't wipe files.
+        let _audioLibGroupConfirm = null; // { g, at }
+        function renderAudioLibGroupMenu(menu, g, x, y) {
+            menu.style.left = `${x}px`;
+            menu.style.top = `${y}px`;
             menu.style.display = 'block';
 
             const esc = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
             const it = "w-full text-left px-2.5 py-1.5 rounded-md hover:bg-surface-100 dark:hover:bg-surface-700/70 flex items-center gap-2.5 transition-colors";
             const count = State.audioLibrary.filter(a => a.group === g).length;
+            const confirming = _audioLibGroupConfirm && _audioLibGroupConfirm.g === g && Date.now() - _audioLibGroupConfirm.at < 2500;
             menu.innerHTML = `
                 <div class="px-2.5 py-1.5 text-[11px] font-bold text-surface-800 dark:text-surface-200 truncate">Folder: ${esc(g)}</div>
-                <div class="px-2.5 pb-1 text-[9px] text-surface-400 dark:text-surface-500">${count} sound${count === 1 ? '' : 's'} inside — they'll become ungrouped.</div>
+                <div class="px-2.5 pb-1 text-[9px] text-surface-400 dark:text-surface-500">${count} sound${count === 1 ? '' : 's'} inside — they'll be deleted from the library. Timeline clips are not affected.</div>
                 <div class="border-t border-surface-200 dark:border-surface-700 my-1"></div>
-                <button onclick="deleteAudioLibGroup('${esc(g)}'); hideAudioLibContextMenu();" class="${it} text-red-500 dark:text-red-400">
-                    <i data-lucide="trash-2" class="w-3.5 h-3.5 flex-shrink-0"></i> Delete Folder
-                </button>
+                ${confirming ? `
+                    <button onclick="audioLibGroupDeleteClick('${esc(g)}')" class="${it} bg-red-500/10 text-red-500 dark:text-red-400">
+                        <i data-lucide="alert-triangle" class="w-3.5 h-3.5 flex-shrink-0"></i> Click again to confirm — delete ${count} sound${count === 1 ? '' : 's'}
+                    </button>
+                ` : `
+                    <button onclick="audioLibGroupDeleteClick('${esc(g)}')" class="${it} text-red-500 dark:text-red-400">
+                        <i data-lucide="trash-2" class="w-3.5 h-3.5 flex-shrink-0"></i> Delete Folder
+                    </button>
+                `}
             `;
             lucide.createIcons({ scope: menu });
             clampAudioLibMenu(menu);
             attachAudioLibMenuClose();
+        }
+        window.showAudioLibGroupMenu = function(e, g) {
+            if (!g) return;
+            _audioLibGroupConfirm = null; // a fresh menu starts unconfirmed
+            renderAudioLibGroupMenu(audioLibMenuEl(), g, e.clientX, e.clientY);
+        };
+        window.audioLibGroupDeleteClick = function(g) {
+            if (_audioLibGroupConfirm && _audioLibGroupConfirm.g === g && Date.now() - _audioLibGroupConfirm.at < 2500) {
+                _audioLibGroupConfirm = null;
+                hideAudioLibContextMenu();
+                deleteAudioLibGroup(g);
+            } else {
+                _audioLibGroupConfirm = { g, at: Date.now() };
+                const menu = audioLibMenuEl();
+                renderAudioLibGroupMenu(menu, g, parseInt(menu.style.left) || 0, parseInt(menu.style.top) || 0);
+            }
         };
 
         window.hideAudioLibContextMenu = function() {
+            _audioLibGroupConfirm = null;
             const menu = document.getElementById('audioLibContextMenu');
             if (menu) menu.style.display = 'none';
         };
 
-        // Delete a group/folder: ungroup its sounds (they stay in the library),
-        // and clear the active filter if it pointed at the deleted folder.
+        // Delete a group/folder: REMOVES all of its sounds (byte accounting,
+        // cache and selection handled by the shared delete core), then clears
+        // the active filter if it pointed at the deleted folder.
         window.deleteAudioLibGroup = function(g) {
             if (!g) return;
-            State.audioLibrary.forEach(a => { if (a.group === g) a.group = ''; });
+            const ids = State.audioLibrary.filter(a => a.group === g).map(a => a.id);
             if (State.audioLibGroup === g) {
                 State.audioLibGroup = '';
                 State.audioLibMultiIds = [];
                 State.audioLibLastClickIdx = -1;
-                State.selectedAudioLibId = null;
-                stopAudioLibPlayback();
             }
-            updateSidebarPanel();
+            deleteAudioLibSounds(ids);
         };
 
         // Move one sound (or the whole multi-selection if the clicked row is part
@@ -12989,6 +13041,88 @@
             State.audioLibMultiIds = State.audioLibMultiIds.filter(i => !ids.includes(i));
             updateSidebarPanel();
         }
+
+        // ── Re-import missing library sounds ──
+        // Large sounds (> SFX_EMBED_MAX) save as sfxMissing — after reopening a
+        // project they can't play/add until re-imported. Picked files are matched
+        // to missing items by ORIGINAL filename (sourceName survives renames) and
+        // hydrate the existing item in place: id, group and trim window are kept.
+        let _audioLibReimportStatus = null;
+        let _audioLibReimportStatusTimer = null;
+        const normAudioLibName = (s) => (s || '').toLowerCase().replace(/\.[a-z0-9]+$/, '').trim();
+        const countAudioLibMissing = () => State.audioLibrary.filter(a => a.sfxMissing).length;
+
+        async function reimportAudioLibrary(files) {
+            const audioFiles = [...(files || [])].filter(isImportableAudioFile);
+            const missing = State.audioLibrary.filter(a => a.sfxMissing);
+            if (!missing.length || !audioFiles.length) return;
+            if (!audioCtx) audioCtx = new AudioContext();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            const byName = new Map();
+            missing.forEach(m => byName.set(normAudioLibName(m.sourceName || m.name), m));
+
+            _audioLibImport = { total: audioFiles.length, done: 0, failed: 0 };
+            updateSidebarPanel();
+
+            let matched = 0;
+            const unmatched = [];
+            const CONCURRENCY = 3;
+            let next = 0;
+            async function processOne(file) {
+                const item = byName.get(normAudioLibName(file.name));
+                if (!item) { unmatched.push(file.name); return; }
+                try {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const buf = await audioCtx.decodeAudioData(arrayBuffer);
+                    item.buffer = buf;
+                    item.file = file;
+                    item.sfxMissing = false;
+                    item.duration = buf.duration;
+                    item.peaks = computePeaks(buf.getChannelData(0), 200);
+                    if (item.outPoint > buf.duration) item.outPoint = buf.duration;
+                    if (item.inPoint > item.outPoint) item.inPoint = 0;
+                    item._lastUsed = Date.now();
+                    _audioLibDecodedBytes += audioLibBufferBytes(item);
+                    _audioLibBufferCache[item.id] = { ready: true, buffer: buf, file: file };
+                    matched++;
+                    if (_audioLibImport) _audioLibImport.done++;
+                } catch (e) {
+                    if (_audioLibImport) _audioLibImport.failed++;
+                }
+                updateSidebarPanel();
+            }
+            const runners = [];
+            const n = Math.min(CONCURRENCY, audioFiles.length);
+            for (let w = 0; w < n; w++) {
+                runners.push((async () => {
+                    while (next < audioFiles.length) {
+                        const i = next++;
+                        await processOne(audioFiles[i]);
+                    }
+                })());
+            }
+            await Promise.all(runners);
+            _audioLibImport = null;
+            audioLibEvictBuffers();
+
+            const skipped = unmatched.length ? ` — skipped ${unmatched.length} unmatched (${unmatched.slice(0, 3).join(', ')}${unmatched.length > 3 ? '…' : ''})` : '';
+            _audioLibReimportStatus = `✓ Re-imported ${matched} of ${missing.length} missing sound${missing.length === 1 ? '' : 's'}${skipped}`;
+            clearTimeout(_audioLibReimportStatusTimer);
+            _audioLibReimportStatusTimer = setTimeout(() => { _audioLibReimportStatus = null; updateSidebarPanel(); }, 7000);
+            updateSidebarPanel();
+        }
+
+        window.reimportAudioLibraryFiles = function(input) {
+            const files = [...(input.files || [])];
+            input.value = '';
+            reimportAudioLibrary(files);
+        };
+        window.reimportAudioLibraryFolder = function(input) {
+            const files = [...(input.files || [])];
+            input.value = '';
+            reimportAudioLibrary(files);
+        };
 
         // Delete the clicked row — or everything multi-selected when it's part of
         // a multi-set (keeps Ctrl/Shift selection + delete working naturally).
