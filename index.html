@@ -1044,6 +1044,8 @@
             selectedAudioLibId: null,
             audioLibAutoplay: false,
             audioLibGroup: '', // '' = All, or a group name like 'SFX' / 'Music'
+            audioLibMultiIds: [], // multi-selected library sound ids (Ctrl/Shift-click)
+            audioLibLastClickIdx: -1, // anchor index (in the visible list) for Shift-range
             copiedClip: null,
             masterStreamNode: null,
             speakerNode: null,
@@ -12331,11 +12333,28 @@
                 </div>
             `;
 
+            // Live import progress bar (folder/file imports with many or large files).
+            if (_audioLibImport && _audioLibImport.total > 0) {
+                const doneCount = _audioLibImport.done + _audioLibImport.failed;
+                const pct = Math.min(100, Math.round((doneCount / _audioLibImport.total) * 100));
+                html += `
+                    <div class="flex flex-col gap-1.5 shrink-0">
+                        <div class="flex items-center justify-between">
+                            <span class="text-[10px] font-bold text-surface-600 dark:text-surface-300">Importing ${doneCount}/${_audioLibImport.total} files${_audioLibImport.failed ? ` (${_audioLibImport.failed} skipped)` : ''}…</span>
+                            <span class="text-[10px] font-mono text-surface-400 dark:text-surface-500">${pct}%</span>
+                        </div>
+                        <div class="h-1.5 w-full bg-surface-200 dark:bg-surface-700 rounded-full overflow-hidden">
+                            <div class="h-full bg-brand-500 rounded-full transition-all duration-200" style="width:${pct}%"></div>
+                        </div>
+                    </div>
+                `;
+            }
+
             html += `
                 <div class="flex items-center gap-1.5 flex-wrap shrink-0">
                     <button onclick="setAudioLibGroup(this.dataset.g)" data-g="" ondragover="audioLibDragOver(event, this)" ondragleave="audioLibDragLeave(this)" ondrop="audioLibDropOnGroup(event, this.dataset.g)" class="px-2.5 py-1 rounded-full text-[10px] font-bold transition-colors ${!State.audioLibGroup ? 'bg-surface-900 dark:bg-white text-white dark:text-surface-900' : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-700'}" title="All sounds — drop a sound here to clear its group">All</button>
                     ${allGroups.map(g => `
-                        <button onclick="setAudioLibGroup(this.dataset.g)" data-g="${esc(g)}" ondragover="audioLibDragOver(event, this)" ondragleave="audioLibDragLeave(this)" ondrop="audioLibDropOnGroup(event, this.dataset.g)" class="px-2.5 py-1 rounded-full text-[10px] font-bold transition-colors ${State.audioLibGroup === g ? 'bg-surface-900 dark:bg-white text-white dark:text-surface-900' : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-700'}" title="Drop a sound here to move it to ${esc(g)}">${esc(g)}</button>
+                        <button onclick="setAudioLibGroup(this.dataset.g)" data-g="${esc(g)}" ondragover="audioLibDragOver(event, this)" ondragleave="audioLibDragLeave(this)" ondrop="audioLibDropOnGroup(event, this.dataset.g)" oncontextmenu="event.preventDefault(); event.stopPropagation(); showAudioLibGroupMenu(event, this.dataset.g);" class="px-2.5 py-1 rounded-full text-[10px] font-bold transition-colors ${State.audioLibGroup === g ? 'bg-surface-900 dark:bg-white text-white dark:text-surface-900' : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-700'}" title="Drop a sound here to move it to ${esc(g)} — right-click to delete this folder">${esc(g)}</button>
                     `).join('')}
                     <button onclick="addAudioLibGroup()" class="w-6 h-6 rounded-full bg-surface-100 dark:bg-surface-800 text-surface-500 hover:text-brand-500 flex items-center justify-center transition-colors" title="New group">
                         <i data-lucide="plus" class="w-3 h-3"></i>
@@ -12359,11 +12378,12 @@
                 `;
             } else {
                 html += `<div class="flex flex-col gap-2 overflow-y-auto pr-1 flex-1">`;
-                visibleAudio.forEach(audio => {
+                visibleAudio.forEach((audio, index) => {
                     const isSelected = State.selectedAudioLibId === audio.id;
+                    const isMulti = State.audioLibMultiIds.includes(audio.id);
                     const durationStr = formatTime(audio.duration).split('.')[0];
                     html += `
-                        <div draggable="true" ondragstart="audioLibDragStart(event, '${audio.id}')" ondragend="audioLibDragEnd()" onclick="selectAudioLibItem('${audio.id}')" oncontextmenu="event.preventDefault(); showAudioLibContextMenu('${audio.id}', event.clientX, event.clientY);" class="group flex items-center justify-between p-2 rounded cursor-pointer transition-colors ${isSelected ? 'bg-brand-50 dark:bg-brand-500/10 border border-brand-200 dark:border-brand-500/30' : 'bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 hover:border-brand-300'}" title="Drag onto a group chip to move it — right-click for more actions">
+                        <div draggable="true" ondragstart="audioLibDragStart(event, '${audio.id}')" ondragend="audioLibDragEnd()" onclick="audioLibRowClick(event, '${audio.id}', ${index})" oncontextmenu="event.preventDefault(); showAudioLibContextMenu('${audio.id}', event.clientX, event.clientY);" class="group flex items-center justify-between p-2 rounded cursor-pointer transition-colors ${isSelected ? 'bg-brand-50 dark:bg-brand-500/10 border border-brand-200 dark:border-brand-500/30' : isMulti ? 'bg-brand-50/60 dark:bg-brand-500/10 border border-brand-400 dark:border-brand-500/40 ring-1 ring-brand-500/40' : 'bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 hover:border-brand-300'}" title="Drag onto a group chip to move it — Ctrl/Shift-click to multi-select, right-click for more actions">
                             <div class="flex items-center gap-2 truncate min-w-0">
                                 <i data-lucide="${isSelected && audio.isPlaying ? 'pause-circle' : 'music'}" class="w-4 h-4 ${isSelected ? 'text-brand-500' : 'text-surface-400'} shrink-0"></i>
                                 <span id="audioLibRowName_${audio.id}" class="text-sm font-medium truncate flex-1 ${isSelected ? 'text-brand-600 dark:text-brand-400' : 'text-surface-700 dark:text-surface-300'}">${audio.name}</span>
@@ -12380,7 +12400,27 @@
                 html += `</div>`;
             }
 
-            if (State.selectedAudioLibId) {
+            if (State.audioLibMultiIds.length > 1) {
+                // Multi-selection panel: batch move to a group + delete all.
+                html += `
+                    <div class="mt-auto pt-4 border-t border-surface-200 dark:border-surface-700 flex flex-col gap-3 shrink-0">
+                        <div class="flex items-center justify-between">
+                            <span class="text-sm font-bold text-surface-900 dark:text-white">${State.audioLibMultiIds.length} sounds selected</span>
+                            <button onclick="deleteAudioLibSelection()" class="px-2.5 py-1.5 rounded bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 text-xs font-bold hover:bg-red-100 dark:hover:bg-red-500/20 transition-colors flex items-center gap-1.5">
+                                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Delete
+                            </button>
+                        </div>
+                        <div class="flex items-center justify-between gap-2">
+                            <span class="text-[10px] font-bold text-surface-500 dark:text-surface-400 uppercase tracking-wider">Move to group</span>
+                            <select onchange="setAudioLibMultiGroup(this.value)" class="bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-xs font-semibold text-surface-700 dark:text-surface-300 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-brand-500 max-w-[160px]" title="Move all selected sounds to a group">
+                                <option value="">No group</option>
+                                ${allGroups.map(g => `<option value="${esc(g)}">${esc(g)}</option>`).join('')}
+                            </select>
+                        </div>
+                        <p class="text-[10px] text-surface-400 dark:text-surface-500 leading-snug">Ctrl/Shift-click more rows to extend the selection — Delete removes them all.</p>
+                    </div>
+                `;
+            } else if (State.selectedAudioLibId) {
                 const audio = State.audioLibrary.find(a => a.id === State.selectedAudioLibId);
                 if (audio) {
                     // sfxMissing entries (too large to embed) have nothing to play/add
@@ -12444,57 +12484,109 @@
 
         // Decode audio (or video-with-audio) files into the library. `group` labels the
         // imported sounds (e.g. 'SFX' / 'Music') so the Library chips can filter them.
+        // Accept audio files (and video files whose audio track we extract). The
+        // folder picker ignores the input's `accept`, so images and other junk get
+        // selected too — they must be filtered here BEFORE any read/decode work.
+        // MIME type first, extension as fallback for files whose type is empty
+        // (common for m4a/mp3/mkv picked via the OS file dialog).
+        const AUDIO_VIDEO_EXT = /\.(mp3|wav|ogg|oga|m4a|aac|flac|opus|weba|mp4|m4v|mov|webm|mkv|avi|wma|wmv|3gp)$/i;
+        function isImportableAudioFile(f) {
+            const t = (f.type || '').toLowerCase();
+            if (t.startsWith('audio/') || t.startsWith('video/')) return true;
+            return AUDIO_VIDEO_EXT.test(f.name || '');
+        }
+
+        // Waveform peaks with bounded work: subsample via stride so at most
+        // ~200×256 samples are scanned per file, no matter how long the track is.
+        // A 10-minute file used to iterate every sample (~26M floats); now it's a
+        // few thousand, which keeps imports snappy for long music/video files.
+        function computePeaks(channelData, bucketCount) {
+            const n = channelData.length;
+            const buckets = bucketCount || 200;
+            const stride = Math.max(1, Math.floor(n / (buckets * 256)));
+            const peaks = [];
+            let globalMax = 0;
+            for (let j = 0; j < buckets; j++) {
+                const start = Math.floor(j * n / buckets);
+                const end = Math.floor((j + 1) * n / buckets);
+                let sum = 0, count = 0;
+                for (let k = start; k < end; k += stride) {
+                    sum += Math.abs(channelData[k]);
+                    count++;
+                }
+                const avg = count ? sum / count : 0;
+                peaks.push(avg);
+                if (avg > globalMax) globalMax = avg;
+            }
+            if (globalMax > 0) {
+                for (let j = 0; j < peaks.length; j++) peaks[j] = peaks[j] / globalMax;
+            }
+            return peaks;
+        }
+
+        // Live import progress for the header bar: { total, done, failed } while a
+        // folder/file import runs, null otherwise. done+failed = files processed.
+        let _audioLibImport = null;
+
         async function importAudioFilesIntoLibrary(files, group) {
-            if (!files || !files.length) return;
+            // Accept either raw File objects or { file, group } entries (folder imports
+            // carry one group per file). Filter BEFORE any read so images are dropped.
+            const entries = [...(files || [])].map(f => {
+                const file = f && f.file ? f.file : f;
+                return { file: file, group: (f && f.group !== undefined ? f.group : group) || '' };
+            }).filter(e => isImportableAudioFile(e.file));
+            if (!entries.length) return;
             if (!audioCtx) audioCtx = new AudioContext();
             if (audioCtx.state === 'suspended') audioCtx.resume();
-            
-            for (let i = 0; i < files.length; i++) {
-                const file = files[i];
+
+            _audioLibImport = { total: entries.length, done: 0, failed: 0 };
+            updateSidebarPanel();
+
+            // Decode a few files concurrently (decodeAudioData is main-thread only —
+            // see the docs about workers), so many/large files overlap instead of
+            // running strictly one-after-another. Re-render after every file so the
+            // header progress bar and the list both advance live.
+            const CONCURRENCY = 3;
+            let next = 0;
+            async function processOne(entry) {
+                const file = entry.file;
                 let audioBuffer;
                 try {
                     const arrayBuffer = await file.arrayBuffer();
                     audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
                 } catch (e) {
                     console.warn('Skipped non-audio file:', file.name);
-                    continue;
+                    if (_audioLibImport) _audioLibImport.failed++;
+                    updateSidebarPanel();
+                    return;
                 }
-                
-                const channelData = audioBuffer.getChannelData(0);
-                const step = Math.ceil(channelData.length / 200);
-                const peaks = [];
-                let globalMax = 0;
-                for (let j = 0; j < 200; j++) {
-                    let sum = 0;
-                    for (let k = 0; k < step; k++) {
-                        const datum = channelData[(j * step) + k] || 0;
-                        sum += Math.abs(datum);
-                    }
-                    const avg = sum / step;
-                    peaks.push(avg);
-                    if (avg > globalMax) globalMax = avg;
-                }
-                
-                if (globalMax > 0) {
-                    for (let j = 0; j < 200; j++) {
-                        peaks[j] = peaks[j] / globalMax;
-                    }
-                }
-                
                 State.audioLibrary.push({
                     id: 'lib_' + Math.random().toString(36).substr(2, 9),
                     name: file.name,
                     file: file,
                     buffer: audioBuffer,
                     duration: audioBuffer.duration,
-                    peaks: peaks,
+                    peaks: computePeaks(audioBuffer.getChannelData(0), 200),
                     inPoint: 0,
                     outPoint: audioBuffer.duration,
                     isPlaying: false,
-                    group: group || ''
+                    group: entry.group || ''
                 });
+                if (_audioLibImport) _audioLibImport.done++;
+                updateSidebarPanel();
             }
-            
+            const runners = [];
+            const n = Math.min(CONCURRENCY, entries.length);
+            for (let w = 0; w < n; w++) {
+                runners.push((async () => {
+                    while (next < entries.length) {
+                        const i = next++;
+                        await processOne(entries[i]);
+                    }
+                })());
+            }
+            await Promise.all(runners);
+            _audioLibImport = null;
             updateSidebarPanel();
         }
 
@@ -12514,20 +12606,17 @@
         }
 
         // Import a whole folder: files carry webkitRelativePath like "Music/track.mp4",
-        // so the top-level folder name becomes the sound's group (mapped via normalizeAudioGroup).
+        // so the top-level folder name becomes the sound's group (mapped via
+        // normalizeAudioGroup). All groups are imported as ONE run so the header
+        // progress bar counts the whole folder, not each subfolder separately.
         async function handleAudioLibraryFolderImport(event) {
             const files = [...(event.target.files || [])];
             if (!files.length) return;
-            const byGroup = new Map();
-            for (const f of files) {
-                const top = f.webkitRelativePath ? f.webkitRelativePath.split('/')[0] : '';
-                const g = normalizeAudioGroup(top);
-                if (!byGroup.has(g)) byGroup.set(g, []);
-                byGroup.get(g).push(f);
-            }
-            for (const [g, list] of byGroup) {
-                await importAudioFilesIntoLibrary(list, g);
-            }
+            const entries = files.map(f => ({
+                file: f,
+                group: normalizeAudioGroup(f.webkitRelativePath ? f.webkitRelativePath.split('/')[0] : '')
+            }));
+            await importAudioFilesIntoLibrary(entries, null);
         }
 
         // ── Library persistence (project JSON round-trip) ──
@@ -12666,14 +12755,41 @@
             updateSidebarPanel();
         };
 
-        // ── Library row context menu (right-click): rename, move to group, delete ──
-        window.showAudioLibContextMenu = function(id, x, y) {
-            const audio = State.audioLibrary.find(a => a.id === id);
-            if (!audio) return;
-            // Lightweight select (no autoplay) so the right-clicked row highlights.
-            State.selectedAudioLibId = id;
-            updateSidebarPanel();
+        // ── Library multi-select + row context menu (rename, move to group, delete) ──
+        // The visible (group-filtered) library items, in list order — used for
+        // Shift-range selection and keyboard navigation.
+        function visibleAudioLibItems() {
+            return State.audioLibrary.filter(a => !State.audioLibGroup || a.group === State.audioLibGroup);
+        }
 
+        window.audioLibRowClick = function(e, id, idx) {
+            if (e.shiftKey || e.ctrlKey || e.metaKey) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (e.shiftKey && State.audioLibLastClickIdx >= 0) {
+                    // Shift = range from the anchor to this row (replaces the set).
+                    const visible = visibleAudioLibItems();
+                    const from = Math.min(State.audioLibLastClickIdx, idx);
+                    const to = Math.max(State.audioLibLastClickIdx, idx);
+                    State.audioLibMultiIds = visible.slice(from, to + 1).map(a => a.id);
+                } else {
+                    // Ctrl/Cmd = toggle this row in the multi-set.
+                    const i = State.audioLibMultiIds.indexOf(id);
+                    if (i >= 0) State.audioLibMultiIds.splice(i, 1);
+                    else State.audioLibMultiIds.push(id);
+                    State.audioLibLastClickIdx = idx;
+                }
+                State.selectedAudioLibId = id;
+                updateSidebarPanel();
+                return;
+            }
+            // Plain click = single select (clears multi).
+            State.audioLibMultiIds = [];
+            State.audioLibLastClickIdx = idx;
+            selectAudioLibItem(id);
+        };
+
+        function audioLibMenuEl() {
             let menu = document.getElementById('audioLibContextMenu');
             if (!menu) {
                 menu = document.createElement('div');
@@ -12681,6 +12797,40 @@
                 menu.className = 'fixed bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700/80 shadow-2xl rounded-xl p-1 z-[1000] min-w-[200px] max-w-[260px] text-xs font-semibold text-surface-800 dark:text-surface-200';
                 document.body.appendChild(menu);
             }
+            return menu;
+        }
+        function clampAudioLibMenu(menu) {
+            const rect = menu.getBoundingClientRect();
+            const margin = 8;
+            if (rect.right + margin > window.innerWidth) menu.style.left = `${Math.max(margin, window.innerWidth - rect.width - margin)}px`;
+            if (rect.bottom + margin > window.innerHeight) menu.style.top = `${Math.max(margin, window.innerHeight - rect.height - margin)}px`;
+        }
+        function attachAudioLibMenuClose() {
+            const menu = document.getElementById('audioLibContextMenu');
+            if (!menu) return;
+            const outsideClickListener = (e) => {
+                if (!menu.contains(e.target)) {
+                    hideAudioLibContextMenu();
+                    document.removeEventListener('click', outsideClickListener);
+                }
+            };
+            setTimeout(() => document.addEventListener('click', outsideClickListener), 50);
+        }
+
+        window.showAudioLibContextMenu = function(id, x, y) {
+            const audio = State.audioLibrary.find(a => a.id === id);
+            if (!audio) return;
+            // Right-click behavior: a click on an unselected row collapses the
+            // multi-set to just it; a click inside the multi-set keeps it (so batch
+            // actions apply to everything selected).
+            if (!State.audioLibMultiIds.includes(id)) {
+                State.audioLibMultiIds = [];
+                State.audioLibLastClickIdx = -1;
+            }
+            State.selectedAudioLibId = id;
+            updateSidebarPanel();
+
+            const menu = audioLibMenuEl();
             menu.style.left = `${x}px`;
             menu.style.top = `${y}px`;
             menu.style.display = 'block';
@@ -12690,6 +12840,7 @@
             const itIcon = "w-3.5 h-3.5 text-surface-400 dark:text-surface-500 shrink-0";
             const customs = [...new Set(State.audioLibrary.map(a => a.group).filter(Boolean))].filter(g => g !== 'SFX' && g !== 'Music');
             const groups = ['', 'SFX', 'Music', ...customs];
+            const multiCount = (State.audioLibMultiIds.includes(id) && State.audioLibMultiIds.length > 1) ? State.audioLibMultiIds.length : 1;
 
             let itemsHtml = `
                 <button onclick="hideAudioLibContextMenu(); startAudioLibRowRename('${id}');" class="${it}">
@@ -12697,42 +12848,52 @@
                 </button>
                 <div class="border-t border-surface-200 dark:border-surface-700 my-1"></div>
                 <div class="px-2.5 py-1 text-[10px] uppercase tracking-wide text-surface-400 dark:text-surface-500 flex items-center gap-1.5">
-                    <i data-lucide="folder" class="w-3 h-3"></i> Move to group
+                    <i data-lucide="folder" class="w-3 h-3"></i> Move to group${multiCount > 1 ? ` (${multiCount})` : ''}
                 </div>
             `;
             itemsHtml += groups.map(g => `
-                <button onclick="audioLibContextMove('${id}', '${esc(g)}'); hideAudioLibContextMenu();" class="${it} ${audio.group === g ? 'text-brand-600 dark:text-brand-400' : ''}">
+                <button onclick="audioLibContextMove('${id}', '${esc(g)}'); hideAudioLibContextMenu();" class="${it} ${audio.group === g && multiCount === 1 ? 'text-brand-600 dark:text-brand-400' : ''}">
                     <i data-lucide="${g ? 'folder' : 'folder-open'}" class="${itIcon}"></i>
                     <span class="truncate">${g ? esc(g) : 'No group'}</span>
-                    ${audio.group === g ? '<i data-lucide="check" class="w-3.5 h-3.5 ml-auto shrink-0"></i>' : ''}
+                    ${audio.group === g && multiCount === 1 ? '<i data-lucide="check" class="w-3.5 h-3.5 ml-auto shrink-0"></i>' : ''}
                 </button>
             `).join('');
             itemsHtml += `
                 <div class="border-t border-surface-200 dark:border-surface-700 my-1"></div>
                 <button onclick="deleteAudioLibItem('${id}'); hideAudioLibContextMenu();" class="${it} text-red-500 dark:text-red-400">
-                    <i data-lucide="trash-2" class="w-3.5 h-3.5 flex-shrink-0"></i> Delete from Library
+                    <i data-lucide="trash-2" class="w-3.5 h-3.5 flex-shrink-0"></i> ${multiCount > 1 ? `Delete ${multiCount} Sounds` : 'Delete from Library'}
                 </button>
             `;
 
             menu.innerHTML = itemsHtml;
             lucide.createIcons({ scope: menu });
+            clampAudioLibMenu(menu);
+            attachAudioLibMenuClose();
+        };
 
-            // Clamp to the viewport so a right-click near the bottom/right edge doesn't
-            // cut the menu off-screen.
-            const rect = menu.getBoundingClientRect();
-            const margin = 8;
-            if (rect.right + margin > window.innerWidth) menu.style.left = `${Math.max(margin, window.innerWidth - rect.width - margin)}px`;
-            if (rect.bottom + margin > window.innerHeight) menu.style.top = `${Math.max(margin, window.innerHeight - rect.height - margin)}px`;
+        // Right-click a group chip: delete the whole folder. Sounds inside become
+        // ungrouped (never deleted) — the folder is just a label.
+        window.showAudioLibGroupMenu = function(e, g) {
+            if (!g) return;
+            const menu = audioLibMenuEl();
+            menu.style.left = `${e.clientX}px`;
+            menu.style.top = `${e.clientY}px`;
+            menu.style.display = 'block';
 
-            const outsideClickListener = (e) => {
-                if (!menu.contains(e.target)) {
-                    hideAudioLibContextMenu();
-                    document.removeEventListener('click', outsideClickListener);
-                }
-            };
-            setTimeout(() => {
-                document.addEventListener('click', outsideClickListener);
-            }, 50);
+            const esc = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+            const it = "w-full text-left px-2.5 py-1.5 rounded-md hover:bg-surface-100 dark:hover:bg-surface-700/70 flex items-center gap-2.5 transition-colors";
+            const count = State.audioLibrary.filter(a => a.group === g).length;
+            menu.innerHTML = `
+                <div class="px-2.5 py-1.5 text-[11px] font-bold text-surface-800 dark:text-surface-200 truncate">Folder: ${esc(g)}</div>
+                <div class="px-2.5 pb-1 text-[9px] text-surface-400 dark:text-surface-500">${count} sound${count === 1 ? '' : 's'} inside — they'll become ungrouped.</div>
+                <div class="border-t border-surface-200 dark:border-surface-700 my-1"></div>
+                <button onclick="deleteAudioLibGroup('${esc(g)}'); hideAudioLibContextMenu();" class="${it} text-red-500 dark:text-red-400">
+                    <i data-lucide="trash-2" class="w-3.5 h-3.5 flex-shrink-0"></i> Delete Folder
+                </button>
+            `;
+            lucide.createIcons({ scope: menu });
+            clampAudioLibMenu(menu);
+            attachAudioLibMenuClose();
         };
 
         window.hideAudioLibContextMenu = function() {
@@ -12740,33 +12901,76 @@
             if (menu) menu.style.display = 'none';
         };
 
-        // Move a library sound to a group from the context menu — same visibility
-        // rules as the drag-to-chip drop (selection clears if the selected sound
-        // leaves the active filter).
-        window.audioLibContextMove = function(id, g) {
-            const audio = State.audioLibrary.find(a => a.id === id);
-            if (!audio) return;
-            audio.group = g || '';
-            const leavesFilter = State.audioLibGroup && audio.group !== State.audioLibGroup;
-            if (State.selectedAudioLibId === audio.id && leavesFilter) {
+        // Delete a group/folder: ungroup its sounds (they stay in the library),
+        // and clear the active filter if it pointed at the deleted folder.
+        window.deleteAudioLibGroup = function(g) {
+            if (!g) return;
+            State.audioLibrary.forEach(a => { if (a.group === g) a.group = ''; });
+            if (State.audioLibGroup === g) {
+                State.audioLibGroup = '';
+                State.audioLibMultiIds = [];
+                State.audioLibLastClickIdx = -1;
                 State.selectedAudioLibId = null;
                 stopAudioLibPlayback();
             }
             updateSidebarPanel();
         };
 
-        window.deleteAudioLibItem = function(id) {
-            const idx = State.audioLibrary.findIndex(a => a.id === id);
-            if (idx === -1) return;
+        // Move one sound (or the whole multi-selection if the clicked row is part
+        // of it) to a group — same visibility rules as the drag-to-chip drop.
+        window.audioLibContextMove = function(id, g) {
+            const ids = (State.audioLibMultiIds.includes(id) && State.audioLibMultiIds.length > 1) ? [...State.audioLibMultiIds] : [id];
+            ids.forEach(i => { const a = State.audioLibrary.find(x => x.id === i); if (a) a.group = g || ''; });
+            const sel = State.audioLibrary.find(a => a.id === State.selectedAudioLibId);
+            const leavesFilter = State.audioLibGroup && sel && sel.group !== State.audioLibGroup;
+            if (leavesFilter) {
+                State.selectedAudioLibId = null;
+                State.audioLibMultiIds = [];
+                stopAudioLibPlayback();
+            }
+            updateSidebarPanel();
+        };
+
+        // Core delete: remove a set of library sounds, clearing their decode cache.
+        function deleteAudioLibSounds(ids) {
+            if (!ids || !ids.length) return;
             stopAudioLibPlayback();
-            State.audioLibrary.splice(idx, 1);
-            if (State.selectedAudioLibId === id) State.selectedAudioLibId = null;
-            delete _audioLibBufferCache[id];
+            State.audioLibrary = State.audioLibrary.filter(a => !ids.includes(a.id));
+            ids.forEach(i => delete _audioLibBufferCache[i]);
+            if (ids.includes(State.selectedAudioLibId)) State.selectedAudioLibId = null;
+            State.audioLibMultiIds = State.audioLibMultiIds.filter(i => !ids.includes(i));
+            updateSidebarPanel();
+        }
+
+        // Delete the clicked row — or everything multi-selected when it's part of
+        // a multi-set (keeps Ctrl/Shift selection + delete working naturally).
+        window.deleteAudioLibItem = function(id) {
+            const ids = (State.audioLibMultiIds.includes(id) && State.audioLibMultiIds.length > 1) ? [...State.audioLibMultiIds] : [id];
+            deleteAudioLibSounds(ids);
+        };
+
+        window.deleteAudioLibSelection = function() {
+            if (State.audioLibMultiIds.length > 0) deleteAudioLibSounds([...State.audioLibMultiIds]);
+            else if (State.selectedAudioLibId) deleteAudioLibSounds([State.selectedAudioLibId]);
+        };
+
+        window.setAudioLibMultiGroup = function(g) {
+            State.audioLibMultiIds.forEach(i => { const a = State.audioLibrary.find(x => x.id === i); if (a) a.group = g || ''; });
+            const sel = State.audioLibrary.find(a => a.id === State.selectedAudioLibId);
+            const leavesFilter = State.audioLibGroup && sel && sel.group !== State.audioLibGroup;
+            if (leavesFilter) {
+                State.selectedAudioLibId = null;
+                State.audioLibMultiIds = [];
+                stopAudioLibPlayback();
+            }
             updateSidebarPanel();
         };
 
         window.setAudioLibGroup = function(g) {
             State.audioLibGroup = g || '';
+            // Switching groups invalidates the multi-set and the shift-range anchor.
+            State.audioLibMultiIds = [];
+            State.audioLibLastClickIdx = -1;
             // If the selected sound no longer belongs to the active group, drop the selection.
             if (State.selectedAudioLibId) {
                 const audio = State.audioLibrary.find(a => a.id === State.selectedAudioLibId);
@@ -21324,7 +21528,21 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 
                 if ((k === 's' && e.altKey) || (e.ctrlKey && k === 'b')) splitClipAtPlayhead();
                 else if (k === 'd' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); duplicateSelectedClip(); }
-                else if (e.key === 'Delete' || e.key === 'Backspace') deleteSelectedClip();
+                else if (e.key === 'Delete' || e.key === 'Backspace') {
+                    // In the audio library, Delete removes the selected sound(s);
+                    // elsewhere it deletes the selected timeline clip as before.
+                    if (State.sidebarTab === 'audio_library') {
+                        const t = e.target;
+                        if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+                        const ids = State.audioLibMultiIds.length ? [...State.audioLibMultiIds] : (State.selectedAudioLibId ? [State.selectedAudioLibId] : []);
+                        if (ids.length) {
+                            e.preventDefault();
+                            deleteAudioLibSounds(ids);
+                        }
+                    } else {
+                        deleteSelectedClip();
+                    }
+                }
                 else if (k === 'escape' && State.selectedGap) { e.preventDefault(); State.selectedGap = null; renderGapSelection(); }
                 else if (k === 'g' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) { e.preventDefault(); toggleGapSelect(); }
                 else if (k === 'b' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) { e.preventDefault(); toggleBlade(); }
@@ -21378,8 +21596,10 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
                     if (State.sidebarTab === 'audio_library') {
                         e.preventDefault();
-                        const visible = State.audioLibrary.filter(a => !State.audioLibGroup || a.group === State.audioLibGroup);
+                        const visible = visibleAudioLibItems();
                         if (visible.length > 0) {
+                            // Arrows collapse to a single selection.
+                            State.audioLibMultiIds = [];
                             let idx = visible.findIndex(a => a.id === State.selectedAudioLibId);
                             if (idx === -1) idx = 0;
                             if (e.key === 'ArrowUp') {
@@ -21387,6 +21607,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                             } else {
                                 idx = idx < visible.length - 1 ? idx + 1 : 0;
                             }
+                            State.audioLibLastClickIdx = idx;
                             selectAudioLibItem(visible[idx].id);
                         }
                     }
