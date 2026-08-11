@@ -12363,7 +12363,7 @@
                     const isSelected = State.selectedAudioLibId === audio.id;
                     const durationStr = formatTime(audio.duration).split('.')[0];
                     html += `
-                        <div draggable="true" ondragstart="audioLibDragStart(event, '${audio.id}')" ondragend="audioLibDragEnd()" onclick="selectAudioLibItem('${audio.id}')" class="group flex items-center justify-between p-2 rounded cursor-pointer transition-colors ${isSelected ? 'bg-brand-50 dark:bg-brand-500/10 border border-brand-200 dark:border-brand-500/30' : 'bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 hover:border-brand-300'}" title="Drag onto a group chip to move it">
+                        <div draggable="true" ondragstart="audioLibDragStart(event, '${audio.id}')" ondragend="audioLibDragEnd()" onclick="selectAudioLibItem('${audio.id}')" oncontextmenu="event.preventDefault(); showAudioLibContextMenu('${audio.id}', event.clientX, event.clientY);" class="group flex items-center justify-between p-2 rounded cursor-pointer transition-colors ${isSelected ? 'bg-brand-50 dark:bg-brand-500/10 border border-brand-200 dark:border-brand-500/30' : 'bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 hover:border-brand-300'}" title="Drag onto a group chip to move it — right-click for more actions">
                             <div class="flex items-center gap-2 truncate min-w-0">
                                 <i data-lucide="${isSelected && audio.isPlaying ? 'pause-circle' : 'music'}" class="w-4 h-4 ${isSelected ? 'text-brand-500' : 'text-surface-400'} shrink-0"></i>
                                 <span id="audioLibRowName_${audio.id}" class="text-sm font-medium truncate flex-1 ${isSelected ? 'text-brand-600 dark:text-brand-400' : 'text-surface-700 dark:text-surface-300'}">${audio.name}</span>
@@ -12663,6 +12663,105 @@
             updateSidebarPanel();
         };
         window.cancelAudioLibRowRename = function(id) {
+            updateSidebarPanel();
+        };
+
+        // ── Library row context menu (right-click): rename, move to group, delete ──
+        window.showAudioLibContextMenu = function(id, x, y) {
+            const audio = State.audioLibrary.find(a => a.id === id);
+            if (!audio) return;
+            // Lightweight select (no autoplay) so the right-clicked row highlights.
+            State.selectedAudioLibId = id;
+            updateSidebarPanel();
+
+            let menu = document.getElementById('audioLibContextMenu');
+            if (!menu) {
+                menu = document.createElement('div');
+                menu.id = 'audioLibContextMenu';
+                menu.className = 'fixed bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700/80 shadow-2xl rounded-xl p-1 z-[1000] min-w-[200px] max-w-[260px] text-xs font-semibold text-surface-800 dark:text-surface-200';
+                document.body.appendChild(menu);
+            }
+            menu.style.left = `${x}px`;
+            menu.style.top = `${y}px`;
+            menu.style.display = 'block';
+
+            const esc = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+            const it = "w-full text-left px-2.5 py-1.5 rounded-md hover:bg-surface-100 dark:hover:bg-surface-700/70 flex items-center gap-2.5 transition-colors";
+            const itIcon = "w-3.5 h-3.5 text-surface-400 dark:text-surface-500 shrink-0";
+            const customs = [...new Set(State.audioLibrary.map(a => a.group).filter(Boolean))].filter(g => g !== 'SFX' && g !== 'Music');
+            const groups = ['', 'SFX', 'Music', ...customs];
+
+            let itemsHtml = `
+                <button onclick="hideAudioLibContextMenu(); startAudioLibRowRename('${id}');" class="${it}">
+                    <i data-lucide="pencil" class="${itIcon}"></i> Rename
+                </button>
+                <div class="border-t border-surface-200 dark:border-surface-700 my-1"></div>
+                <div class="px-2.5 py-1 text-[10px] uppercase tracking-wide text-surface-400 dark:text-surface-500 flex items-center gap-1.5">
+                    <i data-lucide="folder" class="w-3 h-3"></i> Move to group
+                </div>
+            `;
+            itemsHtml += groups.map(g => `
+                <button onclick="audioLibContextMove('${id}', '${esc(g)}'); hideAudioLibContextMenu();" class="${it} ${audio.group === g ? 'text-brand-600 dark:text-brand-400' : ''}">
+                    <i data-lucide="${g ? 'folder' : 'folder-open'}" class="${itIcon}"></i>
+                    <span class="truncate">${g ? esc(g) : 'No group'}</span>
+                    ${audio.group === g ? '<i data-lucide="check" class="w-3.5 h-3.5 ml-auto shrink-0"></i>' : ''}
+                </button>
+            `).join('');
+            itemsHtml += `
+                <div class="border-t border-surface-200 dark:border-surface-700 my-1"></div>
+                <button onclick="deleteAudioLibItem('${id}'); hideAudioLibContextMenu();" class="${it} text-red-500 dark:text-red-400">
+                    <i data-lucide="trash-2" class="w-3.5 h-3.5 flex-shrink-0"></i> Delete from Library
+                </button>
+            `;
+
+            menu.innerHTML = itemsHtml;
+            lucide.createIcons({ scope: menu });
+
+            // Clamp to the viewport so a right-click near the bottom/right edge doesn't
+            // cut the menu off-screen.
+            const rect = menu.getBoundingClientRect();
+            const margin = 8;
+            if (rect.right + margin > window.innerWidth) menu.style.left = `${Math.max(margin, window.innerWidth - rect.width - margin)}px`;
+            if (rect.bottom + margin > window.innerHeight) menu.style.top = `${Math.max(margin, window.innerHeight - rect.height - margin)}px`;
+
+            const outsideClickListener = (e) => {
+                if (!menu.contains(e.target)) {
+                    hideAudioLibContextMenu();
+                    document.removeEventListener('click', outsideClickListener);
+                }
+            };
+            setTimeout(() => {
+                document.addEventListener('click', outsideClickListener);
+            }, 50);
+        };
+
+        window.hideAudioLibContextMenu = function() {
+            const menu = document.getElementById('audioLibContextMenu');
+            if (menu) menu.style.display = 'none';
+        };
+
+        // Move a library sound to a group from the context menu — same visibility
+        // rules as the drag-to-chip drop (selection clears if the selected sound
+        // leaves the active filter).
+        window.audioLibContextMove = function(id, g) {
+            const audio = State.audioLibrary.find(a => a.id === id);
+            if (!audio) return;
+            audio.group = g || '';
+            const leavesFilter = State.audioLibGroup && audio.group !== State.audioLibGroup;
+            if (State.selectedAudioLibId === audio.id && leavesFilter) {
+                State.selectedAudioLibId = null;
+                stopAudioLibPlayback();
+            }
+            updateSidebarPanel();
+        };
+
+        window.deleteAudioLibItem = function(id) {
+            const idx = State.audioLibrary.findIndex(a => a.id === id);
+            if (idx === -1) return;
+            stopAudioLibPlayback();
+            State.audioLibrary.splice(idx, 1);
+            if (State.selectedAudioLibId === id) State.selectedAudioLibId = null;
+            delete _audioLibBufferCache[id];
             updateSidebarPanel();
         };
 
