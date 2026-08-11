@@ -2116,7 +2116,18 @@
             // exists — runs after the legacy loaders so project data wins. File-backed
             // media restores as re-import placeholders; the user re-imports the files.
             restoreAutosavedProject();
-            
+
+            // Preload the Audio Library's OWN remembered re-import folder handle so
+            // its "Last folder" quick button is available without opening the media
+            // re-import modal first (safe: load + permission query never prompt).
+            loadAudioReimportDirHandle().then(() => {
+                if (!_audioReimportDirHandle) return;
+                _reimportDirPermission(_audioReimportDirHandle).then(ok => {
+                    _audioLibLastFolderReady = !!ok;
+                    if (State.sidebarTab === 'audio_library') updateSidebarPanel();
+                });
+            });
+
             // Handle headphone plug/unplug in real-time
             if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
                 navigator.mediaDevices.addEventListener('devicechange', () => {
@@ -12321,14 +12332,12 @@
                         <button onclick="addMockAudioClip()" class="bg-surface-100 dark:bg-surface-800 hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-600 dark:text-surface-300 px-3 py-1.5 rounded-md text-xs font-bold transition-colors flex items-center gap-2" title="Add an empty audio placeholder to the timeline — load a file into it from its Properties tab">
                             <i data-lucide="music" class="w-3 h-3"></i> Mock
                         </button>
-                        <label class="cursor-pointer bg-surface-100 dark:bg-surface-800 hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-600 dark:text-surface-300 px-3 py-1.5 rounded-md text-xs font-bold transition-colors flex items-center gap-2" title="Import a whole folder — sounds are grouped by the folder name (e.g. a Music folder lands in Music)">
+                        <button onclick="pickAudioLibraryImportFolder()" class="bg-surface-100 dark:bg-surface-800 hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-600 dark:text-surface-300 px-3 py-1.5 rounded-md text-xs font-bold transition-colors flex items-center gap-2${_audioLibImport ? ' opacity-40 pointer-events-none' : ''}" title="${_audioLibImport ? 'Import in progress…' : 'Import a whole folder — sounds are grouped by the folder name (e.g. a Music folder lands in Music)'}"${_audioLibImport ? ' disabled' : ''}>
                             <i data-lucide="folder-plus" class="w-3 h-3"></i> Folder
-                            <input type="file" multiple webkitdirectory accept="audio/*,video/*" class="hidden" onchange="handleAudioLibraryFolderImport(event); this.value='';">
-                        </label>
-                        <label class="cursor-pointer bg-brand-500 hover:bg-brand-600 text-white px-3 py-1.5 rounded-md text-xs font-bold transition-colors flex items-center gap-2">
+                        </button>
+                        <button onclick="pickAudioLibraryImportFiles()" class="bg-brand-500 hover:bg-brand-600 text-white px-3 py-1.5 rounded-md text-xs font-bold transition-colors flex items-center gap-2${_audioLibImport ? ' opacity-40 pointer-events-none' : ''}" title="${_audioLibImport ? 'Import in progress…' : 'Import audio files'}"${_audioLibImport ? ' disabled' : ''}>
                             <i data-lucide="upload" class="w-3 h-3"></i> Import
-                            <input type="file" multiple accept="audio/*,video/*" class="hidden" onchange="handleAudioLibraryImport(event); this.value='';">
-                        </label>
+                        </button>
                     </div>
                 </div>
             `;
@@ -12365,10 +12374,13 @@
                                 <i data-lucide="upload" class="w-3 h-3"></i> Select Files
                                 <input type="file" accept="audio/*,video/*" multiple class="hidden" onchange="reimportAudioLibraryFiles(this)">
                             </label>
-                            <label class="cursor-pointer flex items-center gap-1.5 border border-amber-500/40 hover:border-amber-400 text-amber-700 dark:text-amber-300 px-2.5 py-1 rounded-md text-[10px] font-bold transition-colors">
+                            <button onclick="pickAudioReimportFolder()" class="cursor-pointer flex items-center gap-1.5 border border-amber-500/40 hover:border-amber-400 text-amber-700 dark:text-amber-300 px-2.5 py-1 rounded-md text-[10px] font-bold transition-colors">
                                 <i data-lucide="folder-open" class="w-3 h-3"></i> Select Folder
-                                <input type="file" accept="audio/*,video/*" multiple webkitdirectory class="hidden" onchange="reimportAudioLibraryFolder(this)">
-                            </label>
+                            </button>
+                            ${_audioLibLastFolderReady ? `
+                                <button onclick="reimportFromLastAudioFolder()" class="cursor-pointer flex items-center gap-1.5 bg-surface-100 dark:bg-surface-800 hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-600 dark:text-surface-300 px-2.5 py-1 rounded-md text-[10px] font-bold transition-colors" title="Re-import from the last-used folder">
+                                    <i data-lucide="folder-clock" class="w-3 h-3"></i> Last folder
+                                </button>` : ''}
                             <span class="ml-auto text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">${esc(_audioLibReimportStatus || '')}</span>
                         </div>
                     </div>
@@ -13122,6 +13134,129 @@
             const files = [...(input.files || [])];
             input.value = '';
             reimportAudioLibrary(files);
+        };
+
+        // ── Remembered last folder (File System Access API) ──
+        // The Audio Library keeps its OWN remembered folder, separate from the
+        // media re-import's: a distinct IndexedDB key ('audioLastDir' vs 'lastDir')
+        // and a distinct picker id ('audio-reimport-folder' vs 'reimport-folder'),
+        // so audio re-imports default to the audio folder specifically. Same
+        // database + handle-generic helpers, so no extra stores. Falls back to a
+        // webkitdirectory input where showDirectoryPicker is unavailable
+        // (Firefox/Safari/webviews).
+        const _AUDIO_REIMPORT_DIR_KEY = 'audioLastDir';
+        let _audioReimportDirHandle = null;
+        let _audioReimportDirLoaded = false;
+        let _audioLibLastFolderReady = false;
+        async function loadAudioReimportDirHandle() {
+            if (_audioReimportDirLoaded) return _audioReimportDirHandle;
+            _audioReimportDirLoaded = true;
+            if (typeof showDirectoryPicker !== 'function') { _audioReimportDirHandle = null; return null; }
+            try { _audioReimportDirHandle = await _reimportDirGet(_AUDIO_REIMPORT_DIR_KEY); } catch (e) { _audioReimportDirHandle = null; }
+            return _audioReimportDirHandle;
+        }
+        window.pickAudioReimportFolder = async function() {
+            if (_audioLibImport) return;
+            if (typeof showDirectoryPicker !== 'function') {
+                const inp = document.createElement('input');
+                inp.type = 'file';
+                inp.webkitdirectory = true;
+                inp.className = 'hidden';
+                inp.onchange = () => reimportAudioLibraryFolder(inp);
+                document.body.appendChild(inp);
+                inp.click();
+                inp.remove();
+                return;
+            }
+            try {
+                const handle = await showDirectoryPicker({ id: 'audio-reimport-folder', mode: 'read' });
+                _audioReimportDirHandle = handle;
+                _audioReimportDirLoaded = true;
+                try { await _reimportDirSet(_AUDIO_REIMPORT_DIR_KEY, handle); } catch (e) {}
+                if (!(await _reimportDirGranted(handle))) { console.warn('Audio re-import folder read permission denied'); return; }
+                const files = await collectReimportFiles(handle);
+                if (!files.length) return;
+                _audioLibLastFolderReady = true;
+                await reimportAudioLibrary(files);
+            } catch (err) {
+                if (err && err.name === 'AbortError') return; // user cancelled the picker
+                console.warn('Folder pick failed:', err);
+            }
+        };
+        window.reimportFromLastAudioFolder = async function() {
+            if (_audioLibImport) return;
+            const handle = await loadAudioReimportDirHandle();
+            if (!handle || !(await _reimportDirGranted(handle))) {
+                console.warn('No permission for the last re-import folder — pick it again');
+                return;
+            }
+            const files = await collectReimportFiles(handle);
+            if (!files.length) return;
+            await reimportAudioLibrary(files);
+        };
+
+        // ── Regular Import/Folder buttons use the same remembered audio folder ──
+        // Both header pickers share the audio re-import's picker id
+        // ('audio-reimport-folder'), so NEW imports also default to the last-used
+        // audio directory; the Folder button additionally persists/updates the
+        // stored directory handle (and unlocks the "Last folder" quick button).
+        // Falls back to the plain inputs where the File System Access API is
+        // unavailable (Firefox/Safari/webviews).
+        window.pickAudioLibraryImportFiles = async function() {
+            if (_audioLibImport) return;
+            if (typeof showOpenFilePicker !== 'function') {
+                const inp = document.createElement('input');
+                inp.type = 'file';
+                inp.multiple = true;
+                inp.accept = 'audio/*,video/*';
+                inp.className = 'hidden';
+                inp.onchange = () => { handleAudioLibraryImport({ target: inp }); inp.remove(); };
+                document.body.appendChild(inp);
+                inp.click();
+                return;
+            }
+            try {
+                const handles = await showOpenFilePicker({
+                    multiple: true,
+                    id: 'audio-reimport-folder',
+                    types: [{ description: 'Audio', accept: { 'audio/*': ['.mp3', '.wav', '.m4a', '.aac', '.ogg', '.flac', '.opus', '.wma'], 'video/*': ['.mp4', '.mkv', '.mov', '.webm', '.avi'] } }]
+                });
+                const files = [];
+                for (const h of handles) { try { files.push(await h.getFile()); } catch (e) {} }
+                if (!files.length) return;
+                await importAudioFilesIntoLibrary(files);
+            } catch (err) {
+                if (err && err.name === 'AbortError') return; // user cancelled the picker
+                console.warn('File pick failed:', err);
+            }
+        };
+        window.pickAudioLibraryImportFolder = async function() {
+            if (_audioLibImport) return;
+            if (typeof showDirectoryPicker !== 'function') {
+                const inp = document.createElement('input');
+                inp.type = 'file';
+                inp.webkitdirectory = true;
+                inp.accept = 'audio/*,video/*';
+                inp.className = 'hidden';
+                inp.onchange = () => { handleAudioLibraryFolderImport({ target: inp }); inp.remove(); };
+                document.body.appendChild(inp);
+                inp.click();
+                return;
+            }
+            try {
+                const handle = await showDirectoryPicker({ id: 'audio-reimport-folder', mode: 'read' });
+                _audioReimportDirHandle = handle;
+                _audioReimportDirLoaded = true;
+                try { await _reimportDirSet(_AUDIO_REIMPORT_DIR_KEY, handle); } catch (e) {}
+                if (!(await _reimportDirGranted(handle))) { console.warn('Audio import folder read permission denied'); return; }
+                const files = await collectReimportFiles(handle);
+                if (!files.length) return;
+                _audioLibLastFolderReady = true;
+                await importAudioFilesIntoLibrary(files.map(f => ({ file: f, group: normalizeAudioGroup(handle.name) })));
+            } catch (err) {
+                if (err && err.name === 'AbortError') return; // user cancelled the picker
+                console.warn('Folder pick failed:', err);
+            }
         };
 
         // Delete the clicked row — or everything multi-selected when it's part of
