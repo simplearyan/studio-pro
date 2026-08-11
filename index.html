@@ -12326,6 +12326,8 @@
             const allGroups = ['SFX', 'Music', ...customGroups];
             const esc = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
             const visibleAudio = State.audioLibrary.filter(a => !State.audioLibGroup || a.group === State.audioLibGroup);
+            // Per-group counts for the filter chips (All = whole library).
+            const groupCount = g => State.audioLibrary.filter(a => a.group === g).length;
             // Remembered audio folder (from the FS Access handle) — surfaced in the
             // Import/Folder tooltips so users see where the picker will open.
             const lastFolderName = _audioReimportDirHandle ? String(_audioReimportDirHandle.name || '') : '';
@@ -12335,16 +12337,16 @@
                 <div class="flex items-center justify-between shrink-0">
                     <h3 class="text-sm font-bold text-surface-900 dark:text-white">Audio Library</h3>
                     <div class="flex items-center gap-2">
-                        <button onclick="toggleAudioLibAutoplay()" class="p-1.5 rounded transition-colors ${State.audioLibAutoplay ? 'bg-brand-50 text-brand-500 dark:bg-brand-500/20' : 'text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800'}" title="Toggle Autoplay on Selection">
+                        <button onclick="toggleAudioLibAutoplay()" class="p-1.5 h-7 w-7 flex items-center justify-center rounded transition active:scale-95 ${State.audioLibAutoplay ? 'bg-brand-50 text-brand-500 dark:bg-brand-500/20' : 'text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800'}" title="Toggle Autoplay on Selection">
                             <i data-lucide="headphones" class="w-4 h-4"></i>
                         </button>
-                        <button onclick="addMockAudioClip()" class="bg-surface-100 dark:bg-surface-800 hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-600 dark:text-surface-300 px-3 py-1.5 rounded-md text-xs font-bold transition-colors flex items-center gap-2" title="Add an empty audio placeholder to the timeline — load a file into it from its Properties tab">
+                        <button onclick="addMockAudioClip()" class="bg-surface-100 dark:bg-surface-800 hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-600 dark:text-surface-300 h-7 px-2.5 rounded-md text-xs font-bold transition-colors flex items-center gap-1.5" title="Add an empty audio placeholder to the timeline — load a file into it from its Properties tab">
                             <i data-lucide="music" class="w-3 h-3"></i> Mock
                         </button>
-                        <button onclick="pickAudioLibraryImportFolder()" class="bg-surface-100 dark:bg-surface-800 hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-600 dark:text-surface-300 px-3 py-1.5 rounded-md text-xs font-bold transition-colors flex items-center gap-2${_audioLibImport ? ' opacity-40 pointer-events-none' : ''}" title="${_audioLibImport ? 'Import in progress…' : `Import a whole folder${lastFolderHint} — sounds are grouped by the folder name (e.g. a Music folder lands in Music)`}"${_audioLibImport ? ' disabled' : ''}>
+                        <button onclick="pickAudioLibraryImportFolder()" class="bg-surface-100 dark:bg-surface-800 hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-600 dark:text-surface-300 h-7 px-2.5 rounded-md text-xs font-bold transition-colors flex items-center gap-1.5${_audioLibImport ? ' opacity-40 pointer-events-none' : ''}" title="${_audioLibImport ? 'Import in progress…' : `Import a whole folder${lastFolderHint} — sounds are grouped by the folder name (e.g. a Music folder lands in Music)`}"${_audioLibImport ? ' disabled' : ''}>
                             <i data-lucide="folder-plus" class="w-3 h-3"></i> Folder
                         </button>
-                        <button onclick="pickAudioLibraryImportFiles()" class="bg-brand-500 hover:bg-brand-600 text-white px-3 py-1.5 rounded-md text-xs font-bold transition-colors flex items-center gap-2${_audioLibImport ? ' opacity-40 pointer-events-none' : ''}" title="${_audioLibImport ? 'Import in progress…' : `Import audio files${lastFolderHint}`}"${_audioLibImport ? ' disabled' : ''}>
+                        <button onclick="pickAudioLibraryImportFiles()" class="bg-brand-500 hover:bg-brand-600 text-white h-7 px-2.5 rounded-md text-xs font-bold transition-colors flex items-center gap-1.5${_audioLibImport ? ' opacity-40 pointer-events-none' : ''}" title="${_audioLibImport ? 'Import in progress…' : `Import audio files${lastFolderHint}`}"${_audioLibImport ? ' disabled' : ''}>
                             <i data-lucide="upload" class="w-3 h-3"></i> Import
                         </button>
                     </div>
@@ -12373,25 +12375,25 @@
             const missingCount = State.audioLibrary.filter(a => a.sfxMissing).length;
             if (missingCount > 0) {
                 html += `
-                    <div class="flex flex-col gap-2 shrink-0 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2">
-                        <div class="flex items-center gap-2 text-[11px] font-bold text-amber-600 dark:text-amber-400">
+                    <div class="flex flex-col gap-1.5 shrink-0 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2">
+                        <div class="flex items-center gap-2 text-[11px] font-bold text-amber-600 dark:text-amber-400 flex-wrap">
                             <i data-lucide="alert-triangle" class="w-3.5 h-3.5 shrink-0"></i>
-                            <span>${missingCount} sound${missingCount === 1 ? '' : 's'} need re-import — too large to embed in the project</span>
+                            <span title="Files too large to embed in the project — re-import them from your computer">${missingCount} sound${missingCount === 1 ? '' : 's'} ${missingCount === 1 ? 'needs' : 'need'} re-import</span>
+                            <span class="flex items-center gap-2.5 ml-auto">
+                                <label class="cursor-pointer flex items-center gap-1 text-[10px] font-bold text-amber-700 dark:text-amber-300 hover:underline transition-colors">
+                                    <i data-lucide="upload" class="w-3 h-3"></i> Select Files
+                                    <input type="file" accept="audio/*,video/*" multiple class="hidden" onchange="reimportAudioLibraryFiles(this)">
+                                </label>
+                                <button onclick="pickAudioReimportFolder()" class="cursor-pointer flex items-center gap-1 text-[10px] font-bold text-amber-700 dark:text-amber-300 hover:underline transition-colors" title="Pick the folder these sounds live in">
+                                    <i data-lucide="folder-open" class="w-3 h-3"></i> Select Folder
+                                </button>
+                                ${_audioLibLastFolderReady ? `
+                                    <button onclick="reimportFromLastAudioFolder()" class="cursor-pointer flex items-center gap-1 text-[10px] font-bold text-amber-700 dark:text-amber-300 hover:underline transition-colors" title="Re-import from the last-used folder">
+                                        <i data-lucide="folder-clock" class="w-3 h-3"></i> Last folder
+                                    </button>` : ''}
+                            </span>
                         </div>
-                        <div class="flex items-center gap-2">
-                            <label class="cursor-pointer flex items-center gap-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-700 dark:text-amber-300 px-2.5 py-1 rounded-md text-[10px] font-bold transition-colors">
-                                <i data-lucide="upload" class="w-3 h-3"></i> Select Files
-                                <input type="file" accept="audio/*,video/*" multiple class="hidden" onchange="reimportAudioLibraryFiles(this)">
-                            </label>
-                            <button onclick="pickAudioReimportFolder()" class="cursor-pointer flex items-center gap-1.5 border border-amber-500/40 hover:border-amber-400 text-amber-700 dark:text-amber-300 px-2.5 py-1 rounded-md text-[10px] font-bold transition-colors">
-                                <i data-lucide="folder-open" class="w-3 h-3"></i> Select Folder
-                            </button>
-                            ${_audioLibLastFolderReady ? `
-                                <button onclick="reimportFromLastAudioFolder()" class="cursor-pointer flex items-center gap-1.5 bg-surface-100 dark:bg-surface-800 hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-600 dark:text-surface-300 px-2.5 py-1 rounded-md text-[10px] font-bold transition-colors" title="Re-import from the last-used folder">
-                                    <i data-lucide="folder-clock" class="w-3 h-3"></i> Last folder
-                                </button>` : ''}
-                            <span class="ml-auto text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">${esc(_audioLibReimportStatus || '')}</span>
-                        </div>
+                        ${_audioLibReimportStatus ? `<div class="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">${esc(_audioLibReimportStatus)}</div>` : ''}
                     </div>
                 `;
             } else if (_audioLibReimportStatus) {
@@ -12400,9 +12402,9 @@
 
             html += `
                 <div class="flex items-center gap-1.5 flex-wrap shrink-0">
-                    <button onclick="setAudioLibGroup(this.dataset.g)" data-g="" ondragover="audioLibDragOver(event, this)" ondragleave="audioLibDragLeave(this)" ondrop="audioLibDropOnGroup(event, this.dataset.g)" class="px-2.5 py-1 rounded-full text-[10px] font-bold transition-colors ${!State.audioLibGroup ? 'bg-surface-900 dark:bg-white text-white dark:text-surface-900' : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-700'}" title="All sounds — drop a sound here to clear its group">All</button>
+                    <button onclick="setAudioLibGroup(this.dataset.g)" data-g="" ondragover="audioLibDragOver(event, this)" ondragleave="audioLibDragLeave(this)" ondrop="audioLibDropOnGroup(event, this.dataset.g)" class="h-6 px-2.5 rounded-full text-[10px] font-bold transition-colors ${!State.audioLibGroup ? 'bg-surface-900 dark:bg-white text-white dark:text-surface-900' : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-700'}" title="All sounds — drop a sound here to clear its group">All<span class="opacity-50 font-semibold ml-0.5">· ${State.audioLibrary.length}</span></button>
                     ${allGroups.map(g => `
-                        <button onclick="setAudioLibGroup(this.dataset.g)" data-g="${esc(g)}" ondragover="audioLibDragOver(event, this)" ondragleave="audioLibDragLeave(this)" ondrop="audioLibDropOnGroup(event, this.dataset.g)" oncontextmenu="event.preventDefault(); event.stopPropagation(); showAudioLibGroupMenu(event, this.dataset.g);" class="px-2.5 py-1 rounded-full text-[10px] font-bold transition-colors ${State.audioLibGroup === g ? 'bg-surface-900 dark:bg-white text-white dark:text-surface-900' : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-700'}" title="Drop a sound here to move it to ${esc(g)} — right-click to delete this folder">${esc(g)}</button>
+                        <button onclick="setAudioLibGroup(this.dataset.g)" data-g="${esc(g)}" ondragover="audioLibDragOver(event, this)" ondragleave="audioLibDragLeave(this)" ondrop="audioLibDropOnGroup(event, this.dataset.g)" oncontextmenu="event.preventDefault(); event.stopPropagation(); showAudioLibGroupMenu(event, this.dataset.g);" class="h-6 px-2.5 rounded-full text-[10px] font-bold transition-colors ${State.audioLibGroup === g ? 'bg-surface-900 dark:bg-white text-white dark:text-surface-900' : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-700'}" title="Drop a sound here to move it to ${esc(g)} — right-click to delete this folder">${esc(g)}<span class="opacity-50 font-semibold ml-0.5">· ${groupCount(g)}</span></button>
                     `).join('')}
                     <button onclick="addAudioLibGroup()" class="w-6 h-6 rounded-full bg-surface-100 dark:bg-surface-800 text-surface-500 hover:text-brand-500 flex items-center justify-center transition-colors" title="New group">
                         <i data-lucide="plus" class="w-3 h-3"></i>
