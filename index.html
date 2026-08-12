@@ -11463,18 +11463,21 @@
             if (State.isExporting) return;
             if (State.sidebarTab !== 'animations' || State.activeAnimMainTab !== 'custom') return;
             const clip = State.clips.find(c => c.id === State.selectedClipId);
-            if (!clip || !clip.keyframes) return;
+            if (!clip) return;
             const container = document.getElementById('animCardContainer');
             if (!container) return;
             const localTime = Math.max(0, Math.min(clip.duration, State.currentTime - clip.start));
             const sliderFill = State.darkMode ? '#6366f1' : '#4f46e5';
             const sliderBg = State.darkMode ? '#374151' : '#e5e7eb';
 
+            // Update EVERY property row live — keyframed props show the interpolated
+            // value at the playhead, non-keyframed props show their current effects
+            // value (so e.g. a clip that keyframes only offsetX still tracks offsetY
+            // and the rest while seeking / scrubbing / playing / dragging).
             window.keyframePropsFor(clip).forEach(p => {
-                const hasKeyframes = clip.keyframes[p.key] && clip.keyframes[p.key].length > 0;
-                if (!hasKeyframes) return;
+                const hasKeyframes = clip.keyframes && clip.keyframes[p.key] && clip.keyframes[p.key].length > 0;
                 const activeVal = window.getInterpolatedValue(clip, p.key, p.def);
-                const activeKf = clip.keyframes[p.key].find(kf => Math.abs(kf.time - localTime) < 0.05);
+                const activeKf = hasKeyframes ? clip.keyframes[p.key].find(kf => Math.abs(kf.time - localTime) < 0.05) : null;
 
                 // Value label
                 const valEl = container.querySelector(`[data-kf-val="${p.key}"]`);
@@ -22580,11 +22583,33 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         if (clip && canvasDrag.initOffsets && canvasDrag.initOffsets[id]) {
                             clip.effects.offsetX = canvasDrag.initOffsets[id].x + dxPercent;
                             clip.effects.offsetY = canvasDrag.initOffsets[id].y + dyPercent;
+                            // When the dragged property is keyframed, move it through the
+                            // keyframe system (same convention as adjustKeyframeValue):
+                            // update the keyframe under the playhead, or add one there,
+                            // so the element actually moves and the editor stays in sync.
+                            if (clip.keyframes) {
+                                const localTime = Math.max(0, Math.min(clip.duration, State.currentTime - clip.start));
+                                ['offsetX', 'offsetY'].forEach(k => {
+                                    if (!clip.keyframes[k] || !clip.keyframes[k].length) return;
+                                    let kf = clip.keyframes[k].find(x => Math.abs(x.time - localTime) < 0.05);
+                                    if (kf) {
+                                        kf.value = clip.effects[k];
+                                    } else {
+                                        clip.keyframes[k].push({
+                                            time: localTime,
+                                            value: clip.effects[k],
+                                            ease: 'linear'
+                                        });
+                                        clip.keyframes[k].sort((a, b) => a.time - b.time);
+                                    }
+                                });
+                            }
                         }
                     });
                     
                     if (idsToDrag.length > 0) {
                         drawCanvas();
+                        if (typeof updateKeyframeEditorLive === 'function') updateKeyframeEditorLive();
                     }
                 }
             });
