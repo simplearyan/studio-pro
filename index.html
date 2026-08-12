@@ -26485,7 +26485,10 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 exportCanvas.height = exportH;
                 exportCtx = exportCanvas.getContext('2d');
                 
-                const canvasStream = exportCanvas.captureStream(30);
+                // Capture at the user's chosen FPS — a 30 fps cap here would sample
+                // time-based animations (caption karaoke word sweeps, keyframe motion)
+                // coarsely enough to skip frames the 60 fps editor preview shows.
+                const canvasStream = exportCanvas.captureStream(Math.max(1, State.exportFps || 30));
                 const audioTracks = State.masterStreamNode.stream.getAudioTracks();
                 if (audioTracks.length > 0) {
                     finalStream = new MediaStream([...canvasStream.getVideoTracks(), ...audioTracks]);
@@ -26649,7 +26652,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 // time before capture. This path advances State.currentTime with real
                 // dt so it is self-consistent by construction — the re-seek is a
                 // defensive lock that only fires when an element stutters or drifts.
-                const stdSyncThresh = Math.max(2 / 30, 0.05);
+                const stdSyncThresh = Math.max(2 / (State.exportFps || 30), 0.05);
                 for (const clip of State.clips) {
                     if (clip.type !== 'video' || clip.hidden) continue;
                     const el = clip.videoEl;
@@ -26686,7 +26689,11 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     // Use setTimeout instead of requestAnimationFrame to yield to browser's event loop.
                     // This prevents the main thread from being blocked for 50ms+ per frame,
                     // which would cause the PC to freeze during export.
-                    setTimeout(() => exportLoop(performance.now()), 33);
+                    // Schedule the next frame at the chosen FPS (not a fixed 33 ms
+                    // ≈ 30 fps), so 60 fps exports sample the karaoke sweep / keyframe
+                    // motion at the same density as the preview. dt stays wall-clock
+                    // based, so the exported video remains 1× speed regardless.
+                    setTimeout(() => exportLoop(performance.now()), Math.max(1, Math.round(1000 / (State.exportFps || 30))));
                 }
             }
             requestAnimationFrame(exportLoop);
