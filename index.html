@@ -693,6 +693,14 @@
             </button>
             <div class="hidden sm:block w-px h-4 bg-surface-200 dark:bg-surface-700 mx-1"></div>
             
+            <!-- Undo / Redo -->
+            <button id="btnUndo" onclick="undoEdit()" class="p-1.5 text-surface-600 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white bg-surface-100 dark:bg-surface-800 rounded-md border border-surface-200 dark:border-surface-700 shadow-sm opacity-40" title="Undo (Ctrl+Z)">
+                <i data-lucide="undo-2" class="w-4 h-4"></i>
+            </button>
+            <button id="btnRedo" onclick="redoEdit()" class="p-1.5 text-surface-600 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white bg-surface-100 dark:bg-surface-800 rounded-md border border-surface-200 dark:border-surface-700 shadow-sm opacity-40" title="Redo (Ctrl+Shift+Z)">
+                <i data-lucide="redo-2" class="w-4 h-4"></i>
+            </button>
+            
             <!-- Project Save / Open -->
             <button onclick="saveProjectToFile()" class="p-1.5 text-surface-600 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white bg-surface-100 dark:bg-surface-800 rounded-md border border-surface-200 dark:border-surface-700 shadow-sm" title="Save Project (Ctrl+S)">
                 <i data-lucide="save" class="w-4 h-4"></i>
@@ -11543,9 +11551,11 @@
             const hasKeyframes = clip.keyframes[propertyKey] && clip.keyframes[propertyKey].length > 0;
             if (hasKeyframes) {
                 if (confirm(`Disable keyframing for "${propertyKey}"? This will delete all existing keyframes.`)) {
+                    pushUndo(snapshotClipEdits([clipId]));
                     delete clip.keyframes[propertyKey];
                 }
             } else {
+                pushUndo(snapshotClipEdits([clipId]));
                 clip.keyframes[propertyKey] = [];
                 const currentVal = clip.effects && clip.effects[propertyKey] !== undefined ? parseFloat(clip.effects[propertyKey]) : defaultValue;
                 clip.keyframes[propertyKey].push({
@@ -11563,6 +11573,7 @@
             const clip = State.clips.find(c => c.id === clipId);
             if (!clip || !clip.keyframes || !clip.keyframes[propertyKey]) return;
             
+            pushUndo(snapshotClipEdits([clipId]));
             const localTime = Math.max(0, Math.min(clip.duration, State.currentTime - clip.start));
             const existingIdx = clip.keyframes[propertyKey].findIndex(kf => Math.abs(kf.time - localTime) < 0.05);
             if (existingIdx !== -1) {
@@ -11583,6 +11594,7 @@
             const clip = State.clips.find(c => c.id === clipId);
             if (!clip || !clip.keyframes || !clip.keyframes[propertyKey]) return;
             
+            pushUndo(snapshotClipEdits([clipId]), `kf:${clipId}:${propertyKey}`);
             const localTime = Math.max(0, Math.min(clip.duration, State.currentTime - clip.start));
             const val = parseFloat(newValue);
             
@@ -11679,10 +11691,101 @@
             const clip = State.clips.find(c => c.id === clipId);
             if (!clip || !clip.keyframes || !clip.keyframes[propertyKey] || !clip.keyframes[propertyKey][index]) return;
             
+            pushUndo(snapshotClipEdits([clipId]));
             clip.keyframes[propertyKey][index].ease = newEase;
             drawCanvas();
             if (clip.audioNodes) applyAudioEffects(clip);
         };
+
+        // ── Undo / Redo (canvas drags + keyframe edits) ────────────────────────
+        // Snapshot history: every entry deep-copies ONLY the effects and keyframes
+        // of the clips an edit touched, so undo/redo is cheap and never touches
+        // media elements or audio graphs. Continuous gestures coalesce into a
+        // single entry via a shared key + time window (one canvas drag, slider
+        // scrub, or keyframe diamond drag = one undo step).
+        const undoStack = [];
+        const redoStack = [];
+        const UNDO_MAX = 100;
+        let _lastUndoKey = null;
+        let _lastUndoAt = 0;
+
+        function snapshotClipEdits(clipIds) {
+            const clips = {};
+            for (const id of clipIds) {
+                const c = State.clips.find(x => x.id === id);
+                if (!c) continue;
+                clips[id] = {
+                    effects: JSON.parse(JSON.stringify(c.effects || {})),
+                    keyframes: JSON.parse(JSON.stringify(c.keyframes || {}))
+                };
+            }
+            return { clips };
+        }
+
+        function pushUndo(snapshot, coalesceKey) {
+            if (!snapshot || !Object.keys(snapshot.clips || {}).length) return;
+            const now = Date.now();
+            // Continuous gesture: keep the FIRST snapshot of the burst (the state
+            // before the gesture began), just refresh the open window so a long
+            // slider scrub or drag still counts as one undo entry.
+            if (coalesceKey && coalesceKey === _lastUndoKey && now - _lastUndoAt < 1200 && undoStack.length) {
+                _lastUndoAt = now;
+                return;
+            }
+            undoStack.push(snapshot);
+            if (undoStack.length > UNDO_MAX) undoStack.shift();
+            _lastUndoKey = coalesceKey || null;
+            _lastUndoAt = now;
+            redoStack.length = 0;
+            updateUndoRedoButtons();
+        }
+
+        function applyClipSnapshot(snap) {
+            for (const id of Object.keys(snap.clips)) {
+                const c = State.clips.find(x => x.id === id);
+                if (!c) continue;
+                c.effects = JSON.parse(JSON.stringify(snap.clips[id].effects));
+                c.keyframes = JSON.parse(JSON.stringify(snap.clips[id].keyframes));
+            }
+        }
+
+        function refreshAfterHistory() {
+            try { calcOverlaps(); } catch (e) {}
+            updateSidebarPanel();
+            renderClips();
+            drawCanvas();
+            updatePlayhead();
+            State.clips.forEach(c => { if (c.audioNodes) { try { applyAudioEffects(c); } catch (e) {} } });
+            updateUndoRedoButtons();
+        }
+
+        window.undoEdit = function() {
+            const snap = undoStack.pop();
+            if (!snap) return;
+            const cur = snapshotClipEdits(Object.keys(snap.clips));
+            applyClipSnapshot(snap);
+            redoStack.push(cur);
+            if (redoStack.length > UNDO_MAX) redoStack.shift();
+            refreshAfterHistory();
+        };
+
+        window.redoEdit = function() {
+            const snap = redoStack.pop();
+            if (!snap) return;
+            const cur = snapshotClipEdits(Object.keys(snap.clips));
+            applyClipSnapshot(snap);
+            undoStack.push(cur);
+            if (undoStack.length > UNDO_MAX) undoStack.shift();
+            refreshAfterHistory();
+        };
+
+        function updateUndoRedoButtons() {
+            const bu = document.getElementById('btnUndo');
+            const br = document.getElementById('btnRedo');
+            if (bu) bu.classList.toggle('opacity-40', undoStack.length === 0);
+            if (br) br.classList.toggle('opacity-40', redoStack.length === 0);
+        }
+        updateUndoRedoButtons();
 
         // ── Reusable contrast audit helper (design audits) ─────────────────────
         // Measures the effective WCAG contrast ratio of an element: blends any
@@ -22117,6 +22220,18 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 
                 const k = e.key.toLowerCase();
                 
+                // Undo / Redo (canvas drags + keyframe edits)
+                if ((e.ctrlKey || e.metaKey) && !e.altKey && (k === 'z' || k === 'y')) {
+                    e.preventDefault();
+                    if (k === 'z') {
+                        if (e.shiftKey) window.redoEdit();
+                        else window.undoEdit();
+                    } else {
+                        window.redoEdit();
+                    }
+                    return;
+                }
+                
                 // WASD / Shift+WASD / Alt+WASD scrolling
                 if (['w', 'a', 's', 'd'].includes(k) && !e.ctrlKey && !e.metaKey) {
                     e.preventDefault();
@@ -22524,6 +22639,9 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                             };
                         }
                     });
+                    // Undo snapshot BEFORE any movement: one drag gesture = one undo
+                    // entry, pushed on mouseup (see the window mouseup handler below).
+                    canvasDrag.beforeSnapshot = snapshotClipEdits(idsToDrag);
 
                     document.getElementById('renderCanvas').classList.add('dragging');
                 } else {
@@ -22624,13 +22742,30 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                             }
                         });
                     }
+                    // Keyframe diamond drag: one undo entry, only if the time actually moved.
+                    const kfSnap = State.dragKeyframe.beforeSnapshot;
+                    if (kfSnap) {
+                        const cur = snapshotClipEdits(Object.keys(kfSnap.clips));
+                        if (JSON.stringify(cur) !== JSON.stringify(kfSnap)) pushUndo(kfSnap);
+                    }
                     State.dragKeyframe = null;
                     renderClips();
                     updateSidebarPanel();
                 }
 
+                // Canvas drag: one undo entry, only if an offset actually moved.
+                const dragSnap = canvasDrag.beforeSnapshot;
+                if (dragSnap) {
+                    const cur = snapshotClipEdits(Object.keys(dragSnap.clips));
+                    if (JSON.stringify(cur) !== JSON.stringify(dragSnap)) pushUndo(dragSnap);
+                    canvasDrag.beforeSnapshot = null;
+                }
                 canvasDrag.active = false;
                 document.getElementById('renderCanvas').classList.remove('dragging');
+                // A mouseup ends any continuous gesture (slider scrub, drag) — start
+                // the next gesture with a fresh coalesce window so a second quick
+                // scrub or drag becomes its own undo entry.
+                _lastUndoKey = null;
             });
 
 
@@ -22749,7 +22884,9 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         clipId: clipId,
                         originalTime: time,
                         lastTime: time,
-                        startX: e.clientX
+                        startX: e.clientX,
+                        // Undo snapshot before the diamond is moved; pushed on mouseup.
+                        beforeSnapshot: snapshotClipEdits([clipId])
                     };
                     return;
                 }
@@ -25004,6 +25141,11 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
 
             State.selectedClipId = null;
             State.multiSelectedClipIds = [];
+            // A fresh project starts with an empty history.
+            undoStack.length = 0;
+            redoStack.length = 0;
+            _lastUndoKey = null;
+            updateUndoRedoButtons();
 
             try { calcOverlaps(); } catch (e) {}
             renderTrackHeaders();
