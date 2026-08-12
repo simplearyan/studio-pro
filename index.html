@@ -11601,6 +11601,63 @@
             if (clip.audioNodes) applyAudioEffects(clip);
         };
 
+        // ── Reusable contrast audit helper (design audits) ─────────────────────
+        // Measures the effective WCAG contrast ratio of an element: blends any
+        // translucent backgrounds (canvas fillStyle accepts rgb/rgba/oklab, so
+        // Tailwind v4 alpha colors work) over the nearest opaque ancestor, then
+        // compares with the element's (or a descendant's) computed text color.
+        // Usage: auditContrast(el) → { ratio, passAA, passUI, ... }
+        //        auditContrast(row, { selector: '.text-[11px]' }) → child text vs row bg
+        window.auditContrast = function(el, opts) {
+            opts = opts || {};
+            const cvs = document.createElement('canvas'); cvs.width = cvs.height = 2;
+            const ctx = cvs.getContext('2d');
+            const isOpaque = s => {
+                if (!s || s === 'transparent') return false;
+                const m = s.match(/[\d.]+/g);
+                if (!m) return false;
+                return (m.length >= 4 ? +m[3] : 1) >= 1;
+            };
+            // 1. collect bg layers from el upward; nearest opaque ancestor ends the
+            //    walk. Layers are stored deepest-first so painting order is correct
+            //    (ancestor under descendant) — translucent tints blend properly.
+            const layers = [];
+            let node = el;
+            while (node && node !== document.documentElement) {
+                const bg = getComputedStyle(node).backgroundColor;
+                if (bg && bg !== 'transparent' && !/rgba\(\s*0,\s*0,\s*0,\s*0\)/.test(bg)) {
+                    layers.unshift(bg);
+                    if (isOpaque(bg)) break;
+                }
+                node = node.parentElement;
+            }
+            if (!layers.length) {
+                layers.push(document.documentElement.classList.contains('dark') ? 'rgb(17,17,17)' : 'rgb(255,255,255)');
+            }
+            layers.forEach(l => { ctx.fillStyle = l; ctx.fillRect(0, 0, 2, 2); });
+            const bg = Array.from(ctx.getImageData(1, 1, 1, 1).data).slice(0, 3);
+            // 3. foreground color
+            const fgEl = opts.selector ? el.querySelector(opts.selector) : el;
+            const m = (fgEl && getComputedStyle(fgEl).color.match(/[\d.]+/g));
+            const fg = m ? [+m[0], +m[1], +m[2]] : null;
+            // 4. WCAG ratio
+            const lum = c => { const f = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
+            const ratio = fg ? (() => { const l1 = lum(fg), l2 = lum(bg); return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05); })() : null;
+            return {
+                label: (el.getAttribute('title') || el.textContent || el.tagName || '').trim().slice(0, 40),
+                fg: fg ? 'rgb(' + fg.join(',') + ')' : null,
+                bg: 'rgb(' + bg.join(',') + ')',
+                ratio: ratio === null ? null : +ratio.toFixed(2),
+                passAA: ratio !== null && ratio >= 4.5,
+                passUI: ratio !== null && ratio >= 3
+            };
+        };
+        // Sweep: auditContrastAll('.my-selector') or auditContrastAll(containerEl, '.child')
+        window.auditContrastAll = function(sel, childSel) {
+            const els = typeof sel === 'string' ? [...document.querySelectorAll(sel)] : [sel];
+            return els.map(el => window.auditContrast(el, childSel ? { selector: childSel } : {})).filter(r => r.ratio !== null);
+        };
+
         window.saveKeyframePreset = function(clipId) {
             const clip = State.clips.find(c => c.id === clipId);
             if (!clip || !clip.keyframes) {
