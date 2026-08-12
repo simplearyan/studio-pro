@@ -11749,12 +11749,107 @@
             }
         }
 
+        // ── Timeline (structural) snapshots ────────────────────────────────────
+        // Moves, trims, splits and deletes change clip geometry AND the clip array
+        // itself (right halves get created, clips get removed). A timeline snapshot
+        // captures every clip's non-runtime data (deep-copied) plus a reference to
+        // the LIVE clip object and its array position. Restoring rebuilds the array
+        // from the snapshot: still-existing clips are patched in place (media
+        // elements / audio graphs survive), deleted clips are re-inserted from their
+        // live reference (or reconstructed from data as a last resort), and clips
+        // created by the action (e.g. split right halves) are dropped.
+        function snapshotClipData(c) {
+            const out = {};
+            for (const k of Object.keys(c)) {
+                if (PROJECT_RUNTIME_FIELDS.has(k)) continue;
+                if (k === 'sfx') {
+                    const sfx = c.sfx;
+                    if (sfx && typeof sfx === 'object') {
+                        out.sfx = {
+                            name: sfx.name, duration: sfx.duration, volume: sfx.volume,
+                            trimStart: sfx.trimStart, trimEnd: sfx.trimEnd,
+                            fadeIn: sfx.fadeIn, fadeOut: sfx.fadeOut, fadeCurve: sfx.fadeCurve
+                        };
+                    }
+                    continue;
+                }
+                const v = c[k];
+                if (v === undefined || v === null || typeof v === 'function') continue;
+                if (typeof v === 'object') {
+                    try { out[k] = JSON.parse(JSON.stringify(v)); } catch (e) { continue; }
+                } else {
+                    out[k] = v;
+                }
+            }
+            return out;
+        }
+
+        function captureTimelineSnapshot() {
+            return {
+                kind: 'timeline',
+                clips: State.clips.map((c, i) => ({
+                    id: c.id,
+                    index: i,
+                    live: c,
+                    data: snapshotClipData(c)
+                }))
+            };
+        }
+
+        // JSON-safe fingerprint of a timeline snapshot (drops the live object
+        // refs) — used to detect whether a gesture actually changed anything.
+        function timelineSnapshotSig(snap) {
+            return JSON.stringify((snap.clips || []).map(e => ({ id: e.id, index: e.index, data: e.data })));
+        }
+
+        function applyTimelineSnapshot(snap) {
+            const liveById = new Map();
+            State.clips.forEach(c => liveById.set(c.id, c));
+            const rebuilt = [];
+            const seen = new Set();
+            (snap.clips || []).forEach(entry => {
+                seen.add(entry.id);
+                // Prefer the CURRENT live object when the clip still exists (keeps
+                // media elements / audio graphs alive); otherwise fall back to the
+                // snapshot's live reference (a deleted clip being restored) or a
+                // full reconstruction from serialized data.
+                let clip = liveById.get(entry.id) || entry.live;
+                if (!clip) {
+                    try { clip = restoreClip(JSON.parse(JSON.stringify(entry.data))); } catch (e) { clip = null; }
+                }
+                if (!clip) return;
+                // Patch every non-runtime field back onto the (live) clip object.
+                const data = entry.data || {};
+                for (const k of Object.keys(data)) {
+                    if (PROJECT_RUNTIME_FIELDS.has(k) || k === 'sfx') continue;
+                    clip[k] = (data[k] !== null && typeof data[k] === 'object')
+                        ? JSON.parse(JSON.stringify(data[k])) : data[k];
+                }
+                rebuilt.push(clip);
+            });
+            // Tear down audio graphs of clips that no longer exist after restore
+            // (e.g. split right halves dropped by undoing a split).
+            liveById.forEach(c => {
+                if (!seen.has(c.id) && c.audioNodes && typeof c.audioNodes === 'object') {
+                    try {
+                        Object.values(c.audioNodes).forEach(n => { try { if (n && n.disconnect) n.disconnect(); } catch (e) {} });
+                    } catch (e) {}
+                }
+            });
+            State.clips = rebuilt;
+            // Selection may reference clips that no longer exist.
+            if (State.selectedClipId && !State.clips.some(c => c.id === State.selectedClipId)) State.selectedClipId = null;
+            State.multiSelectedClipIds = State.multiSelectedClipIds.filter(id => State.clips.some(c => c.id === id));
+        }
+
         function refreshAfterHistory() {
             try { calcOverlaps(); } catch (e) {}
+            updateTimelineWidth();
             updateSidebarPanel();
             renderClips();
             drawCanvas();
             updatePlayhead();
+            syncMediaElements();
             State.clips.forEach(c => { if (c.audioNodes) { try { applyAudioEffects(c); } catch (e) {} } });
             updateUndoRedoButtons();
         }
@@ -11762,6 +11857,14 @@
         window.undoEdit = function() {
             const snap = undoStack.pop();
             if (!snap) return;
+            if (snap.kind === 'timeline') {
+                const cur = captureTimelineSnapshot();
+                applyTimelineSnapshot(snap);
+                redoStack.push(cur);
+                if (redoStack.length > UNDO_MAX) redoStack.shift();
+                refreshAfterHistory();
+                return;
+            }
             const cur = snapshotClipEdits(Object.keys(snap.clips));
             applyClipSnapshot(snap);
             redoStack.push(cur);
@@ -11772,6 +11875,14 @@
         window.redoEdit = function() {
             const snap = redoStack.pop();
             if (!snap) return;
+            if (snap.kind === 'timeline') {
+                const cur = captureTimelineSnapshot();
+                applyTimelineSnapshot(snap);
+                undoStack.push(cur);
+                if (undoStack.length > UNDO_MAX) undoStack.shift();
+                refreshAfterHistory();
+                return;
+            }
             const cur = snapshotClipEdits(Object.keys(snap.clips));
             applyClipSnapshot(snap);
             undoStack.push(cur);
@@ -20173,6 +20284,10 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             });
             if (idsToDelete.length === 0) return;
             
+            // Undo snapshot BEFORE removal: undoing re-inserts the deleted clips
+            // (live objects, so their media survives) at their original positions.
+            const beforeSnap = captureTimelineSnapshot();
+            
             idsToDelete.forEach(id => {
                 window.unlinkClip(id);
                 const clipToDelete = State.clips.find(c => c.id === id);
@@ -20185,6 +20300,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             });
             
             State.clips = State.clips.filter(c => !idsToDelete.includes(c.id));
+            pushUndo(beforeSnap);
             State.selectedClipId = null;
             State.multiSelectedClipIds = [];
             calcOverlaps();
@@ -20781,6 +20897,9 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
         // through on unlocked tracks, splits them, re-links per temporal half, carries
         // scene children into the right halves, and refreshes the canvas live.
         function executeSplit(targets, time) {
+            // Undo snapshot BEFORE any split: undoing removes the created right
+            // halves and restores the truncated parents (start/duration/sourceOffset).
+            const beforeSnap = captureTimelineSnapshot();
             // Keep only clips the playhead actually passes through on unlocked tracks
             const splittable = targets.filter(c => {
                 const t = State.tracks.find(tr => tr.id === c.trackId);
@@ -20825,6 +20944,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 }
             });
 
+            pushUndo(beforeSnap);
             calcOverlaps();
             renderClips();
             updatePropertiesPanel();
@@ -23278,6 +23398,10 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             State.drag.initialTrackId = dragClip.trackId;
             State.drag.startX = e.clientX;
             State.drag.startY = e.clientY;
+            // Undo snapshot BEFORE any timeline movement: one move/trim/fade gesture
+            // = one undo entry, pushed on mouseup (see handleMouseUp) if anything
+            // actually changed. Capture covers ripple pushes and linked groups too.
+            State.drag.beforeSnapshot = captureTimelineSnapshot();
 
             State.drag.initialMulti = [];
             State.drag.ripplePushedIds = new Set();
@@ -23929,6 +24053,16 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 updateSidebarPanel();
             }
             
+            // Timeline gesture (move / trim / fade / env-trim / auto-point) undo
+            // entry: push the pre-gesture snapshot only when something changed.
+            if (State.drag.beforeSnapshot) {
+                const after = captureTimelineSnapshot();
+                if (timelineSnapshotSig(after) !== timelineSnapshotSig(State.drag.beforeSnapshot)) {
+                    pushUndo(State.drag.beforeSnapshot);
+                }
+                State.drag.beforeSnapshot = null;
+            }
+
             State.drag.active = false;
 
             // ── Sync subtitle clips back to subtitle data ────────────────────
