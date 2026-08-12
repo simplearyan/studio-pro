@@ -8947,8 +8947,8 @@
                     const capEase = capEf.animEase !== undefined ? capEf.animEase : 'easeOut';
                     const capDur = Math.round(((capEf.animInDur !== undefined ? capEf.animInDur : (capCfg.animInDur || 0.3))) * 100) / 100;
                     const capPresetEff = capEf.animPreset !== undefined ? capEf.animPreset : (capCfg.animPreset || 'none');
-                    const capSweep = ['wordHighlight', 'wordColor', 'wordPop', 'wordUnderline', 'letterPop', 'letterFade', 'typewriter', 'bounce', 'rotate'].includes(capPresetEff);
-                    const capWord = ['wordHighlight', 'wordColor', 'wordPop', 'wordUnderline'].includes(capPresetEff);
+                    const capSweep = ['wordHighlight', 'wordColor', 'wordPop', 'wordUnderline', 'wordGradient', 'wordShake', 'wordStretch', 'letterPop', 'letterFade', 'typewriter', 'bounce', 'rotate'].includes(capPresetEff);
+                    const capWord = ['wordHighlight', 'wordColor', 'wordPop', 'wordUnderline', 'wordGradient', 'wordShake', 'wordStretch'].includes(capPresetEff);
                     const capFullSpan = capEf.animFullSpan ? true : false;
                     const seg = (cur, val) => cur === val ? 'bg-brand-500/15 dark:bg-brand-400/25 text-brand-700 dark:text-brand-100 ring-1 ring-inset ring-brand-500/50' : 'bg-surface-100 dark:bg-surface-800 text-surface-700 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-700';
                     const capAnimSel = (key, opts) => {
@@ -9015,7 +9015,7 @@
                             </div>
                             <div>
                                 <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1 block">Preset Animation</label>
-                                ${capAnimSel('animPreset', [['none', 'None'], ['fade', 'Fade Up'], ['pop', 'Pop'], ['letterPop', 'Letter Pop'], ['letterFade', 'Letter Fade'], ['typewriter', 'Typewriter'], ['wordHighlight', 'Word Glow'], ['wordColor', 'Color Highlight'], ['wordPop', 'Scale Pop'], ['wordUnderline', 'Underline Sweep'], ['bounce', 'Bounce'], ['rotate', 'Rotate']])}
+                                ${capAnimSel('animPreset', [['none', 'None'], ['fade', 'Fade Up'], ['pop', 'Pop'], ['letterPop', 'Letter Pop'], ['letterFade', 'Letter Fade'], ['typewriter', 'Typewriter'], ['wordHighlight', 'Word Glow'], ['wordColor', 'Color Highlight'], ['wordPop', 'Scale Pop'], ['wordUnderline', 'Underline Sweep'], ['wordGradient', 'Gradient Sweep'], ['wordShake', 'Shake Emphasis'], ['wordStretch', 'Stretch'], ['bounce', 'Bounce'], ['rotate', 'Rotate']])}
                                 ${capSweep ? `
                                 <div class="flex items-center justify-between mt-1.5">
                                     <label class="text-[10px] font-bold text-surface-600 dark:text-surface-300 flex items-center gap-1.5 cursor-pointer" title="Sweep across the whole caption duration (CapCut-style karaoke) instead of only the ~0.5s entrance phase"><i data-lucide="timer" class="w-3 h-3 text-brand-500"></i>Whole caption duration</label>
@@ -16015,6 +16015,9 @@
                 wordColor: { animTextIn: 'typewriter' },
                 wordPop: { animTextIn: 'typewriter' },
                 wordUnderline: { animTextIn: 'typewriter' },
+                wordGradient: { animTextIn: 'typewriter' },
+                wordShake: { animTextIn: 'typewriter' },
+                wordStretch: { animTextIn: 'typewriter' },
                 bounce: { animTextIn: 'slideUp', animTextEase: 'bounce' },
                 rotate: { animTextIn: 'odometer' }
             };
@@ -16566,7 +16569,7 @@
             if (fx.animOut !== undefined) dest.animOut = ANIM_OUT_TEXT_TO_CAPTION[fx.animOut] !== undefined ? ANIM_OUT_TEXT_TO_CAPTION[fx.animOut] : fx.animOut;
             if (fx.animTextIn !== undefined && fx.animTextIn !== 'none' && TEXT_LETTER_TO_PRESET[fx.animTextIn]) {
                 dest.animPreset = TEXT_LETTER_TO_PRESET[fx.animTextIn];
-            } else if (fx.animPreset !== undefined && ['fade', 'pop', 'letterPop', 'letterFade', 'typewriter', 'wordHighlight', 'wordColor', 'wordPop', 'wordUnderline', 'bounce', 'rotate'].includes(fx.animPreset)) {
+            } else if (fx.animPreset !== undefined && ['fade', 'pop', 'letterPop', 'letterFade', 'typewriter', 'wordHighlight', 'wordColor', 'wordPop', 'wordUnderline', 'wordGradient', 'wordShake', 'wordStretch', 'bounce', 'rotate'].includes(fx.animPreset)) {
                 dest.animPreset = fx.animPreset;
             }
             saveSubtitlesToStorage();
@@ -16716,9 +16719,9 @@
             const animCard = sectionCard('wand-2', 'Animation', `
                 <div>
                     <label class="${lblCls} mb-1 block">Preset</label>
-                    <div class="grid ${isHorizontal ? 'grid-cols-5' : 'grid-cols-4'} gap-1.5">                                    ${[['none','None'],['fade','Fade Up'],['pop','Pop'],['letterPop','Letter Pop'],['letterFade','Letter Fade'],['typewriter','Typewriter'],['wordHighlight','Word Glow'],['wordColor','Color Highlight'],['wordPop','Scale Pop'],['wordUnderline','Underline Sweep'],['bounce','Bounce'],['rotate','Rotate']].map(([pv, pl]) => `<button class="px-1 py-1.5 text-[10px] font-bold rounded transition-colors ${(cfg.animPreset||'none') === pv ? 'bg-brand-500/15 dark:bg-brand-400/25 text-brand-700 dark:text-brand-100 ring-1 ring-inset ring-brand-500/50' : 'bg-surface-100 dark:bg-surface-800 text-surface-700 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-700'}" onclick="State.subtitleConfig.animPreset='${pv}'; saveSubtitlesToStorage(); drawCanvas(); renderSubtitlesPanel();">${pl}</button>`).join('')}
+                    <div class="grid ${isHorizontal ? 'grid-cols-5' : 'grid-cols-4'} gap-1.5">                                    ${[['none','None'],['fade','Fade Up'],['pop','Pop'],['letterPop','Letter Pop'],['letterFade','Letter Fade'],['typewriter','Typewriter'],['wordHighlight','Word Glow'],['wordColor','Color Highlight'],['wordPop','Scale Pop'],['wordUnderline','Underline Sweep'],['wordGradient','Gradient Sweep'],['wordShake','Shake Emphasis'],['wordStretch','Stretch'],['bounce','Bounce'],['rotate','Rotate']].map(([pv, pl]) => `<button class="px-1 py-1.5 text-[10px] font-bold rounded transition-colors ${(cfg.animPreset||'none') === pv ? 'bg-brand-500/15 dark:bg-brand-400/25 text-brand-700 dark:text-brand-100 ring-1 ring-inset ring-brand-500/50' : 'bg-surface-100 dark:bg-surface-800 text-surface-700 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-700'}" onclick="State.subtitleConfig.animPreset='${pv}'; saveSubtitlesToStorage(); drawCanvas(); renderSubtitlesPanel();">${pl}</button>`).join('')}
                     </div>
-                    ${['wordHighlight', 'wordColor', 'wordPop', 'wordUnderline', 'letterPop', 'letterFade', 'typewriter', 'bounce', 'rotate'].includes(cfg.animPreset) ? `
+                    ${['wordHighlight', 'wordColor', 'wordPop', 'wordUnderline', 'wordGradient', 'wordShake', 'wordStretch', 'letterPop', 'letterFade', 'typewriter', 'bounce', 'rotate'].includes(cfg.animPreset) ? `
                     <div class="flex items-center justify-between mt-2">
                         <label class="text-[10px] font-bold text-surface-700 dark:text-surface-200 flex items-center gap-1.5 cursor-pointer" title="Sweep across the whole caption duration (CapCut-style karaoke) instead of only the ~0.5s entrance phase"><i data-lucide="timer" class="w-3 h-3 text-brand-500"></i>Whole caption duration</label>
                         <label class="relative inline-flex items-center cursor-pointer">
@@ -16726,7 +16729,7 @@
                             <div class="w-7 h-4 bg-surface-300 dark:bg-surface-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:border-surface-600 dark:peer-checked:bg-brand-500 peer-checked:bg-brand-500"></div>
                         </label>
                     </div>
-                    ${['wordHighlight', 'wordColor', 'wordPop', 'wordUnderline'].includes(cfg.animPreset) ? `
+                    ${['wordHighlight', 'wordColor', 'wordPop', 'wordUnderline', 'wordGradient', 'wordShake', 'wordStretch'].includes(cfg.animPreset) ? `
                     <div class="flex items-center justify-between mt-1.5">
                         <label class="text-[10px] font-bold text-surface-700 dark:text-surface-200 flex items-center gap-1.5 cursor-pointer" title="Accent color used by Color Highlight and Underline Sweep"><i data-lucide="palette" class="w-3 h-3 text-brand-500"></i>Highlight color</label>
                         <input type="color" value="${cfg.highlightColor || '#FFD60A'}" oninput="State.subtitleConfig.highlightColor = this.value; saveSubtitlesToStorage(); drawCanvas();" class="w-8 h-6 rounded border border-surface-200 dark:border-surface-700 bg-transparent cursor-pointer">
@@ -16898,7 +16901,7 @@
                                         <div><label class="text-[8px] font-bold text-surface-400">Anim In</label><select id="subInlineAnimIn_${sid}" onchange="autoSaveInlineSubtitle('${sid}')" class="w-full text-[10px] p-1 border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 focus:outline-none focus:border-brand-500 font-bold"><option value="" ${!ef.animIn?'selected':''}>Same</option><option value="none" ${ef.animIn==='none'?'selected':''}>None</option><option value="fadeIn" ${ef.animIn==='fadeIn'?'selected':''}>Fade</option><option value="slideUp" ${ef.animIn==='slideUp'?'selected':''}>Slide up</option><option value="scaleIn" ${ef.animIn==='scaleIn'?'selected':''}>Scale</option><option value="popIn" ${ef.animIn==='popIn'?'selected':''}>Pop</option></select></div>
                                         <div><label class="text-[8px] font-bold text-surface-400">Anim Out</label><select id="subInlineAnimOut_${sid}" onchange="autoSaveInlineSubtitle('${sid}')" class="w-full text-[10px] p-1 border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 focus:outline-none focus:border-brand-500 font-bold"><option value="" ${!ef.animOut?'selected':''}>Same</option><option value="none" ${ef.animOut==='none'?'selected':''}>None</option><option value="fadeOut" ${ef.animOut==='fadeOut'?'selected':''}>Fade</option><option value="slideDown" ${ef.animOut==='slideDown'?'selected':''}>Slide</option><option value="scaleOut" ${ef.animOut==='scaleOut'?'selected':''}>Scale</option></select></div>
                                     </div>
-                                    <div><label class="text-[8px] font-bold text-surface-400">Preset</label><select id="subInlineAnimPreset_${sid}" onchange="autoSaveInlineSubtitle('${sid}')" class="w-full text-[10px] p-1 border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 focus:outline-none focus:border-brand-500 font-bold"><option value="" ${!ef.animPreset?'selected':''}>Same</option><option value="none" ${ef.animPreset==='none'?'selected':''}>None</option><option value="fade" ${ef.animPreset==='fade'?'selected':''}>Fade Up</option><option value="pop" ${ef.animPreset==='pop'?'selected':''}>Pop</option><option value="letterPop" ${ef.animPreset==='letterPop'?'selected':''}>Letter Pop</option><option value="letterFade" ${ef.animPreset==='letterFade'?'selected':''}>Letter Fade</option><option value="typewriter" ${ef.animPreset==='typewriter'?'selected':''}>Typewriter</option><option value="wordHighlight" ${ef.animPreset==='wordHighlight'?'selected':''}>Word Glow</option><option value="wordColor" ${ef.animPreset==='wordColor'?'selected':''}>Color Highlight</option><option value="wordPop" ${ef.animPreset==='wordPop'?'selected':''}>Scale Pop</option><option value="wordUnderline" ${ef.animPreset==='wordUnderline'?'selected':''}>Underline Sweep</option><option value="bounce" ${ef.animPreset==='bounce'?'selected':''}>Bounce</option><option value="rotate" ${ef.animPreset==='rotate'?'selected':''}>Rotate</option></select></div>
+                                    <div><label class="text-[8px] font-bold text-surface-400">Preset</label><select id="subInlineAnimPreset_${sid}" onchange="autoSaveInlineSubtitle('${sid}')" class="w-full text-[10px] p-1 border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 focus:outline-none focus:border-brand-500 font-bold"><option value="" ${!ef.animPreset?'selected':''}>Same</option><option value="none" ${ef.animPreset==='none'?'selected':''}>None</option><option value="fade" ${ef.animPreset==='fade'?'selected':''}>Fade Up</option><option value="pop" ${ef.animPreset==='pop'?'selected':''}>Pop</option><option value="letterPop" ${ef.animPreset==='letterPop'?'selected':''}>Letter Pop</option><option value="letterFade" ${ef.animPreset==='letterFade'?'selected':''}>Letter Fade</option><option value="typewriter" ${ef.animPreset==='typewriter'?'selected':''}>Typewriter</option><option value="wordHighlight" ${ef.animPreset==='wordHighlight'?'selected':''}>Word Glow</option><option value="wordColor" ${ef.animPreset==='wordColor'?'selected':''}>Color Highlight</option><option value="wordPop" ${ef.animPreset==='wordPop'?'selected':''}>Scale Pop</option><option value="wordUnderline" ${ef.animPreset==='wordUnderline'?'selected':''}>Underline Sweep</option><option value="wordGradient" ${ef.animPreset==='wordGradient'?'selected':''}>Gradient Sweep</option><option value="wordShake" ${ef.animPreset==='wordShake'?'selected':''}>Shake Emphasis</option><option value="wordStretch" ${ef.animPreset==='wordStretch'?'selected':''}>Stretch</option><option value="bounce" ${ef.animPreset==='bounce'?'selected':''}>Bounce</option><option value="rotate" ${ef.animPreset==='rotate'?'selected':''}>Rotate</option></select></div>
                                     <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" id="subInlineFullSpan_${sid}" ${ef.animFullSpan ? 'checked' : ''} onchange="autoSaveInlineSubtitle('${sid}')" class="rounded text-brand-500 focus:ring-brand-500"><span class="text-[8px] font-bold text-surface-400">Whole caption duration (karaoke)</span></label>
                                 </div>
                             </div>
@@ -19391,6 +19394,9 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
          *    wordColor     — the spoken word + trail render in the accent highlight color
          *    wordPop       — the spoken word scales up while it's being said
          *    wordUnderline — a colored bar sweeps under the spoken word (dim trail)
+         *    wordGradient  — a bright band sweeps across the spoken word (accent trail)
+         *    wordShake     — the spoken word jitters with emphasis while it's being said
+         *    wordStretch   — the spoken word's letters spread apart horizontally
          */
         function drawCaptionWordGlow(ctx, line, y, ef, cfg, subTime, sweepDur, fontSize, offs, preset) {
             const words = line.split(/\s+/).filter(Boolean);
@@ -19459,15 +19465,25 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     ctx.restore();
                 }
                 ctx.save();
-                // Scale-pop: the spoken word grows while it's being said
-                const popScale = (preset === 'wordPop' && active) ? 1.22 : 1;
+                // Per-preset spoken-word transform: pop (grow), stretch (letters
+                // spread apart), or shake (emphasis jitter) — applied around the
+                // word's center so the rest of the caption stays put.
+                let spx = 1, spy = 1, spxOff = 0, spyOff = 0;
+                if (preset === 'wordPop' && active) { spx = spy = 1.22; }
+                else if (preset === 'wordStretch' && active) { spx = 1.18; }
+                else if (preset === 'wordShake' && active) {
+                    const st = subTime * 55;
+                    spxOff = (Math.sin(st) + Math.sin(st * 2.7) * 0.7) * 2.2;
+                    spyOff = Math.cos(st * 1.7) * 1.1;
+                }
                 ctx.globalAlpha *= (active || done) ? 1 : 0.4;
                 ctx.textAlign = 'left';
-                if (popScale !== 1) {
+                if (spx !== 1 || spy !== 1 || spxOff !== 0 || spyOff !== 0) {
                     const wcx = x + widths[wi] / 2;
                     ctx.translate(wcx, y);
-                    ctx.scale(popScale, popScale);
+                    ctx.scale(spx, spy);
                     ctx.translate(-wcx, -y);
+                    ctx.translate(spxOff, spyOff);
                 }
                 // Shadow
                 const shEnable = ef.shadowEnable !== undefined ? ef.shadowEnable : cfg.shadowEnable;
@@ -19486,8 +19502,26 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     ctx.strokeText(w, x, y);
                     ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
                 }
-                // Color highlight: the spoken word + trail render in the accent color
-                ctx.fillStyle = (preset === 'wordColor' && (active || done)) ? accent : (ef.fillColor || '#ffffff');
+                // Fill: wordColor tints the spoken word + trail with the accent;
+                // wordGradient sweeps a bright band across the spoken word (the
+                // accent trail stays after it passes); everything else uses the
+                // plain fill color.
+                let wordFill = (preset === 'wordColor' && (active || done)) ? accent : (ef.fillColor || '#ffffff');
+                if (preset === 'wordGradient') {
+                    if (active) {
+                        const grad = ctx.createLinearGradient(x, 0, x + widths[wi], 0);
+                        const band = 0.4;
+                        const bc = Math.max(0, Math.min(1 - band, p - band / 2));
+                        grad.addColorStop(0, accent);
+                        grad.addColorStop(bc, accent);
+                        grad.addColorStop(Math.min(1, bc + band), '#ffffff');
+                        grad.addColorStop(1, accent);
+                        wordFill = grad;
+                    } else if (done) {
+                        wordFill = accent;
+                    }
+                }
+                ctx.fillStyle = wordFill;
                 ctx.fillText(w, x, y);
                 ctx.restore();
                 x += widths[wi] + spaceW;
@@ -19612,7 +19646,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
 
             // Word-level karaoke presets (CapCut-style): the highlight sweeps word by
             // word — they draw their own pills/bars, so skip the plain box background.
-            const wordPresets = { wordHighlight: 1, wordColor: 1, wordPop: 1, wordUnderline: 1 };
+            const wordPresets = { wordHighlight: 1, wordColor: 1, wordPop: 1, wordUnderline: 1, wordGradient: 1, wordShake: 1, wordStretch: 1 };
 
             // Background
             if (!wordPresets[animPreset] && (ef.bgEnable !== undefined ? ef.bgEnable : cfg.bgEnable)) {
