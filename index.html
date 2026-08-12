@@ -10935,7 +10935,8 @@
         };
 
         window.renderPresetsLibrary = function() {
-            sidebarContent.className = "flex flex-col gap-3 p-4 w-full flex-1 min-h-0 overflow-hidden";
+            const isHorizontal = State.inspector.dock === 'bottom' || State.inspector.dock === 'top';
+            sidebarContent.className = `flex ${isHorizontal ? 'flex-row items-stretch gap-3 p-4 w-full flex-1 min-h-0 overflow-hidden' : 'flex-col gap-3 p-4 w-full flex-1 min-h-0 overflow-hidden'}`;
             
             const customPresets = loadCustomPresets();
             const allPresets = [...DEFAULT_PRESETS, ...customPresets];
@@ -10984,9 +10985,9 @@
             
             const escapeHtml = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
             
-            let html = `
+            const headerHtml = `
                 <!-- Header: title + storage actions -->
-                <div class="flex items-center justify-between shrink-0">
+                <div class="flex items-center justify-between shrink-0 gap-2">
                     <div>
                         <h3 class="text-sm font-bold text-surface-900 dark:text-white leading-none">Presets</h3>
                         <p class="text-[10px] text-surface-500 dark:text-surface-400 mt-1">${activeFilterCount} ${activeFilterCount === 1 ? 'template' : 'templates'}</p>
@@ -11004,7 +11005,9 @@
                         </button>
                     </div>
                 </div>
+            `;
 
+            const chipsHtml = `
                 <!-- Filter chips -->
                 <div class="flex items-center gap-1.5 flex-wrap shrink-0">
                     ${categories.map(cat => {
@@ -11017,10 +11020,16 @@
                         `;
                     }).join('')}
                 </div>
-
-                <!-- Preset grid (image-first cards) -->
-                <div class="preset-lib-scroll flex-1 min-h-0 overflow-y-auto pr-1 -mr-1">
             `;
+
+            // Horizontal dock: controls in a left column, cards flow in columns
+            // that scroll horizontally (CapCut-style strip). Vertical dock keeps
+            // the stacked header → chips → grid layout.
+            let html = isHorizontal
+                ? `<div class="flex flex-col gap-2 shrink-0 w-[168px] min-h-0 overflow-y-auto pr-1">${headerHtml}${chipsHtml}</div>
+                   <div class="preset-lib-scroll flex-1 min-w-0 min-h-0 overflow-auto">`
+                : `${headerHtml}${chipsHtml}
+                   <div class="preset-lib-scroll flex-1 min-h-0 overflow-y-auto pr-1 -mr-1">`;
             
             if (filtered.length === 0) {
                 html += `
@@ -11033,48 +11042,22 @@
                     </div>
                 `;
             } else {
-                html += `<div class="presets-grid pb-2">`;
+                html += `<div class="presets-grid${isHorizontal ? ' presets-grid-h' : ''} pb-2">`;
                 filtered.forEach(p => {
                     const meta = presetMeta(p);
-                    
-                    const selectedClip = State.clips.find(c => c.id === State.selectedClipId);
-                    let canApply = selectedClip && selectedClip.type === p.type;
-                    if (p.category === 'Keyframe Path') {
-                        const isPresetVisual = ['image', 'video', 'text', 'shape', 'scene'].includes(p.type);
-                        const isClipVisual = selectedClip && ['image', 'video', 'text', 'shape', 'scene'].includes(selectedClip.type);
-                        canApply = selectedClip && ((isPresetVisual && isClipVisual) || (!isPresetVisual && !isClipVisual));
-                    }
                     
                     const thumbContent = p.thumbnail
                         ? `<img src="${p.thumbnail}" alt="" loading="lazy">`
                         : `<div class="thumb-fallback" style="background-color: ${meta.color}"><i data-lucide="${meta.icon}" class="w-7 h-7" style="color: ${meta.accent}"></i></div>`;
                     
                     html += `
-                        <div class="preset-card" onclick="addPresetToTimeline('${p.id}')" title="${escapeHtml(p.name)}">
+                        <div class="preset-card" onclick="addPresetToTimeline('${p.id}')" oncontextmenu="showPresetMenu(event, '${p.id}')" title="${escapeHtml(p.name)}">
                             <!-- Thumbnail / fallback -->
                             <div class="preset-card-thumb">
                                 ${thumbContent}
-                                <span class="preset-card-cat">${meta.cat}</span>
-                                
-                                <!-- Hover overlay actions -->
-                                <div class="preset-card-overlay">
-                                    <div class="preset-card-actions">
-                                        <button onclick="addPresetToTimeline('${p.id}'); event.stopPropagation();" class="preset-card-btn primary" title="Add to Timeline">
-                                            <i data-lucide="plus" class="w-4 h-4"></i>
-                                        </button>
-                                        <button onclick="applyPresetToSelected('${p.id}'); event.stopPropagation();" class="preset-card-btn ok" ${canApply ? '' : 'disabled'} title="${canApply ? 'Apply Style to Selected Clip' : 'Select a matching clip to apply'}">
-                                            <i data-lucide="check" class="w-4 h-4"></i>
-                                        </button>
-                                    </div>
-                                    <div class="preset-card-actions">
-                                        <button onclick="exportSinglePreset('${p.id}'); event.stopPropagation();" class="preset-card-btn" title="Export preset">
-                                            <i data-lucide="download" class="w-3.5 h-3.5"></i>
-                                        </button>
-                                        <button onclick="deleteCustomPreset('${p.id}'); event.stopPropagation();" class="preset-card-btn danger" title="Delete preset">
-                                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-                                        </button>
-                                    </div>
-                                </div>
+                                <button onclick="addPresetToTimeline('${p.id}'); event.stopPropagation();" class="preset-card-add" title="Add to Timeline">
+                                    <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                                </button>
                             </div>
                             
                             <!-- Name -->
@@ -11088,6 +11071,85 @@
             html += `</div>`;
             sidebarContent.innerHTML = html;
             lucide.createIcons();
+        };
+
+        // Right-click context menu on preset cards — apply / export / delete live
+        // here (Part C); Add to Timeline stays on click + the hover "+" button.
+        function presetMenuEl() {
+            let menu = document.getElementById('presetContextMenu');
+            if (!menu) {
+                menu = document.createElement('div');
+                menu.id = 'presetContextMenu';
+                menu.className = 'fixed bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700/80 shadow-2xl rounded-xl p-1 z-[1000] min-w-[200px] max-w-[260px] text-xs font-semibold text-surface-800 dark:text-surface-200';
+                document.body.appendChild(menu);
+            }
+            return menu;
+        }
+        function clampPresetMenu(menu) {
+            const rect = menu.getBoundingClientRect();
+            const margin = 8;
+            if (rect.right + margin > window.innerWidth) menu.style.left = `${Math.max(margin, window.innerWidth - rect.width - margin)}px`;
+            if (rect.bottom + margin > window.innerHeight) menu.style.top = `${Math.max(margin, window.innerHeight - rect.height - margin)}px`;
+        }
+        function attachPresetMenuClose() {
+            const menu = document.getElementById('presetContextMenu');
+            if (!menu) return;
+            const outsideClickListener = (e) => {
+                // A target that left the DOM was inside the menu when clicked (a
+                // re-render detached it) — never treat that as an outside click.
+                if (!menu.contains(e.target) && document.contains(e.target)) {
+                    hidePresetContextMenu();
+                    document.removeEventListener('click', outsideClickListener);
+                }
+            };
+            setTimeout(() => document.addEventListener('click', outsideClickListener), 50);
+        }
+        window.hidePresetContextMenu = function() {
+            const menu = document.getElementById('presetContextMenu');
+            if (menu) menu.style.display = 'none';
+        };
+
+        window.showPresetMenu = function(e, presetId) {
+            e.preventDefault();
+            e.stopPropagation();
+            const preset = DEFAULT_PRESETS.find(p => p.id === presetId) || loadCustomPresets().find(p => p.id === presetId);
+            if (!preset) return;
+
+            const selectedClip = State.clips.find(c => c.id === State.selectedClipId);
+            let canApply = selectedClip && selectedClip.type === preset.type;
+            if (preset.category === 'Keyframe Path') {
+                const isPresetVisual = ['image', 'video', 'text', 'shape', 'scene'].includes(preset.type);
+                const isClipVisual = selectedClip && ['image', 'video', 'text', 'shape', 'scene'].includes(selectedClip.type);
+                canApply = selectedClip && ((isPresetVisual && isClipVisual) || (!isPresetVisual && !isClipVisual));
+            }
+
+            const menu = presetMenuEl();
+            menu.style.left = `${e.clientX}px`;
+            menu.style.top = `${e.clientY}px`;
+            menu.style.display = 'block';
+
+            const it = "w-full text-left px-2.5 py-1.5 rounded-md hover:bg-surface-100 dark:hover:bg-surface-700/70 flex items-center gap-2.5 transition-colors";
+            const itIcon = "w-3.5 h-3.5 text-surface-400 dark:text-surface-500 shrink-0";
+
+            menu.innerHTML = `
+                <button onclick="hidePresetContextMenu(); addPresetToTimeline('${presetId}');" class="${it}">
+                    <i data-lucide="plus" class="${itIcon}"></i> Add to Timeline
+                </button>
+                <button onclick="hidePresetContextMenu(); applyPresetToSelected('${presetId}');" class="${it}${canApply ? '' : ' opacity-40 pointer-events-none'}" ${canApply ? '' : 'disabled'} title="${canApply ? 'Apply this preset to the selected clip' : 'Select a matching clip to apply this preset'}" aria-disabled="${canApply ? 'false' : 'true'}">
+                    <i data-lucide="check" class="${itIcon}"></i> Apply Style to Selected
+                    ${canApply ? '' : '<span class="ml-auto text-[9px] font-medium text-surface-400 dark:text-surface-500">no match</span>'}
+                </button>
+                <div class="border-t border-surface-200 dark:border-surface-700 my-1"></div>
+                <button onclick="hidePresetContextMenu(); exportSinglePreset('${presetId}');" class="${it}">
+                    <i data-lucide="download" class="${itIcon}"></i> Export preset
+                </button>
+                <button onclick="hidePresetContextMenu(); deleteCustomPreset('${presetId}');" class="${it} text-red-500 dark:text-red-400">
+                    <i data-lucide="trash-2" class="w-3.5 h-3.5 flex-shrink-0"></i> Delete preset
+                </button>
+            `;
+            lucide.createIcons({ scope: menu });
+            clampPresetMenu(menu);
+            attachPresetMenuClose();
         };
 
         window.setPresetFilter = function(filter) {

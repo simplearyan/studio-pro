@@ -518,29 +518,40 @@ input[type=range].custom-slider::-webkit-slider-runnable-track {
 /* Preset card (image-first, Google Vids/thumb-maker) */
 .presets-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
-    gap: 12px;
+    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+    gap: 8px;
     align-content: start;
     width: 100%;
+}
+/* Horizontal dock: cards flow in columns that scroll horizontally */
+.presets-grid-h {
+    grid-auto-flow: column;
+    grid-auto-columns: 104px;
+    grid-template-columns: none;
+    grid-template-rows: repeat(2, auto);
+    width: max-content;
+    padding-right: 8px;
 }
 .preset-card {
     position: relative;
     display: flex;
     flex-direction: column;
-    border-radius: 14px;
+    border-radius: 8px;
     border: 1px solid rgba(128,128,140,.16);
     background: var(--surface-50, #fff);
     overflow: hidden;
     cursor: pointer;
-    transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+    transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, background-color .18s ease;
     user-select: none;
 }
 .dark .preset-card { background: rgba(255,255,255,.03); border-color: rgba(255,255,255,.08); }
 .preset-card:hover {
-    transform: translateY(-2px);
-    border-color: rgba(99,102,241,.45);
-    box-shadow: 0 8px 24px -8px rgba(0,0,0,.25), 0 2px 6px rgba(0,0,0,.06);
+    transform: translateY(-1px);
+    border-color: rgba(128,128,140,.32);
+    background: rgba(128,128,140,.04);
+    box-shadow: 0 2px 10px -6px rgba(0,0,0,.25);
 }
+.dark .preset-card:hover { border-color: rgba(255,255,255,.2); background: rgba(255,255,255,.04); }
 .preset-card:active { transform: translateY(0) scale(.98); }
 
 .preset-card-thumb {
@@ -566,58 +577,29 @@ input[type=range].custom-slider::-webkit-slider-runnable-track {
 .preset-card-thumb .thumb-fallback i { opacity: .85; transition: transform .25s ease; }
 .preset-card:hover .preset-card-thumb .thumb-fallback i { transform: scale(1.15); }
 
-/* Category tag chip on thumbnail */
-.preset-card-cat {
+/* Single add affordance (hover, top-right) */
+.preset-card-add {
     position: absolute;
     top: 6px;
-    left: 6px;
-    font-size: 8px;
-    font-weight: 700;
-    letter-spacing: .04em;
-    text-transform: uppercase;
-    color: #fff;
-    background: rgba(15,15,20,.55);
-    backdrop-filter: blur(4px);
-    padding: 2px 6px;
-    border-radius: 999px;
-    line-height: 1.2;
-}
-
-/* Hover action overlay */
-.preset-card-overlay {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    background: rgba(10,10,14,.62);
-    backdrop-filter: blur(2px);
-    opacity: 0;
-    transition: opacity .18s ease;
-}
-.preset-card:hover .preset-card-overlay { opacity: 1; }
-.preset-card-actions { display: flex; gap: 8px; }
-.preset-card-btn {
-    width: 34px; height: 34px;
+    right: 6px;
+    width: 24px; height: 24px;
     border-radius: 999px;
     display: flex; align-items: center; justify-content: center;
-    color: #fff;
-    background: rgba(255,255,255,.16);
-    transition: background .15s ease, transform .15s ease;
+    background: rgba(255,255,255,.92);
+    color: #18181b;
+    box-shadow: 0 1px 4px rgba(0,0,0,.25);
+    opacity: 0;
+    transform: scale(.9);
+    transition: opacity .15s ease, transform .15s ease, background-color .15s ease;
 }
-.preset-card-btn:hover { transform: scale(1.08); }
-.preset-card-btn.primary { background: #4f46e5; }
-.preset-card-btn.primary:hover { background: #4338ca; }
-.preset-card-btn.ok { background: #10b981; }
-.preset-card-btn.ok:hover { background: #059669; }
-.preset-card-btn.danger:hover { background: #ef4444; }
-.preset-card-btn:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+.preset-card:hover .preset-card-add { opacity: 1; transform: scale(1); }
+.preset-card-add:hover { background: #fff; }
+.dark .preset-card-add { background: rgba(39,39,42,.92); color: #fafafa; }
+.dark .preset-card-add:hover { background: rgba(63,63,70,.96); }
 
 .preset-card-name {
-    padding: 7px 8px 8px;
-    font-size: 10.5px;
+    padding: 6px 6px 7px;
+    font-size: 10px;
     font-weight: 600;
     color: #3f3f46;
     text-align: center;
