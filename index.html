@@ -11296,7 +11296,7 @@
         };
 
         window.renderCustomKeyframeEditor = function(clip) {
-            const isHorizontal = State.inspector.isHorizontal;
+            const isHorizontal = State.inspector.dock === 'bottom' || State.inspector.dock === 'top';
             
             let props = [];
             if (clip.type === 'audio') {
@@ -11652,6 +11652,26 @@
                 passUI: ratio !== null && ratio >= 3
             };
         };
+        // Horizontal-dock cards are always-open panels, never accordions (same rule
+        // as the Properties cards): force every <details> open and make summaries
+        // inert (no collapse chevron, no pointer, no keyboard toggle). Call after
+        // innerHTML render when the panel is docked top/bottom.
+        window.hardenHorizontalAccordions = function(root) {
+            if (!root) return;
+            root.querySelectorAll('details').forEach(d => {
+                d.setAttribute('open', '');
+                const s = d.querySelector('summary');
+                if (s) {
+                    s.classList.remove('cursor-pointer');
+                    s.style.cursor = 'default';
+                    s.style.pointerEvents = 'none';
+                    s.setAttribute('onclick', 'event.preventDefault();');
+                }
+            });
+            // Remove chevrons (handles both pre- and post-lucide states)
+            root.querySelectorAll('summary i[data-lucide="chevron-down"], summary svg.lucide-chevron-down').forEach(i => i.remove());
+        };
+
         // Sweep: auditContrastAll('.my-selector') or auditContrastAll(containerEl, '.child')
         window.auditContrastAll = function(sel, childSel) {
             const els = typeof sel === 'string' ? [...document.querySelectorAll(sel)] : [sel];
@@ -16304,7 +16324,11 @@
             const subTab = State.subtitleSubTab || 'captions';
             const editingId = State.subtitleEditingId;
             
-            sidebarContent.className = 'flex flex-col w-full flex-1 min-h-0 bg-surface-50 dark:bg-surface-900';
+            // Dock-aware container: horizontal (top/bottom) docks get flex-row so
+            // the panel fills the wide strip; vertical keeps the tall column. Only
+            // one direction class is ever set, matching Audio/Properties/Animations.
+            const isHorizontal = State.inspector && (State.inspector.dock === 'bottom' || State.inspector.dock === 'top');
+            sidebarContent.className = `flex ${isHorizontal ? 'flex-row items-stretch gap-3 p-3 w-full flex-1 min-h-0 overflow-hidden bg-surface-50 dark:bg-surface-900' : 'flex-col w-full flex-1 min-h-0 bg-surface-50 dark:bg-surface-900'}`;
 
             const fix = State.subtitleFix = State.subtitleFix || {};
             const fixStatus = State.subtitleFixStatus || '';
@@ -16318,12 +16342,11 @@
             const ov = (v, def) => v !== undefined ? v : def;
 
             // ── Build style config HTML (CapCut-style grouped sections) ──
-            const isHoriz = State.inspector && (State.inspector.dock === 'bottom' || State.inspector.dock === 'top');
             const fxTab = cfg.subtitleFxTab || 'style';
             const lblCls = 'text-[10px] font-bold text-surface-700 dark:text-surface-200 uppercase tracking-widest';
             const fxBtn = (tab, label, icon) => `<button type="button" onclick="State.subtitleConfig.subtitleFxTab='${tab}'; saveSubtitlesToStorage(); renderSubtitlesPanel();" class="flex-1 py-1 text-[10px] font-bold rounded-md transition-all ${fxTab === tab ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm' : 'text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-white'}"><i data-lucide="${icon}" class="w-3 h-3 inline-block mr-1 align-middle"></i>${label}</button>`;
             const sectionCard = (icon, title, inner, open) => `
-                <details class="group bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0" ${open ? 'open' : ''}>
+                <details class="group bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'}" ${open ? 'open' : ''}>
                     <summary class="flex items-center gap-2 p-2.5 cursor-pointer list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700">
                         <i data-lucide="${icon}" class="w-3.5 h-3.5 text-brand-500 shrink-0"></i>
                         <span class="${lblCls} flex items-center gap-1.5 flex-1 min-w-0">${title}</span>
@@ -16373,7 +16396,7 @@
                 ${captionStyleControlHtml('bg', 'global')}
             `;
             const typoCard = `
-                <details class="group bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0" open>
+                <details class="group bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'}" open>
                     <summary class="flex items-center gap-2 p-2.5 cursor-pointer list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700">
                         <i data-lucide="type" class="w-3.5 h-3.5 text-brand-500 shrink-0"></i>
                         <div class="flex gap-1 bg-surface-100 dark:bg-surface-900 p-0.5 rounded-lg flex-1 min-w-0" onclick="event.stopPropagation();">
@@ -16387,7 +16410,7 @@
             const animCard = sectionCard('wand-2', 'Animation', `
                 <div>
                     <label class="${lblCls} mb-1 block">Preset</label>
-                    <div class="grid ${isHoriz ? 'grid-cols-5' : 'grid-cols-4'} gap-1.5">                                    ${[['none','None'],['fade','Fade Up'],['pop','Pop'],['letterPop','Letter Pop'],['letterFade','Letter Fade'],['typewriter','Typewriter'],['wordHighlight','Word Glow'],['bounce','Bounce'],['rotate','Rotate']].map(([pv, pl]) => `<button class="px-1 py-1.5 text-[10px] font-bold rounded transition-colors ${(cfg.animPreset||'none') === pv ? 'bg-brand-500/15 dark:bg-brand-400/25 text-brand-700 dark:text-brand-100 ring-1 ring-inset ring-brand-500/50' : 'bg-surface-100 dark:bg-surface-800 text-surface-700 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-700'}" onclick="State.subtitleConfig.animPreset='${pv}'; saveSubtitlesToStorage(); drawCanvas(); renderSubtitlesPanel();">${pl}</button>`).join('')}
+                    <div class="grid ${isHorizontal ? 'grid-cols-5' : 'grid-cols-4'} gap-1.5">                                    ${[['none','None'],['fade','Fade Up'],['pop','Pop'],['letterPop','Letter Pop'],['letterFade','Letter Fade'],['typewriter','Typewriter'],['wordHighlight','Word Glow'],['bounce','Bounce'],['rotate','Rotate']].map(([pv, pl]) => `<button class="px-1 py-1.5 text-[10px] font-bold rounded transition-colors ${(cfg.animPreset||'none') === pv ? 'bg-brand-500/15 dark:bg-brand-400/25 text-brand-700 dark:text-brand-100 ring-1 ring-inset ring-brand-500/50' : 'bg-surface-100 dark:bg-surface-800 text-surface-700 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-700'}" onclick="State.subtitleConfig.animPreset='${pv}'; saveSubtitlesToStorage(); drawCanvas(); renderSubtitlesPanel();">${pl}</button>`).join('')}
                     </div>
                     ${['wordHighlight', 'letterPop', 'letterFade', 'typewriter', 'bounce', 'rotate'].includes(cfg.animPreset) ? `
                     <div class="flex items-center justify-between mt-2">
@@ -16464,8 +16487,8 @@
                 </div>
             `, false);
             const styleHtml = `
-                <div class="${isHoriz ? 'grid grid-cols-2 gap-3' : 'flex flex-col gap-3'} p-3 overflow-y-auto flex-1">
-                    <div class="bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm p-3 shrink-0">
+                <div class="${isHorizontal ? 'flex flex-row gap-3 p-3 overflow-x-auto flex-1 h-dock-strip' : 'flex flex-col gap-3 p-3 overflow-y-auto flex-1'}">
+                    <div class="bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm p-3 shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'}">
                         ${captionPresetStripHtml('global')}
                     </div>
                     ${typoCard}
@@ -16609,7 +16632,7 @@
             const genInactive = 'bg-surface-100 dark:bg-surface-800 text-surface-700 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-700';
             const genLabel = 'text-[10px] font-bold text-surface-700 dark:text-surface-200 uppercase tracking-widest';
             const genHtml = `
-                <details class="group bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0" open>
+                <details class="group bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'}" open>
                     <summary class="flex items-center gap-2 p-2.5 cursor-pointer list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700">
                         <i data-lucide="sparkles" class="w-3.5 h-3.5 text-brand-500 shrink-0"></i>
                         <span class="${genLabel} flex items-center gap-1.5 flex-1 min-w-0">Generate from Text</span>
@@ -16656,8 +16679,9 @@
 
             // ── Build captions tab content ──
             const captionsHtml = `
-                <div class="flex flex-col gap-3 p-3 overflow-y-auto flex-1">
-                    <div class="flex items-center gap-2 shrink-0">
+                <div class="${isHorizontal ? 'grid grid-cols-[280px_minmax(0,1fr)] gap-3 p-3 overflow-hidden flex-1 min-h-0' : 'flex flex-col gap-3 p-3 overflow-y-auto flex-1'}">
+                    <div class="${isHorizontal ? 'min-h-0 overflow-y-auto flex flex-col gap-3 pr-1' : 'flex flex-col gap-3'}">
+                    <div class="flex items-center gap-2 ${isHorizontal ? 'flex-wrap' : ''} shrink-0">
                         <input type="file" id="subfileinput" accept=".srt,.vtt" class="hidden" multiple>
                         <button onclick="document.getElementById('subfileinput').click()" class="flex-1 py-2 px-3 bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-sm">
                             <i data-lucide="file-text" class="w-3.5 h-3.5"></i> Import
@@ -16733,13 +16757,14 @@
                             </div>
                         </div>
                     </details>
-                    <div class="flex flex-col gap-1.5">${listHtml}</div>
+                    </div>
+                    <div class="${isHorizontal ? 'min-h-0 overflow-y-auto flex flex-col gap-1.5' : 'flex flex-col gap-1.5'}">${listHtml}</div>
                 </div>
             `;
 
             // ── Assemble the full panel ──
             let html = `
-                <div class="flex flex-col w-full flex-1 min-h-0">
+                <div class="flex flex-col w-full flex-1 min-h-0 overflow-hidden">
                     <!-- Sub-tabs -->
                     <div class="flex gap-1 p-2 bg-surface-100 dark:bg-surface-800/50 shrink-0 border-b border-surface-200 dark:border-surface-700">
                         <button onclick="setSubtitleSubTab('captions')" class="${subTab === 'captions' ? activeBtnClass : inactiveBtnClass}">
@@ -16755,6 +16780,8 @@
 
             sidebarContent.innerHTML = html;
             lucide.createIcons();
+            // Horizontal dock: cards are always-open panels, never accordions
+            if (isHorizontal) hardenHorizontalAccordions(sidebarContent);
             updateCaptionGenPreview();
 
             // Wire up import
@@ -17326,7 +17353,11 @@ This script references **whoosh**, **ding**, **pop** and **click** \u2014 import
                 if (key) State.ui.mdDetailsState[key] = d.open;
             });
 
-            sidebarContent.className = 'flex flex-col w-full flex-1 min-h-0 bg-surface-50 dark:bg-surface-900';
+            // Dock-aware container: horizontal (top/bottom) docks get flex-row so
+            // the panel fills the wide strip; vertical keeps the tall column. Only
+            // one direction class is ever set, matching Audio/Properties/Animations.
+            const isHorizontal = State.inspector && (State.inspector.dock === 'bottom' || State.inspector.dock === 'top');
+            sidebarContent.className = `flex ${isHorizontal ? 'flex-row items-stretch gap-3 p-3 w-full flex-1 min-h-0 overflow-hidden bg-surface-50 dark:bg-surface-900' : 'flex-col w-full flex-1 min-h-0 bg-surface-50 dark:bg-surface-900'}`;
             const cfg = State.markdownConfig;
             const subTab = State.markdownSubTab || 'content';
             const activeBtnClass = 'flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm';
@@ -17501,8 +17532,8 @@ This script references **whoosh**, **ding**, **pop** and **click** \u2014 import
                     `)}
                 </div>`;
             const styleHtml = `
-                <div class="flex flex-col gap-3 p-3 overflow-y-auto flex-1">
-                    <details class="group bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0" open>
+                <div class="${isHorizontal ? 'flex flex-row gap-3 p-3 overflow-x-auto flex-1 h-dock-strip' : 'flex flex-col gap-3 p-3 overflow-y-auto flex-1'}">
+                    <details class="group bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'}" open>
                         <summary class="flex items-center justify-between p-3 cursor-pointer list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700">
                             <span class="text-[10px] font-bold text-surface-700 dark:text-surface-200 uppercase tracking-widest flex items-center gap-1.5"><i data-lucide="layers" class="w-3.5 h-3.5"></i>Track Layout</span>
                             <i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>
@@ -17560,7 +17591,7 @@ This script references **whoosh**, **ding**, **pop** and **click** \u2014 import
                             </div>
                         </div>
                     </details>
-                    <details class="group relative bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0" open>
+                    <details class="group relative bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'}" open>
                         <summary class="flex items-center justify-between gap-2 p-2.5 cursor-pointer list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700">
                             <i data-lucide="heading" class="w-3.5 h-3.5 text-brand-500 shrink-0"></i>
                             <i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180 shrink-0"></i>
@@ -17647,7 +17678,7 @@ This script references **whoosh**, **ding**, **pop** and **click** \u2014 import
                             `}
                         </div>
                     </details>
-                    <details class="group relative bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0" open>
+                    <details class="group relative bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'}" open>
                         <summary class="flex items-center justify-between gap-2 p-2.5 cursor-pointer list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700">
                             <span class="text-[10px] font-bold text-surface-700 dark:text-surface-200 uppercase tracking-widest flex items-center gap-1.5 shrink-0"><i data-lucide="align-left" class="w-3.5 h-3.5"></i>Text Style</span>
                             <i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180 shrink-0"></i>
@@ -17752,7 +17783,7 @@ This script references **whoosh**, **ding**, **pop** and **click** \u2014 import
                             `}
                         </div>
                     </details>
-                    <details class="group bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0" open>
+                    <details class="group bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'}" open>
                         <summary class="flex items-center justify-between p-3 cursor-pointer list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700">
                             <span class="text-[10px] font-bold text-surface-700 dark:text-surface-200 uppercase tracking-widest flex items-center gap-1.5"><i data-lucide="image" class="w-3.5 h-3.5"></i>Image Style</span>
                             <i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>
@@ -17804,7 +17835,7 @@ This script references **whoosh**, **ding**, **pop** and **click** \u2014 import
                             </div>
                         </div>
                     </details>
-                    <details class="group bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0" open>
+                    <details class="group bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'}" open>
                         <summary class="flex items-center justify-between p-3 cursor-pointer list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700">
                             <span class="text-[10px] font-bold text-surface-700 dark:text-surface-200 uppercase tracking-widest flex items-center gap-1.5"><i data-lucide="sigma" class="w-3.5 h-3.5"></i>Math Style</span>
                             <i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>
@@ -17861,7 +17892,7 @@ This script references **whoosh**, **ding**, **pop** and **click** \u2014 import
                             </div>
                         </div>
                     </details>
-                    <details class="group bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0" open>
+                    <details class="group bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'}" open>
                         <summary class="flex items-center justify-between p-3 cursor-pointer list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700">
                             <span class="text-[10px] font-bold text-surface-700 dark:text-surface-200 uppercase tracking-widest flex items-center gap-1.5"><i data-lucide="clapperboard" class="w-3.5 h-3.5"></i>Media &amp; Mock</span>
                             <i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>
@@ -17893,13 +17924,14 @@ This script references **whoosh**, **ding**, **pop** and **click** \u2014 import
             const mdMissingNames = mdRefNames.filter(n => !mdAudioAssets().some(a => String(a.name).toLowerCase() === n));
 
             const contentHtml = `
-                <div class="flex-1 overflow-y-auto p-3 flex flex-col gap-3">
+                <div class="${isHorizontal ? 'flex flex-row gap-3 p-3 overflow-hidden flex-1 min-h-0' : 'flex-1 overflow-y-auto p-3 flex flex-col gap-3'}">
+                    <div class="${isHorizontal ? 'w-[240px] shrink-0 overflow-y-auto flex flex-col gap-3 pr-1' : 'flex flex-col gap-3 shrink-0'}">
                     <div class="flex flex-col gap-2 shrink-0">
                         <div class="flex items-center justify-between">
                             <label class="text-[10px] font-bold text-surface-700 dark:text-surface-200 uppercase tracking-widest">Scripts</label>
                             <span class="text-[8px] font-medium text-surface-400 dark:text-surface-500">tap to load</span>
                         </div>
-                        <div class="grid grid-cols-4 gap-1.5">
+                        <div class="grid ${isHorizontal ? 'grid-cols-2' : 'grid-cols-4'} gap-1.5">
                             <button onclick="loadMarkdownPreset('animals')" class="flex flex-col items-center gap-1 py-2 rounded-lg bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 hover:border-brand-400/70 dark:hover:border-brand-500/60 hover:shadow-sm hover:-translate-y-0.5 transition-all text-surface-700 dark:text-surface-200" title="Load the Animals & Dinosaurs example script">
                                 <i data-lucide="paw-print" class="w-4 h-4 text-indigo-500"></i>
                                 <span class="text-[9px] font-bold leading-none">Animals</span>
@@ -17934,7 +17966,8 @@ This script references **whoosh**, **ding**, **pop** and **click** \u2014 import
                     <div class="text-[10px] text-surface-500 dark:text-surface-300 italic bg-surface-100 dark:bg-surface-800 rounded-lg p-2 border border-surface-200 dark:border-surface-700">
                         <i data-lucide="info" class="w-3 h-3 inline-block mr-1"></i>${MARKDOWN_HELP_TEXT}
                     </div>
-                    <textarea id="markdownTextarea" class="w-full flex-1 min-h-[200px] bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg p-3 text-sm text-surface-800 dark:text-surface-200 font-mono leading-relaxed resize-none outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500" placeholder="Write your markdown here...
+                    </div>
+                    <textarea id="markdownTextarea" class="${isHorizontal ? 'flex-1 min-w-0 min-h-0' : 'w-full flex-1 min-h-[200px]'} bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg p-3 text-sm text-surface-800 dark:text-surface-200 font-mono leading-relaxed resize-none outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500" placeholder="Write your markdown here...
                         
 Use ## for headings
 Use ![alt](url) for images
@@ -17995,7 +18028,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                             <span class="text-[8px] font-medium text-surface-400 dark:text-surface-500">or drop files / a folder here</span>
                         </div>
                         ${scriptSoundRows ? `
-                        <div class="flex flex-col gap-1.5">${scriptSoundRows}</div>` : `
+                        <div class="${isHorizontal ? 'grid grid-cols-2 gap-1.5' : 'flex flex-col gap-1.5'}">${scriptSoundRows}</div>` : `
                         <div class="text-[10px] text-surface-500 dark:text-surface-300 bg-white dark:bg-surface-800 border border-dashed border-surface-300 dark:border-surface-700 rounded-lg p-3 leading-snug">
                             No <code>[audio:name]</code> tags in the script yet — add one at the end of any heading, text or image line (e.g. <code>## Wow [audio:whoosh]</code>) and it will appear here with its own import button.
                         </div>`}
@@ -18016,7 +18049,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     </div>
                     <label class="text-[10px] font-bold text-surface-700 dark:text-surface-200 uppercase tracking-widest">Your sounds</label>
                     ${mediaAssets.length ? `
-                    <div class="flex flex-col gap-2">
+                    <div class="${isHorizontal ? 'grid grid-cols-2 gap-2' : 'flex flex-col gap-2'}">
                         ${mediaAssets.map(a => `
                         <div class="flex items-center gap-2 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg p-2 shadow-sm">
                             <button type="button" onclick="playMarkdownAudio('${a.id}', this)" class="w-7 h-7 shrink-0 rounded-full bg-surface-100 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 flex items-center justify-center text-surface-600 dark:text-surface-300 hover:text-brand-500 transition-colors" title="Preview">
@@ -18037,7 +18070,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             `;
             
             let html = `
-                <div class="flex flex-col w-full flex-1 min-h-0">
+                <div class="flex flex-col w-full flex-1 min-h-0 overflow-hidden">
                     <div class="flex gap-1 p-2 bg-surface-100 dark:bg-surface-800/50 shrink-0 border-b border-surface-200 dark:border-surface-700">
                         <button onclick="setMarkdownSubTab('content')" class="` + (subTab === 'content' ? activeBtnClass : inactiveBtnClass) + `">
                             <i data-lucide="file-text" class="w-3.5 h-3.5 inline-block mr-1"></i>Content
@@ -18056,15 +18089,19 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             sidebarContent.innerHTML = html;
             lucide.createIcons();
             
-            // Restore accordion open/close state after re-render
-            sidebarContent.querySelectorAll('details').forEach(d => {
-                const summary = d.querySelector('summary');
-                const title = d.dataset.fxKey || (summary ? summary.textContent.trim() : '');
-                if (title && State.ui.mdDetailsState[title] !== undefined) {
-                    if (State.ui.mdDetailsState[title]) d.setAttribute('open', '');
-                    else d.removeAttribute('open');
-                }
-            });
+            // Restore accordion open/close state after re-render (vertical only —
+            // horizontal dock cards are always-open panels, never accordions)
+            if (!isHorizontal) {
+                sidebarContent.querySelectorAll('details').forEach(d => {
+                    const summary = d.querySelector('summary');
+                    const title = d.dataset.fxKey || (summary ? summary.textContent.trim() : '');
+                    if (title && State.ui.mdDetailsState[title] !== undefined) {
+                        if (State.ui.mdDetailsState[title]) d.setAttribute('open', '');
+                        else d.removeAttribute('open');
+                    }
+                });
+            }
+            if (isHorizontal) hardenHorizontalAccordions(sidebarContent);
             
             const ta = document.getElementById('markdownTextarea');
             if (ta) {

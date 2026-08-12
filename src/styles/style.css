@@ -57,6 +57,22 @@
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
+/* Horizontal-dock style cards (Captions/Markdown): summary stays pinned while
+   the card body scrolls vertically inside the 280px card; the strip itself
+   scrolls horizontally (its own scrollbar is visible). max-height (not flex/
+   grid item sizing) resolves reliably against the <details> height, hence the
+   calc — 3rem leaves room for the pinned summary header. */
+.h-dock-strip details { overflow: hidden; }
+.h-dock-strip details > div:not(.absolute) { max-height: calc(100% - 3rem); overflow-y: auto; }
+/* Visible scrollbars on the horizontal-dock strips (the global dark-mode thumb
+   is near-black and disappears against the dark cards). */
+.h-dock-strip::-webkit-scrollbar { height: 6px; }
+.h-dock-strip::-webkit-scrollbar-thumb { background: #a3a3a3; border-radius: 4px; }
+.dark .h-dock-strip::-webkit-scrollbar-thumb { background: #525252; }
+.h-dock-strip details > div:not(.absolute)::-webkit-scrollbar { width: 6px; }
+.h-dock-strip details > div:not(.absolute)::-webkit-scrollbar-thumb { background: #a3a3a3; border-radius: 4px; }
+.dark .h-dock-strip details > div:not(.absolute)::-webkit-scrollbar-thumb { background: #525252; }
+
 /* Professional Soft Background for Timeline */
 .timeline-container {
     background-color: #f5f5f5;
