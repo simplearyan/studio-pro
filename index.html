@@ -9809,19 +9809,22 @@
 
             function renderPresetGrid(clipId, propertyName, currentVal, options, isTextStagger) {
                 return `
-                    <div class="grid grid-cols-[repeat(auto-fill,minmax(74px,1fr))] gap-2 w-full select-none">
+                    <div class="grid grid-cols-[repeat(auto-fill,minmax(88px,1fr))] gap-2 w-full select-none">
                         ${options.map(opt => {
                             const isActive = currentVal === opt.value;
+                            // Backgrounds live in the conditional branches (not the
+                            // static class) so the active tint always wins over the
+                            // base surface bg in both light and dark mode.
                             const activeClasses = isActive 
-                                ? 'border-brand-500 ring-2 ring-brand-500/25 bg-gradient-to-br from-brand-50 to-white dark:from-brand-500/20 dark:to-surface-800/60 shadow-sm' 
-                                : 'border-surface-200/90 dark:border-surface-700/80 hover:border-brand-400/70 dark:hover:border-brand-500/60 hover:bg-surface-100 dark:hover:bg-surface-800 hover:-translate-y-0.5 hover:shadow-md';
+                                ? 'border-brand-500 bg-brand-500/10 dark:bg-brand-500/20 ring-1 ring-brand-500/40' 
+                                : 'border-surface-200/90 dark:border-surface-700/80 bg-white dark:bg-surface-800/80 hover:border-brand-400/70 dark:hover:border-brand-500/60 hover:bg-surface-100 dark:hover:bg-surface-800 hover:-translate-y-0.5 hover:shadow-md';
                             
                             let previewEl = '';
                             if (opt.value !== 'none') {
                                 if (isTextStagger) {
-                                    previewEl = `<span class="text-[20px] font-extrabold text-brand-600 dark:text-brand-400 leading-none ${opt.previewClass}">Aa</span>`;
+                                    previewEl = `<span class="text-[22px] font-extrabold text-brand-600 dark:text-brand-400 leading-none ${opt.previewClass}">Aa</span>`;
                                 } else {
-                                    previewEl = `<div class="w-6 h-6 rounded-md bg-gradient-to-br from-brand-400 to-brand-600 dark:from-brand-300 dark:to-brand-500 ${opt.previewClass} shadow-sm"></div>`;
+                                    previewEl = `<div class="w-7 h-7 rounded-md bg-brand-500 ${opt.previewClass}"></div>`;
                                 }
                             } else {
                                 previewEl = `<i data-lucide="ban" class="w-5 h-5 text-surface-400 dark:text-surface-600 opacity-40"></i>`;
@@ -9829,17 +9832,17 @@
 
                             return `
                                 <button onclick="setClipEffect('${clipId}', '${propertyName}', '${opt.value}'); updateSidebarPanel();" 
-                                        class="group relative flex flex-col items-stretch rounded-lg border transition-all duration-150 bg-white dark:bg-surface-800/80 overflow-hidden ${activeClasses}"
+                                        class="group relative flex flex-col items-stretch rounded-lg border transition-all duration-150 overflow-hidden ${activeClasses}"
                                         title="${opt.label}">
                                     
                                     <!-- Preview Area -->
-                                    <div class="flex items-center justify-center h-[38px] relative z-10 transition-transform duration-300 group-hover:scale-105 pt-1">
+                                    <div class="flex items-center justify-center h-[52px] relative z-10 transition-transform duration-300 group-hover:scale-105">
                                         ${previewEl}
                                     </div>
                                     
-                                    <!-- Persistent Label (dark pill, always visible) -->
-                                    <div class="relative z-20 px-1 pb-1.5 pt-0.5">
-                                        <span class="block text-[8px] font-bold text-white uppercase tracking-wide text-center truncate rounded-md py-0.5 px-1 ${isActive ? 'bg-brand-500' : 'bg-surface-900/85 dark:bg-surface-700/90'}">${opt.label}</span>
+                                    <!-- Label (plain text, no pill) -->
+                                    <div class="relative z-20 px-1 pb-1.5 pt-1">
+                                        <span class="block text-[10px] font-semibold text-center truncate ${isActive ? 'text-brand-600 dark:text-brand-400' : 'text-surface-600 dark:text-surface-300'}">${opt.label}</span>
                                     </div>
                                     
                                     <!-- Active Check Badge -->
@@ -9870,12 +9873,12 @@
                             const isActive = currentVal === e.value;
                             return `
                                 <button onclick="setClipEffect('${clipId}', '${keyName}', '${e.value}'); updateSidebarPanel();" 
-                                        class="flex flex-col items-center gap-1 py-1.5 px-0.5 rounded-lg border transition-all duration-150 ${isActive ? 'bg-white dark:bg-surface-700 border-brand-400/70 dark:border-brand-500/60 shadow-sm ring-1 ring-brand-500/20' : 'bg-surface-100 dark:bg-surface-900/50 border-transparent hover:border-surface-300 dark:hover:border-surface-600 hover:bg-white dark:hover:bg-surface-800'}"
+                                        class="flex flex-col items-center gap-1 py-1.5 px-0.5 rounded-lg border transition-all duration-150 ${isActive ? 'border-brand-500 bg-brand-500/10 dark:bg-brand-500/20 ring-1 ring-brand-500/40' : 'bg-surface-100 dark:bg-surface-900/50 border-transparent hover:border-surface-300 dark:hover:border-surface-600 hover:bg-white dark:hover:bg-surface-800'}"
                                         title="${e.label}">
                                     <svg viewBox="0 0 24 20" class="w-full h-3.5 ${isActive ? 'text-brand-500 dark:text-brand-400' : 'text-surface-500 dark:text-surface-300'}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                         <path d="${e.d}"/>
                                     </svg>
-                                    <span class="text-[8px] font-bold leading-none ${isActive ? 'text-surface-900 dark:text-white' : 'text-surface-500 dark:text-surface-300'}">${e.label}</span>
+                                    <span class="text-[10px] font-bold leading-none ${isActive ? 'text-brand-600 dark:text-brand-400' : 'text-surface-500 dark:text-surface-300'}">${e.label}</span>
                                 </button>
                             `;
                         }).join('')}
