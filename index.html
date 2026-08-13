@@ -4684,23 +4684,37 @@
                             // per-word pills. Letter presets keep the whole-text box.
                             if (!wordPreset) drawTextBackground(ctx, clip, lines, startY, lh, fontSize);
                             if (wordPreset) {
-                                // No per-word speech timing on a static text clip: the sweep
-                                // uses the clip's animTextInDur entrance window (the caption
-                                // renderer's non-karaoke mode with its ~0.5s floor).
-                                const durInW = clip.effects.animTextInDur !== undefined ? clip.effects.animTextInDur : 1.0;
+                                // Karaoke mode ("Whole clip duration" toggle): sweep the word
+                                // highlight across the clip's FULL duration with per-line
+                                // speech-weighted offsets, matching the caption renderer's
+                                // animFullSpan behavior. Entrance mode keeps the animTextInDur
+                                // window (the caption renderer's non-karaoke mode with its
+                                // ~0.5s floor).
+                                const fullSpanW = !!clip.effects.animTextFullSpan;
+                                const durInW = fullSpanW
+                                    ? Math.max(0.15, clip.duration || 1)
+                                    : (clip.effects.animTextInDur !== undefined ? clip.effects.animTextInDur : 1.0);
+                                const offsW = fullSpanW ? buildTextKaraokeOffsets(lines) : null;
                                 lines.forEach((line, li) => {
-                                    drawCaptionWordGlow(ctx, line, startY + li * lh, clip.effects, {}, clipTime, durInW, fontSize, null, wordPreset);
+                                    drawCaptionWordGlow(ctx, line, startY + li * lh, clip.effects, {}, clipTime, durInW, fontSize, offsW ? offsW[li] : null, wordPreset);
                                 });
                                 return;
                             }
                             if (letterPreset) {
-                                // Staggered caption-style letter reveal across the clip's
+                                // Karaoke mode ("Whole clip duration" toggle): the staggered
+                                // letter reveal flows across the clip's FULL duration with
+                                // per-line char offsets (CapCut-style), matching the caption
+                                // renderer's animFullSpan behavior. Entrance mode keeps the
                                 // animTextInDur window. The clip's animTextEase feeds the
                                 // shared ease table via the animEase shim.
-                                const durInL = clip.effects.animTextInDur !== undefined ? clip.effects.animTextInDur : 1.0;
+                                const fullSpanL = !!clip.effects.animTextFullSpan;
+                                const durInL = fullSpanL
+                                    ? Math.max(0.15, clip.duration || 1)
+                                    : (clip.effects.animTextInDur !== undefined ? clip.effects.animTextInDur : 1.0);
                                 const shimEf = Object.assign({}, clip.effects, { animEase: clip.effects.animTextEase || 'easeOut' });
+                                const offsL = fullSpanL ? buildTextKaraokeOffsets(lines) : null;
                                 lines.forEach((line, li) => {
-                                    drawCaptionLetters(ctx, line, startY + li * lh, shimEf, {}, letterPreset, clipTime, durInL, null);
+                                    drawCaptionLetters(ctx, line, startY + li * lh, shimEf, {}, letterPreset, clipTime, durInL, offsL ? offsL[li] : null);
                                 });
                                 return;
                             }
@@ -6918,16 +6932,18 @@
                         if (sub) {
                             if (!sub.effects) sub.effects = {};
                             // Map text properties from clip effects to subtitle effects
-                            const subtitleEffectMap = ['fontFamily', 'fontSize', 'fillColor', 'scale', 'fontWeight', 'fontStyle', 'lineHeight', 'letterSpacing', 'shadowEnable', 'shadowColor', 'shadowBlur', 'shadowX', 'shadowY', 'strokeEnable', 'strokeColor', 'strokeWidth', 'bgEnable', 'bgColor', 'bgOpacity', 'bgPadding', 'bgRadius', 'bgStrokeEnable', 'bgStrokeColor', 'bgStrokeWidth', 'bgShadowEnable', 'bgShadowColor', 'bgShadowBlur', 'bgShadowX', 'bgShadowY', 'bgExtrudeEnable', 'bgExtrudeColor', 'bgExtrudeDepth', 'bgExtrudeDir', 'textureEnable', 'textureSrc', 'textureOpacity', 'textureBlendMode', 'textureFitting', 'textureScale', 'position', 'bottomOffset', 'animIn', 'animOut', 'animPreset', 'animEase', 'animInDur', 'animOutDur', 'animFullSpan', 'highlightColor', 'wordPopScale', 'wordStretchScale', 'letterTravel', 'letterPopScale', 'letterRotateDeg', 'animTextIn', 'animTextOut', 'animTextEase', 'animTextInDur', 'animTextStagger'];
+                            const subtitleEffectMap = ['fontFamily', 'fontSize', 'fillColor', 'scale', 'fontWeight', 'fontStyle', 'lineHeight', 'letterSpacing', 'shadowEnable', 'shadowColor', 'shadowBlur', 'shadowX', 'shadowY', 'strokeEnable', 'strokeColor', 'strokeWidth', 'bgEnable', 'bgColor', 'bgOpacity', 'bgPadding', 'bgRadius', 'bgStrokeEnable', 'bgStrokeColor', 'bgStrokeWidth', 'bgShadowEnable', 'bgShadowColor', 'bgShadowBlur', 'bgShadowX', 'bgShadowY', 'bgExtrudeEnable', 'bgExtrudeColor', 'bgExtrudeDepth', 'bgExtrudeDir', 'textureEnable', 'textureSrc', 'textureOpacity', 'textureBlendMode', 'textureFitting', 'textureScale', 'position', 'bottomOffset', 'animIn', 'animOut', 'animPreset', 'animEase', 'animInDur', 'animOutDur', 'animFullSpan', 'animTextFullSpan', 'highlightColor', 'wordPopScale', 'wordStretchScale', 'letterTravel', 'letterPopScale', 'letterRotateDeg', 'animTextIn', 'animTextOut', 'animTextEase', 'animTextInDur', 'animTextStagger'];
                             if (subtitleEffectMap.includes(effectName)) {
                                 // Translate text-clip animation vocabulary into caption
                                 // vocabulary when the animation was edited from the clip's
                                 // ANIMATIONS tab, so the caption renderer honors it.
                                 if (!sub.effects) sub.effects = {};
                                 let capVal = clip.effects[effectName];
+                                let capKey = effectName;
                                 if (effectName === 'animIn' && ANIM_IN_TEXT_TO_CAPTION[capVal] !== undefined) capVal = ANIM_IN_TEXT_TO_CAPTION[capVal];
                                 else if (effectName === 'animOut' && ANIM_OUT_TEXT_TO_CAPTION[capVal] !== undefined) capVal = ANIM_OUT_TEXT_TO_CAPTION[capVal];
-                                sub.effects[effectName] = capVal;
+                                else if (effectName === 'animTextFullSpan') capKey = 'animFullSpan';
+                                sub.effects[capKey] = capVal;
                                 saveSubtitlesToStorage();
                             }
                         }
@@ -10126,7 +10142,7 @@
                             const activeClasses = isActive
                                 ? 'border-brand-500 bg-brand-500/10 dark:bg-brand-500/20 ring-1 ring-brand-500/40'
                                 : 'border-surface-200/90 dark:border-surface-700/80 bg-white dark:bg-surface-800/80 hover:border-brand-400/70 dark:hover:border-brand-500/60 hover:bg-surface-100 dark:hover:bg-surface-800 hover:-translate-y-0.5 hover:shadow-md';
-                            return `<button onclick="setClipEffect('${clip.id}', 'animTextIn', '${o.value}'); updateSidebarPanel();" class="group relative flex flex-col items-stretch rounded-lg border transition-all duration-150 overflow-hidden ${activeClasses}" title="${o.label} (staggered letter reveal over the animation duration)">
+                            return `<button onclick="setClipEffect('${clip.id}', 'animTextIn', '${o.value}'); updateSidebarPanel();" class="group relative flex flex-col items-stretch rounded-lg border transition-all duration-150 overflow-hidden ${activeClasses}" title="${o.label} (staggered letter reveal — toggle Whole clip duration for karaoke)">
                                 <div class="flex items-center justify-center h-[52px] relative z-10 transition-transform duration-300 group-hover:scale-105">
                                     <span class="text-[22px] font-extrabold text-brand-600 dark:text-brand-400 leading-none ${o.previewClass}">Aa</span>
                                 </div>
@@ -10137,6 +10153,13 @@
                         }).join('')}</div>
                         ${letterInActive ? `
                         <div class="border-t border-surface-200 dark:border-surface-700 pt-2 mt-1 flex flex-col gap-1.5">
+                            <div class="flex items-center justify-between">
+                                <label class="text-[10px] font-bold text-surface-700 dark:text-surface-200 flex items-center gap-1.5 cursor-pointer" title="Reveal across the whole clip duration (CapCut-style karaoke) instead of only the entrance window"><i data-lucide="timer" class="w-3 h-3 text-brand-500"></i>Whole clip duration</label>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" class="sr-only peer" ${clip.effects.animTextFullSpan ? 'checked' : ''} onchange="setClipEffect('${clip.id}', 'animTextFullSpan', this.checked); updateSidebarPanel(); drawCanvas();">
+                                    <div class="w-7 h-4 bg-surface-300 dark:bg-surface-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:border-surface-600 dark:peer-checked:bg-brand-500 peer-checked:bg-brand-500"></div>
+                                </label>
+                            </div>
                             ${['letterPop', 'letterFade', 'bounce'].includes(animTextIn) ? `
                             <div class="flex items-center justify-between">
                                 <label class="text-[10px] font-bold text-surface-700 dark:text-surface-200" title="How far each letter travels while animating in (0 = preset default)">Travel</label>
@@ -10171,7 +10194,7 @@
                             const activeClasses = isActive
                                 ? 'border-brand-500 bg-brand-500/10 dark:bg-brand-500/20 ring-1 ring-brand-500/40'
                                 : 'border-surface-200/90 dark:border-surface-700/80 bg-white dark:bg-surface-800/80 hover:border-brand-400/70 dark:hover:border-brand-500/60 hover:bg-surface-100 dark:hover:bg-surface-800 hover:-translate-y-0.5 hover:shadow-md';
-                            return `<button onclick="setClipEffect('${clip.id}', 'animTextIn', '${o.value}'); updateSidebarPanel();" class="group relative flex flex-col items-stretch rounded-lg border transition-all duration-150 overflow-hidden ${activeClasses}" title="${o.label} (sweeps the clip's animation duration)">
+                            return `<button onclick="setClipEffect('${clip.id}', 'animTextIn', '${o.value}'); updateSidebarPanel();" class="group relative flex flex-col items-stretch rounded-lg border transition-all duration-150 overflow-hidden ${activeClasses}" title="${o.label} (word-by-word sweep — toggle Whole clip duration for karaoke)">
                                 <div class="flex items-center justify-center h-[52px] relative z-10 transition-transform duration-300 group-hover:scale-105">
                                     <span class="text-[22px] font-extrabold text-brand-600 dark:text-brand-400 leading-none ${o.previewClass}">Aa</span>
                                 </div>
@@ -10182,6 +10205,13 @@
                         }).join('')}</div>
                         ${wordInActive ? `
                         <div class="border-t border-surface-200 dark:border-surface-700 pt-2 mt-1 flex flex-col gap-1.5">
+                            <div class="flex items-center justify-between">
+                                <label class="text-[10px] font-bold text-surface-700 dark:text-surface-200 flex items-center gap-1.5 cursor-pointer" title="Sweep across the whole clip duration (CapCut-style karaoke) instead of only the entrance window"><i data-lucide="timer" class="w-3 h-3 text-brand-500"></i>Whole clip duration</label>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" class="sr-only peer" ${clip.effects.animTextFullSpan ? 'checked' : ''} onchange="setClipEffect('${clip.id}', 'animTextFullSpan', this.checked); updateSidebarPanel(); drawCanvas();">
+                                    <div class="w-7 h-4 bg-surface-300 dark:bg-surface-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:border-surface-600 dark:peer-checked:bg-brand-500 peer-checked:bg-brand-500"></div>
+                                </label>
+                            </div>
                             <div class="flex items-center justify-between">
                                 <label class="text-[10px] font-bold text-surface-700 dark:text-surface-200" title="Accent color used by the word presets">Highlight color</label>
                                 <input type="color" value="${clip.effects.highlightColor || '#FFD60A'}" oninput="setClipEffect('${clip.id}', 'highlightColor', this.value); drawCanvas();" class="w-8 h-6 rounded border border-surface-200 dark:border-surface-700 bg-transparent cursor-pointer">
@@ -20032,7 +20062,12 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 ctx.save();
                 ctx.globalAlpha *= la;
                 ctx.textAlign = 'left';
-                ctx.translate(x, 0);
+                // Apply the line's own y (startY + i*lh) so multi-line wrapped
+                // captions stack each line in place instead of all drawing at
+                // the caption's center baseline (the word path already passes
+                // y straight into fillText; this translate carries it for the
+                // letter-by-letter path, which draws chars at local 0,0).
+                ctx.translate(x, y);
                 ctx.translate(0, ly);
                 ctx.scale(ls2, ls2);
                 ctx.rotate(rot);
@@ -20058,6 +20093,25 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 ctx.restore();
                 x += widths[i];
             }
+        }
+
+        /** Build per-line karaoke offsets for text-clip word/letter presets — the
+         *  text-clip analogue of the caption overlay's animFullSpan lineOffsets:
+         *  speech-weighted word sums + char counts per line so multi-line text
+         *  sweeps in sequence, exactly like captions. */
+        function buildTextKaraokeOffsets(lines) {
+            const lws = lines.map(l => l.split(/\s+/).filter(Boolean).reduce((a, w) => a + w.length + 1, 0));
+            const lcs = lines.map(l => Array.from(l).length);
+            const tw = lws.reduce((a, b) => a + b, 0);
+            const tc = lcs.reduce((a, b) => a + b, 0);
+            const out = [];
+            let wo = 0, co = 0;
+            lines.forEach((l, i) => {
+                out.push({ w: wo, c: co, tw, tc });
+                wo += lws[i];
+                co += lcs[i];
+            });
+            return out;
         }
 
         /** Karaoke word presets (CapCut-style): a highlight sweeps across the caption
