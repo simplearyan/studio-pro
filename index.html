@@ -19530,6 +19530,13 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
 
         function drawSubtitlesOnCanvas(ctx, w, h) {
             if (!State.captionsVisible) return;
+            // Respect the Captions track's visibility — hiding the track on the
+            // timeline must hide captions on the canvas too, exactly like regular
+            // clips (the clip renderer gates them with (track && !track.hidden)).
+            // Only applies when the synced track exists; unsynced captions (no
+            // track yet) keep rendering so nothing regresses.
+            const capTrack = State.tracks.find(t => t.id === 'subtitle_track');
+            if (capTrack && capTrack.hidden) return;
             const cfg = State.subtitleConfig;
             const subs = State.subtitles || [];
             const time = State.currentTime;
