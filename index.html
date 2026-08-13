@@ -1176,6 +1176,8 @@
                 animSlideOffCanvas: true,
                 animPreset: 'none',
                 animFullSpan: false, // karaoke presets sweep across the whole caption duration instead of the entrance phase
+                wordPopScale: 1.22, // wordPop emphasis — how much the spoken word grows
+                wordStretchScale: 1.18, // wordStretch emphasis — how far the spoken word's letters spread
                 position: 'bottom',
                 bottomOffset: 60,
                 lineHeight: 1.3,
@@ -6866,7 +6868,7 @@
                         if (sub) {
                             if (!sub.effects) sub.effects = {};
                             // Map text properties from clip effects to subtitle effects
-                            const subtitleEffectMap = ['fontFamily', 'fontSize', 'fillColor', 'scale', 'fontWeight', 'fontStyle', 'lineHeight', 'letterSpacing', 'shadowEnable', 'shadowColor', 'shadowBlur', 'shadowX', 'shadowY', 'strokeEnable', 'strokeColor', 'strokeWidth', 'bgEnable', 'bgColor', 'bgOpacity', 'bgPadding', 'bgRadius', 'position', 'bottomOffset', 'animIn', 'animOut', 'animPreset', 'animEase', 'animInDur', 'animOutDur', 'animFullSpan', 'highlightColor', 'animTextIn', 'animTextOut', 'animTextEase', 'animTextInDur', 'animTextStagger'];
+                            const subtitleEffectMap = ['fontFamily', 'fontSize', 'fillColor', 'scale', 'fontWeight', 'fontStyle', 'lineHeight', 'letterSpacing', 'shadowEnable', 'shadowColor', 'shadowBlur', 'shadowX', 'shadowY', 'strokeEnable', 'strokeColor', 'strokeWidth', 'bgEnable', 'bgColor', 'bgOpacity', 'bgPadding', 'bgRadius', 'position', 'bottomOffset', 'animIn', 'animOut', 'animPreset', 'animEase', 'animInDur', 'animOutDur', 'animFullSpan', 'highlightColor', 'wordPopScale', 'wordStretchScale', 'animTextIn', 'animTextOut', 'animTextEase', 'animTextInDur', 'animTextStagger'];
                             if (subtitleEffectMap.includes(effectName)) {
                                 // Translate text-clip animation vocabulary into caption
                                 // vocabulary when the animation was edited from the clip's
@@ -9028,7 +9030,23 @@
                                 <div class="flex items-center justify-between mt-1.5">
                                     <label class="text-[10px] font-bold text-surface-600 dark:text-surface-300 flex items-center gap-1.5 cursor-pointer" title="Accent color used by Color Highlight and Underline Sweep"><i data-lucide="palette" class="w-3 h-3 text-brand-500"></i>Highlight color</label>
                                     <input type="color" value="${capEf.highlightColor || '#FFD60A'}" oninput="setClipEffect('${clip.id}', 'highlightColor', this.value); drawCanvas();" class="w-8 h-6 rounded border border-surface-200 dark:border-surface-700 bg-transparent cursor-pointer">
+                                </div>
+                                ${capPresetEff === 'wordPop' ? `
+                                <div class="flex items-center justify-between mt-1.5">
+                                    <label class="text-[10px] font-bold text-surface-600 dark:text-surface-300" title="How much the spoken word grows while it's being said">Pop scale</label>
+                                    <div class="flex items-center gap-1.5">
+                                        <span data-v class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${(capEf.wordPopScale !== undefined ? capEf.wordPopScale : 1.22).toFixed(2)}x</span>
+                                        <input type="range" min="100" max="180" step="1" value="${Math.round((capEf.wordPopScale !== undefined ? capEf.wordPopScale : 1.22) * 100)}" oninput="setClipEffect('${clip.id}', 'wordPopScale', this.value / 100); drawCanvas(); this.previousElementSibling.textContent = (this.value / 100).toFixed(2) + 'x';" class="w-20 custom-slider">
+                                    </div>
                                 </div>` : ''}
+                                ${capPresetEff === 'wordStretch' ? `
+                                <div class="flex items-center justify-between mt-1.5">
+                                    <label class="text-[10px] font-bold text-surface-600 dark:text-surface-300" title="How far the spoken word's letters spread apart">Stretch scale</label>
+                                    <div class="flex items-center gap-1.5">
+                                        <span data-v class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${(capEf.wordStretchScale !== undefined ? capEf.wordStretchScale : 1.18).toFixed(2)}x</span>
+                                        <input type="range" min="100" max="160" step="1" value="${Math.round((capEf.wordStretchScale !== undefined ? capEf.wordStretchScale : 1.18) * 100)}" oninput="setClipEffect('${clip.id}', 'wordStretchScale', this.value / 100); drawCanvas(); this.previousElementSibling.textContent = (this.value / 100).toFixed(2) + 'x';" class="w-20 custom-slider">
+                                    </div>
+                                </div>` : ''}` : ''}
                             </div>
                             <div class="grid grid-cols-2 gap-2">
                                 <div><label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1 block">Easing</label>${capAnimSel('animEase', [['easeOut', 'Ease Out'], ['easeIn', 'Ease In'], ['easeInOut', 'Ease In-Out'], ['elastic', 'Elastic'], ['bounce', 'Bounce'], ['linear', 'Linear']])}</div>
@@ -16152,7 +16170,7 @@
             'shadowEnable', 'shadowColor', 'shadowBlur', 'shadowX', 'shadowY',
             'strokeEnable', 'strokeColor', 'strokeWidth',
             'bgEnable', 'bgColor', 'bgOpacity', 'bgPadding', 'bgRadius',
-            'position', 'bottomOffset', 'animIn', 'animOut', 'animPreset', 'animEase', 'animInDur', 'animOutDur', 'animFullSpan', 'highlightColor'];
+            'position', 'bottomOffset', 'animIn', 'animOut', 'animPreset', 'animEase', 'animInDur', 'animOutDur', 'animFullSpan', 'highlightColor', 'wordPopScale', 'wordStretchScale'];
 
         // Revert ONE caption field back to inheriting the global style (drops the
         // per-caption override for that key, keeping every other override intact).
@@ -16348,11 +16366,14 @@
             const hexOk = (v) => typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v);
             const idp = (k) => `${clipId || 'global'}_cap_${k}`;
             const colorBox = (k, def) => `<div class="relative w-7 h-7 shrink-0 rounded-md border border-surface-200 dark:border-surface-700 overflow-hidden"><input type="color" id="${idp(k)}" name="${k}" value="${hexOk(val(k)) ? val(k) : def}" class="absolute inset-0 w-full h-full cursor-pointer" oninput="${put(k, 'this.value')}"></div>`;
-            const toggleRow = (k, title, sub, chip = '') => `<div class="sub-style-group flex items-center gap-2.5 min-w-0">
-                <label class="flex items-center gap-2 cursor-pointer shrink-0 select-none"><input type="checkbox" id="${idp(k)}" name="${k}" ${val(k) ? 'checked' : ''} class="rounded text-brand-500 focus:ring-brand-500" onchange="${putToggle(k, 'this.checked')}"><span class="text-xs font-bold text-surface-800 dark:text-surface-100">${title}</span></label>
-                <div class="flex items-center gap-2 flex-1 min-w-0 ${val(k) ? '' : 'opacity-40 pointer-events-none'}">${sub}</div>
+            const toggleRow = (k, title, sub, chip = '', checkedOverride) => {
+                const on = checkedOverride !== undefined ? checkedOverride : !!val(k);
+                return `<div class="sub-style-group flex items-center gap-2.5 min-w-0">
+                <label class="flex items-center gap-2 cursor-pointer shrink-0 select-none"><input type="checkbox" id="${idp(k)}" name="${k}" ${on ? 'checked' : ''} class="rounded text-brand-500 focus:ring-brand-500" onchange="${putToggle(k, 'this.checked')}"><span class="text-xs font-bold text-surface-800 dark:text-surface-100">${title}</span></label>
+                <div class="flex items-center gap-2 flex-1 min-w-0 ${on ? '' : 'opacity-40 pointer-events-none'}">${sub}</div>
                 ${chip}
             </div>`;
+            };
             const sliderRow = (k, min, max, valExpr, badgeExpr, cur) => `<input type="range" id="${idp(k)}" name="${k}" min="${min}" max="${max}" step="1" value="${cur}" class="flex-1 custom-slider min-w-0" oninput="${put(k, valExpr)}; this.closest('.sub-style-group').querySelector('[data-v]').textContent = ${badgeExpr};">`;
             if (group === 'scale') {
                 const pct = Math.round((val('scale') !== undefined ? val('scale') : 1) * 100);
@@ -16391,11 +16412,20 @@
             }
             if (group === 'bg') {
                 const op = Math.round((val('bgOpacity') !== undefined ? val('bgOpacity') : 0.5) * 100);
+                // Word karaoke presets: the Background control drives the per-word
+                // pill. wordHighlight keeps its pill ON unless explicitly disabled,
+                // so the checkbox reflects the EFFECTIVE pill state (not the raw
+                // bgEnable default of false) to stay in sync with the renderer.
+                const animPresetVal = val('animPreset');
+                const isWordPreset = ['wordHighlight', 'wordColor', 'wordPop', 'wordUnderline', 'wordGradient', 'wordShake', 'wordStretch'].includes(animPresetVal);
+                const bgOnEff = isWordPreset
+                    ? (animPresetVal === 'wordHighlight' ? val('bgEnable') !== false : !!val('bgEnable'))
+                    : !!val('bgEnable');
                 return toggleRow('bgEnable', 'Background', `
                     ${colorBox('bgColor', '#000000')}
                     ${sliderRow('bgOpacity', 0, 100, 'this.value / 100', 'this.value + \'%\'', op)}
                     ${badge(op + '%')}
-                `, inheritChipGroup(['bgEnable', 'bgColor', 'bgOpacity'], 'Background'));
+                `, inheritChipGroup(['bgEnable', 'bgColor', 'bgOpacity'], 'Background'), bgOnEff);
             }
             // ── Typography + spacing groups (per-caption overrides, same schema as the
             // text-clip Typography / Sizing cards — mirrored via subtitleEffectMap) ──
@@ -16733,7 +16763,23 @@
                     <div class="flex items-center justify-between mt-1.5">
                         <label class="text-[10px] font-bold text-surface-700 dark:text-surface-200 flex items-center gap-1.5 cursor-pointer" title="Accent color used by Color Highlight and Underline Sweep"><i data-lucide="palette" class="w-3 h-3 text-brand-500"></i>Highlight color</label>
                         <input type="color" value="${cfg.highlightColor || '#FFD60A'}" oninput="State.subtitleConfig.highlightColor = this.value; saveSubtitlesToStorage(); drawCanvas();" class="w-8 h-6 rounded border border-surface-200 dark:border-surface-700 bg-transparent cursor-pointer">
-                    </div>` : ''}` : ''}
+                    </div>
+                    ${cfg.animPreset === 'wordPop' ? `
+                    <div class="flex items-center justify-between mt-1.5">
+                        <label class="text-[10px] font-bold text-surface-700 dark:text-surface-200" title="How much the spoken word grows while it's being said">Pop scale</label>
+                        <div class="flex items-center gap-1.5">
+                            <span data-v class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${(cfg.wordPopScale !== undefined ? cfg.wordPopScale : 1.22).toFixed(2)}x</span>
+                            <input type="range" min="100" max="180" step="1" value="${Math.round((cfg.wordPopScale !== undefined ? cfg.wordPopScale : 1.22) * 100)}" oninput="State.subtitleConfig.wordPopScale = this.value / 100; saveSubtitlesToStorage(); drawCanvas(); this.previousElementSibling.textContent = (this.value / 100).toFixed(2) + 'x';" class="w-20 custom-slider">
+                        </div>
+                    </div>` : ''}
+                    ${cfg.animPreset === 'wordStretch' ? `
+                    <div class="flex items-center justify-between mt-1.5">
+                        <label class="text-[10px] font-bold text-surface-700 dark:text-surface-200" title="How far the spoken word's letters spread apart">Stretch scale</label>
+                        <div class="flex items-center gap-1.5">
+                            <span data-v class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${(cfg.wordStretchScale !== undefined ? cfg.wordStretchScale : 1.18).toFixed(2)}x</span>
+                            <input type="range" min="100" max="160" step="1" value="${Math.round((cfg.wordStretchScale !== undefined ? cfg.wordStretchScale : 1.18) * 100)}" oninput="State.subtitleConfig.wordStretchScale = this.value / 100; saveSubtitlesToStorage(); drawCanvas(); this.previousElementSibling.textContent = (this.value / 100).toFixed(2) + 'x';" class="w-20 custom-slider">
+                        </div>
+                    </div>` : ''}` : ''}` : ''}
                 </div>
                 <div class="grid grid-cols-3 gap-2">
                     <div>
@@ -19437,21 +19483,55 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             const pad = ef.bgPadding || (cfg.bgPadding || 8);
             const pillH = fontSize + pad * 2;
             const rad = ef.bgRadius || (cfg.bgRadius || 10);
+            // Background sync: the word presets honor the caption/text Background
+            // control — the per-word pill follows bgEnable. wordHighlight keeps its
+            // signature glow by default and only loses the pill when the user
+            // explicitly disables Background (bgEnable === false); the other
+            // presets show the box only once Background is enabled (CapCut-style).
+            // The pill also supports the box Stroke / Shadow families from the
+            // global style.
+            const bgOn = preset === 'wordHighlight'
+                ? (ef.bgEnable !== false)
+                : (ef.bgEnable === true);
             // CapCut-style karaoke accent for color / underline highlights
             const accent = ef.highlightColor || (cfg.highlightColor || '#FFD60A');
+            // User-tunable emphasis amounts for the scale presets (wordPop grows,
+            // wordStretch spreads) — driven by the same per-caption / global config
+            // as every other caption property.
+            const popScale = ef.wordPopScale !== undefined ? ef.wordPopScale : (cfg.wordPopScale !== undefined ? cfg.wordPopScale : 1.22);
+            const stretchScale = ef.wordStretchScale !== undefined ? ef.wordStretchScale : (cfg.wordStretchScale !== undefined ? cfg.wordStretchScale : 1.18);
             let x = -totalW / 2;
             words.forEach((w, wi) => {
                 const win = wordWeights[wi] * unit + lead * 2;
                 const p = (subTime - (starts[wi] - lead)) / win;
                 const active = p > 0 && p < 1;
                 const done = p >= 1;
-                if (preset === 'wordHighlight' && (active || done)) {
+                // Word pill — a CapCut-style box behind the spoken word, drawn for
+                // EVERY word preset when Background is on (past words keep a dim
+                // trail). wordHighlight uses it as its signature glow.
+                if (bgOn && (active || done)) {
                     ctx.save();
                     ctx.globalAlpha *= active ? op : op * 0.45;
+                    // Box shadow (behind the pill)
+                    const boxSh = ef.bgShadowEnable !== undefined ? ef.bgShadowEnable : (cfg.bgShadowEnable !== undefined ? cfg.bgShadowEnable : false);
+                    if (boxSh) {
+                        ctx.shadowColor = ef.bgShadowColor || (cfg.bgShadowColor || '#000000');
+                        ctx.shadowBlur = ef.bgShadowBlur !== undefined ? ef.bgShadowBlur : (cfg.bgShadowBlur || 20);
+                        ctx.shadowOffsetX = ef.bgShadowX || 0;
+                        ctx.shadowOffsetY = ef.bgShadowY || 10;
+                    }
                     ctx.fillStyle = ef.bgColor || (cfg.bgColor || '#000000');
                     ctx.beginPath();
                     ctx.roundRect(x - pad, y - pillH / 2, widths[wi] + pad * 2, pillH, rad);
                     ctx.fill();
+                    // Box stroke (over the pill, shadows reset so it stays crisp)
+                    const boxSt = ef.bgStrokeEnable !== undefined ? ef.bgStrokeEnable : (cfg.bgStrokeEnable !== undefined ? cfg.bgStrokeEnable : false);
+                    if (boxSt) {
+                        ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
+                        ctx.strokeStyle = ef.bgStrokeColor || (cfg.bgStrokeColor || '#ffffff');
+                        ctx.lineWidth = ef.bgStrokeWidth !== undefined ? ef.bgStrokeWidth : (cfg.bgStrokeWidth || 4);
+                        ctx.stroke();
+                    }
                     ctx.restore();
                 }
                 // Underline sweep: a bar tracks the spoken word; past words keep a dim bar
@@ -19469,8 +19549,8 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 // spread apart), or shake (emphasis jitter) — applied around the
                 // word's center so the rest of the caption stays put.
                 let spx = 1, spy = 1, spxOff = 0, spyOff = 0;
-                if (preset === 'wordPop' && active) { spx = spy = 1.22; }
-                else if (preset === 'wordStretch' && active) { spx = 1.18; }
+                if (preset === 'wordPop' && active) { spx = spy = popScale; }
+                else if (preset === 'wordStretch' && active) { spx = stretchScale; }
                 else if (preset === 'wordShake' && active) {
                     const st = subTime * 55;
                     spxOff = (Math.sin(st) + Math.sin(st * 2.7) * 0.7) * 2.2;
