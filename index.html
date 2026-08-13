@@ -1178,6 +1178,9 @@
                 animFullSpan: false, // karaoke presets sweep across the whole caption duration instead of the entrance phase
                 wordPopScale: 1.22, // wordPop emphasis — how much the spoken word grows
                 wordStretchScale: 1.18, // wordStretch emphasis — how far the spoken word's letters spread
+                letterTravel: 0, // px each letter travels in for letterPop/letterFade/bounce (0 = preset default)
+                letterPopScale: 1.0, // peak scale of the letterPop/bounce ramp
+                letterRotateDeg: 162, // entry rotation (deg) for the rotate preset
                 position: 'bottom',
                 bottomOffset: 60,
                 lineHeight: 1.3,
@@ -6868,7 +6871,7 @@
                         if (sub) {
                             if (!sub.effects) sub.effects = {};
                             // Map text properties from clip effects to subtitle effects
-                            const subtitleEffectMap = ['fontFamily', 'fontSize', 'fillColor', 'scale', 'fontWeight', 'fontStyle', 'lineHeight', 'letterSpacing', 'shadowEnable', 'shadowColor', 'shadowBlur', 'shadowX', 'shadowY', 'strokeEnable', 'strokeColor', 'strokeWidth', 'bgEnable', 'bgColor', 'bgOpacity', 'bgPadding', 'bgRadius', 'position', 'bottomOffset', 'animIn', 'animOut', 'animPreset', 'animEase', 'animInDur', 'animOutDur', 'animFullSpan', 'highlightColor', 'wordPopScale', 'wordStretchScale', 'animTextIn', 'animTextOut', 'animTextEase', 'animTextInDur', 'animTextStagger'];
+                            const subtitleEffectMap = ['fontFamily', 'fontSize', 'fillColor', 'scale', 'fontWeight', 'fontStyle', 'lineHeight', 'letterSpacing', 'shadowEnable', 'shadowColor', 'shadowBlur', 'shadowX', 'shadowY', 'strokeEnable', 'strokeColor', 'strokeWidth', 'bgEnable', 'bgColor', 'bgOpacity', 'bgPadding', 'bgRadius', 'position', 'bottomOffset', 'animIn', 'animOut', 'animPreset', 'animEase', 'animInDur', 'animOutDur', 'animFullSpan', 'highlightColor', 'wordPopScale', 'wordStretchScale', 'letterTravel', 'letterPopScale', 'letterRotateDeg', 'animTextIn', 'animTextOut', 'animTextEase', 'animTextInDur', 'animTextStagger'];
                             if (subtitleEffectMap.includes(effectName)) {
                                 // Translate text-clip animation vocabulary into caption
                                 // vocabulary when the animation was edited from the clip's
@@ -9047,6 +9050,34 @@
                                         <input type="range" min="100" max="160" step="1" value="${Math.round((capEf.wordStretchScale !== undefined ? capEf.wordStretchScale : 1.18) * 100)}" oninput="setClipEffect('${clip.id}', 'wordStretchScale', this.value / 100); drawCanvas(); this.previousElementSibling.textContent = (this.value / 100).toFixed(2) + 'x';" class="w-20 custom-slider">
                                     </div>
                                 </div>` : ''}` : ''}
+                                ${['letterPop', 'letterFade', 'bounce', 'rotate'].includes(capPresetEff) ? `
+                                <div class="border-t border-surface-200 dark:border-surface-700 pt-2 mt-1 flex flex-col gap-2">
+                                    <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest flex items-center gap-1.5"><i data-lucide="move" class="w-3 h-3 text-brand-500"></i>Letter motion</label>
+                                    ${['letterPop', 'letterFade', 'bounce'].includes(capPresetEff) ? `
+                                    <div class="flex items-center justify-between">
+                                        <label class="text-[10px] font-bold text-surface-600 dark:text-surface-300" title="How far each letter travels while animating in (0 = preset default)">Travel</label>
+                                        <div class="flex items-center gap-1.5">
+                                            <span data-v class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${capEf.letterTravel || {letterPop:14,letterFade:20,bounce:16}[capPresetEff] || 0}px</span>
+                                            <input type="range" min="0" max="60" step="1" value="${capEf.letterTravel || {letterPop:14,letterFade:20,bounce:16}[capPresetEff] || 0}" oninput="setClipEffect('${clip.id}', 'letterTravel', parseInt(this.value)); drawCanvas(); this.previousElementSibling.textContent = this.value + 'px';" class="w-20 custom-slider">
+                                        </div>
+                                    </div>` : ''}
+                                    ${['letterPop', 'bounce'].includes(capPresetEff) ? `
+                                    <div class="flex items-center justify-between">
+                                        <label class="text-[10px] font-bold text-surface-600 dark:text-surface-300" title="Peak scale of the pop ramp — how big each letter grows">Pop scale</label>
+                                        <div class="flex items-center gap-1.5">
+                                            <span data-v class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${(capEf.letterPopScale !== undefined ? capEf.letterPopScale : 1.0).toFixed(2)}x</span>
+                                            <input type="range" min="50" max="150" step="1" value="${Math.round((capEf.letterPopScale !== undefined ? capEf.letterPopScale : 1.0) * 100)}" oninput="setClipEffect('${clip.id}', 'letterPopScale', this.value / 100); drawCanvas(); this.previousElementSibling.textContent = (this.value / 100).toFixed(2) + 'x';" class="w-20 custom-slider">
+                                        </div>
+                                    </div>` : ''}
+                                    ${capPresetEff === 'rotate' ? `
+                                    <div class="flex items-center justify-between">
+                                        <label class="text-[10px] font-bold text-surface-600 dark:text-surface-300" title="How many degrees each letter rotates in">Rotate</label>
+                                        <div class="flex items-center gap-1.5">
+                                            <span data-v class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${capEf.letterRotateDeg !== undefined ? capEf.letterRotateDeg : 162}°</span>
+                                            <input type="range" min="0" max="360" step="1" value="${capEf.letterRotateDeg !== undefined ? capEf.letterRotateDeg : 162}" oninput="setClipEffect('${clip.id}', 'letterRotateDeg', parseInt(this.value)); drawCanvas(); this.previousElementSibling.textContent = this.value + '°';" class="w-20 custom-slider">
+                                        </div>
+                                    </div>` : ''}
+                                </div>` : ''}
                             </div>
                             <div class="grid grid-cols-2 gap-2">
                                 <div><label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1 block">Easing</label>${capAnimSel('animEase', [['easeOut', 'Ease Out'], ['easeIn', 'Ease In'], ['easeInOut', 'Ease In-Out'], ['elastic', 'Elastic'], ['bounce', 'Bounce'], ['linear', 'Linear']])}</div>
@@ -16170,7 +16201,7 @@
             'shadowEnable', 'shadowColor', 'shadowBlur', 'shadowX', 'shadowY',
             'strokeEnable', 'strokeColor', 'strokeWidth',
             'bgEnable', 'bgColor', 'bgOpacity', 'bgPadding', 'bgRadius',
-            'position', 'bottomOffset', 'animIn', 'animOut', 'animPreset', 'animEase', 'animInDur', 'animOutDur', 'animFullSpan', 'highlightColor', 'wordPopScale', 'wordStretchScale'];
+            'position', 'bottomOffset', 'animIn', 'animOut', 'animPreset', 'animEase', 'animInDur', 'animOutDur', 'animFullSpan', 'highlightColor', 'wordPopScale', 'wordStretchScale', 'letterTravel', 'letterPopScale', 'letterRotateDeg'];
 
         // Revert ONE caption field back to inheriting the global style (drops the
         // per-caption override for that key, keeping every other override intact).
@@ -16789,6 +16820,34 @@
                         </div>
                     </div>` : ''}` : ''}` : ''}
                 </div>
+                ${['letterPop', 'letterFade', 'bounce', 'rotate'].includes(cfg.animPreset) ? `
+                <div class="border-t border-surface-200 dark:border-surface-700 pt-2 mt-2 flex flex-col gap-2">
+                    <label class="${lblCls} flex items-center gap-1.5"><i data-lucide="move" class="w-3 h-3 text-brand-500"></i>Letter motion</label>
+                    ${['letterPop', 'letterFade', 'bounce'].includes(cfg.animPreset) ? `
+                    <div class="flex items-center justify-between">
+                        <label class="text-[10px] font-bold text-surface-700 dark:text-surface-200" title="How far each letter travels while animating in (0 = preset default)">Travel</label>
+                        <div class="flex items-center gap-1.5">
+                            <span data-v class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${cfg.letterTravel || {letterPop:14,letterFade:20,bounce:16}[cfg.animPreset] || 0}px</span>
+                            <input type="range" min="0" max="60" step="1" value="${cfg.letterTravel || {letterPop:14,letterFade:20,bounce:16}[cfg.animPreset] || 0}" oninput="State.subtitleConfig.letterTravel = parseInt(this.value); saveSubtitlesToStorage(); drawCanvas(); this.previousElementSibling.textContent = this.value + 'px';" class="w-20 custom-slider">
+                        </div>
+                    </div>` : ''}
+                    ${['letterPop', 'bounce'].includes(cfg.animPreset) ? `
+                    <div class="flex items-center justify-between">
+                        <label class="text-[10px] font-bold text-surface-700 dark:text-surface-200" title="Peak scale of the pop ramp — how big each letter grows">Pop scale</label>
+                        <div class="flex items-center gap-1.5">
+                            <span data-v class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${(cfg.letterPopScale !== undefined ? cfg.letterPopScale : 1.0).toFixed(2)}x</span>
+                            <input type="range" min="50" max="150" step="1" value="${Math.round((cfg.letterPopScale !== undefined ? cfg.letterPopScale : 1.0) * 100)}" oninput="State.subtitleConfig.letterPopScale = this.value / 100; saveSubtitlesToStorage(); drawCanvas(); this.previousElementSibling.textContent = (this.value / 100).toFixed(2) + 'x';" class="w-20 custom-slider">
+                        </div>
+                    </div>` : ''}
+                    ${cfg.animPreset === 'rotate' ? `
+                    <div class="flex items-center justify-between">
+                        <label class="text-[10px] font-bold text-surface-700 dark:text-surface-200" title="How many degrees each letter rotates in">Rotate</label>
+                        <div class="flex items-center gap-1.5">
+                            <span data-v class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${cfg.letterRotateDeg !== undefined ? cfg.letterRotateDeg : 162}°</span>
+                            <input type="range" min="0" max="360" step="1" value="${cfg.letterRotateDeg !== undefined ? cfg.letterRotateDeg : 162}" oninput="State.subtitleConfig.letterRotateDeg = parseInt(this.value); saveSubtitlesToStorage(); drawCanvas(); this.previousElementSibling.textContent = this.value + '°';" class="w-20 custom-slider">
+                        </div>
+                    </div>` : ''}
+                </div>` : ''}
                 <div class="grid grid-cols-3 gap-2">
                     <div>
                         <label class="${lblCls} mb-1 block">In</label>
@@ -19431,15 +19490,24 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             const letterDur = karaoke ? Math.min(0.5, slice * 0.8) : dur;
             const stagger = karaoke ? slice : (dur * 0.8) / Math.max(1, totalChars);
             let x = -totalW / 2;
+            // User-tunable letter motion — the per-letter presets honor the same
+            // caption/text property schema as every other control, instead of
+            // hardcoded amounts. letterTravel of 0 keeps the preset's built-in
+            // distance; letterPopScale is the peak scale of the pop ramp;
+            // letterRotateDeg is the entry rotation (162° = the classic rotate).
+            const letterTravel = ef.letterTravel !== undefined ? ef.letterTravel : (cfg.letterTravel !== undefined ? cfg.letterTravel : 0);
+            const letterPopScale = ef.letterPopScale !== undefined ? ef.letterPopScale : (cfg.letterPopScale !== undefined ? cfg.letterPopScale : 1.0);
+            const letterRotateDeg = ef.letterRotateDeg !== undefined ? ef.letterRotateDeg : (cfg.letterRotateDeg !== undefined ? cfg.letterRotateDeg : 162);
+            const travelOf = (def) => letterTravel || def;
             for (let i = 0; i < chars.length; i++) {
                 const p = (subTime - (charBase + i) * stagger) / letterDur;
                 const ep = captionPresetEase(easeName, p);
                 let la = 1, ls2 = 1, ly = 0, rot = 0;
-                if (preset === 'letterPop') { ls2 = 0.4 + 0.6 * ep; la = Math.min(1, p * 2); ly = (1 - ep) * 14; }
-                else if (preset === 'letterFade') { la = ep; ly = (1 - ep) * 20; }
+                if (preset === 'letterPop') { ls2 = 0.4 + (letterPopScale - 0.4) * ep; la = Math.min(1, p * 2); ly = (1 - ep) * travelOf(14); }
+                else if (preset === 'letterFade') { la = ep; ly = (1 - ep) * travelOf(20); }
                 else if (preset === 'typewriter') { la = p >= 1 ? 1 : 0; }
-                else if (preset === 'bounce') { ls2 = 0.4 + 0.6 * ep; la = Math.min(1, p * 2); ly = -(1 - ep) * 16; }
-                else if (preset === 'rotate') { rot = (1 - ep) * -Math.PI * 0.9; la = Math.min(1, p * 2); ls2 = 0.4 + 0.6 * ep; }
+                else if (preset === 'bounce') { ls2 = 0.4 + (letterPopScale - 0.4) * ep; la = Math.min(1, p * 2); ly = -(1 - ep) * travelOf(16); }
+                else if (preset === 'rotate') { rot = (1 - ep) * -(letterRotateDeg * Math.PI / 180); la = Math.min(1, p * 2); ls2 = 0.4 + (letterPopScale - 0.4) * ep; }
                 if (la <= 0.01) { x += widths[i]; continue; }
                 ctx.save();
                 ctx.globalAlpha *= la;
@@ -19773,23 +19841,18 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             // word — they draw their own pills/bars, so skip the plain box background.
             const wordPresets = { wordHighlight: 1, wordColor: 1, wordPop: 1, wordUnderline: 1, wordGradient: 1, wordShake: 1, wordStretch: 1 };
 
-            // Background
-            if (!wordPresets[animPreset] && (ef.bgEnable !== undefined ? ef.bgEnable : cfg.bgEnable)) {
-                let maxLineW = 0;
-                lines.forEach(l => { const m = ctx.measureText(l).width; if (m > maxLineW) maxLineW = m; });
-                const pad = ef.bgPadding || (cfg.bgPadding || 8);
-                const bgH = totalH + pad * 2;
-                const bgW = maxLineW + pad * 2;
-                const op = ef.bgOpacity !== undefined ? ef.bgOpacity : (cfg.bgOpacity !== undefined ? cfg.bgOpacity : 0.5);
-                ctx.fillStyle = 'rgba(0,0,0,' + op + ')';
-                const r = 6;
-                ctx.beginPath();
-                ctx.roundRect(-bgW / 2, -totalH / 2 - pad, bgW, bgH, r);
-                ctx.fill();
-            }
-
             // Draw each line
             const startY = -((lines.length - 1) * lh) / 2;
+
+            // Background — linked to the text-clip background logic: the box is
+            // drawn by the SAME renderer text clips use (drawTextBackground), so
+            // bgColor / bgOpacity / bgPadding / bgRadius plus the box Stroke,
+            // Shadow, 3D Extrude and Texture controls all apply exactly as they do
+            // on a text clip (previously the fill was hardcoded black — changing
+            // the background color did nothing).
+            if (!wordPresets[animPreset] && (ef.bgEnable !== undefined ? ef.bgEnable : cfg.bgEnable)) {
+                drawTextBackground(ctx, { id: 'caption_bg', effects: ef }, lines, startY, lh, fontSize);
+            }
             const letterPresets = { letterPop: 1, letterFade: 1, typewriter: 1, bounce: 1, rotate: 1 };
             // Whole-caption (karaoke) mode: sweep duration = the caption's full
             // on-screen time instead of the entrance phase, with per-line word/char
