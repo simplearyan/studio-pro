@@ -16684,8 +16684,16 @@
             const fxTab = cfg.subtitleFxTab || 'style';
             const lblCls = 'text-[10px] font-bold text-surface-700 dark:text-surface-200 uppercase tracking-widest';
             const fxBtn = (tab, label, icon) => `<button type="button" onclick="State.subtitleConfig.subtitleFxTab='${tab}'; saveSubtitlesToStorage(); renderSubtitlesPanel();" class="flex-1 py-1 text-[10px] font-bold rounded-md transition-all ${fxTab === tab ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-white shadow-sm' : 'text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-white'}"><i data-lucide="${icon}" class="w-3 h-3 inline-block mr-1 align-middle"></i>${label}</button>`;
-            const sectionCard = (icon, title, inner, open) => `
-                <details class="group bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'}" ${open ? 'open' : ''}>
+            // Persisted accordion open-state: every collapsible card carries a stable
+            // data-sub-acc key, and a delegated toggle listener (attached below) keeps
+            // State.subtitlePanelOpen[key] in sync — so re-rendering the panel after a
+            // property change NEVER collapses a card the user had expanded.
+            const subOpen = (key, def) => {
+                if (!State.subtitlePanelOpen) State.subtitlePanelOpen = {};
+                return State.subtitlePanelOpen[key] !== undefined ? State.subtitlePanelOpen[key] : def;
+            };
+            const sectionCard = (icon, title, inner, key, def) => `
+                <details class="group bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'}" data-sub-acc="${key}" ${subOpen(key, def) ? 'open' : ''}>
                     <summary class="flex items-center gap-2 p-2.5 cursor-pointer list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700">
                         <i data-lucide="${icon}" class="w-3.5 h-3.5 text-brand-500 shrink-0"></i>
                         <span class="${lblCls} flex items-center gap-1.5 flex-1 min-w-0">${title}</span>
@@ -16735,7 +16743,7 @@
                 ${captionStyleControlHtml('bg', 'global')}
             `;
             const typoCard = `
-                <details class="group bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'}" open>
+                <details class="group bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'}" data-sub-acc="typo" ${subOpen('typo', true) ? 'open' : ''}>
                     <summary class="flex items-center gap-2 p-2.5 cursor-pointer list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700">
                         <i data-lucide="type" class="w-3.5 h-3.5 text-brand-500 shrink-0"></i>
                         <div class="flex gap-1 bg-surface-100 dark:bg-surface-900 p-0.5 rounded-lg flex-1 min-w-0" onclick="event.stopPropagation();">
@@ -16817,7 +16825,7 @@
                         <option value="linear" ${cfg.animEase==='linear'?'selected':''}>Linear</option>
                     </select>
                 </div>
-            `, false);
+            `, 'anim', true);
             const posCard = sectionCard('move', 'Position', `
                 <div class="grid grid-cols-2 gap-2">
                     <div>
@@ -16835,7 +16843,7 @@
                         </div>
                     </div>
                 </div>
-            `, true);
+            `, 'pos', true);
             const advCard = sectionCard('sliders-horizontal', 'Advanced', `
                 ${captionStyleControlHtml('bgStroke', 'global')}
                 ${captionStyleControlHtml('bgShadow', 'global')}
@@ -16845,16 +16853,24 @@
                     <span class="text-[10px] font-bold text-surface-700 dark:text-surface-200 flex items-center gap-1.5"><i data-lucide="rotate-ccw" class="w-3 h-3"></i>Clear per-caption overrides</span>
                     <button onclick="resetAllSubtitleOverrides()" class="text-[10px] font-bold text-white bg-brand-600 hover:bg-brand-500 px-2.5 py-1 rounded transition-colors" title="Remove every per-caption style override so all captions follow the global style">Reset All</button>
                 </div>
-            `, false);
+            `, 'adv', false);
             const styleHtml = `
                 <div class="${isHorizontal ? 'flex flex-row gap-3 p-3 overflow-x-auto flex-1 h-dock-strip' : 'flex flex-col gap-3 p-3 overflow-y-auto flex-1'}">
                     <div class="bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm p-3 shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'}">
                         ${captionPresetStripHtml('global')}
                     </div>
                     ${typoCard}
-                    ${animCard}
                     ${posCard}
                     ${advCard}
+                </div>
+            `;
+            // Dedicated Animation sub-tab: all karaoke / preset / in-out / easing
+            // controls live here (separate from typography), so changing an
+            // animation property only re-renders this tab — never collapses the
+            // Style cards, and the Animation card itself stays open.
+            const animTabHtml = `
+                <div class="${isHorizontal ? 'flex flex-row gap-3 p-3 overflow-x-auto flex-1 h-dock-strip' : 'flex flex-col gap-3 p-3 overflow-y-auto flex-1'}">
+                    ${animCard}
                 </div>
             `;
 
@@ -16992,7 +17008,7 @@
             const genInactive = 'bg-surface-100 dark:bg-surface-800 text-surface-700 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-700';
             const genLabel = 'text-[10px] font-bold text-surface-700 dark:text-surface-200 uppercase tracking-widest';
             const genHtml = `
-                <details class="group bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'}" open>
+                <details class="group bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'}" data-sub-acc="gen" ${subOpen('gen', true) ? 'open' : ''}>
                     <summary class="flex items-center gap-2 p-2.5 cursor-pointer list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700">
                         <i data-lucide="sparkles" class="w-3.5 h-3.5 text-brand-500 shrink-0"></i>
                         <span class="${genLabel} flex items-center gap-1.5 flex-1 min-w-0">Generate from Text</span>
@@ -17133,13 +17149,35 @@
                         <button onclick="setSubtitleSubTab('style')" class="${subTab === 'style' ? activeBtnClass : inactiveBtnClass}">
                             <i data-lucide="settings" class="w-3.5 h-3.5 inline-block mr-1"></i>Style
                         </button>
+                        <button onclick="setSubtitleSubTab('animation')" class="${subTab === 'animation' ? activeBtnClass : inactiveBtnClass}">
+                            <i data-lucide="wand-2" class="w-3.5 h-3.5 inline-block mr-1"></i>Animation
+                        </button>
                     </div>
-                    ${subTab === 'captions' ? captionsHtml : styleHtml}
+                    ${subTab === 'captions' ? captionsHtml : subTab === 'animation' ? animTabHtml : styleHtml}
                 </div>
             `;
 
             sidebarContent.innerHTML = html;
             lucide.createIcons();
+            // Persist accordion open/close state across panel re-renders: when a
+            // property change re-renders the panel, the card the user is working in
+            // stays exactly as open/closed as they left it. Delegated once on the
+            // container (which survives every innerHTML swap). A summary click
+            // records the upcoming state — `details.open` is still the pre-toggle
+            // value at that point, so !open is the state the card will have after
+            // the native toggle runs.
+            if (!window.__subAccListener) {
+                window.__subAccListener = true;
+                sidebarContent.addEventListener('click', (e) => {
+                    const summary = e.target && e.target.closest ? e.target.closest('summary') : null;
+                    if (!summary) return;
+                    const details = summary.parentElement;
+                    const key = details && details.dataset ? details.dataset.subAcc : null;
+                    if (!key) return;
+                    if (!State.subtitlePanelOpen) State.subtitlePanelOpen = {};
+                    State.subtitlePanelOpen[key] = !details.open;
+                });
+            }
             // Horizontal dock: cards are always-open panels, never accordions
             if (isHorizontal) hardenHorizontalAccordions(sidebarContent);
             updateCaptionGenPreview();
