@@ -20030,15 +20030,41 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             // each char gets an equal slice of the caption with a short per-char
             // animation, instead of everything finishing in the entrance phase.
             const karaoke = !!(offs && offs.tc);
-            const totalChars = karaoke ? offs.tc : chars.length;
-            const charBase = karaoke ? offs.c : 0;
-            // In karaoke mode each char gets exactly dur/totalChars (no floor) so the
+            // Stagger unit selector (text animation Stagger control): "letter"
+            // (default) advances one unit per char; "word" groups each word into a
+            // single block with a speech-weighted share (chars + 1 — the exact same
+            // timing as the word-glow presets), so the whole word reveals together
+            // and multi-word lines sweep word by word, CapCut-style.
+            const wordStagger = (ef.animTextStagger || (cfg.animTextStagger || 'letter')) === 'word';
+            const wordList = wordStagger ? line.split(/\s+/).filter(Boolean) : null;
+            const wordWeights = wordList ? wordList.map(w => w.length + 1) : null;
+            const totalUnits = wordStagger
+                ? (karaoke ? offs.tw : wordWeights.reduce((a, b) => a + b, 0))
+                : (karaoke ? offs.tc : chars.length);
+            const baseUnits = wordStagger ? (karaoke ? offs.w : 0) : (karaoke ? offs.c : 0);
+            // In karaoke mode each unit gets exactly dur/totalUnits (no floor) so the
             // sweep always completes by the caption's end — even for very long text.
-            const slice = karaoke ? dur / Math.max(1, totalChars) : 0;
+            const slice = karaoke ? dur / Math.max(1, totalUnits) : 0;
             // letterDur = 0.8*slice keeps a per-char overlap that still never
-            // overruns: last char finishes at (totalChars-1)*slice + 0.8*slice < dur.
+            // overruns: last char finishes at (totalUnits-1)*slice + 0.8*slice < dur.
             const letterDur = karaoke ? Math.min(0.5, slice * 0.8) : dur;
-            const stagger = karaoke ? slice : (dur * 0.8) / Math.max(1, totalChars);
+            const stagger = karaoke ? slice : (dur * 0.8) / Math.max(1, totalUnits);
+            // Per-char stagger index: letter mode = char index; word mode = the
+            // word's cumulative weight (every char in one word shares the index so
+            // the word reveals as a block; a space carries the pause of the word
+            // before it — the same speech timing as the word presets).
+            let charStagger = null;
+            if (wordStagger) {
+                charStagger = new Array(chars.length);
+                let wAcc = 0, wIdx = 0;
+                for (let i = 0; i < chars.length; i++) {
+                    charStagger[i] = baseUnits + wAcc;
+                    if (chars[i] !== ' ' && (i + 1 === chars.length || chars[i + 1] === ' ')) {
+                        wAcc += wordWeights[wIdx];
+                        wIdx++;
+                    }
+                }
+            }
             let x = -totalW / 2;
             // User-tunable letter motion — the per-letter presets honor the same
             // caption/text property schema as every other control, instead of
@@ -20050,7 +20076,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             const letterRotateDeg = ef.letterRotateDeg !== undefined ? ef.letterRotateDeg : (cfg.letterRotateDeg !== undefined ? cfg.letterRotateDeg : 162);
             const travelOf = (def) => letterTravel || def;
             for (let i = 0; i < chars.length; i++) {
-                const p = (subTime - (charBase + i) * stagger) / letterDur;
+                const p = (subTime - (charStagger ? charStagger[i] : baseUnits + i) * stagger) / letterDur;
                 const ep = captionPresetEase(easeName, p);
                 let la = 1, ls2 = 1, ly = 0, rot = 0;
                 if (preset === 'letterPop') { ls2 = 0.4 + (letterPopScale - 0.4) * ep; la = Math.min(1, p * 2); ly = (1 - ep) * travelOf(14); }
