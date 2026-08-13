@@ -16835,70 +16835,115 @@
                     </summary>
                     <div class="p-3 flex flex-col gap-3">${fxTab === 'effects' ? effectsFieldsHtml : styleFieldsHtml}</div>
                 </details>`;
+                        const animTile = (v, label, preview, icon) => {
+                const on = (cfg.animPreset || 'none') === v;
+                const inner = v === 'none'
+                    ? `<i data-lucide="ban" class="w-4 h-4 text-surface-400 dark:text-surface-600 opacity-40"></i>`
+                    : `<span class="text-[15px] font-extrabold leading-none ${on ? 'text-brand-600 dark:text-brand-400' : 'text-surface-500 dark:text-surface-400'} ${preview || ''}">Aa</span>`;
+                return `<button type="button" onclick="State.subtitleConfig.animPreset='${v}'; saveSubtitlesToStorage(); drawCanvas(); renderSubtitlesPanel();" class="group relative flex flex-col items-stretch rounded-lg border transition-all duration-150 overflow-hidden ${on ? 'border-brand-500 bg-brand-500/10 dark:bg-brand-500/20 ring-1 ring-brand-500/40' : 'border-surface-200/90 dark:border-surface-700/80 bg-white dark:bg-surface-800/80 hover:border-brand-400/70 dark:hover:border-brand-500/60 hover:bg-surface-100 dark:hover:bg-surface-800'}" title="${label}">
+                    <span class="relative flex items-center justify-center h-[28px] overflow-hidden bg-surface-100 dark:bg-surface-900/60">
+                        ${inner}
+                        ${on ? '<i data-lucide="check" class="absolute top-0.5 right-0.5 w-3 h-3 text-brand-500"></i>' : ''}
+                    </span>
+                    <span class="px-0.5 pt-0.5 pb-1">
+                        <span class="block text-[7.5px] font-bold text-center truncate leading-tight ${on ? 'text-brand-600 dark:text-brand-400' : 'text-surface-600 dark:text-surface-300'}">${label}</span>
+                    </span>
+                </button>`;
+            };
+            const animGroupHtml = (title, tiles) => `
+                <div class="flex flex-col gap-1">
+                    <label class="text-[8.5px] font-bold text-surface-400 dark:text-surface-500 uppercase tracking-widest flex items-center gap-1"><i data-lucide="layers" class="w-3 h-3"></i>${title}</label>
+                    <div class="grid ${isHorizontal ? 'grid-cols-5' : 'grid-cols-4'} gap-1.5">${tiles.map(t => animTile(t.v, t.label, t.preview, t.icon)).join('')}</div>
+                </div>`;
+            const animTilesHtml = [
+                animGroupHtml('Entrance', [
+                    { v: 'none', label: 'None', preview: '', icon: 'ban' },
+                    { v: 'fade', label: 'Fade Up', preview: 'preview-fade-in', icon: 'sun' },
+                    { v: 'pop', label: 'Pop', preview: 'preview-pop', icon: 'sparkles' }
+                ]),
+                animGroupHtml('Letters', [
+                    { v: 'letterPop', label: 'Letter Pop', preview: 'preview-pop', icon: 'maximize' },
+                    { v: 'letterFade', label: 'Letter Fade', preview: 'preview-slide-up', icon: 'wind' },
+                    { v: 'typewriter', label: 'Typewriter', preview: 'preview-typewriter', icon: 'keyboard' },
+                    { v: 'bounce', label: 'Bounce', preview: 'preview-bounce', icon: 'arrow-down-up' },
+                    { v: 'rotate', label: 'Rotate', preview: 'preview-rotate-letter', icon: 'rotate-cw' }
+                ]),
+                animGroupHtml('Words · Karaoke', [
+                    { v: 'wordHighlight', label: 'Word Glow', preview: 'preview-word-glow', icon: 'highlighter' },
+                    { v: 'wordColor', label: 'Color Highlight', preview: 'preview-word-color', icon: 'palette' },
+                    { v: 'wordPop', label: 'Scale Pop', preview: 'preview-pop', icon: 'zoom-in' },
+                    { v: 'wordUnderline', label: 'Underline Sweep', preview: 'preview-word-underline', icon: 'underline' },
+                    { v: 'wordGradient', label: 'Gradient Sweep', preview: 'preview-word-gradient', icon: 'align-center' },
+                    { v: 'wordShake', label: 'Shake Emphasis', preview: 'preview-shake', icon: 'move-horizontal' },
+                    { v: 'wordStretch', label: 'Stretch', preview: 'preview-word-stretch', icon: 'move-horizontal' }
+                ])
+            ].join('');
+            const isWordPreset = ['wordHighlight', 'wordColor', 'wordPop', 'wordUnderline', 'wordGradient', 'wordShake', 'wordStretch'].includes(cfg.animPreset);
+            const isLetterPreset = ['letterPop', 'letterFade', 'typewriter', 'bounce', 'rotate'].includes(cfg.animPreset);
+            // Contextual Effects strip — swaps content by preset type (word →
+            // karaoke options, letter → letter motion) inside a fixed-min-height
+            // bordered card so switching presets never reflows the tiles above.
+            const effectsStrip = `
+                <div class="border border-surface-200 dark:border-surface-700 rounded-lg p-2.5 flex flex-col gap-2 min-h-[92px]">
+                    <label class="text-[8.5px] font-bold text-surface-400 dark:text-surface-500 uppercase tracking-widest flex items-center gap-1"><i data-lucide="sliders-horizontal" class="w-3 h-3"></i>Effects</label>
+                    ${isWordPreset ? `
+                        <div class="flex items-center justify-between">
+                            <label class="text-[10px] font-bold text-surface-700 dark:text-surface-200 flex items-center gap-1.5 cursor-pointer" title="Sweep across the whole caption duration (CapCut-style karaoke) instead of only the ~0.5s entrance phase"><i data-lucide="timer" class="w-3 h-3 text-brand-500"></i>Whole caption duration</label>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" class="sr-only peer" ${cfg.animFullSpan ? 'checked' : ''} onchange="State.subtitleConfig.animFullSpan = this.checked; saveSubtitlesToStorage(); drawCanvas();">
+                                <div class="w-7 h-4 bg-surface-300 dark:bg-surface-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:border-surface-600 dark:peer-checked:bg-brand-500 peer-checked:bg-brand-500"></div>
+                            </label>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <label class="text-[10px] font-bold text-surface-700 dark:text-surface-200 flex items-center gap-1.5 cursor-pointer" title="Accent color used by the word presets"><i data-lucide="palette" class="w-3 h-3 text-brand-500"></i>Highlight color</label>
+                            <input type="color" value="${cfg.highlightColor || '#FFD60A'}" oninput="State.subtitleConfig.highlightColor = this.value; saveSubtitlesToStorage(); drawCanvas();" class="w-8 h-6 rounded border border-surface-200 dark:border-surface-700 bg-transparent cursor-pointer">
+                        </div>
+                        ${cfg.animPreset === 'wordPop' ? `
+                        <div class="flex items-center justify-between">
+                            <label class="text-[10px] font-bold text-surface-700 dark:text-surface-200" title="How much the spoken word grows while it's being said">Pop scale</label>
+                            <div class="flex items-center gap-1.5">
+                                <span data-v class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${(cfg.wordPopScale !== undefined ? cfg.wordPopScale : 1.22).toFixed(2)}x</span>
+                                <input type="range" min="100" max="180" step="1" value="${Math.round((cfg.wordPopScale !== undefined ? cfg.wordPopScale : 1.22) * 100)}" oninput="State.subtitleConfig.wordPopScale = this.value / 100; saveSubtitlesToStorage(); drawCanvas(); this.previousElementSibling.textContent = (this.value / 100).toFixed(2) + 'x';" class="w-20 custom-slider">
+                            </div>
+                        </div>` : ''}
+                        ${cfg.animPreset === 'wordStretch' ? `
+                        <div class="flex items-center justify-between">
+                            <label class="text-[10px] font-bold text-surface-700 dark:text-surface-200" title="How far the spoken word's letters spread apart">Stretch scale</label>
+                            <div class="flex items-center gap-1.5">
+                                <span data-v class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${(cfg.wordStretchScale !== undefined ? cfg.wordStretchScale : 1.18).toFixed(2)}x</span>
+                                <input type="range" min="100" max="160" step="1" value="${Math.round((cfg.wordStretchScale !== undefined ? cfg.wordStretchScale : 1.18) * 100)}" oninput="State.subtitleConfig.wordStretchScale = this.value / 100; saveSubtitlesToStorage(); drawCanvas(); this.previousElementSibling.textContent = (this.value / 100).toFixed(2) + 'x';" class="w-20 custom-slider">
+                            </div>
+                        </div>` : ''}` : isLetterPreset ? `
+                        ${['letterPop', 'letterFade', 'bounce'].includes(cfg.animPreset) ? `
+                        <div class="flex items-center justify-between">
+                            <label class="text-[10px] font-bold text-surface-700 dark:text-surface-200" title="How far each letter travels while animating in (0 = preset default)">Travel</label>
+                            <div class="flex items-center gap-1.5">
+                                <span data-v class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${cfg.letterTravel || { letterPop: 14, letterFade: 20, bounce: 16 }[cfg.animPreset] || 0}px</span>
+                                <input type="range" min="0" max="60" step="1" value="${cfg.letterTravel || { letterPop: 14, letterFade: 20, bounce: 16 }[cfg.animPreset] || 0}" oninput="State.subtitleConfig.letterTravel = parseInt(this.value); saveSubtitlesToStorage(); drawCanvas(); this.previousElementSibling.textContent = this.value + 'px';" class="w-20 custom-slider">
+                            </div>
+                        </div>` : ''}
+                        ${['letterPop', 'bounce'].includes(cfg.animPreset) ? `
+                        <div class="flex items-center justify-between">
+                            <label class="text-[10px] font-bold text-surface-700 dark:text-surface-200" title="Peak scale of the pop ramp — how big each letter grows">Pop scale</label>
+                            <div class="flex items-center gap-1.5">
+                                <span data-v class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${(cfg.letterPopScale !== undefined ? cfg.letterPopScale : 1.0).toFixed(2)}x</span>
+                                <input type="range" min="50" max="150" step="1" value="${Math.round((cfg.letterPopScale !== undefined ? cfg.letterPopScale : 1.0) * 100)}" oninput="State.subtitleConfig.letterPopScale = this.value / 100; saveSubtitlesToStorage(); drawCanvas(); this.previousElementSibling.textContent = (this.value / 100).toFixed(2) + 'x';" class="w-20 custom-slider">
+                            </div>
+                        </div>` : ''}
+                        ${cfg.animPreset === 'rotate' ? `
+                        <div class="flex items-center justify-between">
+                            <label class="text-[10px] font-bold text-surface-700 dark:text-surface-200" title="How many degrees each letter rotates in">Rotate</label>
+                            <div class="flex items-center gap-1.5">
+                                <span data-v class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${cfg.letterRotateDeg !== undefined ? cfg.letterRotateDeg : 162}°</span>
+                                <input type="range" min="0" max="360" step="1" value="${cfg.letterRotateDeg !== undefined ? cfg.letterRotateDeg : 162}" oninput="State.subtitleConfig.letterRotateDeg = parseInt(this.value); saveSubtitlesToStorage(); drawCanvas(); this.previousElementSibling.textContent = this.value + '°';" class="w-20 custom-slider">
+                            </div>
+                        </div>` : ''}` : `
+                        <p class="text-[10px] text-surface-400 dark:text-surface-500 italic">Pick a letter or word preset to tune its effect.</p>`}
+                </div>`;
             const animCard = sectionCard('wand-2', 'Animation', `
-                <div>
-                    <label class="${lblCls} mb-1 block">Preset</label>
-                    <div class="grid ${isHorizontal ? 'grid-cols-5' : 'grid-cols-4'} gap-1.5">                                    ${[['none','None'],['fade','Fade Up'],['pop','Pop'],['letterPop','Letter Pop'],['letterFade','Letter Fade'],['typewriter','Typewriter'],['wordHighlight','Word Glow'],['wordColor','Color Highlight'],['wordPop','Scale Pop'],['wordUnderline','Underline Sweep'],['wordGradient','Gradient Sweep'],['wordShake','Shake Emphasis'],['wordStretch','Stretch'],['bounce','Bounce'],['rotate','Rotate']].map(([pv, pl]) => `<button class="px-1 py-1.5 text-[10px] font-bold rounded transition-colors ${(cfg.animPreset||'none') === pv ? 'bg-brand-500/15 dark:bg-brand-400/25 text-brand-700 dark:text-brand-100 ring-1 ring-inset ring-brand-500/50' : 'bg-surface-100 dark:bg-surface-800 text-surface-700 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-700'}" onclick="State.subtitleConfig.animPreset='${pv}'; saveSubtitlesToStorage(); drawCanvas(); renderSubtitlesPanel();">${pl}</button>`).join('')}
-                    </div>
-                    ${['wordHighlight', 'wordColor', 'wordPop', 'wordUnderline', 'wordGradient', 'wordShake', 'wordStretch', 'letterPop', 'letterFade', 'typewriter', 'bounce', 'rotate'].includes(cfg.animPreset) ? `
-                    <div class="flex items-center justify-between mt-2">
-                        <label class="text-[10px] font-bold text-surface-700 dark:text-surface-200 flex items-center gap-1.5 cursor-pointer" title="Sweep across the whole caption duration (CapCut-style karaoke) instead of only the ~0.5s entrance phase"><i data-lucide="timer" class="w-3 h-3 text-brand-500"></i>Whole caption duration</label>
-                        <label class="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" class="sr-only peer" ${cfg.animFullSpan ? 'checked' : ''} onchange="State.subtitleConfig.animFullSpan = this.checked; saveSubtitlesToStorage(); drawCanvas();">
-                            <div class="w-7 h-4 bg-surface-300 dark:bg-surface-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:border-surface-600 dark:peer-checked:bg-brand-500 peer-checked:bg-brand-500"></div>
-                        </label>
-                    </div>
-                    ${['wordHighlight', 'wordColor', 'wordPop', 'wordUnderline', 'wordGradient', 'wordShake', 'wordStretch'].includes(cfg.animPreset) ? `
-                    <div class="flex items-center justify-between mt-1.5">
-                        <label class="text-[10px] font-bold text-surface-700 dark:text-surface-200 flex items-center gap-1.5 cursor-pointer" title="Accent color used by Color Highlight and Underline Sweep"><i data-lucide="palette" class="w-3 h-3 text-brand-500"></i>Highlight color</label>
-                        <input type="color" value="${cfg.highlightColor || '#FFD60A'}" oninput="State.subtitleConfig.highlightColor = this.value; saveSubtitlesToStorage(); drawCanvas();" class="w-8 h-6 rounded border border-surface-200 dark:border-surface-700 bg-transparent cursor-pointer">
-                    </div>
-                    ${cfg.animPreset === 'wordPop' ? `
-                    <div class="flex items-center justify-between mt-1.5">
-                        <label class="text-[10px] font-bold text-surface-700 dark:text-surface-200" title="How much the spoken word grows while it's being said">Pop scale</label>
-                        <div class="flex items-center gap-1.5">
-                            <span data-v class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${(cfg.wordPopScale !== undefined ? cfg.wordPopScale : 1.22).toFixed(2)}x</span>
-                            <input type="range" min="100" max="180" step="1" value="${Math.round((cfg.wordPopScale !== undefined ? cfg.wordPopScale : 1.22) * 100)}" oninput="State.subtitleConfig.wordPopScale = this.value / 100; saveSubtitlesToStorage(); drawCanvas(); this.previousElementSibling.textContent = (this.value / 100).toFixed(2) + 'x';" class="w-20 custom-slider">
-                        </div>
-                    </div>` : ''}
-                    ${cfg.animPreset === 'wordStretch' ? `
-                    <div class="flex items-center justify-between mt-1.5">
-                        <label class="text-[10px] font-bold text-surface-700 dark:text-surface-200" title="How far the spoken word's letters spread apart">Stretch scale</label>
-                        <div class="flex items-center gap-1.5">
-                            <span data-v class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${(cfg.wordStretchScale !== undefined ? cfg.wordStretchScale : 1.18).toFixed(2)}x</span>
-                            <input type="range" min="100" max="160" step="1" value="${Math.round((cfg.wordStretchScale !== undefined ? cfg.wordStretchScale : 1.18) * 100)}" oninput="State.subtitleConfig.wordStretchScale = this.value / 100; saveSubtitlesToStorage(); drawCanvas(); this.previousElementSibling.textContent = (this.value / 100).toFixed(2) + 'x';" class="w-20 custom-slider">
-                        </div>
-                    </div>` : ''}` : ''}` : ''}
-                </div>
-                ${['letterPop', 'letterFade', 'bounce', 'rotate'].includes(cfg.animPreset) ? `
-                <div class="border-t border-surface-200 dark:border-surface-700 pt-2 mt-2 flex flex-col gap-2">
-                    <label class="${lblCls} flex items-center gap-1.5"><i data-lucide="move" class="w-3 h-3 text-brand-500"></i>Letter motion</label>
-                    ${['letterPop', 'letterFade', 'bounce'].includes(cfg.animPreset) ? `
-                    <div class="flex items-center justify-between">
-                        <label class="text-[10px] font-bold text-surface-700 dark:text-surface-200" title="How far each letter travels while animating in (0 = preset default)">Travel</label>
-                        <div class="flex items-center gap-1.5">
-                            <span data-v class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${cfg.letterTravel || {letterPop:14,letterFade:20,bounce:16}[cfg.animPreset] || 0}px</span>
-                            <input type="range" min="0" max="60" step="1" value="${cfg.letterTravel || {letterPop:14,letterFade:20,bounce:16}[cfg.animPreset] || 0}" oninput="State.subtitleConfig.letterTravel = parseInt(this.value); saveSubtitlesToStorage(); drawCanvas(); this.previousElementSibling.textContent = this.value + 'px';" class="w-20 custom-slider">
-                        </div>
-                    </div>` : ''}
-                    ${['letterPop', 'bounce'].includes(cfg.animPreset) ? `
-                    <div class="flex items-center justify-between">
-                        <label class="text-[10px] font-bold text-surface-700 dark:text-surface-200" title="Peak scale of the pop ramp — how big each letter grows">Pop scale</label>
-                        <div class="flex items-center gap-1.5">
-                            <span data-v class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${(cfg.letterPopScale !== undefined ? cfg.letterPopScale : 1.0).toFixed(2)}x</span>
-                            <input type="range" min="50" max="150" step="1" value="${Math.round((cfg.letterPopScale !== undefined ? cfg.letterPopScale : 1.0) * 100)}" oninput="State.subtitleConfig.letterPopScale = this.value / 100; saveSubtitlesToStorage(); drawCanvas(); this.previousElementSibling.textContent = (this.value / 100).toFixed(2) + 'x';" class="w-20 custom-slider">
-                        </div>
-                    </div>` : ''}
-                    ${cfg.animPreset === 'rotate' ? `
-                    <div class="flex items-center justify-between">
-                        <label class="text-[10px] font-bold text-surface-700 dark:text-surface-200" title="How many degrees each letter rotates in">Rotate</label>
-                        <div class="flex items-center gap-1.5">
-                            <span data-v class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${cfg.letterRotateDeg !== undefined ? cfg.letterRotateDeg : 162}°</span>
-                            <input type="range" min="0" max="360" step="1" value="${cfg.letterRotateDeg !== undefined ? cfg.letterRotateDeg : 162}" oninput="State.subtitleConfig.letterRotateDeg = parseInt(this.value); saveSubtitlesToStorage(); drawCanvas(); this.previousElementSibling.textContent = this.value + '°';" class="w-20 custom-slider">
-                        </div>
-                    </div>` : ''}
-                </div>` : ''}
-                <div class="grid grid-cols-3 gap-2">
+                ${animTilesHtml}
+                ${effectsStrip}
+                <div class="border-t border-surface-200 dark:border-surface-700 pt-2.5 grid grid-cols-3 gap-2">
                     <div>
                         <label class="${lblCls} mb-1 block">In</label>
                         <select class="w-full text-[10px] p-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 focus:outline-none focus:border-brand-500 font-bold" onchange="State.subtitleConfig.animIn = this.value; saveSubtitlesToStorage(); drawCanvas();">
