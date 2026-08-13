@@ -16452,11 +16452,23 @@
                 const bgOnEff = isWordPreset
                     ? (animPresetVal === 'wordHighlight' ? val('bgEnable') !== false : !!val('bgEnable'))
                     : !!val('bgEnable');
-                return toggleRow('bgEnable', 'Background', `
-                    ${colorBox('bgColor', '#000000')}
-                    ${sliderRow('bgOpacity', 0, 100, 'this.value / 100', 'this.value + \'%\'', op)}
-                    ${badge(op + '%')}
-                `, inheritChipGroup(['bgEnable', 'bgColor', 'bgOpacity'], 'Background'), bgOnEff);
+                // CapCut-style background box presets — one-tap box looks that write
+                // the whole box family (fill, radius, shadow, stroke, extrude,
+                // texture) so any preset or word-pill look can be boxed up instantly.
+                const boxChip = (id, label, title) => `<button type="button" onclick="applyCaptionBoxPreset('${id}', ${mode === 'clip' ? `'clip', '${clipId}'` : `'global'`}); drawCanvas(); ${mode === 'clip' ? 'updateSidebarPanel();' : 'renderSubtitlesPanel();'}" class="flex-1 min-w-0 px-1.5 py-1 text-[9px] font-bold rounded-md border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 hover:border-brand-400/70 dark:hover:border-brand-500/60 hover:shadow-sm transition-all truncate" title="${title}">${label}</button>`;
+                return `<div class="flex flex-col gap-2 min-w-0">
+                    ${toggleRow('bgEnable', 'Background', `
+                        ${colorBox('bgColor', '#000000')}
+                        ${sliderRow('bgOpacity', 0, 100, 'this.value / 100', 'this.value + \'%\'', op)}
+                        ${badge(op + '%')}
+                    `, inheritChipGroup(['bgEnable', 'bgColor', 'bgOpacity'], 'Background'), bgOnEff)}
+                    <div class="flex items-center gap-1.5 min-w-0">
+                        <span class="text-[9px] font-bold text-surface-400 dark:text-surface-500 uppercase tracking-wider shrink-0">Box</span>
+                        ${boxChip('solid', 'Solid', 'Opaque solid box')}
+                        ${boxChip('softShadow', 'Soft Shadow', 'Translucent box with a soft drop shadow')}
+                        ${boxChip('roundedChip', 'Rounded Chip', 'Rounded pill chip')}
+                    </div>
+                </div>`;
             }
             // ── Typography + spacing groups (per-caption overrides, same schema as the
             // text-clip Typography / Sizing cards — mirrored via subtitleEffectMap) ──
@@ -16649,6 +16661,44 @@
                     });
                 });
                 renderSubtitlesPanel();
+            }
+            drawCanvas();
+        };
+
+        // CapCut-style background box presets — one-tap box looks for captions.
+        // scope 'global' writes State.subtitleConfig (every caption inherits);
+        // scope 'clip' writes a per-caption override for the selected caption clip
+        // and mirrors it onto the synced clip's effects, matching applyCaptionPreset.
+        window.applyCaptionBoxPreset = function(id, scope, clipId) {
+            const BOX_PRESETS = {
+                solid: { bgEnable: true, bgColor: '#000000', bgOpacity: 1, bgRadius: 6, bgStrokeEnable: false, bgShadowEnable: false, bgExtrudeEnable: false, textureEnable: false },
+                softShadow: { bgEnable: true, bgColor: '#000000', bgOpacity: 0.55, bgRadius: 12, bgShadowEnable: true, bgShadowColor: '#000000', bgShadowBlur: 24, bgShadowX: 0, bgShadowY: 8, bgStrokeEnable: false, bgExtrudeEnable: false, textureEnable: false },
+                roundedChip: { bgEnable: true, bgColor: '#1C1C28', bgOpacity: 0.85, bgRadius: 999, bgStrokeEnable: false, bgShadowEnable: false, bgExtrudeEnable: false, textureEnable: false }
+            };
+            const fx = BOX_PRESETS[id];
+            if (!fx) return;
+            const cfg = State.subtitleConfig;
+            let sub = null;
+            if (scope === 'clip' && clipId) {
+                const c = State.clips.find(x => x.id === clipId);
+                sub = c && c.subtitleId ? State.subtitles.find(x => x.id === c.subtitleId) : null;
+                if (!sub) return;
+                if (!sub.effects) sub.effects = {};
+            }
+            const dest = sub ? sub.effects : cfg;
+            Object.keys(fx).forEach(k => dest[k] = fx[k]);
+            saveSubtitlesToStorage();
+            if (sub && clipId) {
+                const c = State.clips.find(x => x.id === clipId);
+                if (c && c.effects) Object.keys(fx).forEach(k => { c.effects[k] = fx[k]; });
+            } else {
+                State.clips.filter(c => c.subtitleId).forEach(clip => {
+                    const s = State.subtitles.find(x => x.id === clip.subtitleId);
+                    if (!clip.effects) clip.effects = {};
+                    Object.keys(fx).forEach(k => {
+                        if (!s || !s.effects || s.effects[k] === undefined) clip.effects[k] = fx[k];
+                    });
+                });
             }
             drawCanvas();
         };
