@@ -3291,6 +3291,10 @@
         const TEXT_LETTER_TO_PRESET = {
             typewriter: 'typewriter', scaleFade: 'letterPop', slideUp: 'letterFade',
             odometer: 'rotate', randomSnap: 'bounce',
+            // The exact caption letter presets are now real text-clip animTextIn
+            // values, so identity entries keep them rendering identically when a
+            // synced caption clip's animTextIn is mirrored through subtitleEffectMap.
+            letterPop: 'letterPop', letterFade: 'letterFade', bounce: 'bounce', rotate: 'rotate',
             // Word karaoke presets applied to a text clip (animTextIn) map back to
             // their caption preset names, so a synced caption clip's fallback in
             // drawSubtitlesOnCanvas renders the identical word sweep.
@@ -4668,9 +4672,16 @@
                             // pills, highlight color, pop/stretch) from the ANIMATIONS tab.
                             const wordPresetMap = { wordGlow: 'wordHighlight', wordColor: 'wordColor', wordPop: 'wordPop', wordUnderline: 'wordUnderline', wordGradient: 'wordGradient', wordShake: 'wordShake', wordStretch: 'wordStretch' };
                             const wordPreset = wordPresetMap[animTextIn];
+                            // Caption letter presets (letterPop / letterFade / bounce /
+                            // rotate) applied to text clips — drawn by the SAME renderer
+                            // captions use, so text clips get the exact caption letter
+                            // reveal (travel, pop scale, rotate) instead of the approximate
+                            // native text presets (scaleFade/slideUp/randomSnap/odometer).
+                            const letterPresetMap = { letterPop: 'letterPop', letterFade: 'letterFade', bounce: 'bounce', rotate: 'rotate' };
+                            const letterPreset = letterPresetMap[animTextIn];
                             // Text background box renders behind the text (covers fast path +
                             // animations); skipped for word presets — they draw their own
-                            // per-word pills.
+                            // per-word pills. Letter presets keep the whole-text box.
                             if (!wordPreset) drawTextBackground(ctx, clip, lines, startY, lh, fontSize);
                             if (wordPreset) {
                                 // No per-word speech timing on a static text clip: the sweep
@@ -4679,6 +4690,17 @@
                                 const durInW = clip.effects.animTextInDur !== undefined ? clip.effects.animTextInDur : 1.0;
                                 lines.forEach((line, li) => {
                                     drawCaptionWordGlow(ctx, line, startY + li * lh, clip.effects, {}, clipTime, durInW, fontSize, null, wordPreset);
+                                });
+                                return;
+                            }
+                            if (letterPreset) {
+                                // Staggered caption-style letter reveal across the clip's
+                                // animTextInDur window. The clip's animTextEase feeds the
+                                // shared ease table via the animEase shim.
+                                const durInL = clip.effects.animTextInDur !== undefined ? clip.effects.animTextInDur : 1.0;
+                                const shimEf = Object.assign({}, clip.effects, { animEase: clip.effects.animTextEase || 'easeOut' });
+                                lines.forEach((line, li) => {
+                                    drawCaptionLetters(ctx, line, startY + li * lh, shimEf, {}, letterPreset, clipTime, durInL, null);
                                 });
                                 return;
                             }
@@ -9891,6 +9913,16 @@
                 { value: 'wordStretch', label: 'Stretch', icon: 'move-horizontal', previewClass: 'preview-word-stretch' }
             ];
 
+            // Caption letter presets as exact text-clip animations (drawn by
+            // drawCaptionLetters — see drawText): the real bounce / rotate / letter
+            // pop / letter fade reveals instead of the native approximations.
+            const letterTextInOptions = [
+                { value: 'letterPop', label: 'Letter Pop', icon: 'maximize', previewClass: 'preview-pop' },
+                { value: 'letterFade', label: 'Letter Fade', icon: 'wind', previewClass: 'preview-slide-up' },
+                { value: 'bounce', label: 'Bounce', icon: 'arrow-down-up', previewClass: 'preview-bounce' },
+                { value: 'rotate', label: 'Rotate', icon: 'rotate-cw', previewClass: 'preview-rotate-letter' }
+            ];
+
             const textOutOptions = [
                 { value: 'none', label: 'None', icon: 'ban', previewClass: '' },
                 { value: 'randomFly', label: 'Fly Out', icon: 'wind', previewClass: 'preview-zoom-out' },
@@ -10051,6 +10083,55 @@
                     // clip's animation duration; contextual tuning appears when a word
                     // preset is active.
                     const wordInActive = wordTextInOptions.some(o => o.value === animTextIn);
+                    const letterInActive = letterTextInOptions.some(o => o.value === animTextIn);
+                    // Caption letter presets (letterPop/letterFade/bounce/rotate) as
+                    // EXACT text-clip animations — drawn by drawCaptionLetters with
+                    // tunable travel / pop scale / rotate.
+                    textCardHtml += `
+                    <div class="flex flex-col gap-1.5 mt-3">
+                        <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest flex items-center gap-1.5"><i data-lucide="type" class="w-3 h-3 text-brand-500"></i>Letters (Caption)</label>
+                        <div class="grid grid-cols-[repeat(auto-fill,minmax(88px,1fr))] gap-2 w-full select-none">${letterTextInOptions.map(o => {
+                            const isActive = animTextIn === o.value;
+                            const activeClasses = isActive
+                                ? 'border-brand-500 bg-brand-500/10 dark:bg-brand-500/20 ring-1 ring-brand-500/40'
+                                : 'border-surface-200/90 dark:border-surface-700/80 bg-white dark:bg-surface-800/80 hover:border-brand-400/70 dark:hover:border-brand-500/60 hover:bg-surface-100 dark:hover:bg-surface-800 hover:-translate-y-0.5 hover:shadow-md';
+                            return `<button onclick="setClipEffect('${clip.id}', 'animTextIn', '${o.value}'); updateSidebarPanel();" class="group relative flex flex-col items-stretch rounded-lg border transition-all duration-150 overflow-hidden ${activeClasses}" title="${o.label} (staggered letter reveal over the animation duration)">
+                                <div class="flex items-center justify-center h-[52px] relative z-10 transition-transform duration-300 group-hover:scale-105">
+                                    <span class="text-[22px] font-extrabold text-brand-600 dark:text-brand-400 leading-none ${o.previewClass}">Aa</span>
+                                </div>
+                                <div class="relative z-20 px-1 pb-1.5 pt-1">
+                                    <span class="block text-[10px] font-semibold text-center truncate ${isActive ? 'text-brand-600 dark:text-brand-400' : 'text-surface-600 dark:text-surface-300'}">${o.label}</span>
+                                </div>
+                            </button>`;
+                        }).join('')}</div>
+                        ${letterInActive ? `
+                        <div class="border-t border-surface-200 dark:border-surface-700 pt-2 mt-1 flex flex-col gap-1.5">
+                            ${['letterPop', 'letterFade', 'bounce'].includes(animTextIn) ? `
+                            <div class="flex items-center justify-between">
+                                <label class="text-[10px] font-bold text-surface-700 dark:text-surface-200" title="How far each letter travels while animating in (0 = preset default)">Travel</label>
+                                <div class="flex items-center gap-1.5">
+                                    <span data-v class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${clip.effects.letterTravel || { letterPop: 14, letterFade: 20, bounce: 16 }[animTextIn] || 0}px</span>
+                                    <input type="range" min="0" max="60" step="1" value="${clip.effects.letterTravel || { letterPop: 14, letterFade: 20, bounce: 16 }[animTextIn] || 0}" oninput="setClipEffect('${clip.id}', 'letterTravel', parseInt(this.value)); drawCanvas(); this.previousElementSibling.textContent = this.value + 'px';" class="w-20 custom-slider">
+                                </div>
+                            </div>` : ''}
+                            ${['letterPop', 'bounce'].includes(animTextIn) ? `
+                            <div class="flex items-center justify-between">
+                                <label class="text-[10px] font-bold text-surface-700 dark:text-surface-200" title="Peak scale of the pop ramp — how big each letter grows">Pop scale</label>
+                                <div class="flex items-center gap-1.5">
+                                    <span data-v class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${(clip.effects.letterPopScale !== undefined ? clip.effects.letterPopScale : 1.0).toFixed(2)}x</span>
+                                    <input type="range" min="50" max="150" step="1" value="${Math.round((clip.effects.letterPopScale !== undefined ? clip.effects.letterPopScale : 1.0) * 100)}" oninput="setClipEffect('${clip.id}', 'letterPopScale', this.value / 100); drawCanvas(); this.previousElementSibling.textContent = (this.value / 100).toFixed(2) + 'x';" class="w-20 custom-slider">
+                                </div>
+                            </div>` : ''}
+                            ${animTextIn === 'rotate' ? `
+                            <div class="flex items-center justify-between">
+                                <label class="text-[10px] font-bold text-surface-700 dark:text-surface-200" title="How many degrees each letter rotates in">Rotate</label>
+                                <div class="flex items-center gap-1.5">
+                                    <span data-v class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${clip.effects.letterRotateDeg !== undefined ? clip.effects.letterRotateDeg : 162}°</span>
+                                    <input type="range" min="0" max="360" step="1" value="${clip.effects.letterRotateDeg !== undefined ? clip.effects.letterRotateDeg : 162}" oninput="setClipEffect('${clip.id}', 'letterRotateDeg', parseInt(this.value)); drawCanvas(); this.previousElementSibling.textContent = this.value + '°';" class="w-20 custom-slider">
+                                </div>
+                            </div>` : ''}
+                        </div>` : ''}
+                    </div>`;
                     textCardHtml += `
                     <div class="flex flex-col gap-1.5 mt-3">
                         <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest flex items-center gap-1.5"><i data-lucide="highlighter" class="w-3 h-3 text-brand-500"></i>Words (Karaoke)</label>
@@ -16142,22 +16223,23 @@
             const presetMap = {
                 fade: { animIn: 'fade' },
                 pop: { animIn: 'pop' },
-                letterPop: { animTextIn: 'scaleFade' },
-                letterFade: { animTextIn: 'slideUp' },
+                // Letter + word presets convert to their EXACT text-clip names — the
+                // caption renderers (drawCaptionLetters / drawCaptionWordGlow) drive
+                // the text path too, so conversion round-trips instead of degrading
+                // to the nearest native text preset (scaleFade/slideUp/randomSnap/
+                // odometer/typewriter).
+                letterPop: { animTextIn: 'letterPop' },
+                letterFade: { animTextIn: 'letterFade' },
                 typewriter: { animTextIn: 'typewriter' },
-                // Word karaoke presets now have direct text-clip counterparts (the
-                // word sweep renders on text clips via drawCaptionWordGlow), so
-                // conversion keeps the exact word animation instead of degrading to
-                // typewriter. bounce→randomSnap round-trips (randomSnap→bounce).
+                bounce: { animTextIn: 'bounce' },
+                rotate: { animTextIn: 'rotate' },
                 wordHighlight: { animTextIn: 'wordGlow' },
                 wordColor: { animTextIn: 'wordColor' },
                 wordPop: { animTextIn: 'wordPop' },
                 wordUnderline: { animTextIn: 'wordUnderline' },
                 wordGradient: { animTextIn: 'wordGradient' },
                 wordShake: { animTextIn: 'wordShake' },
-                wordStretch: { animTextIn: 'wordStretch' },
-                bounce: { animTextIn: 'randomSnap' },
-                rotate: { animTextIn: 'odometer' }
+                wordStretch: { animTextIn: 'wordStretch' }
             };
             // Word/letter preset tuning survives conversion onto the text clip
             // (read by drawCaptionWordGlow / drawCaptionLetters on the text path).
