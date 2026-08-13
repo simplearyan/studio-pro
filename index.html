@@ -19585,10 +19585,8 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 let acc = baseUnits;
                 for (let i = 0; i < words.length; i++) { starts.push(acc * unit); acc += wordWeights[i]; }
             }
-            const op = ef.bgOpacity !== undefined ? ef.bgOpacity : (cfg.bgOpacity !== undefined ? cfg.bgOpacity : 0.5);
             const pad = ef.bgPadding || (cfg.bgPadding || 8);
             const pillH = fontSize + pad * 2;
-            const rad = ef.bgRadius || (cfg.bgRadius || 10);
             // Background sync: the word presets honor the caption/text Background
             // control — the per-word pill follows bgEnable. wordHighlight keeps its
             // signature glow by default and only loses the pill when the user
@@ -19614,30 +19612,19 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 const done = p >= 1;
                 // Word pill — a CapCut-style box behind the spoken word, drawn for
                 // EVERY word preset when Background is on (past words keep a dim
-                // trail). wordHighlight uses it as its signature glow.
+                // trail). wordHighlight uses it as its signature glow. The pill is
+                // rendered by the SAME drawTextBackground renderer text clips (and
+                // letter-preset captions) use, so the full box family — fill color,
+                // opacity, padding, radius, stroke, shadow, 3D extrude, texture —
+                // applies identically to the word presets. Geometry: translate to the
+                // word's center and pass the single word as a one-line "caption" so
+                // bx/by/bw/bh land exactly on the pill (drawTextBackground applies
+                // bgOpacity itself — only the dim trail is pre-scaled here).
                 if (bgOn && (active || done)) {
                     ctx.save();
-                    ctx.globalAlpha *= active ? op : op * 0.45;
-                    // Box shadow (behind the pill)
-                    const boxSh = ef.bgShadowEnable !== undefined ? ef.bgShadowEnable : (cfg.bgShadowEnable !== undefined ? cfg.bgShadowEnable : false);
-                    if (boxSh) {
-                        ctx.shadowColor = ef.bgShadowColor || (cfg.bgShadowColor || '#000000');
-                        ctx.shadowBlur = ef.bgShadowBlur !== undefined ? ef.bgShadowBlur : (cfg.bgShadowBlur || 20);
-                        ctx.shadowOffsetX = ef.bgShadowX || 0;
-                        ctx.shadowOffsetY = ef.bgShadowY || 10;
-                    }
-                    ctx.fillStyle = ef.bgColor || (cfg.bgColor || '#000000');
-                    ctx.beginPath();
-                    ctx.roundRect(x - pad, y - pillH / 2, widths[wi] + pad * 2, pillH, rad);
-                    ctx.fill();
-                    // Box stroke (over the pill, shadows reset so it stays crisp)
-                    const boxSt = ef.bgStrokeEnable !== undefined ? ef.bgStrokeEnable : (cfg.bgStrokeEnable !== undefined ? cfg.bgStrokeEnable : false);
-                    if (boxSt) {
-                        ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
-                        ctx.strokeStyle = ef.bgStrokeColor || (cfg.bgStrokeColor || '#ffffff');
-                        ctx.lineWidth = ef.bgStrokeWidth !== undefined ? ef.bgStrokeWidth : (cfg.bgStrokeWidth || 4);
-                        ctx.stroke();
-                    }
+                    ctx.globalAlpha *= active ? 1 : 0.45;
+                    ctx.translate(x + widths[wi] / 2, 0);
+                    drawTextBackground(ctx, { id: 'caption_bg', effects: { ...ef, bgEnable: true } }, [w], y, fontSize, fontSize);
                     ctx.restore();
                 }
                 // Underline sweep: a bar tracks the spoken word; past words keep a dim bar
