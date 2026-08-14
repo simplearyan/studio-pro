@@ -506,6 +506,20 @@
             <input type="file" id="projectsFileInput" accept=".json,application/json" class="hidden" onchange="importProjectFile(this)">
         </div>
     </div>
+    <!-- Success notice modal — clean replacement for success alert(): a small
+         centered card with a tone-colored icon chip, title, and a single Done
+         button. Promise-based: showNoticeModal(opts) resolves when dismissed. -->
+    <div id="noticeModalOverlay" class="fixed inset-0 bg-surface-950/70 backdrop-blur-sm z-[120] hidden items-center justify-center p-4">
+        <div class="bg-white dark:bg-surface-800 rounded-2xl shadow-2xl border border-surface-200 dark:border-surface-700 w-full max-w-xs">
+            <div class="flex flex-col items-center text-center px-6 pt-6 pb-5">
+                <span id="noticeModalIconWrap" class="w-11 h-11 rounded-full bg-emerald-50 dark:bg-emerald-900/30 text-emerald-500 dark:text-emerald-400 flex items-center justify-center mb-3"><i id="noticeModalIcon" data-lucide="check-circle" class="w-5 h-5"></i></span>
+                <h3 id="noticeModalTitle" class="text-sm font-bold text-surface-900 dark:text-white">Done</h3>
+                <p id="noticeModalMessage" class="text-xs text-surface-500 dark:text-surface-400 mt-1 leading-relaxed"></p>
+                <button id="noticeModalConfirmBtn" onclick="noticeModalDismiss()" class="mt-4 px-5 py-2 rounded-lg text-xs font-bold text-white bg-brand-600 hover:bg-brand-500 transition-colors shadow-sm flex items-center gap-1.5"><i data-lucide="check" class="w-3.5 h-3.5"></i><span id="noticeModalConfirmLabel">Done</span></button>
+            </div>
+        </div>
+    </div>
+
     <!-- Name input modal — clean replacement for prompt(): used for new-project
          names, project renames, and preset/keyframe-preset saves. Promise-based:
          promptNameModal(opts) resolves with the trimmed name (falling back to the
@@ -11428,7 +11442,7 @@
                 try {
                     const imported = JSON.parse(e.target.result);
                     if (!Array.isArray(imported)) {
-                        alert("Invalid presets file format.");
+                        showNoticeModal({ tone: 'error', title: 'Import Failed', message: 'That file does not look like a presets file (expected a JSON array).' });
                         return;
                     }
                     const current = loadCustomPresets();
@@ -11442,9 +11456,9 @@
                     });
                     saveCustomPresets(current);
                     updateSidebarPanel();
-                    alert(`Successfully imported ${importedCount} presets!`);
+                    showNoticeModal({ title: 'Presets Imported', message: `${importedCount} preset${importedCount !== 1 ? 's' : ''} imported successfully.` });
                 } catch (err) {
-                    alert("Error parsing presets file.");
+                    showNoticeModal({ tone: 'error', title: 'Import Failed', message: 'That file could not be parsed as presets.' });
                 }
             };
             reader.readAsText(file);
@@ -11843,7 +11857,7 @@
             presets.push(custom);
             saveCustomPresets(presets);
             
-            alert(`Preset "${name}" saved successfully! You can find it in the Presets tab.`);
+            showNoticeModal({ title: 'Preset Saved', message: `"${name}" is ready — find it in the Presets tab.` });
             updateSidebarPanel();
         };
 
@@ -12611,7 +12625,7 @@
             presets.push(preset);
             saveCustomPresets(presets);
             
-            alert(`Keyframe preset "${name}" saved successfully! You can find it in the Presets tab.`);
+            showNoticeModal({ title: 'Preset Saved', message: `"${name}" is ready — find it in the Presets tab.` });
             updateSidebarPanel();
         };
 
@@ -13419,7 +13433,7 @@
                 <div class="flex items-center gap-1.5 flex-wrap shrink-0">
                     <button onclick="setAudioLibGroup(this.dataset.g)" data-g="" ondragover="audioLibDragOver(event, this)" ondragleave="audioLibDragLeave(this)" ondrop="audioLibDropOnGroup(event, this.dataset.g)" class="h-6 px-2.5 rounded-full text-[10px] font-bold transition-colors ${!State.audioLibGroup ? 'bg-surface-900 dark:bg-white text-white dark:text-surface-900' : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-700'}" title="All sounds — drop a sound here to clear its group">All<span class="opacity-50 font-semibold ml-0.5">· ${State.audioLibrary.length}</span></button>
                     ${allGroups.map(g => `
-                        <button onclick="setAudioLibGroup(this.dataset.g)" data-g="${esc(g)}" ondragover="audioLibDragOver(event, this)" ondragleave="audioLibDragLeave(this)" ondrop="audioLibDropOnGroup(event, this.dataset.g)" oncontextmenu="event.preventDefault(); event.stopPropagation(); showAudioLibGroupMenu(event, this.dataset.g);" class="h-6 px-2.5 rounded-full text-[10px] font-bold transition-colors ${State.audioLibGroup === g ? 'bg-surface-900 dark:bg-white text-white dark:text-surface-900' : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-700'}" title="Drop a sound here to move it to ${esc(g)} — right-click to delete this folder">${esc(g)}<span class="opacity-50 font-semibold ml-0.5">· ${groupCount(g)}</span></button>
+                        <button onclick="setAudioLibGroup(this.dataset.g)" data-g="${esc(g)}" ondragover="audioLibDragOver(event, this)" ondragleave="audioLibDragLeave(this)" ondrop="audioLibDropOnGroup(event, this.dataset.g)" oncontextmenu="event.preventDefault(); event.stopPropagation(); showAudioLibGroupMenu(event, this.dataset.g);" class="h-6 px-2.5 rounded-full text-[10px] font-bold transition-colors ${State.audioLibGroup === g ? 'bg-surface-900 dark:bg-white text-white dark:text-surface-900' : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-700'}" title="Drop a sound here to move it to ${esc(g)} — right-click to rename or delete this folder">${esc(g)}<span class="opacity-50 font-semibold ml-0.5">· ${groupCount(g)}</span></button>
                     `).join('')}
                     <button onclick="addAudioLibGroup()" class="w-6 h-6 rounded-full bg-surface-100 dark:bg-surface-800 text-surface-500 hover:text-brand-500 flex items-center justify-center transition-colors" title="New group">
                         <i data-lucide="plus" class="w-3 h-3"></i>
@@ -14034,6 +14048,9 @@
             menu.innerHTML = `
                 <div class="px-2.5 py-1.5 text-[11px] font-bold text-surface-800 dark:text-surface-200 truncate">Folder: ${esc(g)}</div>
                 <div class="px-2.5 pb-1 text-[9px] text-surface-400 dark:text-surface-500">${count} sound${count === 1 ? '' : 's'} inside — they'll be deleted from the library. Timeline clips are not affected.</div>
+                <button onclick="renameAudioLibGroup('${esc(g)}')" class="${it}">
+                    <i data-lucide="pencil" class="w-3.5 h-3.5 flex-shrink-0"></i> Rename Folder
+                </button>
                 <div class="border-t border-surface-200 dark:border-surface-700 my-1"></div>
                 ${confirming ? `
                     <button onclick="audioLibGroupDeleteClick('${esc(g)}')" class="${it} bg-red-500/10 text-red-500 dark:text-red-400">
@@ -14411,12 +14428,29 @@
         };
 
         window.addAudioLibGroup = function() {
-            const name = (prompt('New group name (e.g. SFX, Music, Voice)', '') || '').trim();
-            if (!name) return;
-            State.audioLibGroup = name;
-            State.selectedAudioLibId = null;
-            stopAudioLibPlayback();
-            updateSidebarPanel();
+            promptNameModal({ title: 'New Group', hint: 'Name it something like SFX, Music, or Voice.', fallback: 'New Group', confirmLabel: 'Create Group', icon: 'folder-plus' })
+                .then(name => {
+                    if (name === null) return;
+                    State.audioLibGroup = name;
+                    State.selectedAudioLibId = null;
+                    stopAudioLibPlayback();
+                    updateSidebarPanel();
+                });
+        };
+        // Rename a group/folder: every sound in the library keeps its membership —
+        // only the group label changes. The active filter follows the new name.
+        window.renameAudioLibGroup = function(g) {
+            if (!g) return;
+            // Close the right-click menu first — the modal's backdrop would otherwise
+            // sit beneath the floating menu (z-1000), leaving it stranded on screen.
+            hideAudioLibContextMenu();
+            promptNameModal({ title: 'Rename Group', hint: 'Leave empty to keep the current name.', initial: g, fallback: g, confirmLabel: 'Rename', icon: 'pencil' })
+                .then(name => {
+                    if (name === null || name === g) return;
+                    State.audioLibrary.forEach(a => { if (a.group === g) a.group = name; });
+                    if (State.audioLibGroup === g) State.audioLibGroup = name;
+                    updateSidebarPanel();
+                });
         };
 
         window.setAudioLibItemGroup = function(g) {
@@ -27065,6 +27099,47 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             const ov = document.getElementById('projectsOverlay');
             if (ov) { ov.classList.add('hidden'); ov.classList.remove('flex'); }
             document.removeEventListener('click', closeAllProjectMenus);
+        }
+
+        // ── Success notice modal (clean alert() replacement) ──────────────────────
+        // Resolves when the user dismisses it (Done button, Enter, Escape, or a
+        // click on the backdrop). Tone controls the icon chip: 'success' (default),
+        // 'error', or 'info'.
+        let _noticeModalResolve = null;
+        function showNoticeModal(opts) {
+            const o = opts || {};
+            return new Promise((resolve) => {
+                _noticeModalResolve = resolve;
+                const tone = o.tone || 'success';
+                const toneMap = {
+                    success: { wrap: 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-500 dark:text-emerald-400', icon: 'check-circle' },
+                    error: { wrap: 'bg-red-50 dark:bg-red-900/30 text-red-500 dark:text-red-400', icon: 'alert-triangle' },
+                    info: { wrap: 'bg-brand-50 dark:bg-brand-900/40 text-brand-500', icon: 'info' }
+                };
+                const t = toneMap[tone] || toneMap.success;
+                document.getElementById('noticeModalIconWrap').className = 'w-11 h-11 rounded-full ' + t.wrap + ' flex items-center justify-center mb-3';
+                document.getElementById('noticeModalIcon').setAttribute('data-lucide', t.icon);
+                document.getElementById('noticeModalTitle').textContent = o.title || (tone === 'error' ? 'Something went wrong' : 'Done');
+                document.getElementById('noticeModalMessage').textContent = o.message || '';
+                document.getElementById('noticeModalConfirmLabel').textContent = o.confirmLabel || 'Done';
+                const ov = document.getElementById('noticeModalOverlay');
+                ov.classList.remove('hidden');
+                ov.classList.add('flex');
+                if (window.lucide && lucide.createIcons) lucide.createIcons();
+                // Enter/Escape dismiss; clicking the dimmed backdrop also dismisses.
+                document.onkeydown = (e) => {
+                    if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); noticeModalDismiss(); }
+                };
+                ov.onclick = (e) => { if (e.target === ov) noticeModalDismiss(); };
+            });
+        }
+        function noticeModalDismiss() {
+            document.onkeydown = null;
+            const ov = document.getElementById('noticeModalOverlay');
+            ov.classList.add('hidden');
+            ov.classList.remove('flex');
+            const r = _noticeModalResolve; _noticeModalResolve = null;
+            if (r) r(true);
         }
 
         // ── Name modal (clean prompt() replacement) ───────────────────────────────
