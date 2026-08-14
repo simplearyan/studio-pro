@@ -65,8 +65,12 @@ the Properties `t/y/g/o/x/b/f` pattern with a new `scrollToSubtitleCard(key)` he
 | `c` | Color | `sty_color` |
 | `b` | Background | `sty_bg` |
 | `k` | Stroke & Outline | `sty_stroke` |
-| `d` | Drop Shadow | `sty_shadow` |
+| `h` | Drop Shadow | `sty_shadow` |
 | `x` | Texture | `sty_texture` |
+
+(`h` — not `d` — for Drop Shadow: `d` is already consumed by the global WASD
+free-scroll branch that runs earlier in the keydown listener, and w/a/s/d must
+keep scrolling in every panel.)
 
 `scrollToSubtitleCard(key)` mirrors `scrollToPropertyCard`:
 1. If the current sub-tab is not `style`, switch to it first (`setSubtitleSubTab('style')`).

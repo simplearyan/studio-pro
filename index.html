@@ -2707,6 +2707,37 @@
             }
         };
 
+        // Captions-panel analogue of scrollToPropertyCard: jump to a global Style
+        // card by its data-sub-acc key (sty_typo, sty_sizing, ...). Switches to the
+        // Style sub-tab first (the cards live there), opens the card, centers it in
+        // the strip dock-aware (horizontal scroll in top/bottom docks, vertical in
+        // side docks), flashes the ring and focuses the first control.
+        window.scrollToSubtitleCard = (key) => {
+            if (State.subtitleSubTab !== 'style') setSubtitleSubTab('style');
+            const strip = document.querySelector('[data-scrollkey="sty-strip"]');
+            const card = document.querySelector('[data-sub-acc="' + key + '"]');
+            if (card) card.open = true;
+            if (strip && card) {
+                const horizDock = State.inspector.dock === 'bottom' || State.inspector.dock === 'top';
+                if (horizDock) {
+                    const offsetLeft = card.getBoundingClientRect().left - strip.getBoundingClientRect().left + strip.scrollLeft;
+                    const targetLeft = offsetLeft - (strip.clientWidth / 2) + (card.clientWidth / 2);
+                    strip.scrollTo({ left: targetLeft, behavior: 'smooth' });
+                } else {
+                    const offsetTop = card.getBoundingClientRect().top - strip.getBoundingClientRect().top + strip.scrollTop;
+                    strip.scrollTo({ top: offsetTop, behavior: 'smooth' });
+                }
+                card.classList.add('ring-2', 'ring-brand-500', 'transition-all', 'duration-300');
+                setTimeout(() => {
+                    card.classList.remove('ring-2', 'ring-brand-500');
+                }, 1000);
+                const focusable = card.querySelector('input, textarea, select');
+                if (focusable) {
+                    setTimeout(() => focusable.focus(), 300);
+                }
+            }
+        };
+
         const iconCanvasPos = document.getElementById('iconCanvasPos');
         
         window.applyCanvasPosition = (position) => {
@@ -23689,6 +23720,72 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         else if (e.key === 'PageUp') { e.preventDefault(); container.scrollBy(horizDock ? { left: -pageSize, behavior: 'smooth' } : { top: -pageSize, behavior: 'smooth' }); return; }
                         else if (e.key === 'Home') { e.preventDefault(); container.scrollTo(horizDock ? { left: 0, behavior: 'smooth' } : { top: 0, behavior: 'smooth' }); return; }
                         else if (e.key === 'End') { e.preventDefault(); container.scrollTo(horizDock ? { left: maxScroll, behavior: 'smooth' } : { top: maxScroll, behavior: 'smooth' }); return; }
+                    }
+                }
+
+                // ── Captions panel (subtitles tab): same vocabulary as Properties ──
+                if (State.sidebarTab === 'subtitles') {
+                    // 1/2/3 jump straight to a sub-tab (CapCut-style numbered sections)
+                    if (!e.altKey && !e.ctrlKey && !e.shiftKey) {
+                        if (k === '1') { e.preventDefault(); setSubtitleSubTab('captions'); return; }
+                        else if (k === '2') { e.preventDefault(); setSubtitleSubTab('style'); return; }
+                        else if (k === '3') { e.preventDefault(); setSubtitleSubTab('animation'); return; }
+                    }
+                    // Letter card jumps — the global Style cards (mirrors Properties
+                    // t/y/g/o/x/b/f; avoids w/a/s/d which the WASD scroll branch above
+                    // already consumes, so Drop Shadow uses h).
+                    const subCardKeys = { t: 'sty_typo', g: 'sty_sizing', c: 'sty_color', b: 'sty_bg', k: 'sty_stroke', h: 'sty_shadow', x: 'sty_texture' };
+                    if (subCardKeys[k] && !e.altKey && !e.ctrlKey && !e.shiftKey) { e.preventDefault(); scrollToSubtitleCard(subCardKeys[k]); return; }
+                    // Arrow keys + PageUp/PageDown + Home/End scroll the active sub-tab's container.
+                    // Axis: the Style/Animation strips follow the dock (horizontal in top/bottom
+                    // docks, vertical in side docks); the caption LIST is a vertical list in
+                    // every dock, so it always scrolls vertically.
+                    const subTab = State.subtitleSubTab || 'captions';
+                    let subContainer = null, subVert = null;
+                    if (subTab === 'captions') { subContainer = document.querySelector('[data-scrollkey="caps-list"]') || document.querySelector('[data-scrollkey="caps-outer"]'); subVert = true; }
+                    else if (subTab === 'animation') { subContainer = document.querySelector('[data-scrollkey="anim-strip"]'); }
+                    else { subContainer = document.querySelector('[data-scrollkey="sty-strip"]'); }
+                    if (subContainer && !e.altKey && !e.ctrlKey && !e.shiftKey) {
+                        const subHorizDock = State.inspector.dock === 'bottom' || State.inspector.dock === 'top';
+                        const subH = subVert === true ? false : (subVert === false ? true : subHorizDock);
+                        const subPageSize = subH ? subContainer.clientWidth : subContainer.clientHeight;
+                        const subMax = Math.max(0, (subH ? subContainer.scrollWidth : subContainer.scrollHeight) - (subH ? subContainer.clientWidth : subContainer.clientHeight));
+                        if (e.key === 'ArrowLeft' && subH) { e.preventDefault(); subContainer.scrollBy({ left: -200, behavior: 'smooth' }); return; }
+                        else if (e.key === 'ArrowRight' && subH) { e.preventDefault(); subContainer.scrollBy({ left: 200, behavior: 'smooth' }); return; }
+                        else if (e.key === 'ArrowUp' && !subH) { e.preventDefault(); subContainer.scrollBy({ top: -200, behavior: 'smooth' }); return; }
+                        else if (e.key === 'ArrowDown' && !subH) { e.preventDefault(); subContainer.scrollBy({ top: 200, behavior: 'smooth' }); return; }
+                        else if (e.key === 'PageDown') { e.preventDefault(); subContainer.scrollBy(subH ? { left: subPageSize, behavior: 'smooth' } : { top: subPageSize, behavior: 'smooth' }); return; }
+                        else if (e.key === 'PageUp') { e.preventDefault(); subContainer.scrollBy(subH ? { left: -subPageSize, behavior: 'smooth' } : { top: -subPageSize, behavior: 'smooth' }); return; }
+                        else if (e.key === 'Home') { e.preventDefault(); subContainer.scrollTo(subH ? { left: 0, behavior: 'smooth' } : { top: 0, behavior: 'smooth' }); return; }
+                        else if (e.key === 'End') { e.preventDefault(); subContainer.scrollTo(subH ? { left: subMax, behavior: 'smooth' } : { top: subMax, behavior: 'smooth' }); return; }
+                    }
+                }
+
+                // ── Markdown panel: 1/2/3 sub-tab jumps + dock-aware arrow scrolling ──
+                if (State.sidebarTab === 'markdown') {
+                    if (!e.altKey && !e.ctrlKey && !e.shiftKey) {
+                        if (k === '1') { e.preventDefault(); setMarkdownSubTab('content'); return; }
+                        else if (k === '2') { e.preventDefault(); setMarkdownSubTab('style'); return; }
+                        else if (k === '3') { e.preventDefault(); setMarkdownSubTab('media'); return; }
+                    }
+                    const mdTab = State.markdownSubTab || 'content';
+                    let mdContainer = null, mdVert = null;
+                    if (mdTab === 'content') { mdContainer = document.querySelector('[data-scrollkey="md-content-col"]') || document.querySelector('[data-scrollkey="md-content-outer"]'); mdVert = true; }
+                    else if (mdTab === 'style') { mdContainer = document.querySelector('[data-scrollkey="md-style-strip"]'); }
+                    else { mdContainer = document.querySelector('[data-scrollkey="md-media"]'); mdVert = true; }
+                    if (mdContainer && !e.altKey && !e.ctrlKey && !e.shiftKey) {
+                        const mdHorizDock = State.inspector.dock === 'bottom' || State.inspector.dock === 'top';
+                        const mdH = mdVert === true ? false : (mdVert === false ? true : mdHorizDock);
+                        const mdPageSize = mdH ? mdContainer.clientWidth : mdContainer.clientHeight;
+                        const mdMax = Math.max(0, (mdH ? mdContainer.scrollWidth : mdContainer.scrollHeight) - (mdH ? mdContainer.clientWidth : mdContainer.clientHeight));
+                        if (e.key === 'ArrowLeft' && mdH) { e.preventDefault(); mdContainer.scrollBy({ left: -200, behavior: 'smooth' }); return; }
+                        else if (e.key === 'ArrowRight' && mdH) { e.preventDefault(); mdContainer.scrollBy({ left: 200, behavior: 'smooth' }); return; }
+                        else if (e.key === 'ArrowUp' && !mdH) { e.preventDefault(); mdContainer.scrollBy({ top: -200, behavior: 'smooth' }); return; }
+                        else if (e.key === 'ArrowDown' && !mdH) { e.preventDefault(); mdContainer.scrollBy({ top: 200, behavior: 'smooth' }); return; }
+                        else if (e.key === 'PageDown') { e.preventDefault(); mdContainer.scrollBy(mdH ? { left: mdPageSize, behavior: 'smooth' } : { top: mdPageSize, behavior: 'smooth' }); return; }
+                        else if (e.key === 'PageUp') { e.preventDefault(); mdContainer.scrollBy(mdH ? { left: -mdPageSize, behavior: 'smooth' } : { top: -mdPageSize, behavior: 'smooth' }); return; }
+                        else if (e.key === 'Home') { e.preventDefault(); mdContainer.scrollTo(mdH ? { left: 0, behavior: 'smooth' } : { top: 0, behavior: 'smooth' }); return; }
+                        else if (e.key === 'End') { e.preventDefault(); mdContainer.scrollTo(mdH ? { left: mdMax, behavior: 'smooth' } : { top: mdMax, behavior: 'smooth' }); return; }
                     }
                 }
                 
