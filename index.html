@@ -499,9 +499,6 @@
                     <i data-lucide="layers" class="w-5 h-5 text-brand-500"></i> Projects
                 </h2>
                 <div class="flex items-center gap-2">
-                    <button onclick="document.getElementById('projectsFileInput').click()" class="flex items-center gap-1.5 text-xs font-bold text-surface-600 dark:text-surface-300 hover:text-brand-600 dark:hover:text-brand-400 border border-surface-200 dark:border-surface-700 px-3 py-1.5 rounded-lg transition-colors" title="Import a project from .json">
-                        <i data-lucide="upload" class="w-3.5 h-3.5"></i> Import
-                    </button>
                     <button onclick="hideProjectsModal()" class="text-surface-500 hover:text-surface-900 dark:hover:text-white bg-surface-100 dark:bg-surface-900 p-1.5 rounded-md"><i data-lucide="x" class="w-4 h-4"></i></button>
                 </div>
             </div>
@@ -26948,9 +26945,10 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             const kb = Math.max(1, Math.round((p.bytes || 0) / 1024));
             const dur = Math.round(p.duration || 0);
             const durLabel = dur >= 60 ? Math.floor(dur / 60) + ':' + String(dur % 60).padStart(2, '0') : dur + 's';
-            // A project whose clips are placeholders needs its media re-imported.
+            // A project whose clips are placeholders needs its media re-imported —
+            // count them so the card badge can show how many files are missing.
             const projData = getProject(p.id);
-            const needsReimport = !!(projData && Array.isArray(projData.clips) && projData.clips.some(c => c && c.isPlaceholder));
+            const missingCount = projData && Array.isArray(projData.clips) ? projData.clips.filter(c => c && c.isPlaceholder).length : 0;
             // NOTE: the card root must NOT use overflow-hidden — a grid item with
             // hidden overflow reports a zero contribution to its auto-sized row,
             // crushing the tile to the footer height. Clip inside the thumbnail.
@@ -26960,7 +26958,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     <span class="absolute bottom-1.5 right-1.5 text-[10px] font-bold text-white bg-black/70 px-1.5 py-0.5 rounded backdrop-blur-sm">${durLabel}</span>
                     ${isActive ? '<span class="absolute top-1.5 left-1.5 text-[9px] font-bold uppercase tracking-wider text-brand-700 dark:text-brand-300 bg-brand-100 dark:bg-brand-900/70 px-1.5 py-0.5 rounded">Open</span>' : ''}
                     <div class="absolute top-1.5 right-1.5 flex flex-col items-end gap-1">
-                        ${needsReimport ? `<button onclick="event.stopPropagation(); switchProject('${p.id}'); hideProjectsModal();" class="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-surface-700 dark:text-surface-200 bg-white/90 dark:bg-surface-900/90 px-1.5 py-0.5 rounded shadow-sm backdrop-blur-sm hover:text-brand-600 dark:hover:text-brand-400" title="Open this project to re-import its missing media"><i data-lucide="play" class="w-2.5 h-2.5"></i> Re-import</button>` : ''}
+                        ${missingCount ? `<button onclick="event.stopPropagation(); switchProject('${p.id}'); hideProjectsModal();" class="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-surface-700 dark:text-surface-200 bg-white/90 dark:bg-surface-900/90 px-1.5 py-0.5 rounded shadow-sm backdrop-blur-sm hover:text-brand-600 dark:hover:text-brand-400" title="Open this project to re-import its ${missingCount} missing file${missingCount > 1 ? 's' : ''}"><i data-lucide="play" class="w-2.5 h-2.5"></i> Re-import · ${missingCount}</button>` : ''}
                         <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             <button onclick="event.stopPropagation(); renameProjectModal('${p.id}')" class="p-1.5 rounded-md bg-black/60 text-white hover:bg-brand-500 backdrop-blur-sm" title="Rename"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
                             <button onclick="event.stopPropagation(); duplicateProjectModal('${p.id}')" class="p-1.5 rounded-md bg-black/60 text-white hover:bg-brand-500 backdrop-blur-sm" title="Duplicate"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
@@ -26972,6 +26970,17 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 <div class="px-2.5 py-2">
                     <div class="text-sm font-bold text-surface-800 dark:text-surface-100 truncate">${escapeHtmlBrief(p.name)}</div>
                     <div class="text-[10px] text-surface-500 dark:text-surface-400 mt-0.5 truncate">${when} · ${kb} KB</div>
+                </div>
+            </div>`;
+        }
+        // Sectioned import card (matches the Re-import modal's card styling) —
+        // drag & drop a .json here, or click to browse. Full-width, above the tiles.
+        function projectsImportCard() {
+            return `<div id="projectsImportCard" class="col-span-full rounded-xl border-2 border-dashed border-surface-300 dark:border-surface-600 hover:border-brand-400 dark:hover:border-brand-500 hover:bg-brand-50/40 dark:hover:bg-brand-900/20 transition-colors px-4 py-3 flex items-center gap-3 cursor-pointer" onclick="document.getElementById('projectsFileInput').click()" title="Import a project from .json">
+                <span class="w-9 h-9 rounded-full bg-surface-100 dark:bg-surface-700 text-surface-500 dark:text-surface-300 flex items-center justify-center shrink-0"><i data-lucide="upload" class="w-4 h-4"></i></span>
+                <div class="min-w-0 flex-1">
+                    <div class="text-[9px] font-bold uppercase tracking-widest text-surface-400">Import project</div>
+                    <div class="text-xs font-bold text-surface-700 dark:text-surface-200">Drag &amp; drop a .json here, or click to browse</div>
                 </div>
             </div>`;
         }
@@ -26996,8 +27005,18 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             }
             const grid = document.getElementById('projectsGrid');
             const projects = listProjects();
-            grid.innerHTML = projectsNewTile() + (projects.length ? projects.map(projectsCard).join('') : '<div class="col-span-full flex flex-col items-center justify-center gap-2 py-10 text-center"><i data-lucide="layers" class="w-8 h-8 text-surface-400"></i><p class="text-xs text-surface-500 dark:text-surface-400">No projects yet — click <b>New Project</b> to start.</p></div>');
+            grid.innerHTML = projectsImportCard() + projectsNewTile() + (projects.length ? projects.map(projectsCard).join('') : '<div class="col-span-full flex flex-col items-center justify-center gap-2 py-10 text-center"><i data-lucide="layers" class="w-8 h-8 text-surface-400"></i><p class="text-xs text-surface-500 dark:text-surface-400">No projects yet — click <b>New Project</b> to start.</p></div>');
             lucide.createIcons();
+            // Drag & drop a .json onto the import card.
+            const importCard = document.getElementById('projectsImportCard');
+            if (importCard) {
+                importCard.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+                importCard.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+                    if (f) importProjectFileObj(f);
+                });
+            }
             const ov = document.getElementById('projectsOverlay');
             ov.classList.remove('hidden');
             ov.classList.add('flex');
@@ -27124,8 +27143,10 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 100);
         };
 
-        window.importProjectFile = function(input) {
-            const file = input && input.files && input.files[0];
+        // Shared import path: reads a .json File, adds it to the registry as a NEW
+        // project, and switches to it. Used by the file input and the drag & drop
+        // card in the Projects modal.
+        function importProjectFileObj(file) {
             if (!file) return;
             const reader = new FileReader();
             reader.onload = () => {
@@ -27142,9 +27163,13 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 } catch (e) {
                     alert('Could not load project: ' + e.message);
                 }
-                if (input) input.value = '';
             };
             reader.readAsText(file);
+        }
+        window.importProjectFile = function(input) {
+            const file = input && input.files && input.files[0];
+            if (file) importProjectFileObj(file);
+            if (input) input.value = '';
         };
 
         setInterval(() => { tryAutosaveProject(); }, 2500);
