@@ -28,7 +28,34 @@ export default defineConfig({
         // 2 MB default precache limit, so raise it.
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         navigateFallback: base + 'index.html',
-        cleanupOutdatedCaches: true
+        cleanupOutdatedCaches: true,
+        // Runtime caching for the few remaining cross-origin calls:
+        //   - unpkg / jsDelivr (CDN-first Lucide, any stray CDN scripts):
+        //     StaleWhileRevalidate keeps the CDN copy usable offline.
+        //   - fonts.googleapis.com / fonts.gstatic.com (runtime-imported user
+        //     fonts via loadGoogleFonts / importGoogleFontFromInput): the CSS and
+        //     the woff2 files it references are cached so user fonts keep working
+        //     offline too.
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) => url.hostname === 'unpkg.com' || url.hostname === 'cdn.jsdelivr.net',
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'cdn-vendor',
+              expiration: { maxEntries: 10, maxAgeSeconds: 30 * 24 * 60 * 60 },
+              cacheableResponse: { statuses: [0, 200] }
+            }
+          },
+          {
+            urlPattern: ({ url }) => url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com',
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'google-fonts',
+              expiration: { maxEntries: 30, maxAgeSeconds: 365 * 24 * 60 * 60 },
+              cacheableResponse: { statuses: [0, 200] }
+            }
+          }
+        ]
       }
     })
   ],
