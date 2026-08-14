@@ -26952,18 +26952,22 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             // NOTE: the card root must NOT use overflow-hidden — a grid item with
             // hidden overflow reports a zero contribution to its auto-sized row,
             // crushing the tile to the footer height. Clip inside the thumbnail.
-            return `<div class="group relative cursor-pointer rounded-xl border transition-all hover:shadow-xl hover:-translate-y-0.5 ${isActive ? 'border-brand-500 ring-2 ring-brand-500/30' : 'border-surface-200 dark:border-surface-700 hover:border-brand-400 dark:hover:border-brand-500'} bg-surface-50 dark:bg-surface-900" onclick="switchProject('${p.id}'); hideProjectsModal();" title="Open ${escapeHtmlBrief(p.name)}">
+            return `<div class="group relative cursor-pointer rounded-xl border transition-all hover:shadow-lg ${isActive ? 'border-brand-500 ring-2 ring-brand-500/30' : 'border-surface-200 dark:border-surface-700 hover:border-brand-400 dark:hover:border-brand-500'} bg-surface-50 dark:bg-surface-900" onclick="switchProject('${p.id}'); hideProjectsModal();" title="Open ${escapeHtmlBrief(p.name)}">
                 <div class="relative aspect-video rounded-t-[calc(0.75rem-1px)] bg-surface-200 dark:bg-surface-800 flex items-center justify-center overflow-hidden">
                     ${p.thumbnail ? '<img src="' + p.thumbnail + '" class="w-full h-full object-contain" alt="">' : '<i data-lucide="layers" class="w-8 h-8 text-surface-400"></i>'}
-                    <span class="absolute bottom-1.5 right-1.5 text-[10px] font-bold text-white bg-black/70 px-1.5 py-0.5 rounded backdrop-blur-sm">${durLabel}</span>
-                    ${isActive ? '<span class="absolute top-1.5 left-1.5 text-[9px] font-bold uppercase tracking-wider text-brand-700 dark:text-brand-300 bg-brand-100 dark:bg-brand-900/70 px-1.5 py-0.5 rounded">Open</span>' : ''}
-                    <div class="absolute top-1.5 right-1.5 flex flex-col items-end gap-1">
-                        ${missingCount ? `<button onclick="event.stopPropagation(); switchProject('${p.id}'); hideProjectsModal();" class="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-surface-700 dark:text-surface-200 bg-white/90 dark:bg-surface-900/90 px-1.5 py-0.5 rounded shadow-sm backdrop-blur-sm hover:text-brand-600 dark:hover:text-brand-400" title="Open this project to re-import its ${missingCount} missing file${missingCount > 1 ? 's' : ''}"><i data-lucide="play" class="w-2.5 h-2.5"></i> Re-import · ${missingCount}</button>` : ''}
-                        <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onclick="event.stopPropagation(); renameProjectModal('${p.id}')" class="p-1.5 rounded-md bg-black/60 text-white hover:bg-brand-500 backdrop-blur-sm" title="Rename"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
-                            <button onclick="event.stopPropagation(); duplicateProjectModal('${p.id}')" class="p-1.5 rounded-md bg-black/60 text-white hover:bg-brand-500 backdrop-blur-sm" title="Duplicate"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
-                            <button onclick="event.stopPropagation(); exportProjectFile('${p.id}')" class="p-1.5 rounded-md bg-black/60 text-white hover:bg-brand-500 backdrop-blur-sm" title="Export .json"><i data-lucide="download" class="w-3.5 h-3.5"></i></button>
-                            <button onclick="event.stopPropagation(); deleteProjectModal('${p.id}')" class="p-1.5 rounded-md bg-black/60 text-white hover:bg-red-500 backdrop-blur-sm" title="Delete"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+                    <span class="absolute bottom-1.5 right-1.5 text-[10px] font-bold text-white bg-black/70 px-1.5 py-0.5 rounded">${durLabel}</span>
+                    <div class="absolute top-1.5 left-1.5 flex flex-col items-start gap-1">
+                        ${isActive ? '<span class="text-[9px] font-bold uppercase tracking-wider text-brand-700 dark:text-brand-300 bg-brand-100 dark:bg-brand-900/70 px-1.5 py-0.5 rounded">Open</span>' : ''}
+                        ${missingCount ? `<span class="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-white bg-black/70 px-1.5 py-0.5 rounded"><i data-lucide="play" class="w-2.5 h-2.5"></i> Re-import · ${missingCount}</span>` : ''}
+                    </div>
+                    <div class="absolute top-1.5 right-1.5">
+                        <button onclick="event.stopPropagation(); toggleProjectMenu('${p.id}')" class="p-1.5 rounded-md bg-black/50 text-white hover:bg-brand-500 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity" title="More actions"><i data-lucide="more-horizontal" class="w-3.5 h-3.5"></i></button>
+                        <div id="projMenu-${p.id}" class="hidden absolute right-0 top-8 w-36 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900 shadow-xl z-20 py-1 text-left">
+                            <button onclick="event.stopPropagation(); renameProjectModal('${p.id}')" class="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-surface-700 dark:text-surface-200 hover:bg-surface-100 dark:hover:bg-surface-800"><i data-lucide="pencil" class="w-3 h-3"></i> Rename</button>
+                            <button onclick="event.stopPropagation(); duplicateProjectModal('${p.id}')" class="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-surface-700 dark:text-surface-200 hover:bg-surface-100 dark:hover:bg-surface-800"><i data-lucide="copy" class="w-3 h-3"></i> Duplicate</button>
+                            <button onclick="event.stopPropagation(); exportProjectFile('${p.id}')" class="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-surface-700 dark:text-surface-200 hover:bg-surface-100 dark:hover:bg-surface-800"><i data-lucide="download" class="w-3 h-3"></i> Export .json</button>
+                            <div class="my-1 border-t border-surface-200 dark:border-surface-700"></div>
+                            <button onclick="event.stopPropagation(); deleteProjectModal('${p.id}')" class="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10"><i data-lucide="trash-2" class="w-3 h-3"></i> Delete</button>
                         </div>
                     </div>
                 </div>
@@ -26990,6 +26994,18 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 <span class="w-10 h-10 rounded-full bg-surface-100 dark:bg-surface-700 group-hover:bg-brand-500 group-hover:text-white text-surface-500 dark:text-surface-300 flex items-center justify-center transition-colors"><i data-lucide="plus" class="w-5 h-5"></i></span>
                 <span class="text-xs font-bold text-surface-600 dark:text-surface-300">New Project</span>
             </button>`;
+        }
+        // Single "⋯" menu per project card — toggles the dropdown and closes any
+        // other open one. Outside clicks close all menus (attached on modal open).
+        function toggleProjectMenu(id) {
+            const el = document.getElementById('projMenu-' + id);
+            if (!el) return;
+            const opening = el.classList.contains('hidden');
+            document.querySelectorAll('[id^="projMenu-"]').forEach(m => m.classList.add('hidden'));
+            if (opening) el.classList.remove('hidden');
+        }
+        function closeAllProjectMenus() {
+            document.querySelectorAll('[id^="projMenu-"]').forEach(m => m.classList.add('hidden'));
         }
         function showProjectsModal() {
             // Make sure the active project's metadata + thumbnail are current.
@@ -27020,10 +27036,12 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             const ov = document.getElementById('projectsOverlay');
             ov.classList.remove('hidden');
             ov.classList.add('flex');
+            setTimeout(() => { document.addEventListener('click', closeAllProjectMenus); }, 0);
         }
         function hideProjectsModal() {
             const ov = document.getElementById('projectsOverlay');
             if (ov) { ov.classList.add('hidden'); ov.classList.remove('flex'); }
+            document.removeEventListener('click', closeAllProjectMenus);
         }
         function projectsModalNew() {
             const name = prompt('Name your new project:', '');
@@ -27193,6 +27211,25 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
         const normFileName = (s) => (s || '').toLowerCase().replace(/\s*\(audio\)$/, '').replace(/\.[a-z0-9]+$/, '').trim();
         const escapeHtmlBrief = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         const missingMediaClips = () => State.clips.filter(c => c._missingMedia);
+        // Aggressive normalization for fuzzy filename matching: lowercase, drop a
+        // leading UUID-ish prefix (web-downloaded media often carries one, e.g.
+        // "51046e2c-…_African camels are dying…"), then strip everything that isn't
+        // alphanumeric. Exact normalized-name matching still wins first; this only
+        // rescues clips whose stored name differs cosmetically from the file on disk.
+        const fuzzyKey = (s) => (s || '').toLowerCase()
+            .replace(/^\s*[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\s*_?\s*/, '')
+            .replace(/[^a-z0-9]+/g, '');
+        // Does a clip's stored name match this file? Exact normalized-name equality
+        // wins; falls back to fuzzy keys (equal, or one contains the other — guarded
+        // by a minimum length so short/noisy keys can't over-match).
+        const clipMatchesFile = (c, f) => {
+            const fileBase = normFileName(f.name);
+            if (normFileName(c.fileName || c.title) === fileBase) return true;
+            const ck = fuzzyKey(c.fileName || c.title);
+            const fk = fuzzyKey(f.name);
+            if (!ck || ck.length < 4 || !fk || fk.length < 4) return false;
+            return ck === fk || fk.includes(ck) || ck.includes(fk);
+        };
 
         async function showReimportModal() {
             const missing = missingMediaClips();
@@ -27229,13 +27266,14 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 <ul class="flex flex-col gap-1.5 max-h-44 overflow-y-auto">${list}</ul>
 
                 ${lastFolderBtn}
-                <label class="cursor-pointer bg-brand-600 hover:bg-brand-700 text-white px-4 py-2.5 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 shadow-sm w-full">
+                <button onclick="pickReimportFolder()" class="cursor-pointer bg-brand-600 hover:bg-brand-700 text-white px-4 py-2.5 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 shadow-sm w-full">
+                    <i data-lucide="folder-open" class="w-4 h-4"></i> Re-import All from Folder
+                </button>
+                <p class="text-[10px] text-surface-400 dark:text-surface-500 text-center -mt-1">Walks the whole folder (including subfolders) and matches every missing clip by filename.</p>
+                <label class="cursor-pointer border border-surface-200 dark:border-surface-700 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-400 text-surface-600 dark:text-surface-300 px-4 py-2.5 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 w-full">
                     <i data-lucide="upload" class="w-4 h-4"></i> Select Files
                     <input type="file" accept="audio/*,video/*,image/*" multiple class="hidden" onchange="reimportMediaFiles(this)">
                 </label>
-                <button onclick="pickReimportFolder()" class="cursor-pointer border border-surface-200 dark:border-surface-700 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-400 text-surface-600 dark:text-surface-300 px-4 py-2.5 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 w-full">
-                    <i data-lucide="folder-open" class="w-4 h-4"></i> Select Folder
-                </button>
 
                 <!-- Quiet footer exits (demoted from the primary re-import actions) -->
                 <div class="border-t border-surface-200 dark:border-surface-700 mt-3 pt-3 flex items-center justify-between gap-2">
@@ -27352,16 +27390,23 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             } catch (e) { return false; }
         }
         // Collect media files (audio/video/image) from a directory handle.
-        async function collectReimportFiles(handle) {
+        // Recursively walks subdirectories (depth-capped) so "re-import all missing
+        // media from a folder" truly covers the whole tree, not just the top level.
+        async function collectReimportFiles(handle, _depth) {
             const files = [];
             if (!handle || handle.kind !== 'directory' || !handle.values) return files;
+            if ((_depth || 0) > 6) return files;
             try {
                 for await (const entry of handle.values()) {
-                    if (entry.kind !== 'file') continue;
-                    try {
-                        const f = await entry.getFile();
-                        if (/^(audio|video|image)\//.test(f.type || '')) files.push(f);
-                    } catch (e) {}
+                    if (entry.kind === 'file') {
+                        try {
+                            const f = await entry.getFile();
+                            if (/^(audio|video|image)\//.test(f.type || '')) files.push(f);
+                        } catch (e) {}
+                    } else if (entry.kind === 'directory') {
+                        const sub = await collectReimportFiles(entry, (_depth || 0) + 1);
+                        files.push(...sub);
+                    }
                 }
             } catch (e) {}
             return files;
@@ -27437,14 +27482,13 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             const matched = [];
             const unmatched = [];
             for (const f of files) {
-                const base = normFileName(f.name);
-                const firstIdx = pool.findIndex(c => normFileName(c.fileName || c.title) === base);
+                const firstIdx = pool.findIndex(c => clipMatchesFile(c, f));
                 if (firstIdx < 0) { unmatched.push(f.name); continue; }
                 // One source file can back several clips — split halves and the linked
                 // audio all share the same base name — so feed every still-missing clip
                 // that matches, not just the first.
                 while (true) {
-                    const idx = pool.findIndex(c => normFileName(c.fileName || c.title) === base);
+                    const idx = pool.findIndex(c => clipMatchesFile(c, f));
                     if (idx < 0) break;
                     matched.push({ clip: pool[idx], file: f });
                     pool.splice(idx, 1);
@@ -27545,15 +27589,15 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     <div class="rounded-lg bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-700/40 px-3 py-2.5 text-xs font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
                         <i data-lucide="check-circle" class="w-4 h-4"></i> ${escapeHtmlBrief(parts.join(' · '))}
                     </div>
-                    ${still.length ? `<p class="text-xs text-surface-500 dark:text-surface-300 leading-relaxed">${still.length} clip${still.length > 1 ? 's still' : ' still'} missing — pick the remaining files or use each clip's Source card.</p>
+                    ${still.length ? `<p class="text-xs text-surface-500 dark:text-surface-300 leading-relaxed">${still.length} clip${still.length > 1 ? 's still' : ' still'} missing — try another folder or pick the remaining files.</p>
                         ${lastFolderBtn}
-                        <label class="cursor-pointer bg-brand-600 hover:bg-brand-700 text-white px-4 py-2.5 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 shadow-sm w-full">
+                        <button onclick="pickReimportFolder()" class="cursor-pointer bg-brand-600 hover:bg-brand-700 text-white px-4 py-2.5 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 shadow-sm w-full">
+                            <i data-lucide="folder-open" class="w-4 h-4"></i> Re-import All from Another Folder
+                        </button>
+                        <label class="cursor-pointer border border-surface-200 dark:border-surface-700 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-400 text-surface-600 dark:text-surface-300 px-4 py-2.5 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 w-full">
                             <i data-lucide="upload" class="w-4 h-4"></i> Select More Files
                             <input type="file" accept="audio/*,video/*,image/*" multiple class="hidden" onchange="reimportMediaFiles(this)">
-                        </label>
-                        <button onclick="pickReimportFolder()" class="cursor-pointer border border-surface-200 dark:border-surface-700 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-400 text-surface-600 dark:text-surface-300 px-4 py-2.5 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 w-full">
-                            <i data-lucide="folder-open" class="w-4 h-4"></i> Select Folder
-                        </button>` : ''}
+                        </label>` : ''}
                     <button onclick="hideReimportModal()" class="px-4 py-2 text-sm font-bold text-surface-600 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white hover:bg-surface-100 dark:hover:bg-surface-700 rounded-md transition-colors w-full">Done</button>
                 `;
                 lucide.createIcons();
