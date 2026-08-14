@@ -27063,7 +27063,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             // NOTE: the card root must NOT use overflow-hidden — a grid item with
             // hidden overflow reports a zero contribution to its auto-sized row,
             // crushing the tile to the footer height. Clip inside the thumbnail.
-            return `<div class="group relative cursor-pointer rounded-xl border transition-all hover:shadow-lg ${isActive ? 'border-brand-500 ring-2 ring-brand-500/30' : 'border-surface-200 dark:border-surface-700 hover:border-brand-400 dark:hover:border-brand-500'} bg-surface-50 dark:bg-surface-900" onclick="switchProject('${p.id}'); hideProjectsModal();" title="Open ${escapeHtmlBrief(p.name)}">
+            return `<div data-project-id="${p.id}" class="group relative cursor-pointer rounded-xl border transition-all hover:shadow-lg ${isActive ? 'border-brand-500 ring-2 ring-brand-500/30' : 'border-surface-200 dark:border-surface-700 hover:border-brand-400 dark:hover:border-brand-500'} bg-surface-50 dark:bg-surface-900" onclick="projectsFocusCard('${p.id}'); switchProject('${p.id}'); hideProjectsModal();" title="Open ${escapeHtmlBrief(p.name)}">
                 <div class="relative aspect-video rounded-t-[calc(0.75rem-1px)] bg-surface-200 dark:bg-surface-800 flex items-center justify-center overflow-hidden">
                     ${p.thumbnail ? '<img src="' + p.thumbnail + '" class="w-full h-full object-contain" alt="">' : '<i data-lucide="layers" class="w-8 h-8 text-surface-400"></i>'}
                     <span class="absolute bottom-1.5 right-1.5 text-[10px] font-bold text-white bg-black/70 px-1.5 py-0.5 rounded">${durLabel}</span>
@@ -27101,7 +27101,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
         }
         // CapCut-style "New Project" tile (dashed, big + icon) — always first in the grid.
         function projectsNewTile() {
-            return `<button onclick="projectsModalNew()" class="group relative aspect-video rounded-xl border-2 border-dashed border-surface-300 dark:border-surface-600 hover:border-brand-400 dark:hover:border-brand-500 hover:bg-brand-50/40 dark:hover:bg-brand-900/20 flex flex-col items-center justify-center gap-2 transition-colors" title="Create a new project">
+            return `<button data-project-id="__new__" onclick="projectsFocusCard('__new__'); projectsModalNew()" class="group relative aspect-video rounded-xl border-2 border-dashed border-surface-300 dark:border-surface-600 hover:border-brand-400 dark:hover:border-brand-500 hover:bg-brand-50/40 dark:hover:bg-brand-900/20 flex flex-col items-center justify-center gap-2 transition-colors" title="Create a new project">
                 <span class="w-10 h-10 rounded-full bg-surface-100 dark:bg-surface-700 group-hover:bg-brand-500 group-hover:text-white text-surface-500 dark:text-surface-300 flex items-center justify-center transition-colors"><i data-lucide="plus" class="w-5 h-5"></i></span>
                 <span class="text-xs font-bold text-surface-600 dark:text-surface-300">New Project</span>
             </button>`;
@@ -27148,11 +27148,103 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             ov.classList.remove('hidden');
             ov.classList.add('flex');
             setTimeout(() => { document.addEventListener('click', closeAllProjectMenus); }, 0);
+            // Keyboard navigation: default the focus ring to the active project (or
+            // the first card), then start listening. Also allow immediate typing —
+            // the modal body has no text inputs, so keys go to the grid.
+            projectsFocusCard(getActiveProject() && getActiveProject().id);
+            setTimeout(() => { document.addEventListener('keydown', projectsKeyboardNav); }, 0);
         }
         function hideProjectsModal() {
             const ov = document.getElementById('projectsOverlay');
             if (ov) { ov.classList.add('hidden'); ov.classList.remove('flex'); }
             document.removeEventListener('click', closeAllProjectMenus);
+            document.removeEventListener('keydown', projectsKeyboardNav);
+        }
+
+        // ── Projects modal keyboard navigation ────────────────────────────────────
+        // Arrow keys move a focus ring across the card grid (row-major, wrapping at
+        // the edges), Enter opens, F2 renames, Ctrl/Cmd+D duplicates, Delete removes
+        // (via the confirm modal), and Escape closes — or closes the open ⋯ menu
+        // first if one is showing. The "New Project" tile is part of the grid but
+        // only Enter applies to it (opens the create modal).
+        let _projectsFocusId = null;
+        function projectsGridItems() {
+            return [...document.querySelectorAll('#projectsGrid [data-project-id]')];
+        }
+        function projectsFocusCard(id) {
+            _projectsFocusId = id || null;
+            const items = projectsGridItems();
+            items.forEach(el => el.classList.remove('ring-2', 'ring-brand-400', 'ring-offset-2', 'ring-offset-surface-950/40', 'dark:ring-offset-surface-950/40'));
+            const target = items.find(el => el.dataset.projectId === id);
+            if (target) {
+                target.classList.add('ring-2', 'ring-brand-400', 'ring-offset-2', 'ring-offset-surface-950/40', 'dark:ring-offset-surface-950/40');
+                target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+            }
+        }
+        // Vertical movement is column-aware: derive the visible column count from
+        // the items' actual geometry instead of hardcoding breakpoints, so the same
+        // code works in the 1/2/3-column responsive layout. Items sharing a row have
+        // the same top; the first row's item count is the column count.
+        function projectsGridColumns() {
+            const items = projectsGridItems();
+            if (items.length < 2) return 1;
+            const firstTop = items[0].getBoundingClientRect().top;
+            let cols = 1;
+            for (let i = 1; i < items.length; i++) {
+                if (Math.abs(items[i].getBoundingClientRect().top - firstTop) > 4) break;
+                cols++;
+            }
+            return cols;
+        }
+        function projectsKeyboardNav(e) {
+            const ov = document.getElementById('projectsOverlay');
+            if (!ov || ov.classList.contains('hidden')) return;
+            // A nested modal (confirm/name/notice) is on top — let it own the keys.
+            if (['confirmModalOverlay', 'nameModalOverlay', 'noticeModalOverlay'].some(id => {
+                const el = document.getElementById(id);
+                return el && !el.classList.contains('hidden');
+            })) return;
+            const items = projectsGridItems();
+            if (!items.length) return;
+            const cur = items.findIndex(el => el.dataset.projectId === _projectsFocusId);
+            const idx = cur >= 0 ? cur : 0;
+            const key = e.key;
+            if (key === 'ArrowRight' || key === 'ArrowLeft' || key === 'ArrowDown' || key === 'ArrowUp') {
+                e.preventDefault();
+                let next = -1;
+                if (key === 'ArrowRight') next = idx + 1 < items.length ? idx + 1 : idx;
+                else if (key === 'ArrowLeft') next = idx - 1 >= 0 ? idx - 1 : idx;
+                else {
+                    // Column-aware vertical move — find the nearest item in the same
+                    // column that is strictly below/above the focused one.
+                    const cols = projectsGridColumns();
+                    const sameCol = (i) => i !== idx && (i % cols) === (idx % cols);
+                    if (key === 'ArrowDown') {
+                        for (let i = idx + cols; i < items.length; i += cols) { if (sameCol(i)) { next = i; break; } }
+                    } else {
+                        for (let i = idx - cols; i >= 0; i -= cols) { if (sameCol(i)) { next = i; break; } }
+                    }
+                    if (next < 0) next = idx;
+                }
+                if (next >= 0 && next !== idx) projectsFocusCard(items[next].dataset.projectId);
+                return;
+            }
+            if (key === 'Escape') {
+                e.preventDefault();
+                const openMenu = document.querySelector('#projectsGrid [id^="projMenu-"]:not(.hidden)');
+                if (openMenu) { closeAllProjectMenus(); return; }
+                hideProjectsModal();
+                return;
+            }
+            const focused = items[idx] && items[idx].dataset.projectId;
+            if (!focused || focused === '__new__') {
+                if (focused === '__new__' && (key === 'Enter')) { e.preventDefault(); projectsModalNew(); }
+                return;
+            }
+            if (key === 'Enter') { e.preventDefault(); switchProject(focused); hideProjectsModal(); }
+            else if (key === 'F2') { e.preventDefault(); renameProjectModal(focused); }
+            else if (key === 'Delete' || key === 'Backspace') { e.preventDefault(); deleteProjectModal(focused); }
+            else if ((e.ctrlKey || e.metaKey) && (key === 'd' || key === 'D')) { e.preventDefault(); duplicateProjectModal(focused); }
         }
 
         // ── Success notice modal (clean alert() replacement) ──────────────────────
