@@ -26881,15 +26881,26 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 // Match the project's OWN canvas aspect ratio (16:9, 9:16, 1:1 …)
                 // instead of always forcing 16:9 — tall/square frames shouldn't be
                 // squished or cropped; the card letterboxes them with object-contain.
+                // Render at the DESIGN resolution (same space as the preview) so the
+                // thumbnail's text/stroke proportions match the canvas exactly, then
+                // downscale the bitmap to the small thumbnail size.
                 const aspectStr = ASPECT_RATIOS[State.preview.aspectIndex].value;
                 const [wr, hr] = aspectStr.split('/').map(Number);
+                const baseMax = 1920;
+                const bw = wr >= hr ? baseMax : Math.max(1, Math.round(baseMax * wr / hr));
+                const bh = wr >= hr ? Math.max(1, Math.round(baseMax * hr / wr)) : baseMax;
                 const maxDim = 480;
-                const w = wr >= hr ? maxDim : Math.max(1, Math.round(maxDim * wr / hr));
-                const h = wr >= hr ? Math.max(1, Math.round(maxDim * hr / wr)) : maxDim;
+                const tw = wr >= hr ? maxDim : Math.max(1, Math.round(maxDim * wr / hr));
+                const th = wr >= hr ? Math.max(1, Math.round(maxDim * hr / wr)) : maxDim;
+                const base = document.createElement('canvas');
+                base.width = bw; base.height = bh;
+                drawCanvas(base.getContext('2d'), bw, bh, {});
                 const c = document.createElement('canvas');
-                c.width = w; c.height = h;
+                c.width = tw; c.height = th;
                 const ctx = c.getContext('2d');
-                drawCanvas(ctx, w, h, {});
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
+                ctx.drawImage(base, 0, 0, tw, th);
                 return c.toDataURL('image/webp', 0.5);
             } catch (e) { return ''; }
         }
@@ -27080,6 +27091,10 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             if (saveProject(_activeProjectId, json)) {
                 // Keep the legacy single slot as a mirror for one release (downgrade-safe).
                 try { localStorage.setItem(PROJECT_AUTOSAVE_KEY, json); } catch (e) {}
+                // Keep the gallery thumbnail in sync with the saved frame: whatever
+                // edit/scrub triggered this save is what the canvas shows, so a
+                // debounced recapture makes the project card match the preview.
+                scheduleThumbnailRefresh(300);
             } else {
                 _projectDirty = true;
                 console.warn('Project autosave failed (storage full?) — use the Save button to keep a copy.');
@@ -27805,6 +27820,21 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             const cfg = getFrameExportConfig();
             const aspectStr = ASPECT_RATIOS[State.preview.aspectIndex].value;
             const [wRatio, hRatio] = aspectStr.split('/').map(Number);
+
+            // Render at the DESIGN resolution first — the same 1920-base space the
+            // preview uses — so every size (text font size, strokes, shadows,
+            // placeholder text) is proportional to the frame exactly as the user
+            // sees it. Then scale the bitmap up to the configured snapshot
+            // resolution. Rendering natively at 2K/4K would keep text at its
+            // absolute pixel size while the frame grows, shrinking text relative
+            // to the composition at higher resolutions.
+            const baseMax = 1920;
+            let bw, bh;
+            if (wRatio >= hRatio) { bw = baseMax; bh = baseMax * (hRatio / wRatio); }
+            else { bh = baseMax; bw = baseMax * (wRatio / hRatio); }
+            bw = Math.floor(bw / 2) * 2;
+            bh = Math.floor(bh / 2) * 2;
+
             const baseRes = cfg.resolution || 1920;
             let w, h;
             if (wRatio >= hRatio) { w = baseRes; h = baseRes * (hRatio / wRatio); }
@@ -27829,10 +27859,16 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 });
             }
 
+            const baseCanvas = document.createElement('canvas');
+            baseCanvas.width = bw; baseCanvas.height = bh;
+            drawCanvas(baseCanvas.getContext('2d'), bw, bh);
+
             const canvas = document.createElement('canvas');
             canvas.width = w; canvas.height = h;
             const ctx = canvas.getContext('2d');
-            drawCanvas(ctx, w, h);
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            ctx.drawImage(baseCanvas, 0, 0, w, h);
             return { canvas, cfg, w, h };
         }
 
