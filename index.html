@@ -27173,7 +27173,10 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             const missing = missingMediaClips();
             const body = document.getElementById('reimportBody');
             const ov = document.getElementById('reimportOverlay');
-            if (!missing.length || !body || !ov) return;
+            // No missing media (e.g. the user switched to a project whose files are
+            // all present) → nothing to re-import, close the modal instead of leaving
+            // a stale list from the previously loaded project on screen.
+            if (!missing.length || !body || !ov) { hideReimportModal(); return; }
             const list = missing.map(c => `
                 <li class="flex items-center gap-2 text-xs font-semibold text-surface-700 dark:text-surface-200 bg-surface-50 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 rounded-lg px-2.5 py-2">
                     <i data-lucide="${c.type === 'image' ? 'image' : c.type === 'audio' ? 'music' : 'film'}" class="w-3.5 h-3.5 text-surface-400 shrink-0"></i>
@@ -27182,15 +27185,24 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 </li>`).join('');
             const lastFolderBtn = await lastReimportFolderBtnHtml();
             body.innerHTML = `
-                <p class="text-xs text-surface-500 dark:text-surface-300 leading-relaxed">${missing.length} clip${missing.length > 1 ? 's are' : ' is'} missing its media file (files aren't stored in the project). Select the original files — or drag &amp; drop them anywhere on this window — and they'll be matched to clips by filename and re-linked automatically.</p>
-                <label class="flex items-center gap-2 text-[11px] font-bold text-surface-500 dark:text-surface-300">
-                    <i data-lucide="layers" class="w-3.5 h-3.5 shrink-0 text-brand-500"></i>
-                    <span class="shrink-0">Project</span>
-                    <select onchange="switchProject(this.value)" title="Switch to another project to re-import its media" class="flex-1 min-w-0 bg-surface-50 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 rounded-lg text-xs font-bold px-2 py-1.5 text-surface-700 dark:text-surface-200 outline-none focus:border-brand-500 cursor-pointer">
-                        ${listProjects().map(pj => `<option value="${pj.id}"${pj.id === _activeProjectId ? ' selected' : ''}>${escapeHtmlBrief(pj.name)}</option>`).join('')}
-                    </select>
-                </label>
+                <!-- Project context row: active project name + Switch button (opens the
+                     Projects modal — the single place to browse / switch projects). -->
+                <div class="rounded-xl border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-900 px-3 py-2.5 flex items-center gap-2.5">
+                    <i data-lucide="layers" class="w-4 h-4 text-brand-500 shrink-0"></i>
+                    <div class="min-w-0 flex-1">
+                        <div class="text-[9px] font-bold uppercase tracking-widest text-surface-400">Project</div>
+                        <div class="text-sm font-bold text-surface-800 dark:text-surface-100 truncate">${escapeHtmlBrief(_activeProjectName || 'Untitled')}</div>
+                    </div>
+                    <button onclick="showProjectsModal()" class="shrink-0 flex items-center gap-1.5 text-xs font-bold text-surface-600 dark:text-surface-300 hover:text-brand-600 dark:hover:text-brand-400 border border-surface-200 dark:border-surface-700 px-2.5 py-1.5 rounded-lg transition-colors" title="Switch to another project">
+                        <i data-lucide="arrow-right-left" class="w-3.5 h-3.5"></i> Switch
+                    </button>
+                </div>
+
+                <!-- Missing media list with count + short explanation -->
+                <div class="text-[9px] font-bold uppercase tracking-widest text-surface-400">Missing media · ${missing.length} clip${missing.length > 1 ? 's' : ''}</div>
+                <p class="text-[11px] text-surface-500 dark:text-surface-300 leading-relaxed -mt-1">Files aren't stored in the project — pick the originals and they're matched to clips by filename automatically.</p>
                 <ul class="flex flex-col gap-1.5 max-h-44 overflow-y-auto">${list}</ul>
+
                 ${lastFolderBtn}
                 <label class="cursor-pointer bg-brand-600 hover:bg-brand-700 text-white px-4 py-2.5 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 shadow-sm w-full">
                     <i data-lucide="upload" class="w-4 h-4"></i> Select Files
@@ -27199,10 +27211,14 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 <button onclick="pickReimportFolder()" class="cursor-pointer border border-surface-200 dark:border-surface-700 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-400 text-surface-600 dark:text-surface-300 px-4 py-2.5 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 w-full">
                     <i data-lucide="folder-open" class="w-4 h-4"></i> Select Folder
                 </button>
-                <button onclick="startNewProject()" title="Discard this project and start a blank timeline (current project is backed up first)" class="w-full mt-2 border-t border-surface-200 dark:border-surface-700 rounded-none pt-2.5 pb-1.5 px-4 text-xs font-bold text-surface-500 dark:text-surface-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors flex items-center justify-center gap-1.5">
-                    <i data-lucide="file-plus" class="w-3.5 h-3.5"></i> Start a New Empty Project
-                </button>
-                <button onclick="hideReimportModal()" class="px-4 py-2 text-sm font-bold text-surface-600 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white hover:bg-surface-100 dark:hover:bg-surface-700 rounded-md transition-colors w-full">Skip for now</button>
+
+                <!-- Quiet footer exits (demoted from the primary re-import actions) -->
+                <div class="border-t border-surface-200 dark:border-surface-700 mt-3 pt-3 flex items-center justify-between gap-2">
+                    <button onclick="startNewProject()" title="Create a new empty project and switch to it (your current project stays saved)" class="flex items-center gap-1.5 text-xs font-bold text-surface-500 dark:text-surface-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors">
+                        <i data-lucide="file-plus" class="w-3.5 h-3.5"></i> Start a New Empty Project
+                    </button>
+                    <button onclick="hideReimportModal()" class="text-xs font-bold text-surface-600 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white hover:bg-surface-100 dark:hover:bg-surface-700 px-2 py-1.5 rounded-md transition-colors">Skip for now</button>
+                </div>
             `;
             lucide.createIcons();
             ov.classList.remove('hidden');
