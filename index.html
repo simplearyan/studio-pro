@@ -70,8 +70,26 @@
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Bangers&family=Bebas+Neue&family=Fredoka:wght@600;700&family=Inter:wght@400;500;600;700;900&family=Lora:ital,wght@0,400;0,700;1,400;1,700&family=Montserrat:ital,wght@0,800;1,800&family=Oswald:wght@700&family=Rubik:ital,wght@0,300..900;1,300..900&display=swap" rel="stylesheet">
       <!-- Tailwind CSS & Icons -->
     <link rel="stylesheet" href="./src/styles/style.css">
-    <link rel="preconnect" href="https://unpkg.com">
-    <script src="https://unpkg.com/lucide@1.28.0/dist/umd/lucide.min.js"></script>
+    <!-- Lucide icons: CDN-first with a local vendor fallback so the editor boots
+         fully offline. The shim below keeps the app script's lucide.createIcons()
+         from throwing when neither copy has loaded yet — if the CDN is unreachable
+         the onerror handler injects the vendored copy (public/vendor/lucide.min.js)
+         and re-runs createIcons once it loads. The relative path also works under
+         the /studio-pro/ GitHub Pages base. -->
+    <script>
+        window.lucide = window.lucide || { createIcons: function () {}, createIconsSync: function () {} };
+        window.__loadLocalLucide = function () {
+            if (window.__localLucideLoaded) return;
+            var s = document.createElement('script');
+            s.src = 'vendor/lucide.min.js';
+            s.onload = function () {
+                window.__localLucideLoaded = true;
+                try { if (window.lucide && window.lucide.createIcons) window.lucide.createIcons(); } catch (e) {}
+            };
+            document.head.appendChild(s);
+        };
+    </script>
+    <script src="https://unpkg.com/lucide@1.28.0/dist/umd/lucide.min.js" onerror="window.__loadLocalLucide && window.__loadLocalLucide()"></script>
     <!-- MathJax 3 configuration and CDN loading -->
     <script>
         window.MathJax = {
