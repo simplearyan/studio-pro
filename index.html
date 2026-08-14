@@ -12396,12 +12396,67 @@
                 if (s) {
                     s.classList.remove('cursor-pointer');
                     s.style.cursor = 'default';
-                    s.style.pointerEvents = 'none';
-                    s.setAttribute('onclick', 'event.preventDefault();');
+                    // Keep the card always-open WITHOUT blocking the header controls:
+                    // the enable toggles (bg/stroke/shadow/texture) live INSIDE the
+                    // summary, so pointer-events:none made them unclickable in the
+                    // horizontal dock. Only clicks on the summary's own padding area
+                    // are swallowed; clicks on child controls pass through untouched.
+                    s.addEventListener('click', (e) => {
+                        const t = e.target;
+                        if (!t || t === s) { e.preventDefault(); return; }
+                        if (t.closest && t.closest('label, input, select, button, textarea, a')) return;
+                        e.preventDefault();
+                    });
                 }
             });
             // Remove chevrons (handles both pre- and post-lucide states)
             root.querySelectorAll('summary i[data-lucide="chevron-down"], summary svg.lucide-chevron-down').forEach(i => i.remove());
+
+            // Focus-scroll fix: clicking a toggle activates its sr-only checkbox
+            // and the browser auto-scrolls the nearest scrollable container to
+            // "reveal" that visually-hidden input — jumping the horizontal strip
+            // away from where the user is. Prevent the mousedown default (avoids
+            // text-selection drags) and remember the pre-click scroll positions so
+            // the re-render can restore them (the browser's focus-scroll happens
+            // before the change handler re-renders, so a snapshot taken at render
+            // time would already contain the jump).
+            root.addEventListener('mousedown', (e) => {
+                const lbl = e.target && e.target.closest ? e.target.closest('label') : null;
+                if (!lbl || !lbl.querySelector('input.sr-only[type="checkbox"]')) return;
+                e.preventDefault();
+                window.__dockScrollSnap = snapshotScrollPositions(root);
+            });
+            // For toggles that do NOT re-render the panel (e.g. the Animation
+            // tab's own switches), restore the pre-click scroll as soon as the
+            // sr-only checkbox takes focus and the browser has jumped.
+            root.addEventListener('focusin', (e) => {
+                const t = e.target;
+                if (!t || t.tagName !== 'INPUT' || !t.classList.contains('sr-only')) return;
+                const snap = window.__dockScrollSnap;
+                if (!snap) return;
+                requestAnimationFrame(() => restoreScrollPositions(root, snap));
+            });
+        };
+
+        // Preserve scroll positions across panel re-renders: toggles in the style
+        // cards re-render the whole panel (renderSubtitlesPanel / renderMarkdownPanel),
+        // which would otherwise reset the horizontal strip / list scroll back to the
+        // start — the "scrolls back automatically" bug in the horizontal dock.
+        // Scrollable containers opt in via a stable data-scrollkey attribute.
+        window.snapshotScrollPositions = function(root) {
+            const out = {};
+            if (!root) return out;
+            root.querySelectorAll('[data-scrollkey]').forEach(el => {
+                out[el.dataset.scrollkey] = { l: el.scrollLeft, t: el.scrollTop };
+            });
+            return out;
+        };
+        window.restoreScrollPositions = function(root, snap) {
+            if (!root || !snap) return;
+            root.querySelectorAll('[data-scrollkey]').forEach(el => {
+                const s = snap[el.dataset.scrollkey];
+                if (s) { el.scrollLeft = s.l; el.scrollTop = s.t; }
+            });
         };
 
         // Sweep: auditContrastAll('.my-selector') or auditContrastAll(containerEl, '.child')
@@ -17111,6 +17166,9 @@
         // a property change never collapses a card the user had expanded.
         window.attachSubAccListener = function(container) {
             container.addEventListener('click', (e) => {
+                // A prevented summary click (horizontal-dock always-open cards)
+                // must not be recorded as a collapse in the persisted state.
+                if (e.defaultPrevented) return;
                 const summary = e.target && e.target.closest ? e.target.closest('summary') : null;
                 if (!summary) return;
                 const details = summary.parentElement;
@@ -17629,7 +17687,7 @@ const animTile = (v, label, preview, icon) => {
                 </div>
             `, 'pos', true);
             const styleHtml = `
-                <div class="${isHorizontal ? 'flex flex-row gap-3 p-3 overflow-x-auto flex-1 h-dock-strip' : 'flex flex-col gap-3 p-3 overflow-y-auto flex-1'}">
+                <div data-scrollkey="sty-strip" class="${isHorizontal ? 'flex flex-row gap-3 p-3 overflow-x-auto flex-1 h-dock-strip' : 'flex flex-col gap-3 p-3 overflow-y-auto flex-1'}">
                     <div class="bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm p-3 shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'}">
                         ${captionPresetStripHtml('global')}
                     </div>
@@ -17648,7 +17706,7 @@ const animTile = (v, label, preview, icon) => {
             // animation property only re-renders this tab — never collapses the
             // Style cards, and the Animation card itself stays open.
             const animTabHtml = `
-                <div class="${isHorizontal ? 'flex flex-row gap-3 p-3 overflow-x-auto flex-1 h-dock-strip' : 'flex flex-col gap-3 p-3 overflow-y-auto flex-1'}">
+                <div data-scrollkey="anim-strip" class="${isHorizontal ? 'flex flex-row gap-3 p-3 overflow-x-auto flex-1 h-dock-strip' : 'flex flex-col gap-3 p-3 overflow-y-auto flex-1'}">
                     ${animCard}
                 </div>
             `;
@@ -17834,8 +17892,8 @@ const animTile = (v, label, preview, icon) => {
 
             // ── Build captions tab content ──
             const captionsHtml = `
-                <div class="${isHorizontal ? 'grid grid-cols-[280px_minmax(0,1fr)] gap-3 p-3 overflow-hidden flex-1 min-h-0' : 'flex flex-col gap-3 p-3 overflow-y-auto flex-1'}">
-                    <div class="${isHorizontal ? 'min-h-0 overflow-y-auto flex flex-col gap-3 pr-1' : 'flex flex-col gap-3'}">
+                <div data-scrollkey="caps-outer" class="${isHorizontal ? 'grid grid-cols-[280px_minmax(0,1fr)] gap-3 p-3 overflow-hidden flex-1 min-h-0' : 'flex flex-col gap-3 p-3 overflow-y-auto flex-1'}">
+                    <div data-scrollkey="caps-list" class="${isHorizontal ? 'min-h-0 overflow-y-auto flex flex-col gap-3 pr-1' : 'flex flex-col gap-3'}">
                     <div class="flex items-center gap-2 ${isHorizontal ? 'flex-wrap' : ''} shrink-0">
                         <input type="file" id="subfileinput" accept=".srt,.vtt" class="hidden" multiple>
                         <button onclick="document.getElementById('subfileinput').click()" class="flex-1 py-2 px-3 bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-sm">
@@ -17918,26 +17976,55 @@ const animTile = (v, label, preview, icon) => {
             `;
 
             // ── Assemble the full panel ──
-            let html = `
-                <div class="flex flex-col w-full flex-1 min-h-0 overflow-hidden">
-                    <!-- Sub-tabs -->
-                    <div class="flex gap-1 p-2 bg-surface-100 dark:bg-surface-800/50 shrink-0 border-b border-surface-200 dark:border-surface-700">
-                        <button onclick="setSubtitleSubTab('captions')" class="${subTab === 'captions' ? activeBtnClass : inactiveBtnClass}">
-                            <i data-lucide="subtitles" class="w-3.5 h-3.5 inline-block mr-1"></i>Captions
-                        </button>
-                        <button onclick="setSubtitleSubTab('style')" class="${subTab === 'style' ? activeBtnClass : inactiveBtnClass}">
-                            <i data-lucide="settings" class="w-3.5 h-3.5 inline-block mr-1"></i>Style
-                        </button>
-                        <button onclick="setSubtitleSubTab('animation')" class="${subTab === 'animation' ? activeBtnClass : inactiveBtnClass}">
-                            <i data-lucide="wand-2" class="w-3.5 h-3.5 inline-block mr-1"></i>Animation
-                        </button>
+            // Sub-tabs follow the app's dock design language: horizontal (top/bottom)
+            // docks get a left rail like Properties/Animations (propertiesLayoutNav /
+            // animLayoutNav); vertical docks keep the slim horizontal chip bar. Both
+            // go through the shared subTabBar() segmented control.
+            const subTabs = [
+                { key: 'captions', label: 'Captions', icon: 'subtitles', title: 'Caption list, generation and auto-fix' },
+                { key: 'style', label: 'Style', icon: 'settings', title: 'Global caption style' },
+                { key: 'animation', label: 'Animation', icon: 'wand-2', title: 'Caption animations' }
+            ];
+            const subTabBarHtml = isHorizontal ? `
+                <div id="subtitleLayoutNav" class="w-28 bg-surface-100 dark:bg-surface-900/60 border-r border-surface-200 dark:border-surface-700 flex flex-col gap-1 p-2 shrink-0 overflow-y-auto no-scrollbar">
+                    <div class="flex items-center gap-1.5 px-2.5 pt-1 pb-1.5 shrink-0">
+                        <i data-lucide="subtitles" class="w-3 h-3 text-brand-500"></i>
+                        <span class="text-[9px] font-extrabold uppercase tracking-widest text-surface-600 dark:text-surface-300">Captions</span>
                     </div>
-                    ${subTab === 'captions' ? captionsHtml : subTab === 'animation' ? animTabHtml : styleHtml}
+                    ${subTabBar(subTabs, subTab, 'setSubtitleSubTab', true)}
+                </div>
+            ` : `
+                <div class="flex gap-1 p-2 bg-surface-100 dark:bg-surface-800/50 shrink-0 border-b border-surface-200 dark:border-surface-700">
+                    ${subTabBar(subTabs, subTab, 'setSubtitleSubTab')}
+                </div>
+            `;
+            const subTabContent = subTab === 'captions' ? captionsHtml : subTab === 'animation' ? animTabHtml : styleHtml;
+            let html = isHorizontal ? `
+                <div class="flex flex-row w-full flex-1 min-h-0 overflow-hidden">
+                    ${subTabBarHtml}
+                    <div class="flex-1 min-h-0 overflow-hidden flex flex-col">
+                        ${subTabContent}
+                    </div>
+                </div>
+            ` : `
+                <div class="flex flex-col w-full flex-1 min-h-0 overflow-hidden">
+                    ${subTabBarHtml}
+                    ${subTabContent}
                 </div>
             `;
 
+            // Re-rendering after a toggle/property change resets every scroll
+            // container — snapshot now and restore after the DOM swap so the
+            // horizontal strip / list stays where the user was. Prefer the
+            // mousedown snapshot (taken before the sr-only checkbox's focus-scroll
+            // jump) when this render was triggered by a toggle click.
+            const scrollSnap = window.__dockScrollSnap || snapshotScrollPositions(sidebarContent);
+            window.__dockScrollSnap = null;
             sidebarContent.innerHTML = html;
             lucide.createIcons();
+            restoreScrollPositions(sidebarContent, scrollSnap);
+            // The focus-scroll can settle one frame after the synchronous render.
+            requestAnimationFrame(() => restoreScrollPositions(sidebarContent, scrollSnap));
             // Persist accordion open/close state across panel re-renders: when a
             // property change re-renders the panel, the card the user is working in
             // stays exactly as open/closed as they left it. Delegated once on the
@@ -17948,6 +18035,9 @@ const animTile = (v, label, preview, icon) => {
             if (!window.__subAccListener) {
                 window.__subAccListener = true;
                 sidebarContent.addEventListener('click', (e) => {
+                    // Horizontal-dock always-open cards swallow summary clicks —
+                    // don't record those as collapses in the persisted open-state.
+                    if (e.defaultPrevented) return;
                     const summary = e.target && e.target.closest ? e.target.closest('summary') : null;
                     if (!summary) return;
                     const details = summary.parentElement;
@@ -18709,7 +18799,7 @@ This script references **whoosh**, **ding**, **pop** and **click** \u2014 import
                     `)}
                 </div>`;
             const styleHtml = `
-                <div class="${isHorizontal ? 'flex flex-row gap-3 p-3 overflow-x-auto flex-1 h-dock-strip' : 'flex flex-col gap-3 p-3 overflow-y-auto flex-1'}">
+                <div data-scrollkey="md-style-strip" class="${isHorizontal ? 'flex flex-row gap-3 p-3 overflow-x-auto flex-1 h-dock-strip' : 'flex flex-col gap-3 p-3 overflow-y-auto flex-1'}">
                     <details class="group bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-sm overflow-hidden shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'}" open>
                         <summary class="flex items-center justify-between p-3 cursor-pointer list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700">
                             <span class="text-[10px] font-bold text-surface-700 dark:text-surface-200 uppercase tracking-widest flex items-center gap-1.5"><i data-lucide="layers" class="w-3.5 h-3.5"></i>Track Layout</span>
@@ -19101,8 +19191,8 @@ This script references **whoosh**, **ding**, **pop** and **click** \u2014 import
             const mdMissingNames = mdRefNames.filter(n => !mdAudioAssets().some(a => String(a.name).toLowerCase() === n));
 
             const contentHtml = `
-                <div class="${isHorizontal ? 'flex flex-row gap-3 p-3 overflow-hidden flex-1 min-h-0' : 'flex-1 overflow-y-auto p-3 flex flex-col gap-3'}">
-                    <div class="${isHorizontal ? 'w-[240px] shrink-0 overflow-y-auto flex flex-col gap-3 pr-1' : 'flex flex-col gap-3 shrink-0'}">
+                <div data-scrollkey="md-content-outer" class="${isHorizontal ? 'flex flex-row gap-3 p-3 overflow-hidden flex-1 min-h-0' : 'flex-1 overflow-y-auto p-3 flex flex-col gap-3'}">
+                    <div data-scrollkey="md-content-col" class="${isHorizontal ? 'w-[240px] shrink-0 overflow-y-auto flex flex-col gap-3 pr-1' : 'flex flex-col gap-3 shrink-0'}">
                     <div class="flex flex-col gap-2 shrink-0">
                         <div class="flex items-center justify-between">
                             <label class="text-[10px] font-bold text-surface-700 dark:text-surface-200 uppercase tracking-widest">Scripts</label>
@@ -19197,7 +19287,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         </div>`;
             }).join('');
             const mediaHtml = `
-                <div class="flex-1 overflow-y-auto p-3 flex flex-col gap-3">
+                <div data-scrollkey="md-media" class="flex-1 overflow-y-auto p-3 flex flex-col gap-3">
                     <input type="file" id="mdAudioNameInput" accept="audio/*" class="hidden" onchange="importMarkdownAudioFor(this.dataset.name, this.files); this.value='';">
                     <div class="flex flex-col gap-1.5 shrink-0 rounded-lg" ondragover="event.preventDefault(); if(!e.target.closest('.md-sound-row')) this.classList.add('md-drop-over');" ondragleave="this.classList.remove('md-drop-over');" ondrop="event.preventDefault(); event.stopPropagation(); this.classList.remove('md-drop-over'); importMarkdownAudioBatch(event.dataTransfer.files);" title="Drop audio files or a folder here to auto-match them to the script sounds by name">
                         <div class="flex items-center justify-between">
@@ -19246,25 +19336,54 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 </div>
             `;
             
-            let html = `
-                <div class="flex flex-col w-full flex-1 min-h-0 overflow-hidden">
-                    <div class="flex gap-1 p-2 bg-surface-100 dark:bg-surface-800/50 shrink-0 border-b border-surface-200 dark:border-surface-700">
-                        <button onclick="setMarkdownSubTab('content')" class="` + (subTab === 'content' ? activeBtnClass : inactiveBtnClass) + `">
-                            <i data-lucide="file-text" class="w-3.5 h-3.5 inline-block mr-1"></i>Content
-                        </button>
-                        <button onclick="setMarkdownSubTab('style')" class="` + (subTab === 'style' ? activeBtnClass : inactiveBtnClass) + `">
-                            <i data-lucide="settings" class="w-3.5 h-3.5 inline-block mr-1"></i>Style
-                        </button>
-                        <button onclick="setMarkdownSubTab('media')" class="` + (subTab === 'media' ? activeBtnClass : inactiveBtnClass) + `">
-                            <i data-lucide="music" class="w-3.5 h-3.5 inline-block mr-1"></i>Media
-                        </button>
+            // Sub-tabs follow the app's dock design language: horizontal docks get
+            // a left rail (like Properties/Animations); vertical keeps the slim
+            // horizontal chip bar — both via the shared subTabBar() control.
+            const mdSubTabs = [
+                { key: 'content', label: 'Content', icon: 'file-text', title: 'Script editor' },
+                { key: 'style', label: 'Style', icon: 'settings', title: 'Markdown style' },
+                { key: 'media', label: 'Media', icon: 'music', title: 'Script sounds' }
+            ];
+            const mdSubTabBar = isHorizontal ? `
+                <div id="markdownLayoutNav" class="w-28 bg-surface-100 dark:bg-surface-900/60 border-r border-surface-200 dark:border-surface-700 flex flex-col gap-1 p-2 shrink-0 overflow-y-auto no-scrollbar">
+                    <div class="flex items-center gap-1.5 px-2.5 pt-1 pb-1.5 shrink-0">
+                        <i data-lucide="file-text" class="w-3 h-3 text-brand-500"></i>
+                        <span class="text-[9px] font-extrabold uppercase tracking-widest text-surface-600 dark:text-surface-300">Markdown</span>
                     </div>
-                    ` + (subTab === 'content' ? contentHtml : (subTab === 'media' ? mediaHtml : styleHtml)) + `
+                    ${subTabBar(mdSubTabs, subTab, 'setMarkdownSubTab', true)}
+                </div>
+            ` : `
+                <div class="flex gap-1 p-2 bg-surface-100 dark:bg-surface-800/50 shrink-0 border-b border-surface-200 dark:border-surface-700">
+                    ${subTabBar(mdSubTabs, subTab, 'setMarkdownSubTab')}
+                </div>
+            `;
+            const mdSubTabContent = subTab === 'content' ? contentHtml : (subTab === 'media' ? mediaHtml : styleHtml);
+            let html = isHorizontal ? `
+                <div class="flex flex-row w-full flex-1 min-h-0 overflow-hidden">
+                    ${mdSubTabBar}
+                    <div class="flex-1 min-h-0 overflow-hidden flex flex-col">
+                        ${mdSubTabContent}
+                    </div>
+                </div>
+            ` : `
+                <div class="flex flex-col w-full flex-1 min-h-0 overflow-hidden">
+                    ${mdSubTabBar}
+                    ${mdSubTabContent}
                 </div>
             `;
             
+            // Re-rendering after a toggle/property change resets every scroll
+            // container — snapshot now and restore after the DOM swap so the
+            // horizontal strip / list stays where the user was. Prefer the
+            // mousedown snapshot (taken before the sr-only checkbox's focus-scroll
+            // jump) when this render was triggered by a toggle click.
+            const scrollSnap = window.__dockScrollSnap || snapshotScrollPositions(sidebarContent);
+            window.__dockScrollSnap = null;
             sidebarContent.innerHTML = html;
             lucide.createIcons();
+            restoreScrollPositions(sidebarContent, scrollSnap);
+            // The focus-scroll can settle one frame after the synchronous render.
+            requestAnimationFrame(() => restoreScrollPositions(sidebarContent, scrollSnap));
             
             // Restore accordion open/close state after re-render (vertical only —
             // horizontal dock cards are always-open panels, never accordions)
