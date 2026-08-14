@@ -506,6 +506,28 @@
             <input type="file" id="projectsFileInput" accept=".json,application/json" class="hidden" onchange="importProjectFile(this)">
         </div>
     </div>
+    <!-- Name input modal — clean replacement for prompt(): used for new-project
+         names, project renames, and preset/keyframe-preset saves. Promise-based:
+         promptNameModal(opts) resolves with the trimmed name (falling back to the
+         provided fallback when empty) or null when cancelled. -->
+    <div id="nameModalOverlay" class="fixed inset-0 bg-surface-950/70 backdrop-blur-sm z-[120] hidden items-center justify-center p-4">
+        <div class="bg-white dark:bg-surface-800 rounded-2xl shadow-2xl border border-surface-200 dark:border-surface-700 w-full max-w-sm">
+            <div class="flex items-center gap-3 px-5 pt-5 pb-3">
+                <span id="nameModalIconWrap" class="w-9 h-9 rounded-full bg-brand-50 dark:bg-brand-900/40 text-brand-500 flex items-center justify-center shrink-0"><i id="nameModalIcon" data-lucide="pen-line" class="w-4 h-4"></i></span>
+                <div class="min-w-0">
+                    <h3 id="nameModalTitle" class="text-sm font-bold text-surface-900 dark:text-white truncate">Name</h3>
+                    <p id="nameModalHint" class="text-[11px] text-surface-500 dark:text-surface-400 mt-0.5"></p>
+                </div>
+            </div>
+            <div class="px-5 pb-4">
+                <input id="nameModalInput" type="text" maxlength="80" autocomplete="off" class="w-full px-3 py-2 rounded-lg border border-surface-200 dark:border-surface-600 bg-surface-50 dark:bg-surface-900 text-sm font-semibold text-surface-800 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-brand-500/40 focus:border-brand-500" placeholder="Name">
+                <div class="flex items-center justify-end gap-2 mt-4">
+                    <button onclick="nameModalCancel()" class="px-3.5 py-2 rounded-lg text-xs font-bold text-surface-600 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors">Cancel</button>
+                    <button id="nameModalConfirmBtn" onclick="nameModalConfirm()" class="px-4 py-2 rounded-lg text-xs font-bold text-white bg-brand-600 hover:bg-brand-500 transition-colors shadow-sm flex items-center gap-1.5"><i data-lucide="check" class="w-3.5 h-3.5"></i><span id="nameModalConfirmLabel">Save</span></button>
+                </div>
+            </div>
+        </div>
+    </div>
     <style>@keyframes progress-stripes { from { background-position: 1rem 0; } to { background-position: 0 0; } }</style>
     <style>
         /* Export-success video player — YouTube-style thin seek bar */
@@ -11781,7 +11803,7 @@
             }
         };
 
-        window.saveElementAsPreset = function(clipId) {
+        window.saveElementAsPreset = async function(clipId) {
             const targetId = clipId || State.selectedClipId;
             if (!targetId) {
                 alert("Please select a clip on the timeline first to save its properties as a preset.");
@@ -11790,8 +11812,9 @@
             const clip = State.clips.find(c => c.id === targetId);
             if (!clip) return;
 
-            const name = prompt("Enter a name for this custom preset:", `${clip.title || clip.type.toUpperCase()} Custom Preset`);
-            if (!name) return;
+            const fallback = `${clip.title || clip.type.toUpperCase()} Custom Preset`;
+            const name = await promptNameModal({ title: 'Save Custom Preset', hint: 'Leave empty to use the suggested name.', initial: fallback, fallback: fallback, confirmLabel: 'Save Preset', icon: 'save' });
+            if (name === null) return;
 
             const custom = {
                 id: 'preset_custom_' + Date.now() + Math.random().toString(36).substr(2, 5),
@@ -12556,7 +12579,7 @@
             return els.map(el => window.auditContrast(el, childSel ? { selector: childSel } : {})).filter(r => r.ratio !== null);
         };
 
-        window.saveKeyframePreset = function(clipId) {
+        window.saveKeyframePreset = async function(clipId) {
             const clip = State.clips.find(c => c.id === clipId);
             if (!clip || !clip.keyframes) {
                 alert("No keyframes found to save!");
@@ -12569,8 +12592,8 @@
                 return;
             }
             
-            const name = prompt("Enter a name for this Custom Keyframe Preset:", "Smooth Spin Intro");
-            if (!name) return;
+            const name = await promptNameModal({ title: 'Save Keyframe Preset', hint: 'Leave empty to use the suggested name.', initial: 'Smooth Spin Intro', fallback: 'Smooth Spin Intro', confirmLabel: 'Save Preset', icon: 'save' });
+            if (name === null) return;
             
             const preset = {
                 id: 'preset_kf_' + Date.now() + Math.random().toString(36).substr(2, 5),
@@ -27043,19 +27066,60 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             if (ov) { ov.classList.add('hidden'); ov.classList.remove('flex'); }
             document.removeEventListener('click', closeAllProjectMenus);
         }
+
+        // ── Name modal (clean prompt() replacement) ───────────────────────────────
+        // Resolves with the trimmed name the user typed, the fallback when the field
+        // is left empty (so "just hit save" always works), or null when cancelled.
+        let _nameModalResolve = null;
+        function promptNameModal(opts) {
+            const o = opts || {};
+            return new Promise((resolve) => {
+                _nameModalResolve = resolve;
+                document.getElementById('nameModalTitle').textContent = o.title || 'Name';
+                document.getElementById('nameModalHint').textContent = o.hint || (o.fallback ? 'Leave empty to use the suggested name.' : '');
+                document.getElementById('nameModalConfirmLabel').textContent = o.confirmLabel || 'Save';
+                const icon = document.getElementById('nameModalIcon');
+                icon.setAttribute('data-lucide', o.icon || 'pen-line');
+                const input = document.getElementById('nameModalInput');
+                input.value = o.initial || '';
+                input.placeholder = o.fallback || '';
+                const ov = document.getElementById('nameModalOverlay');
+                ov.classList.remove('hidden');
+                ov.classList.add('flex');
+                if (window.lucide && lucide.createIcons) lucide.createIcons();
+                // Enter confirms, Escape cancels — same affordances prompt() had.
+                input.onkeydown = (e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); nameModalConfirm(); }
+                    else if (e.key === 'Escape') { e.preventDefault(); nameModalCancel(); }
+                };
+                setTimeout(() => { input.focus(); input.select(); }, 30);
+            });
+        }
+        function nameModalConfirm() {
+            const input = document.getElementById('nameModalInput');
+            const name = (input.value || '').trim() || input.placeholder || '';
+            const ov = document.getElementById('nameModalOverlay');
+            ov.classList.add('hidden');
+            ov.classList.remove('flex');
+            const r = _nameModalResolve; _nameModalResolve = null;
+            if (r) r(name);
+        }
+        function nameModalCancel() {
+            const ov = document.getElementById('nameModalOverlay');
+            ov.classList.add('hidden');
+            ov.classList.remove('flex');
+            const r = _nameModalResolve; _nameModalResolve = null;
+            if (r) r(null);
+        }
         function projectsModalNew() {
-            const name = prompt('Name your new project:', '');
-            if (name === null) return;
-            createNewProject(name.trim() || 'Untitled');
-            showProjectsModal();
+            promptNameModal({ title: 'New Project', hint: 'Give your project a name — leave empty to use "Untitled".', fallback: 'Untitled', confirmLabel: 'Create', icon: 'plus' })
+                .then(name => { if (name === null) return; createNewProject(name); showProjectsModal(); });
         }
         function renameProjectModal(id) {
             const idx = readProjectsIndex() || [];
             const e = idx.find(p => p.id === id);
-            const name = prompt('Rename project:', (e && e.name) || '');
-            if (name === null) return;
-            renameProject(id, name);
-            showProjectsModal();
+            promptNameModal({ title: 'Rename Project', hint: 'Leave empty to keep the current name.', initial: (e && e.name) || '', fallback: (e && e.name) || 'Untitled', confirmLabel: 'Rename', icon: 'pencil' })
+                .then(name => { if (name === null) return; renameProject(id, name); showProjectsModal(); });
         }
         function duplicateProjectModal(id) {
             duplicateProject(id);
@@ -27326,10 +27390,12 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             // With the multi-project registry nothing is destroyed — a new project is
             // created in the registry and the editor switches to it; the current one
             // stays saved and switchable in the Projects modal.
-            const name = prompt('Name your new project:', '');
-            if (name === null) return;
-            hideReimportModal();
-            createNewProject(name.trim() || 'Untitled');
+            promptNameModal({ title: 'New Project', hint: 'Give your project a name — leave empty to use "Untitled".', fallback: 'Untitled', confirmLabel: 'Create', icon: 'plus' })
+                .then(name => {
+                    if (name === null) return;
+                    hideReimportModal();
+                    createNewProject(name);
+                });
         };
 
         // --- Last-used re-import folder (File System Access API) ---
