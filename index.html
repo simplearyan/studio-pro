@@ -489,6 +489,26 @@
         }
         #reimportOverlay.reimport-drop-active #reimportDropHint { display: flex !important; }
     </style>
+
+    <!-- Projects Overlay (multi-project registry: open / switch / duplicate / delete) -->
+    <div id="projectsOverlay" class="fixed inset-0 bg-surface-950/80 backdrop-blur-sm z-[100] hidden flex-col items-center justify-center p-4">
+        <div class="bg-white dark:bg-surface-800 p-5 sm:p-6 rounded-2xl shadow-2xl flex flex-col w-full max-w-2xl border border-surface-200 dark:border-surface-700 max-h-[85vh]">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-lg font-bold text-surface-900 dark:text-white flex items-center gap-2"><i data-lucide="layers" class="w-5 h-5 text-brand-500"></i> Projects</h2>
+                <button onclick="hideProjectsModal()" class="text-surface-500 hover:text-surface-900 dark:hover:text-white bg-surface-100 dark:bg-surface-900 p-1.5 rounded-md"><i data-lucide="x" class="w-4 h-4"></i></button>
+            </div>
+            <div class="flex gap-2 mb-3 shrink-0">
+                <button onclick="projectsModalNew()" class="bg-brand-600 hover:bg-brand-700 text-white px-3.5 py-2 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-1.5 shadow-sm">
+                    <i data-lucide="plus" class="w-4 h-4"></i> New Project
+                </button>
+                <button onclick="document.getElementById('projectsFileInput').click()" class="border border-surface-200 dark:border-surface-700 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-400 text-surface-600 dark:text-surface-300 px-3.5 py-2 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-1.5">
+                    <i data-lucide="upload" class="w-4 h-4"></i> Import .json
+                </button>
+                <input type="file" id="projectsFileInput" accept=".json,application/json" class="hidden" onchange="importProjectFile(this)">
+            </div>
+            <div id="projectsGrid" class="flex flex-col gap-2 overflow-y-auto min-h-[120px]"></div>
+        </div>
+    </div>
     <style>@keyframes progress-stripes { from { background-position: 1rem 0; } to { background-position: 0 0; } }</style>
     <style>
         /* Export-success video player — YouTube-style thin seek bar */
@@ -657,6 +677,7 @@
             <div class="w-7 h-7 sm:w-8 sm:h-8 bg-brand-600 dark:bg-brand-500 text-white rounded flex items-center justify-center shadow-sm">
                 <i data-lucide="scissors" class="w-3.5 h-3.5 sm:w-4 sm:h-4"></i>
             </div>
+            <span id="projectTitle" class="ml-2 hidden lg:inline-flex items-center gap-0.5 text-[11px] sm:text-xs font-bold text-surface-700 dark:text-surface-200 max-w-[160px]"></span>
         </div>
         
         <!-- CENTER: Context Properties (Expanded Width) -->
@@ -733,6 +754,9 @@
                 <i data-lucide="folder-open" class="w-4 h-4"></i>
             </button>
             <input type="file" id="projectFileInput" accept=".json,application/json" class="hidden" onchange="importProjectFile(this)">
+            <button onclick="showProjectsModal()" class="p-1.5 text-surface-600 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white bg-surface-100 dark:bg-surface-800 rounded-md border border-surface-200 dark:border-surface-700 shadow-sm" title="Projects (open / switch / duplicate / delete)">
+                <i data-lucide="layers" class="w-4 h-4"></i>
+            </button>
             
             <!-- Frame Snapshot (camera) — exports the current frame as PNG/JPG/WebP -->
             <button onclick="exportFrame()" aria-label="Export current frame" title="Export Frame (PNG/JPG/WebP — settings in the Export panel)" class="p-1.5 text-surface-600 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white bg-surface-100 dark:bg-surface-800 rounded-md border border-surface-200 dark:border-surface-700 shadow-sm">
@@ -2224,10 +2248,11 @@
             loadSubtitlesFromStorage();
             loadMarkdownConfig();
             
-            // Restore the autosaved project (tracks/clips/captions/configs) if one
-            // exists — runs after the legacy loaders so project data wins. File-backed
-            // media restores as re-import placeholders; the user re-imports the files.
-            restoreAutosavedProject();
+            // Boot the multi-project registry: migrate the legacy slot once, then
+            // restore the active project (or start a fresh one). Runs after the
+            // legacy loaders so project data wins. File-backed media restores as
+            // re-import placeholders; the user re-imports the files.
+            initProjects();
 
             // Preload the Audio Library's OWN remembered re-import folder handle so
             // its "Last folder" quick button is available without opening the media
@@ -8306,6 +8331,7 @@
         // harmless — the signature comparison still dedupes the actual write.
         let _projectDirty = true;
         function updateSidebarPanel() {
+            if (!_projectDirty) updateProjectTitle(); // first edit since save → show the dirty dot
             _projectDirty = true; // a sidebar re-render means the user did something
             // Save state
             State.ui = State.ui || { detailsState: {} };
@@ -22673,6 +22699,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
         };
 
         function renderClips() {
+            if (!_projectDirty) updateProjectTitle(); // first edit since save → show the dirty dot
             _projectDirty = true; // a timeline re-render means the user did something
             document.querySelectorAll('.clip').forEach(e => e.remove());
             document.querySelectorAll('.beat-marker').forEach(e => e.remove());
@@ -26355,10 +26382,10 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
         //  buffers on text/shape/image/math elements ARE embedded as base64 WAV
         //  (bounded by SFX_EMBED_MAX) so sound design survives the round-trip.
         // ═══════════════════════════════════════════════════════════════════
-        const PROJECT_AUTOSAVE_KEY = 'studiopro_project_autosave_v1';
-        // The previous project is copied here before "Start a New Empty Project"
-        // wipes the autosave slot, so nothing is ever lost.
-        const PROJECT_BACKUP_KEY = 'studiopro_project_backup_v1';
+        const PROJECT_AUTOSAVE_KEY = 'studiopro_project_autosave_v1'; // legacy single slot (kept as a downgrade mirror)
+        const PROJECT_INDEX_KEY = 'studiopro_projects_index';
+        const PROJECT_KEY_PREFIX = 'studiopro_project_';
+        const PROJECT_ACTIVE_KEY = 'studiopro_active_project';
         const PROJECT_VERSION = 1;
         // Pristine default configs snapshotted at boot (see init()).
         let _pristineProjectDefaults = null;
@@ -26664,11 +26691,329 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
         // cadence, skipped during playback/export. Cheap: structure-only JSON is
         // sub-ms to a few ms even for hundreds of clips, written only when changed.
         let _reimportBusy = false;
-        let _lastProjectSig = null;
+        // Per-project signature dedup — keyed by project id so switching away and
+        // back never skips a legit save.
+        let _lastProjectSig = {};
         let _autosaveTick = 0;
+        // In-memory per-project undo stacks (not persisted — same as today).
+        const _perProjectUndo = {};
+        let _activeProjectId = null;
+        let _activeProjectName = null;
+        let _quotaWarned = false;
+
+        // ── Multi-project registry (localStorage) ────────────────────────────────
+        // `studiopro_projects_index` is a tiny list of { id, name, savedAt,
+        // duration, version, bytes, thumbnail }; each project's full JSON lives in
+        // `studiopro_project_{id}`; `studiopro_active_project` points at the slot
+        // the editor is currently editing. Media is never stored, so slots stay
+        // small (tens of KB) and many projects fit in localStorage.
+        function newProjectId() {
+            try { if (crypto && crypto.randomUUID) return crypto.randomUUID(); } catch (e) {}
+            return 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+        }
+        function readProjectsIndex() {
+            try {
+                const raw = localStorage.getItem(PROJECT_INDEX_KEY);
+                if (raw) {
+                    const idx = JSON.parse(raw);
+                    if (idx && Array.isArray(idx.projects)) return idx.projects;
+                }
+            } catch (e) {}
+            return null;
+        }
+        function writeProjectsIndex(projects) {
+            try { localStorage.setItem(PROJECT_INDEX_KEY, JSON.stringify({ version: 1, projects })); } catch (e) {}
+        }
+        function listProjects() {
+            const p = readProjectsIndex() || [];
+            return p.slice().sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0));
+        }
+        function getProject(id) {
+            try {
+                const raw = localStorage.getItem(PROJECT_KEY_PREFIX + id);
+                if (!raw) return null;
+                return JSON.parse(raw);
+            } catch (e) { return null; }
+        }
+        // Writes the project JSON to its slot and refreshes the registry entry.
+        // Returns false when localStorage is full.
+        function saveProject(id, data, name) {
+            const json = typeof data === 'string' ? data : JSON.stringify(data);
+            try { localStorage.setItem(PROJECT_KEY_PREFIX + id, json); } catch (e) { return false; }
+            let parsed = null;
+            try { parsed = typeof data === 'string' ? JSON.parse(json) : data; } catch (e) {}
+            const idx = readProjectsIndex() || [];
+            let entry = idx.find(p => p.id === id);
+            if (!entry) { entry = { id: id }; idx.push(entry); }
+            entry.name = name || entry.name || 'Untitled';
+            entry.savedAt = Date.now();
+            entry.duration = (parsed && parsed.duration) || State.duration || 60;
+            entry.version = PROJECT_VERSION;
+            entry.bytes = json.length;
+            writeProjectsIndex(idx);
+            return true;
+        }
+        function getActiveProject() {
+            try {
+                const raw = localStorage.getItem(PROJECT_ACTIVE_KEY);
+                if (raw) {
+                    const a = JSON.parse(raw);
+                    if (a && a.id) return a;
+                }
+            } catch (e) {}
+            return null;
+        }
+        function setActiveProject(id, name) {
+            _activeProjectId = id;
+            _activeProjectName = name || 'Untitled';
+            try { localStorage.setItem(PROJECT_ACTIVE_KEY, JSON.stringify({ id: id, name: _activeProjectName })); } catch (e) {}
+        }
+
+        // One-time migration: move the legacy single autosave slot into the registry.
+        function migrateLegacyAutosave() {
+            if (readProjectsIndex()) return;
+            const raw = localStorage.getItem(PROJECT_AUTOSAVE_KEY);
+            const projects = [];
+            if (raw) {
+                try {
+                    const data = JSON.parse(raw);
+                    const id = newProjectId();
+                    localStorage.setItem(PROJECT_KEY_PREFIX + id, raw);
+                    projects.push({ id: id, name: 'My Project', savedAt: data.savedAt || Date.now(), duration: data.duration || 60, version: PROJECT_VERSION, bytes: raw.length, thumbnail: '' });
+                } catch (e) {}
+            }
+            writeProjectsIndex(projects);
+        }
+
+        // Caption/markdown live in global side-store keys — switching projects must
+        // rewrite them from the loaded project so edits never leak across projects.
+        function syncSideStoresFromState() {
+            try { saveSubtitlesToStorage(); } catch (e) {}
+            try { saveMarkdownConfig(); } catch (e) {}
+        }
+
+        // ── Project lifecycle ────────────────────────────────────────────────────
+        function stashUndoFor(id) {
+            if (!id) return;
+            _perProjectUndo[id] = { undo: undoStack.splice(0), redo: redoStack.splice(0), key: _lastUndoKey, at: _lastUndoAt };
+        }
+        function restoreUndoFor(id) {
+            undoStack.length = 0; redoStack.length = 0; _lastUndoKey = null; _lastUndoAt = 0;
+            const s = _perProjectUndo[id];
+            if (s) { undoStack.push.apply(undoStack, s.undo); redoStack.push.apply(redoStack, s.redo); _lastUndoKey = s.key; _lastUndoAt = s.at || 0; }
+            updateUndoRedoButtons();
+        }
+        function switchProject(id) {
+            const data = getProject(id);
+            if (!data) return false;
+            const oldId = _activeProjectId;
+            // Save the outgoing project first (writes its own slot).
+            tryAutosaveProject(true);
+            if (oldId) stashUndoFor(oldId);
+            const idx = listProjects().find(p => p.id === id);
+            setActiveProject(id, (idx && idx.name) || 'Untitled');
+            applyProject(data);
+            restoreUndoFor(id);
+            syncSideStoresFromState();
+            _projectDirty = false;
+            updateProjectTitle();
+            return true;
+        }
+        function createNewProject(name) {
+            const displayName = (name || '').trim() || 'Untitled';
+            const id = newProjectId();
+            if (!saveProject(id, createEmptyProject(), displayName)) {
+                alert('Could not create the project — storage is full. Export or delete another project first.');
+                return null;
+            }
+            switchProject(id);
+            return id;
+        }
+        function duplicateProject(id) {
+            const data = getProject(id);
+            if (!data) return null;
+            const idx = readProjectsIndex() || [];
+            const entry = idx.find(p => p.id === id);
+            const base = (entry ? entry.name : 'Project') + ' — copy';
+            const copy = JSON.parse(JSON.stringify(data));
+            copy.savedAt = Date.now();
+            const nid = newProjectId();
+            if (!saveProject(nid, copy, base)) { alert('Could not duplicate — storage is full.'); return null; }
+            return nid;
+        }
+        function renameProject(id, name) {
+            name = (name || '').trim();
+            if (!name) return;
+            const idx = readProjectsIndex() || [];
+            const entry = idx.find(p => p.id === id);
+            if (entry) { entry.name = name; writeProjectsIndex(idx); }
+            if (_activeProjectId === id) { _activeProjectName = name; setActiveProject(id, name); updateProjectTitle(); }
+        }
+        function deleteProject(id) {
+            let idx = readProjectsIndex() || [];
+            idx = idx.filter(p => p.id !== id);
+            writeProjectsIndex(idx);
+            try { localStorage.removeItem(PROJECT_KEY_PREFIX + id); } catch (e) {}
+            if (_activeProjectId === id) {
+                try { localStorage.removeItem(PROJECT_ACTIVE_KEY); } catch (e) {}
+                _activeProjectId = null; _activeProjectName = null;
+                _lastProjectSig = {};
+                const next = listProjects()[0];
+                let data = null, nid = null, nname = 'Untitled';
+                if (next) { nid = next.id; nname = next.name; data = getProject(next.id); setActiveProject(next.id, next.name); }
+                else {
+                    nid = newProjectId();
+                    data = createEmptyProject();
+                    saveProject(nid, data, nname);
+                    setActiveProject(nid, nname);
+                }
+                if (data) { applyProject(data); restoreUndoFor(nid); syncSideStoresFromState(); _projectDirty = false; updateProjectTitle(); }
+            }
+        }
+        function captureProjectThumbnail() {
+            try {
+                if (State.isExporting) return '';
+                const c = document.createElement('canvas');
+                c.width = 320; c.height = 180;
+                const ctx = c.getContext('2d');
+                drawCanvas(ctx, 320, 180, {});
+                return c.toDataURL('image/webp', 0.5);
+            } catch (e) { return ''; }
+        }
+
+        // Title-bar project name + unsaved-changes dot.
+        function updateProjectTitle() {
+            const el = document.getElementById('projectTitle');
+            if (!el) return;
+            el.textContent = '';
+            const name = _activeProjectName || 'Untitled';
+            const span = document.createElement('span');
+            span.textContent = name;
+            span.className = 'truncate';
+            el.appendChild(span);
+            if (_projectDirty) {
+                const dot = document.createElement('span');
+                dot.textContent = '•';
+                dot.className = 'text-brand-500';
+                el.appendChild(dot);
+            }
+            el.title = 'Project: ' + name + (_projectDirty ? ' (unsaved changes)' : '');
+        }
+
+        // ── Projects modal ───────────────────────────────────────────────────────
+        function projectsCard(p) {
+            const isActive = _activeProjectId === p.id;
+            const t = new Date(p.savedAt || Date.now());
+            const when = t.toLocaleDateString() + ' ' + t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const kb = Math.max(1, Math.round((p.bytes || 0) / 1024));
+            const dur = Math.round(p.duration || 0);
+            return `<div class="group flex items-center gap-3 p-2.5 rounded-xl border transition-colors cursor-pointer ${isActive ? 'border-brand-500 bg-brand-50/60 dark:bg-brand-900/20' : 'border-surface-200 dark:border-surface-700 hover:border-brand-400 bg-surface-50 dark:bg-surface-900'}" onclick="switchProject('${p.id}'); hideProjectsModal();" title="Open ${escapeHtmlBrief(p.name)}">
+                <div class="w-24 h-[54px] rounded-lg overflow-hidden bg-surface-200 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 shrink-0 flex items-center justify-center">${p.thumbnail ? '<img src="' + p.thumbnail + '" class="w-full h-full object-cover" alt="">' : '<i data-lucide="layers" class="w-5 h-5 text-surface-400"></i>'}</div>
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2">
+                        <span class="text-sm font-bold text-surface-800 dark:text-surface-100 truncate">${escapeHtmlBrief(p.name)}</span>
+                        ${isActive ? '<span class="text-[9px] font-bold uppercase tracking-wider text-brand-500 bg-brand-100 dark:bg-brand-900/40 px-1.5 py-0.5 rounded shrink-0">Open</span>' : ''}
+                    </div>
+                    <div class="text-[10px] text-surface-500 dark:text-surface-400 mt-0.5">${when} · ${dur}s · ${kb} KB</div>
+                </div>
+                <div class="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onclick="event.stopPropagation(); renameProjectModal('${p.id}')" class="p-1.5 rounded-md text-surface-500 hover:text-brand-500 hover:bg-surface-100 dark:hover:bg-surface-800" title="Rename"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
+                    <button onclick="event.stopPropagation(); duplicateProjectModal('${p.id}')" class="p-1.5 rounded-md text-surface-500 hover:text-brand-500 hover:bg-surface-100 dark:hover:bg-surface-800" title="Duplicate"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
+                    <button onclick="event.stopPropagation(); exportProjectFile('${p.id}')" class="p-1.5 rounded-md text-surface-500 hover:text-brand-500 hover:bg-surface-100 dark:hover:bg-surface-800" title="Export .json"><i data-lucide="download" class="w-3.5 h-3.5"></i></button>
+                    <button onclick="event.stopPropagation(); deleteProjectModal('${p.id}')" class="p-1.5 rounded-md text-surface-500 hover:text-red-500 hover:bg-surface-100 dark:hover:bg-surface-800" title="Delete"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+                </div>
+            </div>`;
+        }
+        function showProjectsModal() {
+            // Make sure the active project's metadata + thumbnail are current.
+            tryAutosaveProject(true);
+            const active = getActiveProject();
+            if (active) {
+                const thumb = captureProjectThumbnail();
+                if (thumb) {
+                    const idx = readProjectsIndex() || [];
+                    const e = idx.find(p => p.id === active.id);
+                    if (e) { e.thumbnail = thumb; writeProjectsIndex(idx); }
+                }
+            }
+            const grid = document.getElementById('projectsGrid');
+            const projects = listProjects();
+            grid.innerHTML = projects.length ? projects.map(projectsCard).join('') : '<p class="text-center text-xs text-surface-500 dark:text-surface-400 py-10">No projects yet — click <b>New Project</b> to start.</p>';
+            lucide.createIcons();
+            const ov = document.getElementById('projectsOverlay');
+            ov.classList.remove('hidden');
+            ov.classList.add('flex');
+        }
+        function hideProjectsModal() {
+            const ov = document.getElementById('projectsOverlay');
+            if (ov) { ov.classList.add('hidden'); ov.classList.remove('flex'); }
+        }
+        function projectsModalNew() {
+            const name = prompt('Name your new project:', '');
+            if (name === null) return;
+            createNewProject(name.trim() || 'Untitled');
+            showProjectsModal();
+        }
+        function renameProjectModal(id) {
+            const idx = readProjectsIndex() || [];
+            const e = idx.find(p => p.id === id);
+            const name = prompt('Rename project:', (e && e.name) || '');
+            if (name === null) return;
+            renameProject(id, name);
+            showProjectsModal();
+        }
+        function duplicateProjectModal(id) {
+            duplicateProject(id);
+            showProjectsModal();
+        }
+        function deleteProjectModal(id) {
+            const idx = readProjectsIndex() || [];
+            const e = idx.find(p => p.id === id);
+            if (!confirm('Delete project "' + ((e && e.name) || id) + '"? This cannot be undone.')) return;
+            deleteProject(id);
+            showProjectsModal();
+        }
+        function exportProjectFile(id) {
+            const data = getProject(id);
+            if (!data) return;
+            const idx = readProjectsIndex() || [];
+            const e = idx.find(p => p.id === id);
+            const name = ((e && e.name) || 'project').replace(/[^a-z0-9-_ ]/gi, '_') || 'project';
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = name + '.json';
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 100);
+        }
+
+        // ── Boot: replaces the single-slot restore ───────────────────────────────
+        function initProjects() {
+            migrateLegacyAutosave();
+            const projects = listProjects();
+            let active = getActiveProject();
+            if (active && getProject(active.id)) {
+                setActiveProject(active.id, active.name);
+                applyProject(getProject(active.id));
+            } else if (projects.length) {
+                const p = projects[0];
+                setActiveProject(p.id, p.name);
+                applyProject(getProject(p.id));
+            } else {
+                const nid = newProjectId();
+                saveProject(nid, createEmptyProject(), 'Untitled');
+                setActiveProject(nid, 'Untitled');
+                applyProject(getProject(nid));
+            }
+            syncSideStoresFromState();
+            _projectDirty = false;
+            updateProjectTitle();
+        }
 
         function tryAutosaveProject(force) {
             if (State.isPlaying || State.isExporting) return;
+            if (!_activeProjectId) return;
             _autosaveTick++;
             // Phase 1 (memory): skip the serialize+stringify while the project is
             // clean. A forced pass every 6 ticks (15 s) plus the force callers
@@ -26676,29 +27021,32 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             // re-render the sidebar/timeline (e.g. a scrubbed playhead position),
             // so no change is ever lost.
             if (!force && !_projectDirty && _autosaveTick % 6 !== 0) return;
+            const wasDirty = _projectDirty;
             let json;
             try { json = JSON.stringify(serializeProject()); } catch (e) { return; }
             _projectDirty = false;
-            if (json === _lastProjectSig) return;
-            _lastProjectSig = json;
-            try {
-                localStorage.setItem(PROJECT_AUTOSAVE_KEY, json);
-            } catch (e) {
-                console.warn('Project autosave failed (storage full?) — use the Save button to keep a copy.', e);
+            if (json === _lastProjectSig[_activeProjectId]) {
+                if (wasDirty) updateProjectTitle();
+                return;
             }
+            _lastProjectSig[_activeProjectId] = json;
+            if (saveProject(_activeProjectId, json)) {
+                // Keep the legacy single slot as a mirror for one release (downgrade-safe).
+                try { localStorage.setItem(PROJECT_AUTOSAVE_KEY, json); } catch (e) {}
+            } else {
+                _projectDirty = true;
+                console.warn('Project autosave failed (storage full?) — use the Save button to keep a copy.');
+                if (!_quotaWarned) {
+                    _quotaWarned = true;
+                    alert('Could not save the project — browser storage is full. Export it to .json to keep a copy, or delete another project.');
+                }
+            }
+            if (wasDirty) updateProjectTitle();
         }
 
         function restoreAutosavedProject() {
-            try {
-                const raw = localStorage.getItem(PROJECT_AUTOSAVE_KEY);
-                if (!raw) return false;
-                applyProject(JSON.parse(raw));
-                _lastProjectSig = raw;
-                return true;
-            } catch (e) {
-                console.warn('Could not restore autosaved project:', e);
-                return false;
-            }
+            // Legacy entry point — the multi-project boot path is initProjects().
+            initProjects();
         }
 
         window.saveProjectToFile = function() {
@@ -26707,7 +27055,8 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             const blob = new Blob([json], { type: 'application/json' });
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
-            a.download = 'studio-pro-project.json';
+            const name = (_activeProjectName || 'studio-pro-project').replace(/[^a-z0-9-_ ]/gi, '_') || 'studio-pro-project';
+            a.download = name + '.json';
             document.body.appendChild(a);
             a.click();
             setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 100);
@@ -26719,7 +27068,15 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             const reader = new FileReader();
             reader.onload = () => {
                 try {
-                    applyProject(JSON.parse(reader.result));
+                    const data = JSON.parse(reader.result);
+                    if (data.app !== 'StudioPro') throw new Error('Not a StudioPro project file');
+                    if (data.version !== PROJECT_VERSION) throw new Error('Unsupported project version: ' + data.version);
+                    // Import ADDS a new project to the registry instead of replacing the active one.
+                    const id = newProjectId();
+                    const name = (file.name || '').replace(/\.json$/i, '') || 'Imported Project';
+                    if (!saveProject(id, data, name)) { alert('Could not import — storage is full.'); return; }
+                    switchProject(id);
+                    hideProjectsModal();
                 } catch (e) {
                     alert('Could not load project: ' + e.message);
                 }
@@ -26818,18 +27175,13 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
         }
 
         window.startNewProject = function() {
-            if (!confirm('Start a new empty project?\n\nYour current project will be backed up to a separate slot first, then the editor resets to a blank timeline.')) return;
-            try {
-                const cur = localStorage.getItem(PROJECT_AUTOSAVE_KEY);
-                if (cur) localStorage.setItem(PROJECT_BACKUP_KEY, cur);
-            } catch (e) {}
+            // With the multi-project registry nothing is destroyed — a new project is
+            // created in the registry and the editor switches to it; the current one
+            // stays saved and switchable in the Projects modal.
+            const name = prompt('Name your new project:', '');
+            if (name === null) return;
             hideReimportModal();
-            applyProject(createEmptyProject());
-            // Sync the legacy side stores so captions/markdown configs match the
-            // reset editor (they'd otherwise keep the previous project's values).
-            try { saveSubtitlesToStorage(); } catch (e) {}
-            try { saveMarkdownConfig(); } catch (e) {}
-            tryAutosaveProject(true);
+            createNewProject(name.trim() || 'Untitled');
         };
 
         // --- Last-used re-import folder (File System Access API) ---
