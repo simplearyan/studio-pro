@@ -769,6 +769,9 @@
             <button onclick="exportFrame()" aria-label="Export current frame" title="Export Frame (PNG/JPG/WebP — settings in the Export panel)" class="p-1.5 text-surface-600 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white bg-surface-100 dark:bg-surface-800 rounded-md border border-surface-200 dark:border-surface-700 shadow-sm">
                 <i data-lucide="camera" class="w-4 h-4"></i>
             </button>
+            <button id="btnCopyFrame" onclick="copyFrame()" aria-label="Copy current frame to clipboard" title="Copy Frame (PNG)" class="p-1.5 text-surface-600 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white bg-surface-100 dark:bg-surface-800 rounded-md border border-surface-200 dark:border-surface-700 shadow-sm">
+                <i data-lucide="copy" class="w-4 h-4"></i>
+            </button>
 
             <!-- Export Button -->
             <div class="relative">
@@ -27045,8 +27048,12 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             } catch (_) {}
         }
 
-        window.exportFrame = async () => {
-            if (State.isExporting) return;
+        // Render the current frame to an offscreen canvas at the configured
+        // snapshot resolution (HD/2K/4K × the current aspect ratio), syncing
+        // active video clips to the playhead frame first. Shared by the
+        // camera-icon download (exportFrame) and the copy-to-clipboard
+        // (copyFrame) actions.
+        async function renderFrameCanvas() {
             const cfg = getFrameExportConfig();
             const aspectStr = ASPECT_RATIOS[State.preview.aspectIndex].value;
             const [wRatio, hRatio] = aspectStr.split('/').map(Number);
@@ -27078,7 +27085,12 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             canvas.width = w; canvas.height = h;
             const ctx = canvas.getContext('2d');
             drawCanvas(ctx, w, h);
+            return { canvas, cfg, w, h };
+        }
 
+        window.exportFrame = async () => {
+            if (State.isExporting) return;
+            const { canvas, cfg } = await renderFrameCanvas();
             const mime = cfg.format === 'jpeg' ? 'image/jpeg' : cfg.format === 'webp' ? 'image/webp' : 'image/png';
             const blob = await new Promise(res => canvas.toBlob(res, mime, cfg.format === 'png' ? undefined : 0.92));
             if (!blob) { console.warn('Frame export failed — canvas toBlob returned null'); return; }
@@ -27091,6 +27103,50 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             a.click();
             a.remove();
             setTimeout(() => URL.revokeObjectURL(url), 4000);
+        };
+
+        // Flash the copy button's icon to a green check for ~1.4s as feedback.
+        function flashCopyFeedback(ok) {
+            const btn = document.getElementById('btnCopyFrame');
+            if (!btn) return;
+            const svg = btn.querySelector('svg');
+            if (!svg) return;
+            const origHTML = svg.innerHTML;
+            const origCls = svg.getAttribute('class') || '';
+            svg.innerHTML = '<path d="M20 6 9 17l-5-5"/>';
+            svg.setAttribute('class', origCls + ' text-emerald-500');
+            btn.setAttribute('title', ok ? 'Copied!' : 'Copy failed — downloaded instead');
+            setTimeout(() => {
+                svg.innerHTML = origHTML;
+                svg.setAttribute('class', origCls);
+                btn.setAttribute('title', 'Copy Frame (PNG)');
+            }, 1400);
+        }
+
+        // Copy the current frame to the clipboard (PNG) instead of downloading.
+        // Requires the Async Clipboard API (secure context); falls back to a
+        // download when unavailable or on failure so the user always gets the
+        // frame one way or another.
+        window.copyFrame = async () => {
+            if (State.isExporting) return;
+            if (!navigator.clipboard || !window.ClipboardItem || !navigator.clipboard.write) {
+                exportFrame();
+                return;
+            }
+            try {
+                const { canvas } = await renderFrameCanvas();
+                // PNG is the format every app accepts for pasted images — if the
+                // user configured JPG/WebP for downloads, the clipboard copy still
+                // uses PNG so it pastes everywhere.
+                const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
+                if (!blob) throw new Error('toBlob returned null');
+                await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+                flashCopyFeedback(true);
+            } catch (err) {
+                console.warn('Copy frame failed — falling back to download', err);
+                flashCopyFeedback(false);
+                exportFrame();
+            }
         };
 
         function switchExportTab(tabId) {
