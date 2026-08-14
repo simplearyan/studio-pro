@@ -2183,6 +2183,19 @@
 
         // --- Initialization ---
         function init() {
+            // Snapshot the pristine default configs (canvas color, aspect ratio,
+            // caption/markdown styles) BEFORE the legacy loaders and the autosave
+            // restore merge stored values in — "Start a New Empty Project" resets
+            // to these instead of inheriting the previous project's styles.
+            _pristineProjectDefaults = {
+                canvasBgColor: State.canvasBgColor,
+                aspectIndex: State.preview.aspectIndex,
+                subtitleConfig: JSON.parse(JSON.stringify(State.subtitleConfig)),
+                markdownConfig: JSON.parse(JSON.stringify(State.markdownConfig)),
+                markdownText: State.markdownText,
+                subtitleGen: JSON.parse(JSON.stringify(State.subtitleGen)),
+                subtitleFix: JSON.parse(JSON.stringify(State.subtitleFix))
+            };
             // Restore workspace layout configurations
             try {
                 const savedLayout = localStorage.getItem('studiopro_layout_config');
@@ -26343,7 +26356,12 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
         //  (bounded by SFX_EMBED_MAX) so sound design survives the round-trip.
         // ═══════════════════════════════════════════════════════════════════
         const PROJECT_AUTOSAVE_KEY = 'studiopro_project_autosave_v1';
+        // The previous project is copied here before "Start a New Empty Project"
+        // wipes the autosave slot, so nothing is ever lost.
+        const PROJECT_BACKUP_KEY = 'studiopro_project_backup_v1';
         const PROJECT_VERSION = 1;
+        // Pristine default configs snapshotted at boot (see init()).
+        let _pristineProjectDefaults = null;
         const SFX_EMBED_MAX = 800 * 1024; // per-SFX WAV byte cap for embedding
 
         // Runtime-only clip fields that must never be serialized (elements, buffers,
@@ -26755,6 +26773,9 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 <button onclick="pickReimportFolder()" class="cursor-pointer border border-surface-200 dark:border-surface-700 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-400 text-surface-600 dark:text-surface-300 px-4 py-2.5 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 w-full">
                     <i data-lucide="folder-open" class="w-4 h-4"></i> Select Folder
                 </button>
+                <button onclick="startNewProject()" title="Discard this project and start a blank timeline (current project is backed up first)" class="w-full mt-2 border-t border-surface-200 dark:border-surface-700 rounded-none pt-2.5 pb-1.5 px-4 text-xs font-bold text-surface-500 dark:text-surface-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors flex items-center justify-center gap-1.5">
+                    <i data-lucide="file-plus" class="w-3.5 h-3.5"></i> Start a New Empty Project
+                </button>
                 <button onclick="hideReimportModal()" class="px-4 py-2 text-sm font-bold text-surface-600 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white hover:bg-surface-100 dark:hover:bg-surface-700 rounded-md transition-colors w-full">Skip for now</button>
             `;
             lucide.createIcons();
@@ -26766,6 +26787,50 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             const ov = document.getElementById('reimportOverlay');
             if (ov) { ov.classList.add('hidden'); ov.classList.remove('flex'); }
         }
+
+        // ── Start a New Empty Project ────────────────────────────────────────────
+        // Offered from the Re-import Media modal: instead of hunting for the
+        // missing files, the user can abandon the loaded project and reset to a
+        // blank timeline. The current project is copied to a backup slot first;
+        // configs (canvas color, aspect, caption/markdown styles) reset to the
+        // pristine defaults snapshotted at boot.
+        function createEmptyProject() {
+            const p = _pristineProjectDefaults || {};
+            return {
+                app: 'StudioPro',
+                version: PROJECT_VERSION,
+                savedAt: Date.now(),
+                duration: 60,
+                currentTime: 0,
+                canvasBgColor: p.canvasBgColor || '#231F20',
+                aspectIndex: p.aspectIndex || 0,
+                tracks: [], // applyProject fills the default V1/A1/A2 tracks
+                clips: [],
+                subtitles: [],
+                subtitleConfig: p.subtitleConfig,
+                markdownConfig: p.markdownConfig,
+                markdownText: p.markdownText,
+                subtitleGen: p.subtitleGen,
+                subtitleFix: p.subtitleFix,
+                audioLibGroup: '',
+                audioLibrary: []
+            };
+        }
+
+        window.startNewProject = function() {
+            if (!confirm('Start a new empty project?\n\nYour current project will be backed up to a separate slot first, then the editor resets to a blank timeline.')) return;
+            try {
+                const cur = localStorage.getItem(PROJECT_AUTOSAVE_KEY);
+                if (cur) localStorage.setItem(PROJECT_BACKUP_KEY, cur);
+            } catch (e) {}
+            hideReimportModal();
+            applyProject(createEmptyProject());
+            // Sync the legacy side stores so captions/markdown configs match the
+            // reset editor (they'd otherwise keep the previous project's values).
+            try { saveSubtitlesToStorage(); } catch (e) {}
+            try { saveMarkdownConfig(); } catch (e) {}
+            tryAutosaveProject(true);
+        };
 
         // --- Last-used re-import folder (File System Access API) ---
         // When supported (Chromium), the folder picker returns a persistent
