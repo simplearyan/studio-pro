@@ -159,7 +159,7 @@ The standard MediaBunny path already carries the Kenichi-style GPU protections; 
 - [ ] Determinism: the FTRT output frame-for-frame matches a MediaBunny export of the same project (M0 parity harness hash per frame) — same project → same pixels.
 - [ ] **Fallback works:** simulating a stalled worker (or a 4K range on the GT 740) triggers the watchdog dialog within `stallMs`; "Use MediaBunny" aborts cleanly and relaunches the standard export with identical settings; cancel works at any point.
 - [ ] Audio in FTRT output is in sync and identical to MediaBunny output (timestamp-muxed chunks, pre-rendered — no wall-clock dependency).
-- [ ] Video-clip timelines: either auto-degrade notice + 1× correctness, or (M1b) FTRT via frame pool.
+- [x] Video-clip timelines: (M1b) FTRT via frame pool — verified live, see §7.2.
 - [ ] `Compare` shows both modes' wall time + × real-time for the probe range.
 - [ ] `npm run build` passes; no console errors; progress bar / ETA / cancel UX intact.
 
@@ -176,7 +176,22 @@ The standard MediaBunny path already carries the Kenichi-style GPU protections; 
 - ✅ Worker-error path → clean "Fast export failed" notice modal (triggered via invalid 1×1 avc config).
 - ✅ Reversed-video pre-flight → routes straight to MediaBunny with **identical settings** (verified args: 1920×1080, 30 fps, 0–5 s, mp4).
 - ⚠️ Stall watchdog + "Switch to MediaBunny" dialog: logic + markup in place; the natural trigger is a **total worker hang** (no acks, no errors) which the healthy dev machine cannot produce — the fallback relaunch call (`window.startMediaBunnyExport(exportW, exportH, fps, startTime, endTime, format)`) is the same one verified via the reversed-video path. To be confirmed on the user's GT 740 under a genuinely hung workload.
-- ⚠️ Video 1× degrade (existing-element staggered play + 1× pacing): code in place; needs a real video export to exercise — user-machine check.
+- ⚠️ Video 1× degrade (existing-element staggered play + 1× pacing): **superseded by M1b** — replaced by the frame pool (§7.2).
+
+## 7.2 M1b status (2026-08-17) — video frame pool, implemented + verified live
+
+**What shipped (all in `index.html`, on top of M1a):** the 1× video degrade is **replaced** by a sliding-window frame pool. Each in-range (non-reversed) video clip gets a `Map<exportFrameIndex, ImageBitmap>` filled by an async prefetch loop that stays **6 frames ahead** of the pump (`capturePoolFrame`: `seekExportVideo` settle → frame-snap verify → `createImageBitmap(el)`). The pump draws from the pool via a `drawCanvas` hook (`clip._framePool.get(floor(clipSourcePos(clip, t) * fps))` — same mapping as the prefetcher), falls back to a direct seek-capture only when a decode lags, and never plays the elements (the preview loop already skips `syncMediaElements` while `isExporting`). Pool teardown closes every bitmap and nulls `_framePool` so preview returns to live-element drawing. Memory is bounded (≤ WINDOW full-res bitmaps per clip, evicted as the playhead advances). Reversed clips still route to MediaBunny (unchanged).
+
+**Verified live in the dev webview (real worker, real 1080p H.264 source):**
+- ✅ 6 s video clip @ 24 fps 1920×1080 MP4 → **exported in 4.7 s = 1.28× real-time** (old degrade would have been ≥ 1.0×). Capture ran at 31–32 fps (decode-bound: seek + `createImageBitmap` per frame), 144 frames, 3.6 MB output, success modal `⚡ 1.3× real-time`.
+- ✅ Source-frame sanity: hashes of element frames at t = 0.1 / 3.0 / 5.9 s are all distinct → the pool captures real motion, not a frozen frame.
+- ✅ Pool lifecycle: prefetchers started (`video frame pool (1 clip)` log), bitmaps released and `_framePool` nulled after the run; element paused.
+- ✅ `npm run build` passes; M1a text path untouched (the 3.01× text result predates this change; pump edits are shared but neutral for non-video timelines).
+
+**Known honest limits (for the GT 740 follow-up):**
+- The pump is **decode-bound**, not encode-bound: per-frame `seek` + `createImageBitmap` caps capture at ~30 fps on this dev machine — expected slower on the GT 740 (possibly ≈ 1× or below for 4K). The stall watchdog covers worker stalls; a *slow-but-steady* decode just yields a lower × ratio (no freeze, no dialog). MediaBunny stays the guaranteed-correct lane.
+- Multi-clip ranges share the same per-clip machinery (one element + one prefetcher per clip) — a two-clip overlap is the natural user-machine check.
+- WebCodecs-in-worker decode (deterministic, no DOM element, faster) remains the M1c/M2 candidate from the roadmap; `createImageBitmap(videoEl)` stepping is the shippable fallback used here.
 
 ## 8. Risks & mitigations
 
@@ -185,7 +200,7 @@ The standard MediaBunny path already carries the Kenichi-style GPU protections; 
 | Helper extraction breaks the safe path | Read-only mechanical moves; before/after file hash on a MediaBunny export; acceptance criterion #1 |
 | FTRT still freezes at 4K on GT 740 | Watchdog + frame-time monitor + one-click fallback; `createImageBitmap` (never `transferToImageBitmap`); worker encode |
 | Audio desync at FTRT speed | Audio is pre-rendered deterministic (`OfflineAudioContext`) and muxed by timestamp — feed all chunks up-front; identical to MediaBunny mux |
-| Users expect FTRT for video clips immediately | Auto-degrade + honest notice in M1a; frame pool in M1b |
+| Users expect FTRT for video clips immediately | Frame pool in M1b (decode-bound ≈ 1.3× on dev); MediaBunny fallback + watchdog for weak-GPU/4K cases |
 | Two loops drift apart over time | Both call the same extracted helpers; M0 parity harness checks frame equality |
 
 ---

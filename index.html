@@ -6232,9 +6232,21 @@
                         } // end cached-frame fallback else (mock branch)
                     } else {
                         let source = clip.type === 'image' ? clip.imageEl : clip.videoEl;
+                        // M1b frame pool: during FTRT export, video clips draw from the
+                        // pre-decoded sliding-window pool (flipbook capture) — the live
+                        // element is owned by the prefetcher and seeked ahead, so it is
+                        // NOT the current frame. Preview never has _framePool set, so it
+                        // is unaffected. The index matches ensurePoolFrame's mapping.
+                        if (clip.type === 'video' && clip._framePool && clip._framePool.get) {
+                            const _pt = State.currentTime;
+                            if (_pt >= clip.start && _pt < clip.start + clip.duration) {
+                                const _bmp = clip._framePool.get(Math.floor(clipSourcePos(clip, _pt - clip.start) * clip._framePool.fps));
+                                if (_bmp) source = _bmp;
+                            }
+                        }
                         if (source) {
-                        const srcW = (source.naturalWidth || source.videoWidth) || 100;
-                        const srcH = (source.naturalHeight || source.videoHeight) || 100;
+                        const srcW = (source.naturalWidth || source.videoWidth || source.width) || 100;
+                        const srcH = (source.naturalHeight || source.videoHeight || source.height) || 100;
 
                         // Crop and Zoom settings
                         const cropEnable = clip.effects.cropEnable !== undefined ? clip.effects.cropEnable : true;
@@ -30711,10 +30723,11 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
         };
 
         // ── Fast (FTRT) export — un-paced frame pump on the shared worker ──────────
-        // M1a: text/markdown timelines export faster than real time; video clips
-        // auto-degrade to 1× (paced) with a notice (the M1b frame pool removes the
-        // last 1× dependency). Inherits the GT 740 protections: createImageBitmap
-        // (never transferToImageBitmap — Kenichi-style, prevents driver TDR), worker
+        // M1a: text/markdown timelines export faster than real time. M1b adds the
+        // video frame pool — each in-range video clip is pre-decoded into a sliding-
+        // window ImageBitmap pool (flipbook capture) so video timelines also export
+        // un-paced. Inherits the GT 740 protections: createImageBitmap (never
+        // transferToImageBitmap — Kenichi-style, prevents driver TDR), worker
         // frame-processed-ack backpressure, and a stall watchdog that offers a
         // one-click "Switch to MediaBunny" fallback with the identical settings.
         // MediaBunny's own loop is untouched; both share preRenderExportAudio, the
@@ -30727,13 +30740,81 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             const exportStartWall = performance.now();
             const rangeSec = endTime - startTime;
 
-            // M1a video policy: clips in range auto-degrade to 1×. Reversed clips need
-            // MediaBunny's element-resync machinery this mode doesn't have yet — route
-            // those straight to the safe lane (MediaBunny) with a console notice.
+            // M1b video policy: clips in range are pre-decoded into a sliding-window
+            // ImageBitmap pool (flipbook capture) so video timelines also export
+            // faster than real time. Reversed clips need MediaBunny's element-resync
+            // machinery this mode doesn't have yet — route those straight to the safe
+            // lane (MediaBunny) with a console notice.
             const videoClips = State.clips.filter(c =>
                 c.type === 'video' && !c.hidden && c.fileUrl && c.start < endTime && (c.start + c.duration) > startTime);
             const reversedVideo = videoClips.some(c => c.reverse);
             const hasVideo = videoClips.length > 0 && !reversedVideo;
+
+            // ── M1b: sliding-window video frame pool ──────────────────────────────
+            // Each in-range clip gets a Map<exportFrameIndex, ImageBitmap> filled by a
+            // prefetch loop that stays WINDOW frames ahead of the pump. The pump draws
+            // from the pool (drawCanvas hook) instead of the live element, so capture
+            // never waits on wall-clock playback — the GT 740-safe flipbook. Memory is
+            // bounded: at most WINDOW full-res bitmaps per clip, evicted as the pump
+            // advances. The element is paused and seeked by the prefetcher only; the
+            // preview loop skips syncMediaElements while isExporting, so nothing fights
+            // the prefetcher's seeks.
+            const poolState = { consumed: -1, stop: false };
+            const capturePoolFrame = (el, srcT, frameDur) => new Promise((resolve) => {
+                if (!el || !el.videoWidth) return resolve(null);
+                let attempts = 0;
+                const trySeek = () => {
+                    if (attempts++ >= 3) return resolve(null);
+                    seekExportVideo(el, srcT, Math.min(0.05, frameDur * 1.4), 600).then(() => {
+                        if (!el.videoWidth) return resolve(null);
+                        // Verify the seek landed on the intended frame (browser frame
+                        // snapping); retry once on a mis-landed capture.
+                        if (Math.abs(el.currentTime - srcT) > frameDur * 1.6 && attempts < 3) return trySeek();
+                        createImageBitmap(el).then(resolve).catch(() => resolve(null));
+                    });
+                };
+                trySeek();
+            });
+            const prefetchVideoPool = async (clip) => {
+                const map = new Map();
+                const pool = { get: (i) => map.get(i), set: (i, b) => map.set(i, b), fps, _map: map };
+                clip._framePool = pool;
+                const WINDOW = 6;
+                const frameDur = timeStep;
+                const totalFrames = Math.max(1, Math.ceil((endTime - startTime) * fps));
+                let nextToDecode = 0;
+                try {
+                    while (!poolState.stop && clip._framePool === pool) {
+                        const consumed = poolState.consumed;
+                        if (consumed >= 0) {
+                            // Evict frames far behind the playhead (keep 2 for safety).
+                            const keepFrom = consumed - 2;
+                            for (const k of map.keys()) {
+                                if (k < keepFrom) {
+                                    const b = map.get(k);
+                                    map.delete(k);
+                                    if (b) { try { b.close(); } catch (_) {} }
+                                }
+                            }
+                        }
+                        if (nextToDecode > consumed + WINDOW) { await new Promise(r => setTimeout(r, 2)); continue; }
+                        if (nextToDecode < consumed - 1) { nextToDecode = consumed - 1; continue; }
+                        const clipT = startTime + nextToDecode / fps - clip.start;
+                        if (clipT >= 0 && clipT < clip.duration) {
+                            const bmp = await capturePoolFrame(clip.videoEl, clipSourcePos(clip, clipT), frameDur);
+                            if (bmp) {
+                                if (!poolState.stop && clip._framePool === pool) map.set(nextToDecode, bmp);
+                                else { try { bmp.close(); } catch (_) {} }
+                            }
+                        }
+                        nextToDecode++;
+                        if (nextToDecode % 2 === 0) await new Promise(r => setTimeout(r, 0));
+                    }
+                } catch (_) {}
+            };
+            if (hasVideo) {
+                for (const clip of videoClips) prefetchVideoPool(clip);
+            }
 
             const exportCanvas = createOffscreenCanvas(exportW, exportH);
             const exportCtx = exportCanvas.getContext('2d');
@@ -30773,7 +30854,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 worker.addEventListener('message', readyHandler);
                 setTimeout(() => { worker.removeEventListener('message', readyHandler); resolve(); }, 5000);
             });
-            console.log('[FTRT] worker ready — pumping ' + totalFrames + ' frames (' + format + ' ' + exportW + 'x' + exportH + ' @ ' + fps + 'fps' + (hasVideo ? ', video 1× degrade' : '') + ')');
+            console.log('[FTRT] worker ready — pumping ' + totalFrames + ' frames (' + format + ' ' + exportW + 'x' + exportH + ' @ ' + fps + 'fps' + (hasVideo ? ', video frame pool (' + videoClips.length + ' clip' + (videoClips.length > 1 ? 's' : '') + ')' : '') + ')');
 
             if (audioBuffer) {
                 let audioSentUpTo = 0, audioChunkIndex = 0;
@@ -30878,27 +30959,26 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 });
             };
 
-            // M1a video degrade: drive the timeline's own elements staggered so the
-            // 1×-paced pump captures real video frames (frame-pool speedup is M1b).
-            const syncVideoElements = () => {
+            // M1b capture: make sure the pool has this frame before drawing — the
+            // prefetcher normally holds a WINDOW lead, so this only acts as a safety
+            // net when a slow decode lags the pump (rare). Never plays the elements:
+            // the pool owns them, and playback would desync the prefetcher's seeks.
+            const ensurePoolFrame = async (targetFrame) => {
                 if (!hasVideo) return;
-                const t = State.currentTime;
+                poolState.consumed = targetFrame;
                 for (const clip of videoClips) {
-                    const el = clip.videoEl;
-                    if (!el) continue;
-                    if (t >= clip.start && t < clip.start + clip.duration) {
-                        if (el.paused) {
-                            try { el.currentTime = Math.max(0, clipSourcePos(clip, t - clip.start)); } catch (_) {}
-                            const p = el.play();
-                            if (p !== undefined) p.catch(() => {});
-                        }
-                    } else {
-                        if (!el.paused) { try { el.pause(); } catch (_) {} }
+                    if (State.currentTime < clip.start || State.currentTime >= clip.start + clip.duration) continue;
+                    const pool = clip._framePool;
+                    if (!pool) continue;
+                    const idx = Math.floor(clipSourcePos(clip, State.currentTime - clip.start) * pool.fps);
+                    if (!pool.get(idx)) {
+                        const bmp = await capturePoolFrame(clip.videoEl, clipSourcePos(clip, State.currentTime - clip.start), timeStep);
+                        if (bmp && clip._framePool === pool) pool.set(idx, bmp);
+                        else if (bmp) { try { bmp.close(); } catch (_) {} }
                     }
                 }
             };
 
-            const pumpStart = performance.now();
             while (lastCapturedFrame < totalFrames - 1 && !State.cancelExport && !workerError && !fallbackRelaunched) {
                 if (performance.now() - lastAckAt > STALL_MS) {
                     const choice = await offerFallback();
@@ -30918,7 +30998,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 const targetFrame = lastCapturedFrame + 1;
                 State.currentTime = startTime + targetFrame * timeStep; // on the fps grid (M0)
 
-                syncVideoElements();
+                await ensurePoolFrame(targetFrame);
                 drawCanvas(exportCtx, exportW, exportH);
                 const bitmap = await createImageBitmap(exportCanvas);
                 sendFrame(bitmap, targetFrame);
@@ -30926,18 +31006,21 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 if (acked) lastAckAt = performance.now();
                 lastCapturedFrame = targetFrame;
                 updateProgress();
-
-                if (hasVideo) {
-                    // 1× degrade pacing — keeps live elements in sync with capture.
-                    const due = (lastCapturedFrame + 1) * (1000 / fps);
-                    const wait = Math.max(2, due - (performance.now() - pumpStart));
-                    if (wait > 0) await new Promise(r => setTimeout(r, wait));
-                }
             }
 
             const restoreAndFinish = () => {
                 if (State.speakerNode) State.speakerNode.gain.value = prevSpeakerGain;
+                // Stop prefetchers, release pooled bitmaps, pause elements. The pool
+                // hook in drawCanvas reads clip._framePool, so nulling it here (before
+                // any later redraw) returns the app to live-element preview drawing.
+                poolState.stop = true;
                 for (const clip of videoClips) {
+                    const pool = clip._framePool;
+                    clip._framePool = null;
+                    if (pool && pool._map) {
+                        for (const b of pool._map.values()) { try { b.close(); } catch (_) {} }
+                        pool._map.clear();
+                    }
                     const el = clip.videoEl;
                     if (el && !el.paused) { try { el.pause(); } catch (_) {} }
                 }
@@ -30988,7 +31071,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     a.click();
                     const exportMs = performance.now() - exportStartWall;
                     const xReal = exportMs > 0 ? rangeSec / (exportMs / 1000) : 0;
-                    console.log('[FTRT] exported ' + rangeSec.toFixed(1) + 's in ' + (exportMs / 1000).toFixed(1) + 's = ' + xReal.toFixed(2) + '× real-time (' + format + (hasVideo ? ', video 1× degrade' : '') + ')');
+                    console.log('[FTRT] exported ' + rangeSec.toFixed(1) + 's in ' + (exportMs / 1000).toFixed(1) + 's = ' + xReal.toFixed(2) + '× real-time (' + format + (hasVideo ? ', video frame pool' : '') + ')');
                     showExportSuccess({
                         url,
                         filename: 'StudioPro_Export_FTRT.' + ext,
