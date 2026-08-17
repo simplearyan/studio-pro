@@ -2103,6 +2103,10 @@
                     sourceOffset: 0,
                     maxDuration: 3600,
                     fileUrl: objectUrl,
+                    // Persist only real URL sources (data: pastes, http(s) imports) —
+                    // blob: URLs are session-only and must never be saved. The clip
+                    // auto-restores from _srcUrl on project open.
+                    _srcUrl: (typeof objectUrl === 'string' && (objectUrl.startsWith('data:image/') || objectUrl.startsWith('http://') || objectUrl.startsWith('https://'))) ? objectUrl : undefined,
                     imageEl: img,
                     effects: { 
                         scale: 1, rotate: 0, borderRadius: 0, offsetX: 0, offsetY: 0, 
@@ -2203,7 +2207,26 @@
             
             if (imageBlob) {
                 e.preventDefault();
-                const objectUrl = URL.createObjectURL(imageBlob);
+                // Persist pasted images as data: URLs (<= cap) so they survive page
+                // refresh / project open; oversized pastes keep the old blob-URL path
+                // (restores as missing media after refresh). See
+                // docs/features/URL-Media-Auto-Load-Plan.md.
+                let pastedSrc = null;
+                try {
+                    if (imageBlob.size <= PASTE_IMAGE_EMBED_MAX) {
+                        pastedSrc = await new Promise((res, rej) => {
+                            const r = new FileReader();
+                            r.onload = () => res(r.result);
+                            r.onerror = () => rej(r.error);
+                            r.readAsDataURL(imageBlob);
+                        });
+                    } else {
+                        console.warn('[StudioPro] Pasted image exceeds ' + PASTE_IMAGE_EMBED_MAX + ' bytes — not embedded; it will need re-import after refresh.');
+                    }
+                } catch (err) {
+                    console.warn('[StudioPro] Failed to read pasted image as data URL:', err);
+                }
+                const objectUrl = pastedSrc || URL.createObjectURL(imageBlob);
                 await addRawImageToTimeline(objectUrl, 'Pasted Image');
             } else {
                 if (!isInputActive) {
@@ -20461,6 +20484,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     sourceOffset: 0,
                     maxDuration: 3600,
                     fileUrl: isMock ? null : img.url,
+                    _srcUrl: isMock ? null : img.url, // persisted URL source — auto-restores on project open (URL-Media-Auto-Load-Plan)
                     imageEl: imgEl,
                     _mdGenerated: true,
                     _mdMedia: true,
@@ -20516,6 +20540,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     speed: 1,
                     maxDuration: 3600,
                     fileUrl: isMock ? null : (v.url || null),
+                    _srcUrl: isMock ? null : (v.url || null), // persisted URL source — auto-restores on project open (URL-Media-Auto-Load-Plan)
                     videoEl: videoEl,
                     _mdGenerated: true,
                     _mdMedia: true,
@@ -26788,6 +26813,10 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
         // Pristine default configs snapshotted at boot (see init()).
         let _pristineProjectDefaults = null;
         const SFX_EMBED_MAX = 800 * 1024; // per-SFX WAV byte cap for embedding
+        // Pasted clipboard images are embedded as data: URLs (so they survive page
+        // refresh / project open) only up to this base64 byte cap — larger pastes
+        // fall back to the old blob-URL behavior (missing after refresh).
+        const PASTE_IMAGE_EMBED_MAX = 2 * 1024 * 1024;
 
         // Runtime-only clip fields that must never be serialized (elements, buffers,
         // audio graphs, blob URLs, decode latches). Peaks are dropped too — they are
@@ -26955,7 +26984,34 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             delete clip._mathLastExtrude;
             delete clip.__vecLastSprite;
             delete clip._mathPreview;
-            if ((clip.type === 'video' || clip.type === 'audio' || clip.type === 'image') && !clip.isPlaceholder && !clip._mdMock) {
+            // URL-based media needs no re-import: rebuild the element from the
+            // persisted source URL and keep the clip live. data: URLs (pasted
+            // clipboard images) survive refresh; http(s) URLs re-fetch (see
+            // docs/features/URL-Media-Auto-Load-Plan.md).
+            const _srcUrl = clip._srcUrl;
+            const _isUrlSrc = typeof _srcUrl === 'string' && (
+                _srcUrl.startsWith('http://') || _srcUrl.startsWith('https://') || _srcUrl.startsWith('data:image/')
+            );
+            if (_isUrlSrc && !clip.isPlaceholder && !clip._mdMock) {
+                clip.fileUrl = _srcUrl;
+                if (clip.type === 'image') {
+                    const img = new Image();
+                    if (!_srcUrl.startsWith('data:')) img.crossOrigin = 'anonymous';
+                    img.onerror = function(){};
+                    img.src = _srcUrl;
+                    clip.imageEl = img;
+                } else if (clip.type === 'video') {
+                    const v = document.createElement('video');
+                    v.preload = 'auto';
+                    v.playsInline = true;
+                    v.muted = true;
+                    if (!_srcUrl.startsWith('data:')) v.crossOrigin = 'anonymous';
+                    v.src = _srcUrl;
+                    armVideoFrameLatch(v);
+                    clip.videoEl = v;
+                }
+                // do NOT set isPlaceholder / _missingMedia here — the clip stays live
+            } else if ((clip.type === 'video' || clip.type === 'audio' || clip.type === 'image') && !clip.isPlaceholder && !clip._mdMock) {
                 clip.isPlaceholder = true;
                 clip._missingMedia = true;
                 // Marks a real clip that needs its source re-imported (as opposed to a
