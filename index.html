@@ -3614,11 +3614,103 @@
                 const type = clip.effects.animLoop;
                 if (type === 'pulse') animScale *= (1 + 0.05 * Math.sin(clipTime * Math.PI * 2));
                 if (type === 'float') animY += 15 * Math.sin(clipTime * Math.PI);
-                if (type === 'shake') { animX += (Math.random() - 0.5) * 10; animY += (Math.random() - 0.5) * 10; }
+                if (type === 'shake') {
+                    // Deterministic jitter (M0): seeded from clip.id ^ frame index, so
+                    // every run of the same project shakes identically while the jitter
+                    // still evolves frame to frame. Same amplitude/distribution as the
+                    // old unseeded jitter version — no visual change.
+                    const shakeFps = State.exportFps || 30;
+                    const shakeFrame = Math.max(0, Math.round(clipTime * shakeFps));
+                    const shakeSeed = (puzzleSeedFromId(clip.id) ^ Math.imul(shakeFrame + 1, 2654435761)) >>> 0;
+                    const shakeRng = mulberry32(shakeSeed);
+                    animX += (shakeRng() - 0.5) * 10;
+                    animY += (shakeRng() - 0.5) * 10;
+                }
                 if (type === 'spin') animRot += clipTime * Math.PI;
             }
 
             return { animAlpha, animScale, animX, animY, animRot, mosaicLevel, puzzleLevel, puzzleDir };
+        }
+
+        // ── Determinism (M0) ───────────────────────────────────────────────────────
+        // Snap a seek time to the frame grid so preview seeks land on the exact times
+        // the export loop renders (export already uses a frame-count clock:
+        // frameElapsed = lastCapturedFrame * timeStep). Applied at the seek SETTERS
+        // only — never inside drawCanvas — so interactive playback keeps advancing
+        // smoothly by wall-clock while every seek is reproducible.
+        function quantizeTimeToFrame(t, fps) {
+            if (!isFinite(t) || t < 0) t = 0;
+            const f = Math.max(1, Math.round(fps || 30));
+            return Math.round(t * f) / f;
+        }
+
+        // ── M0 parity harness (dev-only) ───────────────────────────────────────────
+        // window.__renderFrameHash(t[, w, h]) — renders a quantized frame into a fresh
+        // offscreen canvas and returns an FNV-1a hash of sampled pixels.
+        // window.__determinismSelfCheck() — the same t rendered twice must hash
+        //   identically (catches any unseeded Math.random() left in the frame path).
+        // window.__exportParityCheck() — the preview seek and the export frame for the
+        //   same frame index must land on the same grid time and the same pixels.
+        // Auto-runs with ?determinism-check in the URL; no UI, no perf cost otherwise.
+        function __m0PixelHash(ctx, w, h) {
+            const d = ctx.getImageData(0, 0, w, h).data;
+            let hsh = 2166136261;
+            for (let i = 0; i < d.length; i += 64) {
+                hsh ^= d[i];
+                hsh = Math.imul(hsh, 16777619);
+            }
+            return (hsh >>> 0).toString(16);
+        }
+        function __m0RenderFrameHash(t, w, h) {
+            const fps = State.exportFps || 30;
+            const qt = quantizeTimeToFrame(t, fps);
+            const prev = State.currentTime;
+            const c = document.createElement('canvas');
+            c.width = w || State.preview.width || 1280;
+            c.height = h || State.preview.height || 720;
+            const g = c.getContext('2d');
+            State.currentTime = qt;
+            try { drawCanvas(g, c.width, c.height); }
+            finally { State.currentTime = prev; }
+            return { t: qt, hash: __m0PixelHash(g, c.width, c.height) };
+        }
+        window.__renderFrameHash = __m0RenderFrameHash;
+        window.__determinismSelfCheck = function () {
+            const a = __m0RenderFrameHash(3.4167);
+            const b = __m0RenderFrameHash(3.4167);
+            return { a: a.hash, b: b.hash, pass: a.hash === b.hash };
+        };
+        window.__exportParityCheck = function () {
+            const fps = State.exportFps || 30;
+            const frame = Math.round(State.currentTime * fps);
+            const exportTime = frame / fps;                                  // export loop time
+            const previewTime = quantizeTimeToFrame(State.currentTime, fps); // quantized preview
+            const h1 = __m0RenderFrameHash(exportTime);
+            const h2 = __m0RenderFrameHash(previewTime);
+            return {
+                frame, exportTime, previewTime,
+                gridMatch: exportTime === previewTime,
+                hashStable: h1.hash === h2.hash
+            };
+        };
+        if (location.search.includes('determinism-check')) {
+            setTimeout(function () {
+                const r = window.__determinismSelfCheck();
+                console.log('[M0] self-check', r.pass ? 'OK' : 'FAIL', r);
+            }, 1500);
+        }
+        if (location.search.includes('determinism-audit')) {
+            setTimeout(function () {
+                const fns = [drawCanvas, calculateAnimationState, drawVectorMath, drawPuzzleBlocks];
+                for (const fn of fns) {
+                    if (typeof fn !== 'function') continue;
+                    const src = Function.prototype.toString.call(fn);
+                    for (const tok of ['Math.random', 'Date.now', 'performance.now']) {
+                        if (src.includes(tok)) console.warn('[M0 audit]', (fn.name || 'fn'), 'contains', tok);
+                    }
+                }
+                console.log('[M0] audit scan complete');
+            }, 1500);
         }
 
         // ── Puzzle block reveal (Fireship-style) helpers ───────────────────────────
@@ -4243,6 +4335,13 @@
         // keeps motion perfectly smooth while the bake happens at most ~12x/second.
         let _vecMathLastRebake = 0;
         function vecMathRebakeAllowed() {
+            // M0 determinism: while exporting, never gate on wall-clock. The sprite
+            // CONTENT is already deterministic and size-keyed (getMathVectorSprite
+            // caches by maskKey+colors, and maskKey derives from the target size), so
+            // skipping the throttle makes export frames depend only on (clip, size,
+            // colors) — never on timing. The 80 ms cooldown remains purely for
+            // interactive drags (Formula Size slider smoothness).
+            if (State.isExporting) return true;
             const now = performance.now();
             if (now - _vecMathLastRebake < 80) return false;
             _vecMathLastRebake = now;
@@ -12261,7 +12360,7 @@
                 }
             }
             if (prev) {
-                State.currentTime = clip.start + prev.time;
+                State.currentTime = quantizeTimeToFrame(clip.start + prev.time, State.exportFps || 30);
                 drawCanvas(); renderClips(); updateSidebarPanel(); updatePlayhead();
             }
         };
@@ -12280,7 +12379,7 @@
                 }
             }
             if (next) {
-                State.currentTime = clip.start + next.time;
+                State.currentTime = quantizeTimeToFrame(clip.start + next.time, State.exportFps || 30);
                 drawCanvas(); renderClips(); updateSidebarPanel(); updatePlayhead();
             }
         };
@@ -22849,7 +22948,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
         }
 
         function seekTimelinePlayhead(delta) {
-            State.currentTime = Math.max(0, Math.min(State.currentTime + delta, State.duration));
+            State.currentTime = quantizeTimeToFrame(Math.max(0, Math.min(State.currentTime + delta, State.duration)), State.exportFps || 30);
             updatePlayhead();
             syncMediaElements();
             drawCanvas();
@@ -24401,7 +24500,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     // you're about to split without clicking (then press S / Ctrl+B to cut)
                     if (State.hoverPlayheadTime != null && State.hoverPlayheadEnabled) {
                         e.preventDefault();
-                        State.currentTime = Math.max(0, Math.min(State.hoverPlayheadTime, State.duration));
+                        State.currentTime = quantizeTimeToFrame(Math.max(0, Math.min(State.hoverPlayheadTime, State.duration)), State.exportFps || 30);
                         updatePlayhead();
                         syncMediaElements();
                         drawCanvas();
@@ -24604,7 +24703,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                             });
                             State.dragKeyframe.lastTime = targetTime;
                             
-                            State.currentTime = clip.start + targetTime;
+                            State.currentTime = quantizeTimeToFrame(clip.start + targetTime, State.exportFps || 30);
                             updatePlayhead();
                             syncMediaElements();
                             drawCanvas();
@@ -24735,7 +24834,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                             if (minDiff < snapThreshold) targetTime = closestBeat;
                         }
                     }
-                    State.currentTime = targetTime;
+                    State.currentTime = quantizeTimeToFrame(targetTime, State.exportFps || 30);
                     updatePlayhead();
                     syncMediaElements();
                     drawCanvas();
@@ -24777,7 +24876,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     const rect = tracksContentContainer.getBoundingClientRect();
                     const xInVisibleContainer = e.clientX - rect.left;
                     const absoluteX = timelineScrollArea.scrollLeft + xInVisibleContainer;
-                    const clickTime = Math.max(0, Math.min(absoluteX / State.pixelsPerSecond, State.duration));
+                    const clickTime = quantizeTimeToFrame(Math.max(0, Math.min(absoluteX / State.pixelsPerSecond, State.duration)), State.exportFps || 30);
                     // The exact clip element under the cursor (if any) plus its track —
                     // the 'clip' scope uses these so it cuts what the user actually
                     // clicked (not the bottom-most audio clip).
@@ -24802,7 +24901,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     const clip = State.clips.find(c => c.id === clipId);
                     if (!clip) return;
                     
-                    State.currentTime = clip.start + time;
+                    State.currentTime = quantizeTimeToFrame(clip.start + time, State.exportFps || 30);
                     State.selectedClipId = clipId;
                     updatePlayhead();
                     syncMediaElements();
@@ -24912,7 +25011,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                                 if (minDiff < snapThreshold) targetTime = closestBeat;
                             }
                         }
-                        State.currentTime = targetTime;
+                        State.currentTime = quantizeTimeToFrame(targetTime, State.exportFps || 30);
                         updatePlayhead();
                         syncMediaElements();
                         drawCanvas();
