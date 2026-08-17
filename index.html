@@ -140,6 +140,11 @@
                             <span class="hidden sm:inline">MediaBunny</span>
                             <span class="sm:hidden">MB</span>
                         </button>
+                        <button type="button" onclick="switchExportTab('ftrt')" id="exportTab-ftrt" class="flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all duration-200 text-surface-500 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white flex items-center justify-center gap-1.5">
+                            <i data-lucide="zap" class="w-3.5 h-3.5"></i>
+                            <span class="hidden sm:inline">Fast</span>
+                            <span class="sm:hidden">F</span>
+                        </button>
                         <button type="button" onclick="switchExportTab('audio')" id="exportTab-audio" class="flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all duration-200 text-surface-500 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white flex items-center justify-center gap-1.5">
                             <i data-lucide="music" class="w-3.5 h-3.5"></i>
                             <span class="hidden sm:inline">Audio</span>
@@ -193,6 +198,52 @@
                                 <div class="text-[10px] opacity-75">GPU encode — Small</div>
                             </div>
                         </label>
+                    </div>
+                    
+                    <!-- Fast (FTRT) — capture-only Compare speed probe -->
+                    <div id="exportGroup-ftrt" class="grid grid-cols-2 gap-2 hidden">
+                        <label class="cursor-pointer">
+                            <input type="radio" name="exportFormat" value="video-mediabunny-mp4" class="peer sr-only">
+                            <div class="p-3 border border-surface-200 dark:border-surface-700 rounded-lg export-opt text-surface-900 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-700 shadow-sm">
+                                <i data-lucide="cpu" class="w-4 h-4 mb-1 text-surface-600 dark:text-surface-300 peer-checked:text-brand-500 hidden"></i>
+                                <div class="font-bold text-sm mb-0.5">Fast MP4 (H.264)</div>
+                                <div class="text-[10px] opacity-75">FTRT render</div>
+                            </div>
+                        </label>
+                        <label class="cursor-pointer">
+                            <input type="radio" name="exportFormat" value="video-mediabunny" class="peer sr-only">
+                            <div class="p-3 border border-surface-200 dark:border-surface-700 rounded-lg export-opt text-surface-900 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-700 shadow-sm">
+                                <i data-lucide="cpu" class="w-4 h-4 mb-1 text-surface-600 dark:text-surface-300 peer-checked:text-brand-500 hidden"></i>
+                                <div class="font-bold text-sm mb-0.5">Fast WebM (VP9)</div>
+                                <div class="text-[10px] opacity-75">FTRT render</div>
+                            </div>
+                        </label>
+
+                        <!-- Compare probe: same range through both capture cadences -->
+                        <div class="col-span-2 mt-1 p-3 bg-surface-50 dark:bg-surface-900/50 rounded-lg border border-surface-200 dark:border-surface-700">
+                            <div class="flex items-center justify-between gap-2 mb-2">
+                                <label for="ftrtProbeDuration" class="text-[11px] font-bold text-surface-600 dark:text-surface-300">Compare capture speed (sec)</label>
+                                <div class="flex items-center gap-2">
+                                    <input type="number" id="ftrtProbeDuration" value="10" min="1" max="30" step="1" class="w-16 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-900 dark:text-white text-xs font-mono rounded-md px-2 py-1 focus:ring-1 focus:ring-brand-500 focus:outline-none shadow-inner" title="Range to benchmark, from the timeline start">
+                                    <button type="button" onclick="runCompareProbe()" id="ftrtCompareBtn" class="px-3 py-1.5 bg-surface-900 hover:bg-black dark:bg-white dark:hover:bg-surface-100 text-white dark:text-surface-900 text-[11px] font-bold rounded-md flex items-center gap-1.5 shadow-sm active:scale-[0.97]">
+                                        <i data-lucide="zap" class="w-3.5 h-3.5"></i> Compare
+                                    </button>
+                                </div>
+                            </div>
+                            <p id="ftrtProbeStatus" class="text-[10px] font-mono text-surface-500 dark:text-surface-300 mb-1.5 hidden"></p>
+                            <div id="ftrtCompareResult" class="hidden space-y-1.5 text-[11px]">
+                                <div class="flex items-center justify-between gap-2">
+                                    <span class="text-surface-600 dark:text-surface-300 font-bold shrink-0">Standard (MediaBunny)</span>
+                                    <span id="ftrtStdResult" class="font-mono text-surface-700 dark:text-surface-200 text-right">—</span>
+                                </div>
+                                <div class="flex items-center justify-between gap-2">
+                                    <span class="text-surface-600 dark:text-surface-300 font-bold shrink-0">Fast (FTRT)</span>
+                                    <span id="ftrtFtrtResult" class="font-mono text-surface-700 dark:text-surface-200 text-right">—</span>
+                                </div>
+                                <div id="ftrtSpeedup" class="hidden mt-1 px-2 py-1 rounded-md text-[11px] font-bold text-brand-700 dark:text-brand-300 bg-brand-500/10 dark:bg-brand-400/15"></div>
+                            </div>
+                            <p class="text-[10px] text-surface-500 dark:text-surface-300 mt-2 leading-snug">Capture-only benchmark — the encoder adds the same overhead to both modes. Full FTRT export lands next; Start Export currently uses the MediaBunny pipeline.</p>
+                        </div>
                     </div>
                     
                     <!-- Audio Formats -->
@@ -28845,8 +28896,8 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
         };
 
         function switchExportTab(tabId) {
-            // Block MediaBunny tab for non-Chromium browsers (WebCodecs not available)
-            if (tabId === 'mediabunny' && !checkChromium()) {
+            // Block MediaBunny + Fast tabs for non-Chromium browsers (WebCodecs not available)
+            if ((tabId === 'mediabunny' || tabId === 'ftrt') && !checkChromium()) {
                 return;
             }
             // Update tab button styling with unique accent per tab
@@ -28855,6 +28906,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             const tabStyles = {
                 standard: { base: activeTabCls },
                 mediabunny: { base: activeTabCls },
+                ftrt: { base: activeTabCls },
                 audio: { base: activeTabCls }
             };
             const idleStyles = 'text-surface-500 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white';
@@ -28863,7 +28915,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             const settingsEl = document.getElementById('exportSettings');
             if (settingsEl) settingsEl.setAttribute('data-accent', tabId);
             
-            ['standard', 'mediabunny', 'audio'].forEach(id => {
+            ['standard', 'mediabunny', 'ftrt', 'audio'].forEach(id => {
                 const btn = document.getElementById('exportTab-' + id);
                 const group = document.getElementById('exportGroup-' + id);
                 if (id === tabId) {
@@ -28880,9 +28932,9 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     group.classList.add('hidden');
                 }
             });
-            // Show FPS settings only for MediaBunny tab (frame-by-frame capture)
+            // Show FPS settings only for frame-by-frame capture tabs (MediaBunny / Fast)
             const fpsSection = document.getElementById('exportFpsSection');
-            if (fpsSection) fpsSection.style.display = tabId === 'mediabunny' ? '' : 'none';
+            if (fpsSection) fpsSection.style.display = (tabId === 'mediabunny' || tabId === 'ftrt') ? '' : 'none';
             // Resolution only for video tabs (not audio)
             const resSection = document.getElementById('exportResolutionSection');
             if (resSection) resSection.style.display = tabId === 'audio' ? 'none' : '';
@@ -28892,6 +28944,115 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             // Refresh the CapCut-style selected state for the now-visible group
             exportSelectOption();
         }
+
+        // ── Compare probe (FTRT tab) — capture-only benchmark of both modes ────────
+        // Runs the same range twice on a hidden canvas: the Standard (MediaBunny)
+        // cadence (precision 1× pacing) and the FTRT cadence (un-paced frame pump).
+        // Reports wall time, × real-time and fps for each. Capture-only by design:
+        // no worker encode, no file, no live video elements — safe on weak GPUs, and
+        // the encoder adds the same overhead to both modes so the ratio is the honest
+        // speedup for text/markdown timelines (M1 plan §5).
+        let _probeRunning = false;
+        window.runCompareProbe = async function () {
+            if (_probeRunning || State.isExporting) return;
+            const btn = document.getElementById('ftrtCompareBtn');
+            const statusEl = document.getElementById('ftrtProbeStatus');
+            const resultEl = document.getElementById('ftrtCompareResult');
+            const speedupEl = document.getElementById('ftrtSpeedup');
+
+            // Read the same settings the real export uses (mirror submitExport).
+            const fps = (() => {
+                const r = document.querySelector('input[name="exportFrameRate"]:checked');
+                let f = r ? parseInt(r.value) : 30;
+                if (r && r.value === 'custom') f = parseInt(document.getElementById('exportCustomFps').value) || 30;
+                return Math.max(1, Math.min(240, f));
+            })();
+            const resEl = document.querySelector('input[name="exportResolution"]:checked');
+            const res = resEl ? parseInt(resEl.value) : 1920;
+            const probeSec = Math.min(Math.max(1, parseInt(document.getElementById('ftrtProbeDuration').value) || 10), 30);
+            const endT = Math.min(probeSec, State.duration || 0);
+            if (endT < 0.5) {
+                statusEl.textContent = 'Timeline is empty — nothing to benchmark.';
+                statusEl.classList.remove('hidden');
+                return;
+            }
+
+            // Export dimensions mirror startExport (aspect + resolution, even numbers).
+            const aspectStr = ASPECT_RATIOS[State.preview.aspectIndex].value;
+            const [wRatio, hRatio] = aspectStr.split('/').map(Number);
+            let exportW, exportH;
+            if (wRatio >= hRatio) { exportW = res; exportH = res * (hRatio / wRatio); }
+            else { exportH = res; exportW = res * (wRatio / hRatio); }
+            exportW = Math.floor(exportW / 2) * 2;
+            exportH = Math.floor(exportH / 2) * 2;
+
+            const startT = quantizeTimeToFrame(0, fps);
+            const step = 1 / fps;
+            const frames = Math.max(1, Math.ceil(endT / step));
+            const hasVideo = State.clips.some(c => c.type === 'video' && c.start < endT && c.start + c.duration > startT);
+
+            const canvas = createOffscreenCanvas(exportW, exportH);
+            const ctx = canvas.getContext('2d');
+            const prevTime = State.currentTime;
+            _probeRunning = true;
+            btn.disabled = true;
+            resultEl.classList.add('hidden');
+            speedupEl.classList.add('hidden');
+            statusEl.classList.remove('hidden');
+
+            const renderFrame = async (f) => {
+                State.currentTime = quantizeTimeToFrame(startT + f * step, fps);
+                drawCanvas(ctx, exportW, exportH);
+                const bmp = await createImageBitmap(canvas);
+                bmp.close();
+            };
+            const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+            const tick = Math.max(1, Math.round(frames / 20));
+
+            // Pass 1 — Standard (MediaBunny cadence): precision 1× pacing per frame.
+            statusEl.textContent = 'Standard pass… 0/' + frames;
+            const stdT0 = performance.now();
+            for (let f = 0; f < frames; f++) {
+                await renderFrame(f);
+                const due = (f + 1) * 1000 / fps;
+                const wait = Math.max(2, due - (performance.now() - stdT0));
+                if (wait > 0) await sleep(wait);
+                if (f % tick === 0) statusEl.textContent = 'Standard pass… ' + f + '/' + frames;
+            }
+            const stdWall = (performance.now() - stdT0) / 1000;
+
+            // Pass 2 — FTRT cadence: un-paced frame pump (minimal yield keeps UI alive).
+            statusEl.textContent = 'Fast pass… 0/' + frames;
+            const ftrtT0 = performance.now();
+            for (let f = 0; f < frames; f++) {
+                await renderFrame(f);
+                await sleep(0);
+                if (f % tick === 0) statusEl.textContent = 'Fast pass… ' + f + '/' + frames;
+            }
+            const ftrtWall = (performance.now() - ftrtT0) / 1000;
+
+            State.currentTime = prevTime;
+            _probeRunning = false;
+            btn.disabled = false;
+
+            const xReal = (wall) => wall > 0 ? (endT / wall) : 0;
+            const stdX = xReal(stdWall), ftrtX = xReal(ftrtWall);
+            document.getElementById('ftrtStdResult').textContent =
+                stdWall.toFixed(1) + 's wall · ' + stdX.toFixed(2) + '× real-time · ' + (frames / stdWall).toFixed(1) + ' fps';
+            document.getElementById('ftrtFtrtResult').textContent =
+                ftrtWall.toFixed(1) + 's wall · ' + ftrtX.toFixed(2) + '× real-time · ' + (frames / ftrtWall).toFixed(1) + ' fps';
+            const ratio = stdWall > 0.05 ? (stdWall / ftrtWall) : 0;
+            speedupEl.textContent = ftrtX > 1.05
+                ? '⚡ Fast is ' + ratio.toFixed(1) + '× faster than Standard on this range'
+                : 'Fast ≈ Standard — video clips or heavy effects keep both near 1×';
+            speedupEl.classList.remove('hidden');
+            resultEl.classList.remove('hidden');
+            statusEl.textContent = hasVideo
+                ? 'Note: video clips in range may appear blank — probe is capture-only, and video pins both modes near 1×.'
+                : 'Done.';
+            console.log('[FTRT probe] ' + endT + 's @ ' + fps + 'fps ' + exportW + 'x' + exportH +
+                ': standard=' + stdWall.toFixed(2) + 's (' + stdX.toFixed(2) + '×) ftrt=' + ftrtWall.toFixed(2) + 's (' + ftrtX.toFixed(2) + '×) ratio=' + ratio.toFixed(1) + '×');
+        };
 
         function dismissGpuRecommendation() {
             try { localStorage.setItem('gpuRecDismissed', '1'); } catch (_) {}
@@ -29212,6 +29373,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             const fpsRadioVal = document.querySelector('input[name="exportFrameRate"]:checked');
             const savedPrefs = {
                 tab: document.querySelector('#exportGroup-mediabunny:not(.hidden)') ? 'mediabunny' :
+                      document.querySelector('#exportGroup-ftrt:not(.hidden)') ? 'ftrt' :
                       document.querySelector('#exportGroup-audio:not(.hidden)') ? 'audio' : 'standard',
                 format: format,
                 fps: fpsRadioVal ? fpsRadioVal.value : '30',
