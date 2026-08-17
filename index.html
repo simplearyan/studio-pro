@@ -18356,6 +18356,10 @@ const animTile = (v, label, preview, icon) => {
                     clip.effects.offsetX = ip.offsetX;
                     clip.effects.offsetY = ip.offsetY;
                 }
+                // P1: per-element [key:value] overrides survive a global restyle (spec §5
+                // 'Prop persistence', F4). Offsets are position-derived (computed above
+                // from _mdPos/_mdStackIdx) so they're not part of _mdProps.
+                if (clip._mdProps) Object.assign(clip.effects, clip._mdProps);
             });
             saveMarkdownConfig();
             drawCanvas();
@@ -18676,7 +18680,7 @@ This script references **whoosh**, **ding**, **pop** and **click** \u2014 import
             sound: MARKDOWN_PRESET_SOUND
         };
 
-        const MARKDOWN_HELP_TEXT = 'Write **Markdown** with `## Heading` for titles, `![alt](url)` for images, `![alt](mock)` for mock image placeholders, `![alt](mock:video)` for mock video placeholders, `![alt](video.mp4)` or `[video](url)` for real videos, `$$latex$$` for image-based math equations, and text for paragraphs. Add a position tag at the end of any heading / image / video / math / text line: `[left]`, `[right]`, `[top]`, `[bottom]`, `[top-left]`, `[top-right]`, `[bottom-left]`, `[bottom-right]`, `[center-left]`, `[center-right]`. Elements sharing the same side stack with the Element Gap spacing. Attach a sound imported in the Media tab by adding `[audio:name]` at the end of any line — e.g. `## Wow [audio:whoosh]` or `![Logo](mock) [audio:ding]`. Use `---` to separate slides.';
+        const MARKDOWN_HELP_TEXT = 'Write **Markdown** with `## Heading` for titles, `![alt](url)` for images, `![alt](mock)` for mock image placeholders, `![alt](mock:video)` for mock video placeholders, `![alt](video.mp4)` or `[video](url)` for real videos, `$$latex$$` for image-based math equations, and text for paragraphs. Add a position tag at the end of any heading / image / video / math / text line: `[left]`, `[right]`, `[top]`, `[bottom]`, `[top-left]`, `[top-right]`, `[bottom-left]`, `[bottom-right]`, `[center-left]`, `[center-right]`. Elements sharing the same side stack with the Element Gap spacing. Attach a sound imported in the Media tab by adding `[audio:name]` at the end of any line — e.g. `## Wow [audio:whoosh]` or `![Logo](mock) [audio:ding]`. Use `---` to separate slides. Add a front-matter block at the very top for document props (`aspect:`, `headingAnimIn:`, `slideDuration:`, `bg:`, `template:`, ...) and per-element `[key:value]` tags — `[anim:zoomIn]` `[size:140]` `[font:Anton]` `[color:#fde047]` `[dur:6]` on `---` — to style individual lines.';
 
         window.setMarkdownSubTab = function(tab) {
             State.markdownSubTab = tab;
@@ -19846,10 +19850,102 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             // State.markdownText so the generator also works from the Style sub-tab
             // (e.g. when toggling the track layout mode auto-regenerates clips).
             const ta = document.getElementById('markdownTextarea');
-            const md = (ta && ta.value.trim()) ? ta.value : (State.markdownText || '');
+            let md = (ta && ta.value.trim()) ? ta.value : (State.markdownText || '');
             if (!md.trim()) return;
             
             State.markdownText = md;
+            
+            // ── P1 Markdown props: front-matter + [key:value] tags ──────────────────
+            // (spec: docs/hyperframes/Markdown-Props-Spec.md)
+            // Front-matter only activates when line 1 is `---` and every line inside is
+            // `key: value`, a `#` comment, or blank — a script that starts with `---`
+            // as a slide separator is unaffected (backward-compat guarantee).
+            function parseMdFrontMatter(src) {
+                const lines = src.split('\n');
+                if (lines[0].trim() !== '---') return { text: src, fm: {} };
+                let end = -1;
+                for (let i = 1; i < lines.length; i++) {
+                    const t = lines[i].trim();
+                    if (t === '---') { end = i; break; }
+                    // Strict: every non-blank line must be `key: value`. A legacy script
+                    // that begins with `---` as a slide separator (e.g. `---` then a
+                    // `## Heading`) is therefore never misread as front-matter — the
+                    // spec's backward-compat guarantee.
+                    if (t && !/^[a-zA-Z][\w-]*:\s*\S/.test(t)) return { text: src, fm: {} };
+                }
+                if (end === -1) return { text: src, fm: {} };
+                const fm = {};
+                for (let i = 1; i < end; i++) {
+                    const t = lines[i].trim();
+                    if (!t) continue;
+                    const m = t.match(/^([a-zA-Z][\w-]*):\s*(.+)$/);
+                    if (!m) continue;
+                    let v = m[2].trim();
+                    if (v.length >= 2 && ((v[0] === '"' && v[v.length - 1] === '"') || (v[0] === "'" && v[v.length - 1] === "'"))) v = v.slice(1, -1);
+                    fm[m[1]] = v;
+                }
+                return { text: lines.slice(end + 1).join('\n'), fm };
+            }
+            function unquoteProp(s) { const t = (s || '').trim(); if (t.length >= 2 && ((t[0] === '"' && t[t.length - 1] === '"') || (t[0] === "'" && t[t.length - 1] === "'"))) return t.slice(1, -1); return t; }
+            function numProp(v) { const n = parseFloat(v); return isFinite(n) ? n : null; }
+            function normAnim(v) { if (!v) return v; const alias = { fadeIn: 'fade', scaleIn: 'zoomIn', popIn: 'pop' }; return alias[v] || v; }
+            // Canonical clip animIn set (matches calculateAnimationState + the Animations tab)
+            const MD_ANIM_SET = new Set(['none', 'fade', 'slideUp', 'slideDown', 'slideLeft', 'slideRight', 'slide', 'zoomIn', 'pop', 'spinIn', 'mosaic', 'puzzle']);
+            function validAnim(v) { const a = normAnim(v); return (a && MD_ANIM_SET.has(a)) ? a : null; }
+            const HEX_RE = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
+            
+            const fmParsed = parseMdFrontMatter(md);
+            const fm = fmParsed.fm;
+            md = fmParsed.text;
+            
+            // Front-matter → single store: markdownConfig (already holds UI defaults),
+            // plus the few project globals a script may set. Unknown keys warn + no-op
+            // — generation never fails because of a prop.
+            if (Object.keys(fm).length) {
+                const fcfg = State.markdownConfig;
+                for (const k in fm) {
+                    const v = fm[k];
+                    if (k === 'template') {
+                        // V2: template engine not shipped yet — accept + warn, never fail.
+                        console.warn('[StudioPro] template: "' + v + '" — templates are a V2 feature; ignoring for now.');
+                    } else if (k === 'aspect') {
+                        const idx = ASPECT_RATIOS.findIndex(a => a.label === String(v));
+                        if (idx !== -1) State.preview.aspectIndex = idx;
+                        else console.warn('[StudioPro] Unknown aspect: "' + v + '" (expected ' + ASPECT_RATIOS.map(a => a.label).join(', ') + ')');
+                    } else if (k === 'fps') {
+                        const n = parseInt(v, 10);
+                        if (isFinite(n) && n > 0) State.exportFps = n;
+                        else console.warn('[StudioPro] fps must be a number, got "' + v + '"');
+                    } else if (k === 'bg') {
+                        if (HEX_RE.test(v)) State.canvasBgColor = v;
+                        else console.warn('[StudioPro] bg must be a hex color, got "' + v + '"');
+                    } else if (k === 'captionAnim') {
+                        State.subtitleConfig.animPreset = v;
+                    } else if (k === 'captionHighlight') {
+                        if (HEX_RE.test(v)) State.subtitleConfig.highlightColor = v;
+                        else console.warn('[StudioPro] captionHighlight must be a hex color, got "' + v + '"');
+                    } else if (k === 'captionFontFamily') {
+                        State.subtitleConfig.fontFamily = v;
+                    } else if (k === 'captionFillColor') {
+                        if (HEX_RE.test(v)) State.subtitleConfig.fillColor = v;
+                        else console.warn('[StudioPro] captionFillColor must be a hex color, got "' + v + '"');
+                    } else if (k in fcfg) {
+                        // markdownConfig keys — light validation per type, then merge.
+                        if (k === 'slideDuration') { const d = numProp(v); if (d !== null && d > 0 && d <= 60) fcfg[k] = d; else console.warn('[StudioPro] slideDuration must be 1–60, got "' + v + '"'); }
+                        else if (k === 'mdGap') { const g = numProp(v); if (g !== null && g >= 0 && g <= 30) fcfg[k] = g; else console.warn('[StudioPro] mdGap must be 0–30, got "' + v + '"'); }
+                        else if (k === 'trackMode') { if (v === 'auto' || v === 'script') fcfg[k] = v; else console.warn('[StudioPro] trackMode must be auto|script, got "' + v + '"'); }
+                        else if (k === 'startAt') { if (['zero', 'playhead', '30', '60', 'custom'].includes(v)) fcfg[k] = v; else console.warn('[StudioPro] startAt must be zero|playhead|30|60|custom, got "' + v + '"'); }
+                        else if (k.endsWith('AnimIn')) { const a = validAnim(v); if (a) fcfg[k] = a; else console.warn('[StudioPro] ' + k + ' unknown anim: "' + v + '" (expected fade|slideUp|slideDown|slideLeft|slideRight|slide|zoomIn|pop|spinIn|mosaic|puzzle)'); }
+                        else if (k.endsWith('Color')) { if (HEX_RE.test(v)) fcfg[k] = v; else console.warn('[StudioPro] ' + k + ' must be a hex color, got "' + v + '"'); }
+                        else if (k.endsWith('FontSize') || k.endsWith('FontWeight') || k.endsWith('Delay') || k.endsWith('Offset') || k === 'imageScale') { const n = numProp(v); if (n !== null) fcfg[k] = n; else console.warn('[StudioPro] ' + k + ' must be a number, got "' + v + '"'); }
+                        else fcfg[k] = v;
+                    } else {
+                        console.warn('[StudioPro] Unknown front-matter key: "' + k + '"');
+                    }
+                }
+                saveMarkdownConfig();
+                drawCanvas();
+            }
             
             // First, clear any previously generated markdown clips
             State.clips = State.clips.filter(c => !c._mdGenerated);
@@ -19871,9 +19967,44 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 return 'image';
             }
             
+            const POS_NAME_SET = new Set(['top', 'bottom', 'left', 'right', 'center', 'top-left', 'top-right', 'bottom-left', 'bottom-right', 'center-left', 'center-right']);
+            // P1 generalized [key:value] prop tags. audio/position tags are left in the
+            // line for the existing handlers below; everything else is collected into
+            // lineProps and stripped. Props are stripped BEFORE the `---` check so a
+            // `--- [dur:6]` separator parses (spec §5/F5).
+            const PROPS_RE = /\s*\[([a-zA-Z][\w-]*):([^\]]*)\]\s*/g;
+            let pendingSlideDur = null; // duration for the slide following a `--- [dur:N]`
+            
             for (let i = 0; i < lines.length; i++) {
                 const rawLine = lines[i];
                 let line = rawLine.trim();
+                const lineProps = {};
+                let hadProps = false;
+                line = line.replace(PROPS_RE, (m, k, v) => {
+                    const key = k.toLowerCase();
+                    if (key === 'audio' || POS_NAME_SET.has(key)) return m; // existing handlers
+                    hadProps = true;
+                    lineProps[key] = unquoteProp(v);
+                    return ' ';
+                });
+                if (hadProps) line = line.replace(/\s{2,}/g, ' ').trim();
+                
+                // Separator (with optional `[dur:N]` tag) = new slide
+                if (line === '---' || line === '___' || line === '***') {
+                    if (currentSlide.heading || currentSlide.text || currentSlide.images.length || currentSlide.videos.length || currentSlide.maths.length) {
+                        slides.push(currentSlide);
+                    }
+                    if (lineProps.dur !== undefined) { const d = numProp(lineProps.dur); if (d !== null && d > 0) pendingSlideDur = d; }
+                    currentSlide = { heading: '', text: '', images: [], videos: [], maths: [], elements: [] };
+                    continue;
+                }
+                // A line that was only props (e.g. a bare `[dur:6]`) sets the next slide's duration
+                if (!line) {
+                    if (lineProps.dur !== undefined) { const d = numProp(lineProps.dur); if (d !== null && d > 0) pendingSlideDur = d; }
+                    continue;
+                }
+                // Apply a pending per-slide duration to the slide that starts here
+                if (pendingSlideDur !== null) { currentSlide._dur = pendingSlideDur; pendingSlideDur = null; }
                 
                 // Embedded-audio tag: `[audio:name]` on the line (optionally combined
                 // with a position tag in either order — `[top] [audio:name]` or
@@ -19893,15 +20024,6 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     }
                 }
                 
-                // Separator = new slide
-                if (line === '---' || line === '___' || line === '***') {
-                    if (currentSlide.heading || currentSlide.text || currentSlide.images.length || currentSlide.videos.length || currentSlide.maths.length) {
-                        slides.push(currentSlide);
-                    }
-                    currentSlide = { heading: '', text: '', images: [], videos: [], maths: [], elements: [] };
-                    continue;
-                }
-                
                 // Math: $$ latex $$ — image-based math element (MathJax rendered)
                 // Also supports a position tag: $$ x^2 $$ [right]
                 const mathMatch = line.match(/^\$\$(.+?)\$\$/);
@@ -19911,8 +20033,9 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     const latex = mathMatch[1].trim();
                     if (latex) {
                         const mIdx = currentSlide.maths.length;
-                        currentSlide.maths.push({ latex, pos, idx: mIdx, audioName: lineAudio });
-                        currentSlide.elements.push({ kind: 'math', latex, pos, idx: mIdx, audioName: lineAudio });
+                        const mProps = Object.keys(lineProps).length ? lineProps : undefined;
+                        currentSlide.maths.push({ latex, pos, idx: mIdx, audioName: lineAudio, props: mProps });
+                        currentSlide.elements.push({ kind: 'math', latex, pos, idx: mIdx, audioName: lineAudio, props: mProps });
                     }
                     continue;
                 }
@@ -19923,7 +20046,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     const posMatch = line.slice(vidMatch[0].length).match(POS_RE);
                     const pos = posMatch ? posMatch[1] : null;
                     const vIdx = currentSlide.videos.length;
-                    const v = { url: vidMatch[1].trim(), alt: '', pos, idx: vIdx, mock: false, audioName: lineAudio };
+                    const v = { url: vidMatch[1].trim(), alt: '', pos, idx: vIdx, mock: false, audioName: lineAudio, props: Object.keys(lineProps).length ? lineProps : undefined };
                     currentSlide.videos.push(v);
                     currentSlide.elements.push({ kind: 'video', ...v });
                     continue;
@@ -19942,11 +20065,11 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     const mediaKind = classifyMediaUrl(rawUrl);
                     if (mediaKind === 'video' || mediaKind === 'mock-video') {
                         const vIdx = currentSlide.videos.length;
-                        const v = { url: mediaKind === 'mock-video' ? '' : rawUrl, alt, pos, idx: vIdx, mock: mediaKind === 'mock-video', audioName: lineAudio };
+                        const v = { url: mediaKind === 'mock-video' ? '' : rawUrl, alt, pos, idx: vIdx, mock: mediaKind === 'mock-video', audioName: lineAudio, props: Object.keys(lineProps).length ? lineProps : undefined };
                         currentSlide.videos.push(v);
                         currentSlide.elements.push({ kind: 'video', ...v });
                     } else {
-                        const img = { url: mediaKind === 'mock-image' ? '' : rawUrl, alt, pos, mock: mediaKind === 'mock-image', audioName: lineAudio };
+                        const img = { url: mediaKind === 'mock-image' ? '' : rawUrl, alt, pos, mock: mediaKind === 'mock-image', audioName: lineAudio, props: Object.keys(lineProps).length ? lineProps : undefined };
                         currentSlide.images.push(img);
                         currentSlide.elements.push({ kind: 'image', ...img });
                     }
@@ -19970,7 +20093,8 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     currentSlide.heading = headingText;
                     currentSlide.headingPos = headingPos;
                     currentSlide.headingAudio = lineAudio;
-                    currentSlide.elements.push({ kind: 'heading', pos: headingPos, audioName: lineAudio });
+                    currentSlide.headingProps = Object.keys(lineProps).length ? lineProps : undefined;
+                    currentSlide.elements.push({ kind: 'heading', pos: headingPos, audioName: lineAudio, props: currentSlide.headingProps });
                     continue;
                 }
                 
@@ -19993,9 +20117,14 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         // Keep a position tag / audio tag found on any later line of the same paragraph
                         if (tPos && !lastEl.pos) lastEl.pos = tPos;
                         if (lineAudio && !lastEl.audioName) lastEl.audioName = lineAudio;
+                        // P1: merge [key:value] props with first-wins per key (same pattern as pos/audio)
+                        if (Object.keys(lineProps).length) {
+                            lastEl.props = lastEl.props || {};
+                            for (const pk in lineProps) if (!(pk in lastEl.props)) lastEl.props[pk] = lineProps[pk];
+                        }
                     }
                     else {
-                        lastEl = { kind: 'text', text: textLine, pos: tPos, audioName: lineAudio };
+                        lastEl = { kind: 'text', text: textLine, pos: tPos, audioName: lineAudio, props: Object.keys(lineProps).length ? lineProps : undefined };
                         currentSlide.elements.push(lastEl);
                     }
                     // Sync the slide-level audio reference (used by auto-track mode) with
@@ -20005,6 +20134,8 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     // so a tag on any line of the paragraph positions the whole text clip
                     if (tPos) currentSlide.textPos = tPos;
                     else if (!currentSlide.textPos && lastEl.pos) currentSlide.textPos = lastEl.pos;
+                    // P1: slide-level props for auto-track mode (mdTextClip reads the slide)
+                    currentSlide.textProps = lastEl.props;
                 }
             }
             // Push the last slide
@@ -20025,6 +20156,9 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             else if (startAt === '60') currentTime = 60;
             else if (startAt === 'custom') currentTime = Math.max(0, parseFloat(cfg.startAtCustom) || 0);
             // else 'playhead' keeps State.currentTime
+            // P1: per-slide `[dur:N]` overrides → cumulative start times (spec §5/F5).
+            const slideDurs = slides.map(s => { const d = numProp(s._dur); return (d !== null && d > 0) ? d : slideDuration; });
+            let slideCursor = currentTime;
             
             // Dedicated image lanes — one per "position from the end" of a block's image
             // list. The LAST image in a block sits on the bottom 'Images' lane (background);
@@ -20141,6 +20275,16 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             // ── Shared clip builders (identical output in both track modes) ───────────
             // Note: mdPosOffsets is defined at module level (used by applyMarkdownStyle too).
             function mdHeadingClip(slide, index, id, start, dur, trackId, colorIndex) {
+                const p = slide.headingProps || {};
+                const stackIdx = (p.z !== undefined) ? (numProp(p.z) || 0) : (slide._headingStackIdx || 0);
+                const mdProps = {};
+                if (p.font) mdProps.fontFamily = unquoteProp(p.font);
+                if (p.size) { const n = numProp(p.size); if (n !== null) mdProps.fontSize = n; }
+                if (p.weight) { const n = numProp(p.weight); if (n !== null) mdProps.fontWeight = n; }
+                if (p.color) mdProps.fillColor = p.color;
+                if (p.anim) { const a = validAnim(p.anim); if (a) mdProps.animIn = a; else console.warn('[StudioPro] unknown [anim:] "' + p.anim + '"'); }
+                if (p.stroke) { mdProps.strokeEnable = true; mdProps.strokeColor = p.stroke; }
+                const pos = p.pos || slide.headingPos || cfg.headingPosition || 'top';
                 return withMdAudio({
                     id: id + '_heading',
                     sceneId: State.activeSceneId || null,
@@ -20154,16 +20298,17 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     sourceOffset: 0,
                     maxDuration: 3600,
                     _mdGenerated: true,
-                    _mdPos: slide.headingPos || cfg.headingPosition || 'top',
-                    _mdStackIdx: slide._headingStackIdx || 0,
+                    _mdPos: pos,
+                    _mdStackIdx: stackIdx,
+                    _mdProps: Object.keys(mdProps).length ? mdProps : undefined,
                     effects: {
                         scale: 1, rotate: 0, offsetX: 0, offsetY: 0,
-                        ...mdStackOffsets(slide.headingPos || cfg.headingPosition || 'top', cfg.headingOffset || 0, cfg.mdGap || 0, slide._headingStackIdx || 0),
-                        fontFamily: cfg.headingFontFamily || 'Rubik', fontSize: cfg.headingFontSize || 60, fontWeight: cfg.headingFontWeight || 700, fillColor: cfg.headingColor || '#ffffff',
-                        strokeEnable: cfg.headingStrokeEnable !== undefined ? cfg.headingStrokeEnable : true, strokeColor: cfg.headingStrokeColor || '#000000', strokeWidth: cfg.headingStrokeWidth || 4,
+                        ...mdStackOffsets(pos, cfg.headingOffset || 0, cfg.mdGap || 0, stackIdx),
+                        fontFamily: mdProps.fontFamily || cfg.headingFontFamily || 'Rubik', fontSize: mdProps.fontSize || cfg.headingFontSize || 60, fontWeight: mdProps.fontWeight || cfg.headingFontWeight || 700, fillColor: mdProps.fillColor || cfg.headingColor || '#ffffff',
+                        strokeEnable: mdProps.strokeEnable !== undefined ? mdProps.strokeEnable : (cfg.headingStrokeEnable !== undefined ? cfg.headingStrokeEnable : true), strokeColor: mdProps.strokeColor || cfg.headingStrokeColor || '#000000', strokeWidth: cfg.headingStrokeWidth || 4,
                         shadowEnable: cfg.headingShadowEnable !== undefined ? cfg.headingShadowEnable : true, shadowColor: cfg.headingShadowColor || '#000000', shadowBlur: cfg.headingShadowBlur || 20, shadowX: cfg.headingShadowX || 0, shadowY: cfg.headingShadowY || 10,
                         extrudeEnable: !!cfg.headingExtrudeEnable, extrudeDepth: cfg.headingExtrudeDepth || 5, extrudeColor: cfg.headingExtrudeColor || '#000000', extrudeDir: cfg.headingExtrudeDir || 'br',
-                        animIn: cfg.headingAnimIn || 'fadeIn', animOut: 'none', animLoop: 'none', animInDur: 0.5, animOutDur: 0.5, animEase: 'easeOut',
+                        animIn: mdProps.animIn || normAnim(cfg.headingAnimIn) || 'fade', animOut: 'none', animLoop: 'none', animInDur: p.animDur !== undefined ? (numProp(p.animDur) || 0.5) : 0.5, animInDelay: p.animDelay !== undefined ? (numProp(p.animDelay) || 0) : 0, animOutDur: 0.5, animEase: 'easeOut',
                         animTextIn: 'none', animTextOut: 'none', animTextLoop: 'none', animTextEase: 'easeOut', animTextStagger: 'letter', animTextInDur: 0.5, animTextOutDur: 0.5, flashColor: '#ffe600'
                     }
                 }, slide.headingAudio);
@@ -20208,6 +20353,16 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 }
                 const wordOverrides = {};
                 mdWords.forEach(wi => { wordOverrides[wi] = { fontWeight: 700 }; });
+                const p = slide.textProps || {};
+                const stackIdx = (p.z !== undefined) ? (numProp(p.z) || 0) : (slide._textStackIdx || 0);
+                const mdProps = {};
+                if (p.font) mdProps.fontFamily = unquoteProp(p.font);
+                if (p.size) { const n = numProp(p.size); if (n !== null) mdProps.fontSize = n; }
+                if (p.weight) { const n = numProp(p.weight); if (n !== null) mdProps.fontWeight = n; }
+                if (p.color) mdProps.fillColor = p.color;
+                if (p.anim) { const a = validAnim(p.anim); if (a) mdProps.animIn = a; else console.warn('[StudioPro] unknown [anim:] "' + p.anim + '"'); }
+                if (p.stroke) { mdProps.strokeEnable = true; mdProps.strokeColor = p.stroke; }
+                const pos = p.pos || elPos || cfg.textPosition || 'center';
                 return withMdAudio({
                     id: id + '_text',
                     sceneId: State.activeSceneId || null,
@@ -20221,22 +20376,30 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     sourceOffset: 0,
                     maxDuration: 3600,
                     _mdGenerated: true,
-                    _mdPos: elPos || cfg.textPosition || 'center',
-                    _mdStackIdx: slide._textStackIdx || 0,
+                    _mdPos: pos,
+                    _mdStackIdx: stackIdx,
+                    _mdProps: Object.keys(mdProps).length ? mdProps : undefined,
                     effects: {
                         scale: 1, rotate: 0, offsetX: 0, offsetY: 0,
-                        ...mdStackOffsets(elPos || cfg.textPosition || 'center', cfg.textOffset || 0, cfg.mdGap || 0, slide._textStackIdx || 0),
-                        fontFamily: cfg.textFontFamily || 'Inter', fontSize: cfg.textFontSize || 32, fontWeight: cfg.textFontWeight || 400, fillColor: cfg.textColor || '#eeeeee',
-                        strokeEnable: cfg.textStrokeEnable !== undefined ? cfg.textStrokeEnable : true, strokeColor: cfg.textStrokeColor || '#000000', strokeWidth: cfg.textStrokeWidth || 2,
+                        ...mdStackOffsets(pos, cfg.textOffset || 0, cfg.mdGap || 0, stackIdx),
+                        fontFamily: mdProps.fontFamily || cfg.textFontFamily || 'Inter', fontSize: mdProps.fontSize || cfg.textFontSize || 32, fontWeight: mdProps.fontWeight || cfg.textFontWeight || 400, fillColor: mdProps.fillColor || cfg.textColor || '#eeeeee',
+                        strokeEnable: mdProps.strokeEnable !== undefined ? mdProps.strokeEnable : (cfg.textStrokeEnable !== undefined ? cfg.textStrokeEnable : true), strokeColor: mdProps.strokeColor || cfg.textStrokeColor || '#000000', strokeWidth: cfg.textStrokeWidth || 2,
                         shadowEnable: cfg.textShadowEnable !== undefined ? cfg.textShadowEnable : true, shadowColor: cfg.textShadowColor || '#000000', shadowBlur: cfg.textShadowBlur || 10, shadowX: cfg.textShadowX || 0, shadowY: cfg.textShadowY || 4,
                         extrudeEnable: !!cfg.textExtrudeEnable, extrudeDepth: cfg.textExtrudeDepth || 3, extrudeColor: cfg.textExtrudeColor || '#000000', extrudeDir: cfg.textExtrudeDir || 'br',
-                        animIn: cfg.textAnimIn || 'slideUp', animOut: 'none', animLoop: 'none', animInDur: 0.4, animOutDur: 0.3, animEase: 'easeOut',
+                        animIn: mdProps.animIn || normAnim(cfg.textAnimIn) || 'slideUp', animOut: 'none', animLoop: 'none', animInDur: p.animDur !== undefined ? (numProp(p.animDur) || 0.4) : 0.4, animInDelay: p.animDelay !== undefined ? (numProp(p.animDelay) || 0) : 0, animOutDur: 0.3, animEase: 'easeOut',
                         animTextIn: 'none', animTextOut: 'none', animTextLoop: 'none', animTextEase: 'easeOut', animTextStagger: 'word', animTextInDur: 0.3, animTextOutDur: 0.3, flashColor: '#ffe600',
                         wordOverrides: Object.keys(wordOverrides).length ? wordOverrides : undefined
                     }
                 }, slide.textAudio);
             }
             function mdMathClip(el, index, id, start, dur, trackId, colorIndex) {
+                const p = el.props || {};
+                const stackIdx = (p.z !== undefined) ? (numProp(p.z) || 0) : (el._stackIdx || 0);
+                const mdProps = {};
+                if (p.size) { const n = numProp(p.size); if (n !== null) mdProps.fontSize = n; }
+                if (p.color) mdProps.fillColor = p.color;
+                if (p.anim) { const a = validAnim(p.anim); if (a) mdProps.animIn = a; else console.warn('[StudioPro] unknown [anim:] "' + p.anim + '"'); }
+                const pos = p.pos || el.pos || cfg.mathPosition || 'center';
                 return withMdAudio({
                     id: id + '_math' + (el.idx !== undefined ? el.idx : ''),
                     sceneId: State.activeSceneId || null,
@@ -20251,18 +20414,19 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     maxDuration: 3600,
                     _mdGenerated: true,
                     _mdMath: true,
-                    _mdPos: el.pos || cfg.mathPosition || 'center',
-                    _mdStackIdx: el._stackIdx || 0,
+                    _mdPos: pos,
+                    _mdStackIdx: stackIdx,
+                    _mdProps: Object.keys(mdProps).length ? mdProps : undefined,
                     effects: {
                         scale: 1, rotate: 0, offsetX: 0, offsetY: 0,
-                        ...mdStackOffsets(el.pos || cfg.mathPosition || 'center', cfg.mathOffset || 0, cfg.mdGap || 0, el._stackIdx || 0),
-                        fontFamily: 'Rubik', fontWeight: 700, fillColor: cfg.mathColor || '#ffffff',
+                        ...mdStackOffsets(pos, cfg.mathOffset || 0, cfg.mdGap || 0, stackIdx),
+                        fontFamily: 'Rubik', fontWeight: 700, fillColor: mdProps.fillColor || cfg.mathColor || '#ffffff',
                         renderAsMath: true,
-                        fontSize: cfg.mathFontSize || 56,
+                        fontSize: mdProps.fontSize || cfg.mathFontSize || 56,
                         strokeEnable: false, strokeColor: '#ffffff', strokeWidth: 4,
                         shadowEnable: false, shadowColor: '#000000', shadowBlur: 20, shadowX: 0, shadowY: 10,
                         extrudeEnable: false, extrudeDepth: 5, extrudeColor: '#000000',
-                        animIn: cfg.mathAnimIn || 'fadeIn', animOut: 'none', animLoop: 'none', animInDur: 0.5, animOutDur: 0.3, animEase: 'easeOut',
+                        animIn: mdProps.animIn || normAnim(cfg.mathAnimIn) || 'fade', animOut: 'none', animLoop: 'none', animInDur: p.animDur !== undefined ? (numProp(p.animDur) || 0.5) : 0.5, animInDelay: p.animDelay !== undefined ? (numProp(p.animDelay) || 0) : 0, animOutDur: 0.3, animEase: 'easeOut',
                         animTextIn: 'none', animTextOut: 'none', animTextLoop: 'none', animTextEase: 'easeOut', animTextStagger: 'letter', animTextInDur: 1.0, animTextOutDur: 1.0, flashColor: '#ffe600'
                     }
                 }, el.audioName);
@@ -20275,6 +20439,11 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     imgEl.onerror = function(){};
                     imgEl.src = img.url;
                 }
+                const p = img.props || {};
+                const stackIdx = (p.z !== undefined) ? (numProp(p.z) || 0) : (img._stackIdx || 0);
+                const mdProps = {};
+                if (p.scale) { const n = numProp(p.scale); if (n !== null) mdProps.scale = n; }
+                if (p.anim) { const a = validAnim(p.anim); if (a) mdProps.animIn = a; else console.warn('[StudioPro] unknown [anim:] "' + p.anim + '"'); }
                 return withMdAudio({
                     id: id + '_image' + imgIdx,
                     sceneId: State.activeSceneId || null,
@@ -20291,14 +20460,15 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     _mdGenerated: true,
                     _mdMedia: true,
                     _mdMock: isMock,
-                    _mdPos: img.pos || cfg.imagePosition || 'center',
-                    _mdStackIdx: img._stackIdx || 0,
+                    _mdPos: p.pos || img.pos || cfg.imagePosition || 'center',
+                    _mdStackIdx: stackIdx,
+                    _mdProps: Object.keys(mdProps).length ? mdProps : undefined,
                     effects: {
-                        scale: cfg.imageScale || 1, rotate: 0, borderRadius: cfg.imageBorderRadius || 0, offsetX: 0, offsetY: 0,
-                        ...mdStackOffsets(img.pos || cfg.imagePosition || 'center', cfg.imageOffset || 0, cfg.mdGap || 0, img._stackIdx || 0),
+                        scale: mdProps.scale || cfg.imageScale || 1, rotate: 0, borderRadius: cfg.imageBorderRadius || 0, offsetX: 0, offsetY: 0,
+                        ...mdStackOffsets(p.pos || img.pos || cfg.imagePosition || 'center', cfg.imageOffset || 0, cfg.mdGap || 0, stackIdx),
                         strokeEnable: false, strokeColor: '#ffffff', strokeWidth: 4,
                         shadowEnable: false, shadowColor: '#000000', shadowBlur: 20, shadowX: 0, shadowY: 10,
-                        animIn: cfg.imageAnimIn || 'fadeIn', animOut: 'none', animLoop: 'none', animInDur: 0.5, animOutDur: 0.3, animEase: 'easeOut',
+                        animIn: mdProps.animIn || normAnim(cfg.imageAnimIn) || 'fade', animOut: 'none', animLoop: 'none', animInDur: p.animDur !== undefined ? (numProp(p.animDur) || 0.5) : 0.5, animInDelay: p.animDelay !== undefined ? (numProp(p.animDelay) || 0) : 0, animOutDur: 0.3, animEase: 'easeOut',
                         cropLeft: 0, cropRight: 0, cropTop: 0, cropBottom: 0,
                         maskingZoom: 100, frameZoom: 100, framingPanX: 0, framingPanY: 0,
                         maskType: 'none', maskWidth: 50, maskHeight: 50, maskX: 0, maskY: 0, maskFeather: 0, maskInvert: false,
@@ -20323,6 +20493,11 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     videoEl.addEventListener('loadeddata', () => { videoEl._mdLoaded = true; drawCanvas(); });
                     videoEl.addEventListener('seeked', () => { videoEl._mdLoaded = true; });
                 }
+                const p = v.props || {};
+                const stackIdx = (p.z !== undefined) ? (numProp(p.z) || 0) : (v._stackIdx || 0);
+                const mdProps = {};
+                if (p.scale) { const n = numProp(p.scale); if (n !== null) mdProps.scale = n; }
+                if (p.anim) { const a = validAnim(p.anim); if (a) mdProps.animIn = a; else console.warn('[StudioPro] unknown [anim:] "' + p.anim + '"'); }
                 return withMdAudio({
                     id: id + '_video' + (v.idx !== undefined ? v.idx : vIdx),
                     sceneId: State.activeSceneId || null,
@@ -20340,14 +20515,15 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     _mdGenerated: true,
                     _mdMedia: true,
                     _mdMock: isMock,
-                    _mdPos: v.pos || cfg.imagePosition || 'center',
-                    _mdStackIdx: v._stackIdx || 0,
+                    _mdPos: p.pos || v.pos || cfg.imagePosition || 'center',
+                    _mdStackIdx: stackIdx,
+                    _mdProps: Object.keys(mdProps).length ? mdProps : undefined,
                     effects: {
-                        scale: cfg.imageScale || 1, rotate: 0, borderRadius: cfg.imageBorderRadius || 0, offsetX: 0, offsetY: 0,
-                        ...mdStackOffsets(v.pos || cfg.imagePosition || 'center', cfg.imageOffset || 0, cfg.mdGap || 0, v._stackIdx || 0),
+                        scale: mdProps.scale || cfg.imageScale || 1, rotate: 0, borderRadius: cfg.imageBorderRadius || 0, offsetX: 0, offsetY: 0,
+                        ...mdStackOffsets(p.pos || v.pos || cfg.imagePosition || 'center', cfg.imageOffset || 0, cfg.mdGap || 0, stackIdx),
                         strokeEnable: false, strokeColor: '#ffffff', strokeWidth: 4,
                         shadowEnable: false, shadowColor: '#000000', shadowBlur: 20, shadowX: 0, shadowY: 10,
-                        animIn: cfg.imageAnimIn || 'fadeIn', animOut: 'none', animLoop: 'none', animInDur: 0.5, animOutDur: 0.3, animEase: 'easeOut',
+                        animIn: mdProps.animIn || normAnim(cfg.imageAnimIn) || 'fade', animOut: 'none', animLoop: 'none', animInDur: p.animDur !== undefined ? (numProp(p.animDur) || 0.5) : 0.5, animInDelay: p.animDelay !== undefined ? (numProp(p.animDelay) || 0) : 0, animOutDur: 0.3, animEase: 'easeOut',
                         cropLeft: 0, cropRight: 0, cropTop: 0, cropBottom: 0,
                         maskingZoom: 100, frameZoom: 100, framingPanX: 0, framingPanY: 0,
                         maskType: 'none', maskWidth: 50, maskHeight: 50, maskX: 0, maskY: 0, maskFeather: 0, maskInvert: false,
@@ -20359,7 +20535,9 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             
             slides.forEach((slide, index) => {
                 const id = 'md_' + Date.now() + '_' + index + '_' + Math.random().toString(36).substr(2, 5);
-                const clipStart = currentTime + index * slideDuration;
+                const sd = slideDurs[index] || slideDuration;
+                const clipStart = slideCursor;
+                slideCursor += sd;
                 
                 // ── Script-order mode: one lane per element position, shared across all
                 //    blocks — image & text from different blocks can share a lane when
@@ -20382,20 +20560,21 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         const colorIndex = (pos + 1) % PALETTES.length;
                         if (el.kind === 'heading') {
                             slide._headingStackIdx = el._stackIdx;
-                            State.clips.push(mdHeadingClip(slide, index, id, clipStart, slideDuration, trackId, colorIndex));
+                            State.clips.push(mdHeadingClip(slide, index, id, clipStart, sd, trackId, colorIndex));
                         } else                        if (el.kind === 'text') {
                             // Use this run's own text so text split by images stays independent
                             const runSlide = Object.assign({}, slide, { text: el.text || slide.text || '' });
                             runSlide._textStackIdx = el._stackIdx;
                             runSlide.textAudio = el.audioName || slide.textAudio;
-                            const { tStart, tDur } = mdTextTiming(clipStart, slideDuration);
+                            runSlide.textProps = el.props;
+                            const { tStart, tDur } = mdTextTiming(clipStart, sd);
                             State.clips.push(mdTextClip(runSlide, index, id, tStart, tDur, trackId, colorIndex, el.pos));
                         } else if (el.kind === 'image') {
-                            State.clips.push(mdImageClip(el, index, pos, id, clipStart, slideDuration, trackId, colorIndex));
+                            State.clips.push(mdImageClip(el, index, pos, id, clipStart, sd, trackId, colorIndex));
                         } else if (el.kind === 'video') {
-                            State.clips.push(mdVideoClip(el, index, pos, id, clipStart, slideDuration, trackId, colorIndex));
+                            State.clips.push(mdVideoClip(el, index, pos, id, clipStart, sd, trackId, colorIndex));
                         } else if (el.kind === 'math') {
-                            State.clips.push(mdMathClip(el, index, id, clipStart, slideDuration, trackId, colorIndex));
+                            State.clips.push(mdMathClip(el, index, id, clipStart, sd, trackId, colorIndex));
                         }
                     });
                     // Warm math images so the first paint shows the formula (no flicker)
@@ -20405,7 +20584,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 
                 // ── Auto mode (default): dedicated lanes per element type ──────────
                 // Get a fresh track for this slide
-                let slideTrackId = getAvailableTrack('video', clipStart, slideDuration);
+                let slideTrackId = getAvailableTrack('video', clipStart, sd);
                 let targetTrack = State.tracks.find(t => t.id === slideTrackId);
                 let clipColor = (targetTrack ? (targetTrack.colorIndex + 1 + index) % PALETTES.length : 0);
                 
@@ -20416,16 +20595,16 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 // Create text clip for heading
                 if (slide.heading) {
                     slide._headingStackIdx = mdNextStack(slide.headingPos || cfg.headingPosition || 'top');
-                    State.clips.push(mdHeadingClip(slide, index, id, clipStart, slideDuration, slideTrackId, clipColor));
+                    State.clips.push(mdHeadingClip(slide, index, id, clipStart, sd, slideTrackId, clipColor));
                 }
                 
                 // If there's additional text, create a sub-text clip on the next track
                 if (slide.text) {
                     slide._textStackIdx = mdNextStack(slide.textPos || cfg.textPosition || 'center');
-                    let textTrackId = getAvailableTrack('video', clipStart, slideDuration);
+                    let textTrackId = getAvailableTrack('video', clipStart, sd);
                     let textTrack = State.tracks.find(t => t.id === textTrackId);
                     let textColor = (textTrack ? (textTrack.colorIndex + 2 + index) % PALETTES.length : 0);
-                    const { tStart, tDur } = mdTextTiming(clipStart, slideDuration);
+                    const { tStart, tDur } = mdTextTiming(clipStart, sd);
                     State.clips.push(mdTextClip(slide, index, id, tStart, tDur, textTrackId, textColor, slide.textPos));
                 }
                 
@@ -20441,8 +20620,8 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         const mediaTrackId = getMdImageLane(posFromEnd, slideTrackId);
                         const mediaTrack = State.tracks.find(t => t.id === mediaTrackId);
                         const mColor = (mediaTrack ? (mediaTrack.colorIndex + 3 + mIdx) % PALETTES.length : 0);
-                        if (el.kind === 'video') State.clips.push(mdVideoClip(el, index, mIdx, id, clipStart, slideDuration, mediaTrackId, mColor));
-                        else State.clips.push(mdImageClip(el, index, mIdx, id, clipStart, slideDuration, mediaTrackId, mColor));
+                        if (el.kind === 'video') State.clips.push(mdVideoClip(el, index, mIdx, id, clipStart, sd, mediaTrackId, mColor));
+                        else State.clips.push(mdImageClip(el, index, mIdx, id, clipStart, sd, mediaTrackId, mColor));
                     });
                 }
                 
@@ -20453,7 +20632,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     const mathColor = (mathTrack ? (mathTrack.colorIndex + 4 + index) % PALETTES.length : 0);
                     slide.maths.forEach((m, mIdx) => {
                         m._stackIdx = mdNextStack(m.pos || cfg.mathPosition || 'center');
-                        const mathClip = mdMathClip(m, index, id, clipStart, slideDuration, mathTrackId, mathColor);
+                        const mathClip = mdMathClip(m, index, id, clipStart, sd, mathTrackId, mathColor);
                         State.clips.push(mathClip);
                         warmMathImage(mathClip);
                     });
@@ -20461,7 +20640,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             });
             
             // Update duration if needed
-            const totalDuration = currentTime + slides.length * slideDuration;
+            const totalDuration = slideCursor;
             if (totalDuration > State.duration) {
                 State.duration = Math.ceil(totalDuration + 10);
                 updateTimelineWidth();
