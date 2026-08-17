@@ -242,6 +242,7 @@
                                 </div>
                                 <div id="ftrtSpeedup" class="hidden mt-1 px-2 py-1 rounded-md text-[11px] font-bold text-brand-700 dark:text-brand-300 bg-brand-500/10 dark:bg-brand-400/15"></div>
                             </div>
+                            <p id="ftrtLastRun" class="hidden text-[10px] font-mono text-surface-500 dark:text-surface-300 mt-2 leading-snug"></p>
                             <p class="text-[10px] text-surface-500 dark:text-surface-300 mt-2 leading-snug">Capture-only benchmark — the encoder adds the same overhead to both modes. Full FTRT export lands next; Start Export currently uses the MediaBunny pipeline.</p>
                         </div>
                     </div>
@@ -28943,6 +28944,44 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             if (typeof lucide !== 'undefined') lucide.createIcons();
             // Refresh the CapCut-style selected state for the now-visible group
             exportSelectOption();
+
+            // Show the persisted last-run comparison line on the Fast tab
+            if (tabId === 'ftrt') renderFTRTLastRun();
+        }
+
+        // ── FTRT probe history (persisted, so speed changes are trackable) ─────────
+        const FTRT_HISTORY_KEY = 'ftrtProbeHistory';
+        function getFTRTHistory() {
+            try { return JSON.parse(localStorage.getItem(FTRT_HISTORY_KEY) || '[]'); } catch (_) { return []; }
+        }
+        function fmtRelativeTime(ts) {
+            const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
+            if (s < 60) return s + 's ago';
+            const m = Math.round(s / 60);
+            if (m < 60) return m + 'm ago';
+            const h = Math.round(m / 60);
+            if (h < 24) return h + 'h ago';
+            return Math.round(h / 24) + 'd ago';
+        }
+        function renderFTRTLastRun() {
+            const el = document.getElementById('ftrtLastRun');
+            if (!el) return;
+            const hist = getFTRTHistory();
+            if (!hist.length) { el.classList.add('hidden'); return; }
+            const last = hist[hist.length - 1];
+            let txt = 'Last run: ' + fmtRelativeTime(last.at) + ' · ' + last.dur + 's @ ' + last.fps + 'fps ' +
+                last.w + '×' + last.h + ' · Standard ' + last.stdX.toFixed(2) + '× · Fast ' + last.ftrtX.toFixed(2) + '×';
+            // Delta vs the previous run with the same settings (same dur/fps/res).
+            for (let i = hist.length - 2; i >= 0; i--) {
+                const p = hist[i];
+                if (p.dur === last.dur && p.fps === last.fps && p.w === last.w && p.h === last.h) {
+                    const delta = last.ftrtX - p.ftrtX;
+                    txt += ' · prev ' + p.ftrtX.toFixed(2) + '× (' + (delta >= 0 ? '+' : '') + delta.toFixed(2) + '×)';
+                    break;
+                }
+            }
+            el.textContent = txt;
+            el.classList.remove('hidden');
         }
 
         // ── Compare probe (FTRT tab) — capture-only benchmark of both modes ────────
@@ -29047,6 +29086,19 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 : 'Fast ≈ Standard — video clips or heavy effects keep both near 1×';
             speedupEl.classList.remove('hidden');
             resultEl.classList.remove('hidden');
+
+            // Persist the run (last 10) and refresh the last-run line.
+            const record = {
+                at: Date.now(), dur: endT, fps, w: exportW, h: exportH,
+                stdWall, stdX, stdFps: frames / stdWall,
+                ftrtWall, ftrtX, ftrtFps: frames / ftrtWall,
+                ratio, hasVideo
+            };
+            const hist = getFTRTHistory();
+            hist.push(record);
+            if (hist.length > 10) hist.shift();
+            try { localStorage.setItem(FTRT_HISTORY_KEY, JSON.stringify(hist)); } catch (_) {}
+            renderFTRTLastRun();
             statusEl.textContent = hasVideo
                 ? 'Note: video clips in range may appear blank — probe is capture-only, and video pins both modes near 1×.'
                 : 'Done.';
