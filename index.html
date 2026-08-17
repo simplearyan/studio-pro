@@ -4793,21 +4793,34 @@
             const cw = Math.max(1, Math.round(dw));
             const ch = Math.max(1, Math.round(dh));
 
+            // Temperature / tint: GPU-composited soft-light overlays by default.
+            // The exact per-pixel pass stays as the opt-in — vibrance is luminance-
+            // adaptive and cannot be replicated with a fixed overlay, so it always
+            // uses the exact path, and clip.effects.colorGradeExact forces it too.
+            // Measured: the pixel pass is ~100% of grade cost (68-107 ms/frame at
+            // 1080p vs ~0.1 ms composited — see docs/export/FTRT-Probe-Comparison §5).
+            // CRITICAL: only request willReadFrequently when the pixel pass runs —
+            // the hint forces CPU-backed rasterization for EVERY operation, which
+            // would also make the GPU filter/overlay path cost ~50 ms/frame.
+            const useExactGrade = clip.effects.colorGradeExact === true || Math.abs(vibrance) > 0.5;
+
             // Image clips are static — cache the graded canvas so playback/scrubbing
             // doesn't re-run the pixel pass every frame. The signature covers the size,
-            // every control value AND the source identity (src changes on replace), so
-            // the cache is always invalidated when anything the grade depends on changes.
-            // Video clips are never cached: their source frame advances every frame.
-            if (clip.type === 'image' && clip._ccCache && clip._ccCache.sig === `${cw}x${ch}|${saturation}|${vibrance}|${hue}|${temperature}|${tint}|${brightness}|${contrast}|${blur}|${source === clip.imageEl && clip.imageEl.src ? clip.imageEl.src : ''}`) {
+            // every control value, the grade mode AND the source identity (src changes
+            // on replace), so the cache is always invalidated when anything the grade
+            // depends on changes. Video clips are never cached: their source frame
+            // advances every frame.
+            if (clip.type === 'image' && clip._ccCache && clip._ccCache.sig === `${cw}x${ch}|${saturation}|${vibrance}|${hue}|${temperature}|${tint}|${brightness}|${contrast}|${blur}|${useExactGrade ? 'exact' : 'gpu'}|${source === clip.imageEl && clip.imageEl.src ? clip.imageEl.src : ''}`) {
                 return clip._ccCache.canvas;
             }
 
             const canvas = document.createElement('canvas');
             canvas.width = cw;
             canvas.height = ch;
-            const cctx = canvas.getContext('2d', { willReadFrequently: true });
+            const cctx = canvas.getContext('2d', useExactGrade ? { willReadFrequently: true } : undefined);
 
-            // GPU filter pass for the CSS-supported controls.
+            // GPU filter pass for the CSS-supported controls (blur/saturation/hue/
+            // brightness/contrast are GPU-composited — effectively free).
             const parts = [];
             if (blur > 0.5) parts.push(`blur(${blur}px)`);
             if (Math.abs(saturation - 100) > 0.5) parts.push(`saturate(${saturation}%)`);
@@ -4818,43 +4831,62 @@
             cctx.drawImage(source, sx, sy, sw, sh, 0, 0, cw, ch);
             cctx.filter = 'none';
 
-            // Per-pixel pass for temperature / tint / vibrance.
             if (Math.abs(temperature) > 0.5 || Math.abs(tint) > 0.5 || Math.abs(vibrance) > 0.5) {
-                const img = cctx.getImageData(0, 0, cw, ch);
-                const d = img.data;
-                const t = temperature / 100;
-                const n = tint / 100;
-                const v = vibrance / 100;
-                for (let i = 0; i < d.length; i += 4) {
-                    let r = d[i], g = d[i + 1], b = d[i + 2];
+                if (useExactGrade) {
+                    const img = cctx.getImageData(0, 0, cw, ch);
+                    const d = img.data;
+                    const t = temperature / 100;
+                    const n = tint / 100;
+                    const v = vibrance / 100;
+                    for (let i = 0; i < d.length; i += 4) {
+                        let r = d[i], g = d[i + 1], b = d[i + 2];
+                        if (t !== 0) {
+                            r += t * 30;
+                            b -= t * 30;
+                            g += t * 5;
+                        }
+                        if (n !== 0) {
+                            g -= n * 25;
+                            r += n * 12;
+                            b += n * 12;
+                        }
+                        if (v !== 0) {
+                            const maxc = Math.max(r, g, b);
+                            const minc = Math.min(r, g, b);
+                            const sat = maxc === 0 ? 0 : (maxc - minc) / maxc;
+                            const amt = 1 + v * (1 - sat) * 0.8;
+                            r = maxc - (maxc - r) * amt;
+                            g = maxc - (maxc - g) * amt;
+                            b = maxc - (maxc - b) * amt;
+                        }
+                        d[i] = r < 0 ? 0 : r > 255 ? 255 : r;
+                        d[i + 1] = g < 0 ? 0 : g > 255 ? 255 : g;
+                        d[i + 2] = b < 0 ? 0 : b > 255 ? 255 : b;
+                    }
+                    cctx.putImageData(img, 0, 0);
+                } else {
+                    // GPU fast path — soft-light warm/cool + green/magenta washes,
+                    // approximating the additive per-channel shifts. Temperature
+                    // ±100 -> warm/cool wash at alpha ~0.15; tint ±100 -> green/
+                    // magenta wash at alpha ~0.12. Visually close to the exact
+                    // shifts; tune the alphas here to match a specific look.
+                    const t = temperature / 100;
+                    const n = tint / 100;
+                    cctx.globalCompositeOperation = 'soft-light';
                     if (t !== 0) {
-                        r += t * 30;
-                        b -= t * 30;
-                        g += t * 5;
+                        cctx.fillStyle = t > 0 ? `rgba(255, 110, 0, ${(Math.abs(t) * 0.15).toFixed(3)})` : `rgba(0, 130, 255, ${(Math.abs(t) * 0.15).toFixed(3)})`;
+                        cctx.fillRect(0, 0, cw, ch);
                     }
                     if (n !== 0) {
-                        g -= n * 25;
-                        r += n * 12;
-                        b += n * 12;
+                        cctx.fillStyle = n > 0 ? `rgba(0, 200, 60, ${(Math.abs(n) * 0.12).toFixed(3)})` : `rgba(230, 0, 220, ${(Math.abs(n) * 0.12).toFixed(3)})`;
+                        cctx.fillRect(0, 0, cw, ch);
                     }
-                    if (v !== 0) {
-                        const maxc = Math.max(r, g, b);
-                        const minc = Math.min(r, g, b);
-                        const sat = maxc === 0 ? 0 : (maxc - minc) / maxc;
-                        const amt = 1 + v * (1 - sat) * 0.8;
-                        r = maxc - (maxc - r) * amt;
-                        g = maxc - (maxc - g) * amt;
-                        b = maxc - (maxc - b) * amt;
-                    }
-                    d[i] = r < 0 ? 0 : r > 255 ? 255 : r;
-                    d[i + 1] = g < 0 ? 0 : g > 255 ? 255 : g;
-                    d[i + 2] = b < 0 ? 0 : b > 255 ? 255 : b;
+                    cctx.globalCompositeOperation = 'source-over';
                 }
-                cctx.putImageData(img, 0, 0);
             }
             if (clip.type === 'image') {
                 clip._ccCache = {
-                    sig: `${cw}x${ch}|${saturation}|${vibrance}|${hue}|${temperature}|${tint}|${brightness}|${contrast}|${blur}|${source === clip.imageEl && clip.imageEl.src ? clip.imageEl.src : ''}`,
+                    sig: `${cw}x${ch}|${saturation}|${vibrance}|${hue}|${temperature}|${tint}|${brightness}|${contrast}|${blur}|${useExactGrade ? 'exact' : 'gpu'}|${source === clip.imageEl && clip.imageEl.src ? clip.imageEl.src : ''}`,
                     canvas
                 };
             }

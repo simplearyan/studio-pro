@@ -59,7 +59,49 @@ With saturation/vibrance/hue/temperature/tint/contrast/blur active, **both modes
 
 ---
 
-## 5. Raw records (from `ftrtProbeHistory`, trimmed)
+## 5. Color-grade investigation — where Test C's 13 fps goes (2026-08-17)
+
+**Question:** can the graded-video capture be made fast again (Test C fell to 0.42x)?
+
+**Method:** instrumented the same feature-film clip at 1920x1080 (sat 150, vibrance 30, hue 25, temperature 20, tint 10, brightness 105, contrast 110, blur 2) and timed the grade's components:
+
+| Path | Cost / frame | Implied fps | x real-time | Notes |
+|---|---|---|---|---|
+| Plain `drawImage` (no grade) | ~0 ms | — | — | GPU-composited, free |
+| CSS filter parts only (blur/saturate/hue/brightness/contrast) | **~0 ms** | — | — | GPU `ctx.filter`, effectively free |
+| Full inline grade (`applyColorCorrection`) | **68–107 ms** | 9–15 | 0.31–0.49x | matches Test C's 0.42x |
+| GPU approximation (filters + soft-light tint overlay) | **0.2 ms** | ~4500 | ~149x | composited, visually approximate |
+| Worker-grade round-trip (pixel pass off-thread) | **not measurable here** | — | — | see below |
+
+**Root cause:** the per-pixel JS pass for temperature/tint/vibrance (`getImageData` -> 518K-iteration loop -> `putImageData`) is **100% of the grade cost**. The GPU filter parts cost nothing. This is exactly why Test C capped capture at ~13 fps and why both modes fell sub-real-time.
+
+**Findings:**
+1. **GPU approximation is a 350–500x cheaper main-thread path** — CSS filters are free and a warm/cool `soft-light` overlay composites in ~0.2 ms. Temperature and tint are well approximated this way; vibrance (luminance-adaptive saturation) cannot be exactly replicated with a fixed overlay, so it needs a visual QA decision or a quality toggle.
+2. **Worker offload is the architecturally clean fix** (exact math preserved, off-thread) — but **all workers are blocked in the Freebuff preview webview** (even the app's own MediaBunny `export-worker.js` times out there). This is an environment limitation of the preview, not the app: MediaBunny exports work in a real Chrome tab. The worker-grade measurement (expected ~15–30 ms/frame round-trip, ~2x real-time, more with pipelining) must be taken in a real browser.
+3. **Per-frame caching alone won't help export** — an export visits each frame exactly once, so an LRU keyed by (clip, frame, gradeSig) only helps scrubbing/preview re-visits, not the capture pass. The win comes from offloading or GPU-izing the pass, not caching it.
+
+**Recommendation (ranked):**
+1. **GPU fast path for temperature/tint** (filters + overlay) with the pixel pass reserved for heavy/exact grades — restores FTRT for graded video on the main thread, no worker dependency. Re-run the Test C probe to verify (expected back to ~1x+).
+2. **Worker pixel pass + pipeline in the FTRT loop** (grade frame N+1 while drawing N) for pixel-perfect output — measure in a real browser, not the preview webview.
+3. Optional per-frame LRU for scrub re-visits.
+
+### 5.1 Outcome — GPU fast path implemented and verified (2026-08-17)
+
+**Implemented in `index.html` (`applyColorCorrection`):** temperature/tint now run as GPU-composited `soft-light` washes by default; the exact per-pixel pass remains the opt-in — forced by `clip.effects.colorGradeExact` or any non-zero vibrance (luminance-adaptive, can't be approximated).
+
+**Second root cause found during implementation:** the offscreen canvas was created with `willReadFrequently: true` (needed for the pixel pass), but that hint forces **CPU-backed rasterization for every operation** — so even the "GPU" filter/overlay path cost ~50 ms/frame. Fix: request the hint only when the exact pass will actually run. This alone took the GPU path from ~60 ms to **5.5 ms/frame**; the exact path is unchanged at ~83 ms.
+
+**Test C re-run (same 10 s graded feature-film range, 1080p @ 30 fps):**
+
+| Run | Standard (MediaBunny) | Fast (FTRT) | Verdict |
+|---|---|---|---|
+| Before (exact pixel pass, both) | 21.7 s · 0.46x | 23.7 s · 0.42x | sub-real-time |
+| After — exact preserved (vibrance 30) | 21.8 s · 0.46x | 22.0 s · 0.45x | exact path unchanged ✓ |
+| After — GPU path (same grade, vibrance 0) | 10.0 s · 1.00x | **1.8 s · 5.49x** | **back above 1x ✓** |
+
+**Conclusion:** graded video is back in FTRT territory — **5.49x faster than real time** — when temperature/tint take the composited path (which they now do by default), while the exact path is provably preserved for vibrance grades and `colorGradeExact`. Caveat for the M1 work: a 4K graded timeline still needs the pixel pass at 8.3 MP/frame, so the watchdog/fallback remains the safety net for exact grades.
+
+## 6. Raw records (from `ftrtProbeHistory`, trimmed)
 
 ```json
 [
