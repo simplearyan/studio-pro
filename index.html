@@ -4774,6 +4774,17 @@
         // ness/contrast) run GPU-side via ctx.filter; temperature/tint/vibrance need a
         // per-pixel pass. When nothing is active it returns null so the hot draw path
         // stays untouched.
+        //
+        // Scratch grade canvases for VIDEO clips (image clips use the _ccCache path
+        // inside the function). Video frames are never content-cacheable — the source
+        // advances every frame — but the ALLOCATION is reusable. Without this, every
+        // graded-video frame created a fresh 1920×1080 canvas (~8.3 MB GPU texture);
+        // on the 1 GB GT 740 long ranges exhausted VRAM and TDR'd the driver (see
+        // docs/hyperframes/GPU-Crash-Analysis-and-Plan.md). Two scratches, one per
+        // grade mode, because a 2D context's attributes are fixed at first getContext
+        // — an exact-mode willReadFrequently hint would permanently CPU-back the GPU
+        // path's context and vice-versa.
+        let _ccScratchGPU = null, _ccScratchExact = null;
         function applyColorCorrection(clip, source, sx, sy, sw, sh, dw, dh) {
             const g = (k, d) => window.getInterpolatedValue(clip, k, clip.effects[k] !== undefined ? clip.effects[k] : d);
             const saturation = g('colorSaturation', 100);
@@ -4814,7 +4825,13 @@
                 return clip._ccCache.canvas;
             }
 
-            const canvas = document.createElement('canvas');
+            let canvas = clip.type === 'image' ? null : (useExactGrade ? _ccScratchExact : _ccScratchGPU);
+            if (!canvas) {
+                canvas = document.createElement('canvas');
+                if (clip.type !== 'image') {
+                    if (useExactGrade) _ccScratchExact = canvas; else _ccScratchGPU = canvas;
+                }
+            }
             canvas.width = cw;
             canvas.height = ch;
             const cctx = canvas.getContext('2d', useExactGrade ? { willReadFrequently: true } : undefined);
@@ -29065,6 +29082,18 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             const canvas = createOffscreenCanvas(exportW, exportH);
             const ctx = canvas.getContext('2d');
             const prevTime = State.currentTime;
+            // Pause video playback while the probe runs. The capture draws the
+            // element's CURRENT frame, so a live-playing video would (a) feed an
+            // uncontrolled DXVA decode + texture-upload load into the measurement
+            // and (b) show a different frame every draw, making the benchmark
+            // incoherent. Exact per-frame video sync is M1b's frame-pool job.
+            // Playing state is restored when the probe ends.
+            const probePausedVideos = [];
+            for (const c of State.clips) {
+                if (c.type === 'video' && c.videoEl && !c.videoEl.paused) {
+                    try { c.videoEl.pause(); probePausedVideos.push(c.videoEl); } catch (_) {}
+                }
+            }
             _probeRunning = true;
             btn.disabled = true;
             resultEl.classList.add('hidden');
@@ -29092,17 +29121,24 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             }
             const stdWall = (performance.now() - stdT0) / 1000;
 
-            // Pass 2 — FTRT cadence: un-paced frame pump (minimal yield keeps UI alive).
+            // Pass 2 — FTRT cadence: un-paced frame pump with a 3 ms pacing floor.
+            // The floor mirrors MediaBunny fast mode's setTimeout(2) — it bounds how
+            // fast the loop can issue GPU work (and allocations) so the GPU process
+            // can retire and reclaim between frames. On a 1 GB GT 740, an unbounded
+            // pump burst ~2 GB of canvas textures in ~1.3 s and TDR'd the driver
+            // (docs/hyperframes/GPU-Crash-Analysis-and-Plan.md). 3 ms is ~nothing
+            // against the 10-60+ ms/frame draw cost, so the ×-ratio stays honest.
             statusEl.textContent = 'Fast pass… 0/' + frames;
             const ftrtT0 = performance.now();
             for (let f = 0; f < frames; f++) {
                 await renderFrame(f);
-                await sleep(0);
+                await sleep(3);
                 if (f % tick === 0) statusEl.textContent = 'Fast pass… ' + f + '/' + frames;
             }
             const ftrtWall = (performance.now() - ftrtT0) / 1000;
 
             State.currentTime = prevTime;
+            for (const el of probePausedVideos) { try { el.play().catch(() => {}); } catch (_) {} }
             _probeRunning = false;
             btn.disabled = false;
 
@@ -29132,7 +29168,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             try { localStorage.setItem(FTRT_HISTORY_KEY, JSON.stringify(hist)); } catch (_) {}
             renderFTRTLastRun();
             statusEl.textContent = hasVideo
-                ? 'Note: video clips in range may appear blank — probe is capture-only, and video pins both modes near 1×.'
+                ? 'Note: video clips are paused during the probe — capture-only, exact per-frame video sync lands with M1b.'
                 : 'Done.';
             console.log('[FTRT probe] ' + endT + 's @ ' + fps + 'fps ' + exportW + 'x' + exportH +
                 ': standard=' + stdWall.toFixed(2) + 's (' + stdX.toFixed(2) + '×) ftrt=' + ftrtWall.toFixed(2) + 's (' + ftrtX.toFixed(2) + '×) ratio=' + ratio.toFixed(1) + '×');
