@@ -2165,7 +2165,7 @@
                     const response = await fetch(fetchUrl, { mode: 'cors' });
                     if (!response.ok) continue;
                     const blob = await response.blob();
-                    const objectUrl = URL.createObjectURL(blob);
+                    const objectUrl = await blobToPersistentUrl(blob, 'URL import');
                     
                     const title = rawUrl.substring(rawUrl.lastIndexOf('/') + 1).split('?')[0] || 'Web Image';
                     await addRawImageToTimeline(objectUrl, title);
@@ -2257,7 +2257,7 @@
                                 const response = await fetch(fetchUrl, { mode: 'cors' });
                                 if (!response.ok) continue;
                                 const blob = await response.blob();
-                                const objectUrl = URL.createObjectURL(blob);
+                                const objectUrl = await blobToPersistentUrl(blob, 'Pasted URL image');
                                 
                                 const title = fetchUrl.substring(fetchUrl.lastIndexOf('/') + 1).split('?')[0] || 'Pasted URL Image';
                                 await addRawImageToTimeline(objectUrl, title);
@@ -26817,6 +26817,27 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
         // refresh / project open) only up to this base64 byte cap — larger pastes
         // fall back to the old blob-URL behavior (missing after refresh).
         const PASTE_IMAGE_EMBED_MAX = 2 * 1024 * 1024;
+        // Fetched / pasted URL images are embedded as data: URLs (so they survive
+        // page refresh / project open) up to the byte cap — larger blobs fall back
+        // to the old blob-URL behavior (missing after refresh). Same rule as
+        // clipboard pastes; see docs/features/URL-Media-Auto-Load-Plan.md.
+        async function blobToPersistentUrl(blob, label) {
+            if (blob.size <= PASTE_IMAGE_EMBED_MAX) {
+                try {
+                    return await new Promise((res, rej) => {
+                        const r = new FileReader();
+                        r.onload = () => res(r.result);
+                        r.onerror = () => rej(r.error);
+                        r.readAsDataURL(blob);
+                    });
+                } catch (err) {
+                    console.warn('[StudioPro] Failed to embed ' + label + ' as data URL:', err);
+                }
+            } else {
+                console.warn('[StudioPro] ' + label + ' exceeds ' + PASTE_IMAGE_EMBED_MAX + ' bytes — not embedded; it will need re-import after refresh.');
+            }
+            return URL.createObjectURL(blob);
+        }
 
         // Runtime-only clip fields that must never be serialized (elements, buffers,
         // audio graphs, blob URLs, decode latches). Peaks are dropped too — they are

@@ -126,5 +126,5 @@ if (imageBlob) {
 
 - **P1 (core):** `_srcUrl` field + `restoreClip` URL branch + md builders stamp `_srcUrl` (fixes Path A fully).
 - **P2 (pastes):** paste → data URL with size cap + `addRawImageToTimeline` stamping (fixes Path B).
-- **P3 (URL imports):** shared `fetchImageViaProxies` helper so restored http(s) sources re-resolve through CORS proxies.
+- **P3 (URL imports):** the fetch paths (`submitImageUrl`, paste-text) now embed the fetched blob as a `data:` URL under the cap (same as P2) — **implemented Aug 17 2026**. Remaining: over-cap URL imports still fall back to blob URLs (missing after refresh); a shared `fetchImageViaProxies` re-fetch helper remains optional for that case.
 - **Later (optional):** IndexedDB backing for large pasted images instead of the cap.
