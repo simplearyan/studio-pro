@@ -203,7 +203,7 @@
                     <!-- Fast (FTRT) — capture-only Compare speed probe -->
                     <div id="exportGroup-ftrt" class="grid grid-cols-2 gap-2 hidden">
                         <label class="cursor-pointer">
-                            <input type="radio" name="exportFormat" value="video-mediabunny-mp4" class="peer sr-only">
+                            <input type="radio" name="exportFormat" value="video-ftrt-mp4" class="peer sr-only">
                             <div class="p-3 border border-surface-200 dark:border-surface-700 rounded-lg export-opt text-surface-900 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-700 shadow-sm">
                                 <i data-lucide="cpu" class="w-4 h-4 mb-1 text-surface-600 dark:text-surface-300 peer-checked:text-brand-500 hidden"></i>
                                 <div class="font-bold text-sm mb-0.5">Fast MP4 (H.264)</div>
@@ -211,7 +211,7 @@
                             </div>
                         </label>
                         <label class="cursor-pointer">
-                            <input type="radio" name="exportFormat" value="video-mediabunny" class="peer sr-only">
+                            <input type="radio" name="exportFormat" value="video-ftrt-webm" class="peer sr-only">
                             <div class="p-3 border border-surface-200 dark:border-surface-700 rounded-lg export-opt text-surface-900 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-700 shadow-sm">
                                 <i data-lucide="cpu" class="w-4 h-4 mb-1 text-surface-600 dark:text-surface-300 peer-checked:text-brand-500 hidden"></i>
                                 <div class="font-bold text-sm mb-0.5">Fast WebM (VP9)</div>
@@ -243,7 +243,7 @@
                                 <div id="ftrtSpeedup" class="hidden mt-1 px-2 py-1 rounded-md text-[11px] font-bold text-brand-700 dark:text-brand-300 bg-brand-500/10 dark:bg-brand-400/15"></div>
                             </div>
                             <p id="ftrtLastRun" class="hidden text-[10px] font-mono text-surface-500 dark:text-surface-300 mt-2 leading-snug"></p>
-                            <p class="text-[10px] text-surface-500 dark:text-surface-300 mt-2 leading-snug">Capture-only benchmark — the encoder adds the same overhead to both modes. Full FTRT export lands next; Start Export currently uses the MediaBunny pipeline.</p>
+                            <p class="text-[10px] text-surface-500 dark:text-surface-300 mt-2 leading-snug">Capture-only benchmark — the encoder adds the same overhead to both modes. Start Export uses the Fast (FTRT) pipeline; MediaBunny stays available on its own tab. Video clips export in real time (1×) until the M1b frame pool.</p>
                         </div>
                     </div>
                     
@@ -513,6 +513,33 @@
             <div class="flex items-center justify-end gap-3 pt-4 border-t border-surface-100 dark:border-surface-700">
                 <button onclick="closeExportModal()" class="px-4 py-2 text-sm font-bold text-surface-600 dark:text-surface-300 border border-surface-200 dark:border-surface-700 rounded-lg hover:bg-surface-50 dark:hover:bg-surface-700 hover:text-surface-900 dark:hover:text-white transition-colors">Done</button>
                 <button onclick="downloadExportAgain()" class="px-5 py-2 bg-brand-600 hover:bg-brand-500 text-white text-sm font-bold rounded-lg shadow-md shadow-brand-600/20 hover:shadow-lg hover:shadow-brand-500/25 active:scale-[0.98] transition-all flex items-center gap-2">Download <i data-lucide="download" class="w-4 h-4"></i></button>
+            </div>
+        </div>
+
+        <!-- FTRT stall-watchdog fallback dialog: shown when the Fast renderer gets
+             no frame acks for the stall window (weak GPU / heavy range). One click
+             aborts cleanly and relaunches the standard MediaBunny export with the
+             identical settings. -->
+        <div id="ftrtFallbackDialog" class="absolute inset-0 z-[60] hidden items-center justify-center p-4">
+            <div class="bg-white dark:bg-surface-800 rounded-2xl shadow-2xl border border-surface-200 dark:border-surface-700 max-w-sm w-full p-5 sm:p-6">
+                <div class="flex items-start gap-3 mb-4">
+                    <div class="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-500/15 flex items-center justify-center shrink-0">
+                        <i data-lucide="alert-triangle" class="w-5 h-5 text-amber-600 dark:text-amber-400"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <h3 class="text-sm font-bold text-surface-900 dark:text-white">Fast renderer stalled?</h3>
+                        <p id="ftrtFbMsg" class="text-[11px] text-surface-500 dark:text-surface-300 mt-0.5 leading-snug">No frames have been encoded for a while — your GPU may be struggling with this range (especially at 4K). Switch to the standard MediaBunny export to keep going safely.</p>
+                    </div>
+                </div>
+                <div class="flex flex-col gap-2">
+                    <button id="ftrtFbMediaBunny" class="w-full px-4 py-2.5 bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold rounded-lg shadow-md shadow-brand-600/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2">
+                        <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Switch to MediaBunny (recommended)
+                    </button>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button id="ftrtFbContinue" class="px-4 py-2.5 text-xs font-bold text-surface-700 dark:text-surface-200 border border-surface-200 dark:border-surface-700 rounded-lg hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors">Keep waiting</button>
+                        <button id="ftrtFbCancel" class="px-4 py-2.5 text-xs font-bold text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/40 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors">Cancel export</button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -29387,7 +29414,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             document.getElementById('exportDoneDuration').textContent = fmtExportDuration(info.durationSec);
             document.getElementById('exportDoneResolution').textContent = info.resolution;
             document.getElementById('exportDoneFps').textContent = info.fps + ' fps';
-            document.getElementById('exportDoneFormat').textContent = info.format;
+            document.getElementById('exportDoneFormat').textContent = info.format + (info.note ? ' · ' + info.note : '');
             document.getElementById('exportDoneSize').textContent = fmtExportSize(info.sizeBytes);
             document.getElementById('exportDoneTime').textContent = fmtExportDuration(info.exportMs / 1000);
             document.getElementById('exportProgress').classList.add('hidden');
@@ -29558,6 +29585,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             const formatLabels = {
                 'video-mp4': 'Standard MP4', 'video-webm': 'Standard WebM', 'gif': 'GIF',
                 'video-mediabunny-mp4': 'MB MP4', 'video-mediabunny': 'MB WebM',
+                'video-ftrt-mp4': 'Fast MP4', 'video-ftrt-webm': 'Fast WebM',
                 'audio-webm': 'Audio WebM', 'audio-wav': 'Audio WAV'
             };
             document.getElementById('exportDetailLine').textContent =
@@ -29603,6 +29631,36 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 
                 // Pass format to allow both webm and mp4 MediaBunny exports
                 window.startMediaBunnyExport(exportW, exportH, fps, startTime, endTime, mbFormat);
+                return;
+            }
+
+            if (format === 'video-ftrt-mp4' || format === 'video-ftrt-webm') {
+                const aspectStr = ASPECT_RATIOS[State.preview.aspectIndex].value;
+                const [wRatio, hRatio] = aspectStr.split('/').map(Number);
+                const baseRes = State.exportResolution || 1920;
+
+                let exportW, exportH;
+                if (wRatio >= hRatio) {
+                    exportW = baseRes;
+                    exportH = baseRes * (hRatio / wRatio);
+                } else {
+                    exportH = baseRes;
+                    exportW = baseRes * (wRatio / hRatio);
+                }
+
+                // Even dimensions for WebCodecs encoding compatibility.
+                exportW = Math.floor(exportW / 2) * 2;
+                exportH = Math.floor(exportH / 2) * 2;
+
+                const fps = State.exportFps || 30;
+                const ftrtFormat = format === 'video-ftrt-mp4' ? 'mp4' : 'webm';
+
+                State.isExporting = true;
+                State.cancelExport = false;
+
+                stopMedia();
+
+                window.startFTRTExport(exportW, exportH, fps, startTime, endTime, ftrtFormat);
                 return;
             }
 
@@ -29924,24 +29982,14 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             return videoEl.readyState >= 2;
         };
 
-        window.startMediaBunnyExport = async function(exportW, exportH, fps, startTime, endTime, format = 'webm') {
-            mbExportFormat = format;
-            const timeStep = 1 / fps;
-            const totalFrames = Math.ceil((endTime - startTime) / timeStep);
-            State.currentTime = startTime;
-            
-            // Use OffscreenCanvas for main export canvas
-            const exportCanvas = createOffscreenCanvas(exportW, exportH);
-            const exportCtx = exportCanvas.getContext('2d');
-            
-            // --- Audio setup: Pre-render audio using OfflineAudioContext ---
-            let audioCaptureBuffer = null;
+        // Pre-render export audio deterministically (OfflineAudioContext) so video
+        // and audio are captured at the same speed in every export mode. Shared by
+        // MediaBunny (chunks streamed by wall clock) and Fast/FTRT (all chunks queued
+        // up-front — mux is by timestamp, so feed order is irrelevant). Extracted
+        // verbatim from startMediaBunnyExport; keep in sync if this ever grows.
+        async function preRenderExportAudio(startTime, endTime) {
             const audioSampleRate = 48000;
-            const audioChunkDuration = 0.1; // 100ms per audio chunk
-            
-            // Save speaker gain before muting
-            const prevSpeakerGain = State.speakerNode ? State.speakerNode.gain.value : 1;
-            
+
             try {
                 // Element clips (text/shape/image/math) can carry an embedded SFX buffer.
                 // When it hasn't been extracted to the timeline, the SFX must be mixed
@@ -30129,12 +30177,36 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     
                     console.log('Rendering audio offline (' + totalDuration.toFixed(1) + 's)...');
                     const renderedBuffer = await offlineCtx.startRendering();
-                    audioCaptureBuffer = renderedBuffer;
-                    console.log('Audio pre-rendered OK:', audioCaptureBuffer.duration.toFixed(2), 'seconds');
+                    console.log('Audio pre-rendered OK:', renderedBuffer.duration.toFixed(2), 'seconds');
+                    return renderedBuffer;
                 }
             } catch (e) {
                 console.warn('Audio pre-render failed, continuing without audio:', e);
             }
+            return null;
+        }
+
+
+        window.startMediaBunnyExport = async function(exportW, exportH, fps, startTime, endTime, format = 'webm') {
+            mbExportFormat = format;
+            const timeStep = 1 / fps;
+            const totalFrames = Math.ceil((endTime - startTime) / timeStep);
+            State.currentTime = startTime;
+            
+            // Use OffscreenCanvas for main export canvas
+            const exportCanvas = createOffscreenCanvas(exportW, exportH);
+            const exportCtx = exportCanvas.getContext('2d');
+            
+            // --- Audio setup: Pre-render audio using OfflineAudioContext ---
+            const audioSampleRate = 48000;
+            const audioChunkDuration = 0.1; // 100ms per audio chunk
+            
+            // Save speaker gain before muting
+            const prevSpeakerGain = State.speakerNode ? State.speakerNode.gain.value : 1;
+            
+            // Pre-render audio deterministically — shared with the Fast (FTRT)
+            // export path via the extracted helper (mechanical swap, no behavior change).
+            let audioCaptureBuffer = await preRenderExportAudio(startTime, endTime);
             
             // Mute speakers during export (but keep audio flowing if capturing)
             if (State.speakerNode) State.speakerNode.gain.value = 0;
@@ -30634,6 +30706,305 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 } catch (err) {
                     alert(`Export failed: ${err.message}`);
                     cleanupExport();
+                }
+            }
+        };
+
+        // ── Fast (FTRT) export — un-paced frame pump on the shared worker ──────────
+        // M1a: text/markdown timelines export faster than real time; video clips
+        // auto-degrade to 1× (paced) with a notice (the M1b frame pool removes the
+        // last 1× dependency). Inherits the GT 740 protections: createImageBitmap
+        // (never transferToImageBitmap — Kenichi-style, prevents driver TDR), worker
+        // frame-processed-ack backpressure, and a stall watchdog that offers a
+        // one-click "Switch to MediaBunny" fallback with the identical settings.
+        // MediaBunny's own loop is untouched; both share preRenderExportAudio, the
+        // module-level worker, and the export-progress/success UI. See
+        // docs/hyperframes/M1-FTRT-Export-Plan.md §3.3 / §4.
+        window.startFTRTExport = async function (exportW, exportH, fps, startTime, endTime, format = 'mp4') {
+            mbExportFormat = format;
+            const timeStep = 1 / fps;
+            const totalFrames = Math.max(1, Math.ceil((endTime - startTime) / timeStep));
+            const exportStartWall = performance.now();
+            const rangeSec = endTime - startTime;
+
+            // M1a video policy: clips in range auto-degrade to 1×. Reversed clips need
+            // MediaBunny's element-resync machinery this mode doesn't have yet — route
+            // those straight to the safe lane (MediaBunny) with a console notice.
+            const videoClips = State.clips.filter(c =>
+                c.type === 'video' && !c.hidden && c.fileUrl && c.start < endTime && (c.start + c.duration) > startTime);
+            const reversedVideo = videoClips.some(c => c.reverse);
+            const hasVideo = videoClips.length > 0 && !reversedVideo;
+
+            const exportCanvas = createOffscreenCanvas(exportW, exportH);
+            const exportCtx = exportCanvas.getContext('2d');
+
+            const prevSpeakerGain = State.speakerNode ? State.speakerNode.gain.value : 1;
+
+            if (reversedVideo) {
+                console.warn('[FTRT] reversed video clip(s) in range — routing to the MediaBunny safe lane.');
+                if (State.speakerNode) State.speakerNode.gain.value = prevSpeakerGain;
+                window.startMediaBunnyExport(exportW, exportH, fps, startTime, endTime, format);
+                return;
+            }
+
+            // Audio: deterministic pre-render, then queue ALL chunks up-front. Mux is
+            // by timestamp, so feed order is irrelevant — this is what keeps FTRT
+            // audio in sync at un-paced speed (no wall-clock streaming dependency).
+            const audioBuffer = await preRenderExportAudio(startTime, endTime);
+            const audioSampleRate = 48000;
+            const audioChunkDuration = 0.1;
+            if (State.speakerNode) State.speakerNode.gain.value = 0;
+
+            worker.postMessage({
+                type: 'start',
+                config: {
+                    width: exportW, height: exportH, fps,
+                    bitrate: format === 'mp4' ? 8e6 : 5e6,
+                    format, hasAudio: audioBuffer !== null
+                }
+            });
+            await new Promise((resolve) => {
+                const readyHandler = (e) => {
+                    if (e.data.type === 'ready' || e.data.type === 'error') {
+                        worker.removeEventListener('message', readyHandler);
+                        resolve();
+                    }
+                };
+                worker.addEventListener('message', readyHandler);
+                setTimeout(() => { worker.removeEventListener('message', readyHandler); resolve(); }, 5000);
+            });
+            console.log('[FTRT] worker ready — pumping ' + totalFrames + ' frames (' + format + ' ' + exportW + 'x' + exportH + ' @ ' + fps + 'fps' + (hasVideo ? ', video 1× degrade' : '') + ')');
+
+            if (audioBuffer) {
+                let audioSentUpTo = 0, audioChunkIndex = 0;
+                while (audioSentUpTo < audioBuffer.duration) {
+                    const startSample = Math.floor(audioSentUpTo * audioSampleRate);
+                    const frameCount = Math.min(Math.floor(audioChunkDuration * audioSampleRate), audioBuffer.length - startSample);
+                    if (frameCount <= 0) break;
+                    const left = audioBuffer.getChannelData(0), right = audioBuffer.getChannelData(1);
+                    const interleaved = new Float32Array(frameCount * 2);
+                    for (let i = 0; i < frameCount; i++) { interleaved[i * 2] = left[startSample + i]; interleaved[i * 2 + 1] = right[startSample + i]; }
+                    try {
+                        const audioData = new AudioData({ format: 'f32', sampleRate: audioSampleRate, numberOfChannels: 2, numberOfFrames: frameCount, timestamp: audioSentUpTo * 1e6, data: interleaved });
+                        worker.postMessage({ type: 'audio-data', audioData, timestamp: audioSentUpTo, index: audioChunkIndex++ }, [audioData]);
+                        audioSentUpTo += frameCount / audioSampleRate;
+                    } catch (err) {
+                        console.warn('[FTRT] audio chunk failed, continuing without audio:', err);
+                        break;
+                    }
+                }
+                console.log('[FTRT] queued all audio up-front: ' + audioBuffer.duration.toFixed(1) + 's');
+            }
+
+            let lastCapturedFrame = -1;
+            let lastAckAt = performance.now();
+            let workerError = null;
+            let fallbackRelaunched = false;
+            const STALL_MS = 8000;
+
+            const sendFrame = (bitmap, frameIndex) => {
+                try {
+                    worker.postMessage({ type: 'frame', bitmap, timestamp: frameIndex * timeStep, duration: timeStep, index: frameIndex }, [bitmap]);
+                } catch (err) { workerError = err.message || String(err); }
+            };
+            const ackForFrame = (frameIndex) => new Promise((resolve) => {
+                const handler = (e) => {
+                    if (e.data.type === 'frame-processed' && e.data.index === frameIndex) {
+                        worker.removeEventListener('message', handler);
+                        resolve(true);
+                    } else if (e.data.type === 'error') {
+                        worker.removeEventListener('message', handler);
+                        workerError = e.data.error;
+                        resolve(false);
+                    }
+                };
+                worker.addEventListener('message', handler);
+                setTimeout(() => { worker.removeEventListener('message', handler); resolve(false); }, 3000);
+            });
+
+            const updateProgress = () => {
+                const progress = Math.min(100, Math.round(((lastCapturedFrame + 1) / totalFrames) * 100));
+                document.getElementById('exportProgressBar').style.width = progress + '%';
+                document.getElementById('exportProgressText').textContent = progress + '%';
+                const elapsedSec = (performance.now() - exportStartWall) / 1000;
+                const mins = Math.floor(elapsedSec / 60);
+                document.getElementById('exportTimerDisplay').textContent = mins + ':' + String(Math.floor(elapsedSec % 60)).padStart(2, '0');
+                if (lastCapturedFrame > 30) {
+                    const fpsEl = document.getElementById('exportFpsDetail');
+                    fpsEl.textContent = (lastCapturedFrame / elapsedSec).toFixed(1) + ' fps actual';
+                    fpsEl.style.opacity = '0.6';
+                }
+                const progressFraction = (lastCapturedFrame + 1) / totalFrames;
+                const etaEl = document.getElementById('exportEtaDisplay');
+                if (progressFraction > 0.05 && elapsedSec > 3) {
+                    const etaSec = Math.max(0, (elapsedSec / progressFraction) - elapsedSec);
+                    etaEl.textContent = '~' + Math.floor(etaSec / 60) + ':' + String(Math.floor(etaSec % 60)).padStart(2, '0') + ' remaining';
+                    etaEl.style.opacity = '0.6';
+                } else {
+                    etaEl.style.opacity = '0';
+                }
+                if (lastCapturedFrame % 60 === 0 && lastCapturedFrame > 0) {
+                    const wcMs = performance.now() - exportStartWall;
+                    console.log('[FTRT Timing] f=' + lastCapturedFrame + '/' + (totalFrames - 1) + ' wall=' + wcMs.toFixed(0) + 'ms exp=' + (lastCapturedFrame * 1000 / fps).toFixed(0) + 'ms fps=' + (lastCapturedFrame / (wcMs / 1000)).toFixed(1));
+                }
+            };
+
+            // Stall watchdog: if no frame ack lands within STALL_MS, surface the
+            // fallback dialog instead of letting a weak GPU plow toward a TDR.
+            let fallbackPrompted = false;
+            const offerFallback = () => {
+                if (fallbackPrompted) return Promise.resolve('continue');
+                fallbackPrompted = true;
+                const dlg = document.getElementById('ftrtFallbackDialog');
+                if (!dlg) return Promise.resolve('continue');
+                dlg.classList.remove('hidden');
+                dlg.classList.add('flex');
+                if (window.lucide && lucide.createIcons) lucide.createIcons();
+                return new Promise((resolve) => {
+                    const decide = (choice) => {
+                        dlg.classList.add('hidden');
+                        dlg.classList.remove('flex');
+                        document.getElementById('ftrtFbMediaBunny').removeEventListener('click', onMB);
+                        document.getElementById('ftrtFbContinue').removeEventListener('click', onC);
+                        document.getElementById('ftrtFbCancel').removeEventListener('click', onX);
+                        resolve(choice);
+                    };
+                    const onMB = () => decide('mediabunny');
+                    const onC = () => decide('continue');
+                    const onX = () => decide('cancel');
+                    document.getElementById('ftrtFbMediaBunny').addEventListener('click', onMB);
+                    document.getElementById('ftrtFbContinue').addEventListener('click', onC);
+                    document.getElementById('ftrtFbCancel').addEventListener('click', onX);
+                });
+            };
+
+            // M1a video degrade: drive the timeline's own elements staggered so the
+            // 1×-paced pump captures real video frames (frame-pool speedup is M1b).
+            const syncVideoElements = () => {
+                if (!hasVideo) return;
+                const t = State.currentTime;
+                for (const clip of videoClips) {
+                    const el = clip.videoEl;
+                    if (!el) continue;
+                    if (t >= clip.start && t < clip.start + clip.duration) {
+                        if (el.paused) {
+                            try { el.currentTime = Math.max(0, clipSourcePos(clip, t - clip.start)); } catch (_) {}
+                            const p = el.play();
+                            if (p !== undefined) p.catch(() => {});
+                        }
+                    } else {
+                        if (!el.paused) { try { el.pause(); } catch (_) {} }
+                    }
+                }
+            };
+
+            const pumpStart = performance.now();
+            while (lastCapturedFrame < totalFrames - 1 && !State.cancelExport && !workerError && !fallbackRelaunched) {
+                if (performance.now() - lastAckAt > STALL_MS) {
+                    const choice = await offerFallback();
+                    if (choice === 'mediabunny') {
+                        worker.postMessage({ type: 'cancel' });
+                        State.isExporting = false;
+                        if (State.speakerNode) State.speakerNode.gain.value = prevSpeakerGain;
+                        fallbackRelaunched = true;
+                        console.warn('[FTRT] user chose MediaBunny — relaunching with identical settings.');
+                        window.startMediaBunnyExport(exportW, exportH, fps, startTime, endTime, format);
+                        return;
+                    }
+                    if (choice === 'cancel') { State.cancelExport = true; break; }
+                    lastAckAt = performance.now(); // 'continue' — reset the clock and keep pumping
+                }
+
+                const targetFrame = lastCapturedFrame + 1;
+                State.currentTime = startTime + targetFrame * timeStep; // on the fps grid (M0)
+
+                syncVideoElements();
+                drawCanvas(exportCtx, exportW, exportH);
+                const bitmap = await createImageBitmap(exportCanvas);
+                sendFrame(bitmap, targetFrame);
+                const acked = await ackForFrame(targetFrame);
+                if (acked) lastAckAt = performance.now();
+                lastCapturedFrame = targetFrame;
+                updateProgress();
+
+                if (hasVideo) {
+                    // 1× degrade pacing — keeps live elements in sync with capture.
+                    const due = (lastCapturedFrame + 1) * (1000 / fps);
+                    const wait = Math.max(2, due - (performance.now() - pumpStart));
+                    if (wait > 0) await new Promise(r => setTimeout(r, wait));
+                }
+            }
+
+            const restoreAndFinish = () => {
+                if (State.speakerNode) State.speakerNode.gain.value = prevSpeakerGain;
+                for (const clip of videoClips) {
+                    const el = clip.videoEl;
+                    if (el && !el.paused) { try { el.pause(); } catch (_) {} }
+                }
+                State.isExporting = false;
+            };
+
+            if (workerError) {
+                worker.postMessage({ type: 'cancel' });
+                restoreAndFinish();
+                showNoticeModal({ tone: 'error', title: 'Fast export failed', message: 'Fast export failed: ' + workerError, confirmLabel: 'Done' });
+            } else if (State.cancelExport) {
+                worker.postMessage({ type: 'cancel' });
+                restoreAndFinish();
+                console.log('[FTRT] cancelled by user.');
+            } else {
+                worker.postMessage({ type: 'finalize' });
+                try {
+                    const doneResult = await new Promise((resolve, reject) => {
+                        const doneHandler = (e) => {
+                            if (e.data.type === 'done') {
+                                worker.removeEventListener('message', doneHandler);
+                                worker.removeEventListener('message', errHandler);
+                                resolve(e.data);
+                            }
+                        };
+                        const errHandler = (e) => {
+                            if (e.data.type === 'error') {
+                                worker.removeEventListener('message', doneHandler);
+                                worker.removeEventListener('message', errHandler);
+                                reject(new Error(e.data.error));
+                            }
+                        };
+                        worker.addEventListener('message', doneHandler);
+                        worker.addEventListener('message', errHandler);
+                        setTimeout(() => {
+                            worker.removeEventListener('message', doneHandler);
+                            worker.removeEventListener('message', errHandler);
+                            reject(new Error('Finalize timed out after 120 seconds'));
+                        }, 120000);
+                    });
+                    const mimeType = format === 'mp4' ? 'video/mp4' : 'video/webm';
+                    const ext = format === 'mp4' ? 'mp4' : 'webm';
+                    const blob = new Blob([doneResult.buffer], { type: mimeType });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'StudioPro_Export_FTRT.' + ext;
+                    a.click();
+                    const exportMs = performance.now() - exportStartWall;
+                    const xReal = exportMs > 0 ? rangeSec / (exportMs / 1000) : 0;
+                    console.log('[FTRT] exported ' + rangeSec.toFixed(1) + 's in ' + (exportMs / 1000).toFixed(1) + 's = ' + xReal.toFixed(2) + '× real-time (' + format + (hasVideo ? ', video 1× degrade' : '') + ')');
+                    showExportSuccess({
+                        url,
+                        filename: 'StudioPro_Export_FTRT.' + ext,
+                        durationSec: rangeSec,
+                        resolution: exportW + '×' + exportH,
+                        fps,
+                        format: format.toUpperCase(),
+                        sizeBytes: doneResult.buffer.byteLength || blob.size,
+                        exportMs,
+                        note: xReal >= 1 ? '⚡ ' + xReal.toFixed(1) + '× real-time' : xReal.toFixed(2) + '× real-time'
+                    });
+                    restoreAndFinish();
+                } catch (err) {
+                    worker.postMessage({ type: 'cancel' });
+                    restoreAndFinish();
+                    showNoticeModal({ tone: 'error', title: 'Fast export failed', message: 'Fast export failed: ' + err.message, confirmLabel: 'Done' });
                 }
             }
         };
