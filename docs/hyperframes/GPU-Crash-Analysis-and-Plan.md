@@ -95,7 +95,7 @@ This explains every data point:
 - [ ] Re-running the three-test suite (30 s markdown / 10 s graded video / 30 s graded video) — no crash; results logged in `ftrtProbeHistory`.
 - [ ] `git diff` shows the MediaBunny loop (`startMediaBunnyExport` / `realtimeExportLoop`) untouched — only the probe + grade path change.
 - [ ] Image-clip grade cache (`_ccCache`) still hits (sig includes `exact|gpu` marker).
-- [ ] Watchdog aborts cleanly and the UI tells the user to use MediaBunny (testable by artificially inflating frame cost).
+- [x] Watchdog aborts cleanly and the UI tells the user to use MediaBunny (testable by artificially inflating frame cost). — verified §4.2
 
 ---
 
@@ -116,6 +116,20 @@ This explains every data point:
 | Page health after the run | crashed | preview rendering normally, app alive ✓ |
 
 Note: 8.28× is faster than the pre-fix 10 s video runs (1.97×) because the video is now paused — the probe measures the draw+grade path instead of live playback (exact per-frame video sync is M1b's frame-pool job). The MediaBunny loop was not touched (P2/M1a inherits these protections).
+
+---
+
+## 4.2 Outcome — P1 safety rails implemented and verified (2026-08-17)
+
+**Implemented in `index.html` (uncommitted):**
+
+1. **Frame-time watchdog** — `renderFrame` measures each frame's draw+readback time; 10 **consecutive** frames > 150 ms (streak resets on any healthy frame) set `probeAborted`, which breaks both passes. Cleanup runs (state/videos/button restored), the result box stays hidden, nothing is persisted, and the status shows *"⚠ GPU too slow for this range (10 consecutive frames > 150 ms) — aborted. Use the MediaBunny tab for a safe export of this range."* Thresholds: an 1080p exact grade is ~83 ms/frame (under, runs fine); 4K exact ~350 ms (aborts → correct "use MediaBunny" guidance).
+2. **Heavy-range pre-flight warning** — estimates cumulative GPU work `frames × exportW × exportH × 4`, flags `heavyRange = hasVideo && hasGrade && workloadGB > 3` (3 GB calibrated from the pre-fix data: the 10 s "edge" run ~3.7 GB, the 30 s crash ~11 GB). Logs a `console.warn` at start and appends the completed status with the measured GB; `heavy` + `workloadGB` are persisted in the history record. Chosen **warn-only, no auto-cap** — the crash mechanism is gone (P0), the watchdog is the enforcement, and capping would silently change what the user asked to benchmark.
+
+**Verified live:**
+- Watchdog: injected a 200 ms/frame cost → aborted at exactly 10 slow frames with the message, result hidden, no history record written.
+- Heavy warning: 15 s graded video @ 30 fps (3.7 GB) → completed normally (Fast 6.50×), status *"⚠ Heavy range completed — ~3.7 GB of GPU work pushed…"*, record `heavy: true, workloadGB: 3.7`.
+- Non-heavy paths unchanged (markdown has no grade → no warning; sub-threshold ranges → normal "Done." text).
 
 ## 5. Out of scope
 

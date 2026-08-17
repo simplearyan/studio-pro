@@ -29079,6 +29079,29 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             const frames = Math.max(1, Math.ceil(endT / step));
             const hasVideo = State.clips.some(c => c.type === 'video' && c.start < endT && c.start + c.duration > startT);
 
+            // P1 pre-flight: estimate the GPU workload for the range. Cumulative
+            // texture bytes is the metric that predicted the GT 740 TDR (the
+            // pre-fix 10 s run that "worked but was at the edge" pushed ~3.7 GB;
+            // the 30 s crash ~11 GB). The scratch-canvas fix removed the live
+            // allocation growth, so this is a workload-size proxy — warn on heavy
+            // ranges; the watchdog below is the enforcement that aborts if the
+            // GPU actually runs away.
+            const hasGrade = State.clips.some(c => {
+                if (c.type !== 'video' && c.type !== 'image') return false;
+                if (c.start >= endT || c.start + c.duration <= startT) return false;
+                const e = c.effects || {};
+                const g = (k, d) => { const v = e[k]; return v !== undefined ? v : d; };
+                return Math.abs(g('colorSaturation', 100) - 100) > 0.5 || Math.abs(g('colorVibrance', 0)) > 0.5 ||
+                    Math.abs(g('colorHue', 0)) > 0.5 || Math.abs(g('colorTemperature', 0)) > 0.5 ||
+                    Math.abs(g('colorTint', 0)) > 0.5 || Math.abs(g('colorBrightness', 100) - 100) > 0.5 ||
+                    Math.abs(g('colorContrast', 100) - 100) > 0.5 || g('colorBlur', 0) > 0.5;
+            });
+            const workloadGB = frames * exportW * exportH * 4 / 1e9;
+            const heavyRange = hasVideo && hasGrade && workloadGB > 3;
+            if (heavyRange) {
+                console.warn('[FTRT probe] heavy range: ~' + workloadGB.toFixed(1) + ' GB of GPU work (video + grade) — watchdog armed; MediaBunny is the safe full-export path for this range.');
+            }
+
             const canvas = createOffscreenCanvas(exportW, exportH);
             const ctx = canvas.getContext('2d');
             const prevTime = State.currentTime;
@@ -29100,11 +29123,27 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             speedupEl.classList.add('hidden');
             statusEl.classList.remove('hidden');
 
+            // P1 watchdog: abort the probe instead of letting a struggling GPU
+            // plow toward a driver TDR. If 10 consecutive frames each take more
+            // than 150 ms, the GPU is running away (an 1080p exact grade is
+            // ~83 ms/frame; 4K exact ~350 ms) — finishing the run would waste
+            // time and risk the driver. The user is told to use the MediaBunny
+            // tab, which paces capture behind the encode ack. The streak resets
+            // on any healthy frame so a single slow hiccup never aborts.
+            let slowStreak = 0, probeAborted = false;
+            const WATCHDOG_SLOW_MS = 150, WATCHDOG_STREAK = 10;
             const renderFrame = async (f) => {
+                const t0 = performance.now();
                 State.currentTime = quantizeTimeToFrame(startT + f * step, fps);
                 drawCanvas(ctx, exportW, exportH);
                 const bmp = await createImageBitmap(canvas);
                 bmp.close();
+                const dt = performance.now() - t0;
+                if (dt > WATCHDOG_SLOW_MS) {
+                    if (++slowStreak >= WATCHDOG_STREAK) probeAborted = true;
+                } else if (slowStreak > 0) {
+                    slowStreak = 0;
+                }
             };
             const sleep = (ms) => new Promise(r => setTimeout(r, ms));
             const tick = Math.max(1, Math.round(frames / 20));
@@ -29113,6 +29152,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             statusEl.textContent = 'Standard pass… 0/' + frames;
             const stdT0 = performance.now();
             for (let f = 0; f < frames; f++) {
+                if (probeAborted) break;
                 await renderFrame(f);
                 const due = (f + 1) * 1000 / fps;
                 const wait = Math.max(2, due - (performance.now() - stdT0));
@@ -29131,6 +29171,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             statusEl.textContent = 'Fast pass… 0/' + frames;
             const ftrtT0 = performance.now();
             for (let f = 0; f < frames; f++) {
+                if (probeAborted) break;
                 await renderFrame(f);
                 await sleep(3);
                 if (f % tick === 0) statusEl.textContent = 'Fast pass… ' + f + '/' + frames;
@@ -29141,6 +29182,12 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             for (const el of probePausedVideos) { try { el.play().catch(() => {}); } catch (_) {} }
             _probeRunning = false;
             btn.disabled = false;
+
+            if (probeAborted) {
+                statusEl.textContent = '⚠ GPU too slow for this range (' + WATCHDOG_STREAK + ' consecutive frames > ' + WATCHDOG_SLOW_MS + ' ms) — aborted. Use the MediaBunny tab for a safe export of this range.';
+                console.warn('[FTRT probe] aborted by watchdog: ' + slowStreak + ' consecutive slow frames (>' + WATCHDOG_SLOW_MS + ' ms).');
+                return;
+            }
 
             const xReal = (wall) => wall > 0 ? (endT / wall) : 0;
             const stdX = xReal(stdWall), ftrtX = xReal(ftrtWall);
@@ -29160,16 +29207,18 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 at: Date.now(), dur: endT, fps, w: exportW, h: exportH,
                 stdWall, stdX, stdFps: frames / stdWall,
                 ftrtWall, ftrtX, ftrtFps: frames / ftrtWall,
-                ratio, hasVideo
+                ratio, hasVideo, heavy: heavyRange, workloadGB: Math.round(workloadGB * 10) / 10
             };
             const hist = getFTRTHistory();
             hist.push(record);
             if (hist.length > 10) hist.shift();
             try { localStorage.setItem(FTRT_HISTORY_KEY, JSON.stringify(hist)); } catch (_) {}
             renderFTRTLastRun();
-            statusEl.textContent = hasVideo
-                ? 'Note: video clips are paused during the probe — capture-only, exact per-frame video sync lands with M1b.'
-                : 'Done.';
+            statusEl.textContent = heavyRange
+                ? '⚠ Heavy range completed — ~' + workloadGB.toFixed(1) + ' GB of GPU work pushed; MediaBunny is the safe full-export path for this range.'
+                : (hasVideo
+                    ? 'Note: video clips are paused during the probe — capture-only, exact per-frame video sync lands with M1b.'
+                    : 'Done.');
             console.log('[FTRT probe] ' + endT + 's @ ' + fps + 'fps ' + exportW + 'x' + exportH +
                 ': standard=' + stdWall.toFixed(2) + 's (' + stdX.toFixed(2) + '×) ftrt=' + ftrtWall.toFixed(2) + 's (' + ftrtX.toFixed(2) + '×) ratio=' + ratio.toFixed(1) + '×');
         };
