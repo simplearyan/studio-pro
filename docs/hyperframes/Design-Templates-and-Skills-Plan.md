@@ -1,6 +1,6 @@
 # Design Templates & Skills — HyperFrames Analysis and Studio Pro Plan
 
-> **Date:** August 2026 · **Status:** M1 (engine) ✅ 2026-08-18; M2 (gallery UI) ✅ 2026-08-18; **M3-first-slice (edit-in-app) + M4 (share)** ✅ 2026-08-18 — per-card actions (Edit/Rename/Export/Delete; built-ins read-only + Export), the edit-in-app banner (apply as defaults → tweak in normal panels → Update re-captures via `buildTemplateFromProject`), and `.sptpl.json` export/import with duplicate-id guard.
+> **Date:** August 2026 · **Status:** M1 (engine) ✅, M2 (gallery) ✅, M3-first-slice (edit-in-app) + M4 (share) ✅, and **Step 5 (markdown script skeletons)** ✅ 2026-08-18 — each built-in carries a `scriptSkeleton` (front-matter with `template:` key + demo slides); applying to an EMPTY project loads it, jumps to the Markdown tab, and is one-Undo-step (markdownText added to the designTemplate snapshot; `pushUndo` now registers empty-project designTemplate entries). Existing scripts/clips are never clobbered.
 > **Sources:** github.com/heygen-com/hyperframes (README, skills), hyperframes.heygen.com/design, heygen.com/research/html-to-video
 > **Scope:** Two questions:
 > **Sources:** github.com/heygen-com/hyperframes (README, skills), hyperframes.heygen.com/design, heygen.com/research/html-to-video
@@ -253,9 +253,10 @@ Template application is a state rewrite — route it through the same state-snap
 - `Export Template` / `Import Template` as `.sptpl.json` (the C.2 schema, plus a `palette` preview block).
 - Round-trip guarantee: import → apply → export must be lossless (versioned schema; unknown keys preserved).
 
-### Phase 5 — (Stretch) templates meet the composition roadmap
+### Phase 5 — (Stretch) templates meet the composition roadmap — ✅ script skeleton shipped 2026-08-18
 
-- Tie templates to `Roadmap-Programmatic-Video.md` Phase 3: a template can optionally carry a **Markdown script skeleton** + **scene layout** so "Apply template" to an empty project produces a structured starting composition — Studio Pro's `frame.md` + `.spcomp` moment. Then the template gallery doubles as the agent-facing "skills" surface: *"make a product-launch video" → pick the product-launch template → generate Markdown → render FTRT.*
+- Each built-in template carries a **Markdown script skeleton** (`scriptSkeleton`) with a `template:` front-matter key + demo slides; **Apply on an empty project** loads it, switches to the Markdown tab, and the user hits Generate — the "make a product-launch video → pick the template → generate → render FTRT" loop works today. Existing scripts/clips are never clobbered, and the load is one Undo step.
+- **Remaining stretch:** scene layout + `.spcomp` tie-in (see `Roadmap-Programmatic-Video.md` Phase 3) — the template gallery doubling as the agent-facing "skills" surface once the composition file exists.
 
 ---
 

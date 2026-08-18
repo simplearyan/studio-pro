@@ -12703,7 +12703,12 @@
         }
 
         function pushUndo(snapshot, coalesceKey) {
-            if (!snapshot || !Object.keys(snapshot.clips || {}).length) return;
+            if (!snapshot) return;
+            // designTemplate snapshots carry globals + config layers even when the
+            // project has no clips yet (an Apply on an empty project loads a script
+            // skeleton), so they must always register; clip-edit snapshots need at
+            // least one clip to be meaningful.
+            if (snapshot.kind !== 'designTemplate' && !Object.keys(snapshot.clips || {}).length) return;
             const now = Date.now();
             // Continuous gesture: keep the FIRST snapshot of the burst (the state
             // before the gesture began), just refresh the open window so a long
@@ -16769,7 +16774,39 @@
                     textStrokeEnable: false, textShadowEnable: true, textShadowColor: '#000000', textShadowBlur: 10, textShadowY: 4,
                     imageAnimIn: 'fade', slideDuration: 5, mdGap: 8
                 },
-                presetPack: ['preset_text_cyberpunk', 'preset_shape_pill']
+                presetPack: ['preset_text_cyberpunk', 'preset_shape_pill'],
+                scriptSkeleton: `---
+template: tpl_launch
+aspect: 16:9
+bg: #0b0b0f
+headingAnimIn: zoomIn
+slideDuration: 5
+---
+
+# Launch Day [anim:zoomIn] [size:120]
+
+Your product is ready. Your story is too.
+
+![Product](mock) [size:90] [bottom]
+
+---
+
+## One Big Idea [anim:zoomIn]
+
+The problem, the shift, and the moment it clicked.
+
+![Hero](mock:video) [bottom]
+
+---
+
+## Get It Today [anim:zoomIn] [color:#fde047]
+
+Pricing. Availability. The call to action.
+
+Your CTA line here [bottom]
+
+---
+`
             },
             {
                 format: 'studio-pro-design-template', version: 1,
@@ -16792,7 +16829,35 @@
                     textStrokeEnable: false, textShadowEnable: false,
                     imageAnimIn: 'fade', slideDuration: 6, mdGap: 10
                 },
-                presetPack: ['preset_text_minimal', 'preset_shape_blur_card']
+                presetPack: ['preset_text_minimal', 'preset_shape_blur_card'],
+                scriptSkeleton: `---
+template: tpl_explainer
+aspect: 16:9
+bg: #0f172a
+headingAnimIn: slideLeft
+slideDuration: 6
+---
+
+## What Is It? [anim:slideLeft]
+
+A simple explanation, in plain words.
+
+---
+
+## How It Works [anim:slideLeft]
+
+Step one. Step two. Step three.
+
+![Diagram](mock) [size:80] [center]
+
+---
+
+## Why It Matters [anim:slideLeft]
+
+The outcome your audience cares about.
+
+---
+`
             },
             {
                 format: 'studio-pro-design-template', version: 1,
@@ -16819,7 +16884,35 @@
                     textShadowEnable: true, textShadowColor: '#000000', textShadowBlur: 8, textShadowY: 4,
                     imageAnimIn: 'zoomIn', slideDuration: 4, mdGap: 6
                 },
-                presetPack: ['preset_text_cartoon']
+                presetPack: ['preset_text_cartoon'],
+                scriptSkeleton: `---
+template: tpl_shorts
+aspect: 9:16
+bg: #09090b
+headingAnimIn: pop
+slideDuration: 4
+---
+
+# WOW MOMENT [anim:pop] [size:100]
+
+The hook. Say it loud.
+
+![Visual](mock) [size:70] [center]
+
+---
+
+## The Payoff [anim:pop]
+
+What makes it worth the watch.
+
+---
+
+## Follow For More [anim:pop]
+
+Your call to action line here.
+
+---
+`
             },
             {
                 format: 'studio-pro-design-template', version: 1,
@@ -16842,7 +16935,35 @@
                     textStrokeEnable: false, textShadowEnable: false,
                     imageAnimIn: 'fade', slideDuration: 6, mdGap: 12
                 },
-                presetPack: ['preset_text_minimal']
+                presetPack: ['preset_text_minimal'],
+                scriptSkeleton: `---
+template: tpl_minimal
+aspect: 16:9
+bg: #111111
+headingAnimIn: fade
+slideDuration: 6
+---
+
+# A quiet title [anim:fade] [size:80]
+
+A short line of supporting text.
+
+---
+
+## A second idea [anim:fade]
+
+Another clean line, nothing more.
+
+![Still](mock) [size:60] [center]
+
+---
+
+## The end [anim:fade]
+
+A closing line. Less is more.
+
+---
+`
             }
         ];
 
@@ -16881,12 +17002,14 @@
         }
 
         // Undo entries for template application need the globals AND both config
-        // layers (a plain clip-edits snapshot would miss bg/aspect/caption style).
+        // layers (a plain clip-edits snapshot would miss bg/aspect/caption style),
+        // plus the markdown script (an Apply on an empty project loads a skeleton).
         function captureDesignTemplateUndo() {
             return {
                 kind: 'designTemplate',
                 canvasBgColor: State.canvasBgColor,
                 aspectIndex: State.preview.aspectIndex,
+                markdownText: State.markdownText,
                 subtitleConfig: JSON.parse(JSON.stringify(State.subtitleConfig)),
                 markdownConfig: JSON.parse(JSON.stringify(State.markdownConfig)),
                 clips: snapshotClipEdits(State.clips.map(c => c.id)).clips
@@ -16895,6 +17018,7 @@
         function restoreDesignTemplateUndo(snap) {
             State.canvasBgColor = snap.canvasBgColor;
             State.preview.aspectIndex = snap.aspectIndex;
+            State.markdownText = snap.markdownText;
             State.subtitleConfig = JSON.parse(JSON.stringify(snap.subtitleConfig));
             State.markdownConfig = JSON.parse(JSON.stringify(snap.markdownConfig));
             applyClipSnapshot(snap);
@@ -16957,6 +17081,17 @@
                 saveMarkdownConfig();
             }
 
+            // 3b. Starter script (Step 5): applying a template to an EMPTY project
+            // (no clips, no script yet) loads the template's markdown skeleton and
+            // jumps to the Markdown tab so the user can review it and hit Generate.
+            // Never clobbers an existing script or clips; only the Apply (project)
+            // mode does this — 'defaults' (front-matter template: key) never does.
+            if (restyle && t.scriptSkeleton && State.clips.length === 0 && !(State.markdownText || '').trim()) {
+                State.markdownText = t.scriptSkeleton;
+                State.sidebarTab = 'markdown';
+                State.markdownSubTab = 'content';
+            }
+
             // 4. Re-style markdown-generated clips (respects _mdProps) + refresh UI
             if (restyle) {
                 try { applyMarkdownStyle(); } catch (e) { console.warn('[StudioPro] markdown restyle failed:', e); drawCanvas(); }
@@ -16964,6 +17099,7 @@
             try { resizeCanvas(); } catch (e) {}
             try { if (typeof renderSubtitlesPanel === 'function') renderSubtitlesPanel(); } catch (e) {}
             try { updateSidebarPanel(); } catch (e) {}
+            try { if (State.sidebarTab === 'markdown') { const ta = document.getElementById('markdownTextarea'); if (ta) ta.value = State.markdownText; } } catch (e) {}
             drawCanvas();
             return true;
         };
@@ -28426,7 +28562,16 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             if (!t) return;
             closeTemplatesGallery();
             const ok = window.applyDesignTemplate(id, mode);
-            if (ok) showNoticeModal({ title: 'Template Applied', message: '"' + t.name + '" applied to your project — press Ctrl+Z to undo.', confirmLabel: 'Done' });
+            if (ok) {
+                const scriptLoaded = !!t.scriptSkeleton && State.markdownText === t.scriptSkeleton;
+                showNoticeModal({
+                    title: 'Template Applied',
+                    message: scriptLoaded
+                        ? '"' + t.name + '" applied — a starter script is loaded in the Markdown tab. Hit Generate to build the timeline.'
+                        : '"' + t.name + '" applied to your project — press Ctrl+Z to undo.',
+                    confirmLabel: 'Done'
+                });
+            }
         }
         async function saveCurrentLookAsTemplate() {
             const name = await promptNameModal({ title: 'Save Current Look as Template', hint: 'Captures the canvas, captions, and markdown style of the current project.', initial: 'My Template', fallback: 'My Template', confirmLabel: 'Save Template', icon: 'layout-template' });
