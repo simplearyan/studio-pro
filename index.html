@@ -691,6 +691,30 @@
     </div>
     <input type="file" id="templateImportInput" accept=".json,application/json" class="hidden" onchange="importDesignTemplateFile(this)">
 
+    <!-- Template member editor (full M3) — per-style forms inside the gallery:
+         Details, Globals, Captions, and Markdown sections with a live preview
+         canvas and per-member override toggles. Saves into the saved-template
+         list; built-in templates stay read-only (edit-in-app banner instead). -->
+    <div id="templateEditorOverlay" class="fixed inset-0 bg-surface-950/70 backdrop-blur-sm z-[120] hidden items-center justify-center p-4">
+        <div class="bg-white dark:bg-surface-800 rounded-2xl shadow-2xl border border-surface-200 dark:border-surface-700 w-full max-w-2xl max-h-[calc(100dvh-4rem)] flex flex-col overflow-hidden">
+            <div class="flex items-center justify-between px-5 pt-4 pb-3 border-b border-surface-100 dark:border-surface-700 shrink-0">
+                <h3 id="templateEditorTitle" class="text-sm font-bold text-surface-900 dark:text-white flex items-center gap-2 truncate"><i data-lucide="pencil" class="w-4 h-4 text-brand-500 shrink-0"></i> Edit Template</h3>
+                <button onclick="closeTemplateEditor()" class="text-surface-500 hover:text-surface-900 dark:hover:text-white bg-surface-100 dark:bg-surface-900 p-1.5 rounded-md transition-colors shrink-0" title="Close"><i data-lucide="x" class="w-4 h-4"></i></button>
+            </div>
+            <div class="px-5 pt-4 shrink-0">
+                <canvas id="templateEditorPreview" class="w-full aspect-video rounded-lg border border-surface-200 dark:border-surface-700 bg-black shadow-inner"></canvas>
+            </div>
+            <div id="templateEditorBody" class="flex-1 min-h-0 overflow-y-auto px-5 py-3 space-y-4"></div>
+            <div class="shrink-0 px-5 py-3 border-t border-surface-100 dark:border-surface-700 flex items-center justify-between gap-3">
+                <span class="text-[10px] text-surface-400">Changes apply on Save — the preview updates live.</span>
+                <div class="flex gap-2 shrink-0">
+                    <button onclick="closeTemplateEditor()" class="px-4 py-2 text-xs font-bold text-surface-700 dark:text-surface-200 bg-surface-100 dark:bg-surface-800 hover:bg-surface-200 dark:hover:bg-surface-700 border border-surface-200 dark:border-surface-700 rounded-lg transition-colors">Cancel</button>
+                    <button onclick="saveTemplateEditor()" class="px-4 py-2 text-xs font-bold text-white bg-brand-600 hover:bg-brand-500 rounded-lg transition-colors shadow-sm">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Template editing banner — M3 "edit in the app": applied the template as
          defaults, user tweaks in the normal panels, then Update re-captures. -->
     <div id="templateEditingBanner" class="fixed bottom-4 right-4 z-[130] hidden items-center gap-3 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl shadow-2xl px-4 py-3 max-w-sm">
@@ -16750,6 +16774,20 @@
         ];
         const designTemplatePick = (obj, keys) => { const o = {}; for (const k of keys) if (obj && obj[k] !== undefined) o[k] = obj[k]; return o; };
 
+        // M3 member editor — the keys each editor section exposes, plus the anim
+        // vocabularies. Per-member overrides (t.overrides.<section>) restrict an
+        // Apply to exactly these keys, leaving the rest of a project's style alone.
+        const TEMPLATE_EDITOR_GLOBALS_KEYS = ['aspect', 'backgroundColor'];
+        const TEMPLATE_EDITOR_CAPTION_KEYS = ['fontFamily', 'fontSize', 'fontWeight', 'fillColor', 'bgEnable', 'bgColor', 'bgOpacity', 'bgRadius', 'position', 'animPreset', 'highlightColor'];
+        const TEMPLATE_EDITOR_MD_KEYS = ['headingFontFamily', 'headingFontSize', 'headingFontWeight', 'headingColor', 'headingAnimIn', 'textFontFamily', 'textFontSize', 'textColor', 'textAnimIn', 'slideDuration', 'mdGap'];
+        const TEMPLATE_EDITOR_CAPTION_ANIMS = ['none', 'fade', 'pop', 'letterPop', 'letterFade', 'typewriter', 'wordHighlight', 'wordColor', 'wordPop', 'wordUnderline', 'wordGradient', 'wordShake', 'wordStretch', 'bounce', 'rotate'];
+        const TEMPLATE_EDITOR_MD_ANIMS = ['none', 'fade', 'slideUp', 'slideDown', 'slideLeft', 'slideRight', 'slide', 'zoomIn', 'pop', 'spinIn', 'mosaic', 'puzzle'];
+        const TEMPLATE_EDITOR_POSITIONS = ['bottom', 'top', 'center', 'left', 'right'];
+        const TEMPLATE_EDITOR_CATEGORIES = [
+            { v: 'product-launch', l: 'Product Launch' }, { v: 'explainer', l: 'Explainer' },
+            { v: 'social-clips', l: 'Shorts' }, { v: 'minimal', l: 'Minimal' }, { v: 'custom', l: 'Custom' }
+        ];
+
         const DEFAULT_DESIGN_TEMPLATES = [
             {
                 format: 'studio-pro-design-template', version: 1,
@@ -17045,9 +17083,18 @@ A closing line. Less is more.
             const restyle = mode !== 'defaults';
             pushUndo(captureDesignTemplateUndo(), 'designTemplate:' + t.id);
 
+            // Per-member overrides (M3): t.overrides.<section> is an optional key
+            // list — when present, an Apply writes ONLY those keys for that section
+            // (e.g. a font-only caption override leaves the user's colors alone).
+            const ov = t.overrides || {};
+            const ovPick = (obj, keys) => { const o = {}; if (!obj) return o; for (const k of keys) if (obj[k] !== undefined) o[k] = obj[k]; return o; };
+            const gOvr = ov.globals && ov.globals.length ? ov.globals : null;
+            const cOvr = ov.caption && ov.caption.length ? ov.caption : null;
+            const mOvr = ov.markdown && ov.markdown.length ? ov.markdown : null;
+
             // 1. Canvas globals
             if (t.globals) {
-                if (t.globals.aspect) {
+                if (t.globals.aspect && (!gOvr || gOvr.includes('aspect'))) {
                     const idx = ASPECT_RATIOS.findIndex(a => a.label === t.globals.aspect);
                     if (idx !== -1 && idx !== State.preview.aspectIndex) {
                         State.preview.aspectIndex = idx;
@@ -17058,11 +17105,12 @@ A closing line. Less is more.
                         if (window.lucide) lucide.createIcons();
                     }
                 }
-                if (t.globals.backgroundColor) applyTemplateBg(t.globals.backgroundColor);
+                if (t.globals.backgroundColor && (!gOvr || gOvr.includes('backgroundColor'))) applyTemplateBg(t.globals.backgroundColor);
             }
 
             // 2. Caption style + karaoke animation (both live in subtitleConfig)
-            const capFx = Object.assign({}, t.captionStyle || {}, t.captionAnimation || {});
+            const capAll = Object.assign({}, t.captionStyle || {}, t.captionAnimation || {});
+            const capFx = ovPick(capAll, cOvr || Object.keys(capAll));
             if (Object.keys(capFx).length) {
                 Object.assign(State.subtitleConfig, capFx);
                 State.clips.filter(c => c.subtitleId).forEach(clip => {
@@ -17076,8 +17124,9 @@ A closing line. Less is more.
             }
 
             // 3. Markdown style
-            if (t.markdownStyle && Object.keys(t.markdownStyle).length) {
-                Object.assign(State.markdownConfig, t.markdownStyle);
+            const mdApply = ovPick(t.markdownStyle, mOvr || Object.keys(t.markdownStyle || {}));
+            if (Object.keys(mdApply).length) {
+                Object.assign(State.markdownConfig, mdApply);
                 saveMarkdownConfig();
             }
 
@@ -28496,7 +28545,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             const manageRow = `
                 <div class="flex items-center gap-0.5 mt-2 pt-2 border-t border-surface-100 dark:border-surface-700">
                     ${isBuiltin ? '' : `
-                        <button onclick="editDesignTemplate('${escTpl(t.id)}')" title="Edit this template — tweak it in the panels, then Update" class="${iconBtn('hover:text-surface-900 dark:hover:text-white')}"><i data-lucide="pencil" class="w-3 h-3"></i></button>
+                        <button onclick="editDesignTemplate('${escTpl(t.id)}')" title="Edit this template" class="${iconBtn('hover:text-surface-900 dark:hover:text-white')}"><i data-lucide="pencil" class="w-3 h-3"></i></button>
                         <button onclick="renameDesignTemplate('${escTpl(t.id)}')" title="Rename" class="${iconBtn('hover:text-surface-900 dark:hover:text-white')}"><i data-lucide="pen-line" class="w-3 h-3"></i></button>`}
                     <button onclick="exportDesignTemplate('${escTpl(t.id)}')" title="Export .sptpl.json" class="${iconBtn('hover:text-surface-900 dark:hover:text-white')}"><i data-lucide="download" class="w-3 h-3"></i></button>
                     ${isBuiltin ? '' : `<button onclick="deleteDesignTemplate('${escTpl(t.id)}')" title="Delete" class="${iconBtn('hover:text-red-500 dark:hover:text-red-400')}"><i data-lucide="trash-2" class="w-3 h-3"></i></button>`}
@@ -28656,10 +28705,18 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
         function editDesignTemplate(id) {
             const t = getDesignTemplate(id);
             if (!t) return;
-            _editingTemplateId = id;
+            if (isBuiltinTemplate(id)) {
+                // Built-ins are read-only — keep the apply-then-tweak flow, which
+                // points the user at "Save current look as template".
+                _editingTemplateId = id;
+                closeTemplatesGallery();
+                window.applyDesignTemplate(id, 'defaults');
+                showEditingTemplateBanner(t.name);
+                return;
+            }
+            // Saved templates get the full member editor (per-style forms).
             closeTemplatesGallery();
-            window.applyDesignTemplate(id, 'defaults');
-            showEditingTemplateBanner(t.name);
+            openTemplateEditor(id);
         }
         function updateEditingTemplate() {
             const id = _editingTemplateId;
@@ -28689,6 +28746,198 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
         function cancelEditingTemplate() {
             _editingTemplateId = null;
             hideEditingTemplateBanner();
+        }
+
+        // ── Full M3 member editor — per-style forms inside the gallery ────────────
+        // Edits a SAVED template's Details / Globals / Captions / Markdown members
+        // with a live preview canvas; each section has a per-member override toggle
+        // ("Apply only the values above") that stores the editor-exposed key list in
+        // t.overrides.<section> so an Apply writes only those keys. Built-ins stay
+        // read-only — they use the edit-in-app banner flow above instead.
+        let _memberEditorTemplateId = null;
+        let _memberEditorTemplate = null;
+
+        function openTemplateEditor(id) {
+            const t = getDesignTemplate(id);
+            if (!t || isBuiltinTemplate(id)) return;
+            _memberEditorTemplateId = id;
+            _memberEditorTemplate = JSON.parse(JSON.stringify(t));
+            renderTemplateEditor();
+            const ov = document.getElementById('templateEditorOverlay');
+            ov.classList.remove('hidden');
+            ov.classList.add('flex');
+            if (window.lucide && lucide.createIcons) lucide.createIcons();
+            document.onkeydown = (e) => {
+                if (e.key === 'Escape') { e.preventDefault(); closeTemplateEditor(); }
+            };
+            ov.onclick = (e) => { if (e.target === ov) closeTemplateEditor(); };
+            drawTemplateEditorPreview();
+        }
+        function closeTemplateEditor() {
+            document.onkeydown = null;
+            _memberEditorTemplateId = null;
+            _memberEditorTemplate = null;
+            const ov = document.getElementById('templateEditorOverlay');
+            ov.classList.add('hidden');
+            ov.classList.remove('flex');
+        }
+
+        // Writes a field into the working copy and refreshes the live preview.
+        // section: 'meta' | 'globals' | 'caption' | 'markdown'
+        function teSet(section, key, value) {
+            const t = _memberEditorTemplate;
+            if (!t) return;
+            if (section === 'meta') t[key] = value;
+            else if (section === 'globals') { if (!t.globals) t.globals = {}; t.globals[key] = value; }
+            else if (section === 'caption') { if (!t.captionStyle) t.captionStyle = {}; t.captionStyle[key] = value; }
+            else if (section === 'markdown') { if (!t.markdownStyle) t.markdownStyle = {}; t.markdownStyle[key] = value; }
+            drawTemplateEditorPreview();
+        }
+
+        // Per-member overrides: checking a section's toggle stores the exact keys
+        // the editor exposes for that section (with values), so applying the
+        // template writes ONLY those and leaves everything else alone.
+        function teOverride(section, on) {
+            const t = _memberEditorTemplate;
+            if (!t) return;
+            t.overrides = t.overrides || {};
+            if (!on) {
+                delete t.overrides[section];
+                if (!Object.keys(t.overrides).length) delete t.overrides;
+            } else if (section === 'globals') {
+                t.overrides.globals = TEMPLATE_EDITOR_GLOBALS_KEYS.filter(k => t.globals && t.globals[k] !== undefined);
+            } else if (section === 'caption') {
+                t.overrides.caption = TEMPLATE_EDITOR_CAPTION_KEYS.filter(k => t.captionStyle && t.captionStyle[k] !== undefined);
+            } else if (section === 'markdown') {
+                t.overrides.markdown = TEMPLATE_EDITOR_MD_KEYS.filter(k => t.markdownStyle && t.markdownStyle[k] !== undefined);
+            }
+        }
+
+        function saveTemplateEditor() {
+            const id = _memberEditorTemplateId;
+            const t = _memberEditorTemplate;
+            if (!id || !t) { closeTemplateEditor(); return; }
+            const list = loadDesignTemplates();
+            const idx = list.findIndex(x => x.id === id);
+            if (idx === -1) {
+                closeTemplateEditor();
+                showNoticeModal({ tone: 'error', title: 'Template Not Found', message: 'The template you were editing no longer exists.', confirmLabel: 'Done' });
+                return;
+            }
+            const cur = list[idx];
+            list[idx] = Object.assign({}, t, { id: cur.id, thumbnail: cur.thumbnail || t.thumbnail, format: 'studio-pro-design-template', version: 1 });
+            saveDesignTemplates(list);
+            const name = list[idx].name;
+            closeTemplateEditor();
+            showNoticeModal({ title: 'Template Updated', message: '"' + name + '" saved — find it in the gallery.', confirmLabel: 'Done' });
+        }
+
+        function drawTemplateEditorPreview() {
+            const cv = document.getElementById('templateEditorPreview');
+            const t = _memberEditorTemplate;
+            if (!cv || !t) return;
+            try {
+                const W = 480, H = 270;
+                cv.width = W; cv.height = H;
+                const ctx = cv.getContext('2d');
+                const g = t.globals || {};
+                let ratio = 16 / 9;
+                try { const parts = String(g.aspect || '16:9').split('/'); ratio = parseFloat(parts[0]) / parseFloat(parts[1]); } catch (e) {}
+                if (!isFinite(ratio) || ratio <= 0) ratio = 16 / 9;
+                let dw = W, dh = W / ratio;
+                if (dh > H) { dh = H; dw = H * ratio; }
+                const dx = (W - dw) / 2, dy = (H - dh) / 2;
+                ctx.fillStyle = '#000';
+                ctx.fillRect(0, 0, W, H);
+                ctx.fillStyle = g.backgroundColor || '#000';
+                ctx.fillRect(dx, dy, dw, dh);
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                const md = t.markdownStyle || {};
+                const hFont = md.headingFontFamily || 'Rubik';
+                ctx.font = '900 34px ' + hFont;
+                ctx.fillStyle = md.headingColor || '#ffffff';
+                ctx.fillText('Heading', dx + dw / 2, dy + dh * 0.28);
+                const cap = t.captionStyle || {};
+                const cFont = cap.fontFamily || 'Inter';
+                const cText = 'Caption';
+                ctx.font = '700 26px ' + cFont;
+                const tw = ctx.measureText(cText).width;
+                const cy = dy + dh * 0.78;
+                const pad = 10;
+                if (cap.bgEnable) {
+                    ctx.fillStyle = cap.bgColor || '#000000';
+                    ctx.globalAlpha = cap.bgOpacity !== undefined ? cap.bgOpacity : 0.5;
+                    const r = cap.bgRadius !== undefined ? cap.bgRadius : 8;
+                    ctx.beginPath();
+                    if (ctx.roundRect) ctx.roundRect(dx + dw / 2 - tw / 2 - pad, cy - 16, tw + pad * 2, 32, r);
+                    else ctx.rect(dx + dw / 2 - tw / 2 - pad, cy - 16, tw + pad * 2, 32);
+                    ctx.fill();
+                    ctx.globalAlpha = 1;
+                }
+                ctx.fillStyle = cap.fillColor || '#ffffff';
+                ctx.fillText(cText, dx + dw / 2, cy);
+            } catch (e) {}
+        }
+
+        function renderTemplateEditor() {
+            const t = _memberEditorTemplate;
+            if (!t) return;
+            document.getElementById('templateEditorTitle').textContent = 'Edit Template — ' + t.name;
+            const ovr = t.overrides || {};
+            const g = t.globals || {};
+            const cap = t.captionStyle || {};
+            const md = t.markdownStyle || {};
+
+            const fieldInput = 'px-2 py-1 rounded-md text-[11px] font-mono bg-surface-100 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 text-surface-800 dark:text-surface-200';
+            const row = (label, input) => `<div class='flex items-center justify-between gap-2 py-1'><span class='text-[11px] font-semibold text-surface-600 dark:text-surface-300'>${label}</span><div class='flex items-center gap-1.5'>${input}</div></div>`;
+            const txt = (s, k, v, w) => `<input type='text' value='${v == null ? '' : v}' oninput='teSet(&quot;${s}&quot;,&quot;${k}&quot;,this.value)' class='${w || 'w-28'} ${fieldInput}'>`;
+            const num = (s, k, v, min, max, step) => `<input type='number' value='${v == null ? '' : v}' onchange='teSet(&quot;${s}&quot;,&quot;${k}&quot;,parseFloat(this.value))' min='${min == null ? 0 : min}'${max != null ? ` max='${max}'` : ''}${step ? ` step='${step}'` : ''} class='w-20 ${fieldInput}'>`;
+            const color = (s, k, v) => `<input type='color' value='${v || '#000000'}' oninput='teSet(&quot;${s}&quot;,&quot;${k}&quot;,this.value)' class='w-8 h-8 rounded cursor-pointer bg-surface-100 dark:bg-surface-900 border border-surface-200 dark:border-surface-700'>`;
+            const chk = (s, k, v, label) => `<label class='flex items-center gap-1.5 text-[11px] font-semibold text-surface-600 dark:text-surface-300 cursor-pointer select-none'><input type='checkbox' onchange='teSet(&quot;${s}&quot;,&quot;${k}&quot;,this.checked)'${v ? ' checked' : ''} class='accent-brand-500'>${label}</label>`;
+            const sel = (s, k, v, options) => `<select onchange='teSet(&quot;${s}&quot;,&quot;${k}&quot;,this.value)' class='w-32 ${fieldInput}'>` + options.map(o => `<option value='${o.v}'${o.v === v ? ' selected' : ''}>${o.l}</option>`).join('') + '</select>';
+            const ovrToggle = (s, label) => `<label class='flex items-center gap-1.5 text-[10px] font-bold text-surface-500 dark:text-surface-400 cursor-pointer select-none'><input type='checkbox' onchange='teOverride(&quot;${s}&quot;,this.checked)'${ovr[s] ? ' checked' : ''} class='accent-brand-500'>${label}</label>`;
+            const section = (title, icon, toggle, body) => `<div class='border border-surface-200 dark:border-surface-700 rounded-lg overflow-hidden bg-surface-50 dark:bg-surface-900/50'><div class='flex items-center justify-between gap-2 px-3 py-2 bg-surface-100/60 dark:bg-surface-800/60 border-b border-surface-200 dark:border-surface-700'><span class='text-[10px] font-bold uppercase tracking-widest text-surface-600 dark:text-surface-300 flex items-center gap-1.5'><i data-lucide='${icon}' class='w-3 h-3'></i> ${title}</span>${toggle}</div><div class='px-3 py-2'>${body}</div></div>`;
+
+            const aspectOptions = ASPECT_RATIOS.map(a => ({ v: a.label, l: a.label }));
+            const mdAnims = TEMPLATE_EDITOR_MD_ANIMS.map(a => ({ v: a, l: a }));
+            const capAnims = TEMPLATE_EDITOR_CAPTION_ANIMS.map(a => ({ v: a, l: a }));
+            const positions = TEMPLATE_EDITOR_POSITIONS.map(p => ({ v: p, l: p }));
+
+            document.getElementById('templateEditorBody').innerHTML =
+                section('Details', 'info', '',
+                    row('Name', txt('meta', 'name', t.name, 'w-44')) +
+                    row('Category', sel('meta', 'projectType', t.projectType, TEMPLATE_EDITOR_CATEGORIES)) +
+                    row('Description', txt('meta', 'description', t.description, 'w-48'))) +
+                section('Globals', 'monitor', ovrToggle('globals', 'Override'),
+                    row('Aspect', sel('globals', 'aspect', g.aspect, aspectOptions)) +
+                    row('Background', color('globals', 'backgroundColor', g.backgroundColor))) +
+                section('Captions', 'captions', ovrToggle('caption', 'Override'),
+                    row('Font', txt('caption', 'fontFamily', cap.fontFamily)) +
+                    row('Size', num('caption', 'fontSize', cap.fontSize, 8, 200)) +
+                    row('Weight', num('caption', 'fontWeight', cap.fontWeight, 100, 900)) +
+                    row('Color', color('caption', 'fillColor', cap.fillColor)) +
+                    row('Box', chk('caption', 'bgEnable', cap.bgEnable, 'Background box')) +
+                    row('Box color', color('caption', 'bgColor', cap.bgColor)) +
+                    row('Box opacity', num('caption', 'bgOpacity', cap.bgOpacity, 0, 1, 0.05)) +
+                    row('Box radius', num('caption', 'bgRadius', cap.bgRadius, 0, 50)) +
+                    row('Position', sel('caption', 'position', cap.position, positions)) +
+                    row('Animation', sel('caption', 'animPreset', cap.animPreset, capAnims)) +
+                    row('Highlight', color('caption', 'highlightColor', cap.highlightColor))) +
+                section('Markdown', 'file-text', ovrToggle('markdown', 'Override'),
+                    row('Heading font', txt('markdown', 'headingFontFamily', md.headingFontFamily)) +
+                    row('Heading size', num('markdown', 'headingFontSize', md.headingFontSize, 8, 300)) +
+                    row('Heading weight', num('markdown', 'headingFontWeight', md.headingFontWeight, 100, 900)) +
+                    row('Heading color', color('markdown', 'headingColor', md.headingColor)) +
+                    row('Heading anim', sel('markdown', 'headingAnimIn', md.headingAnimIn, mdAnims)) +
+                    row('Text font', txt('markdown', 'textFontFamily', md.textFontFamily)) +
+                    row('Text size', num('markdown', 'textFontSize', md.textFontSize, 8, 200)) +
+                    row('Text color', color('markdown', 'textColor', md.textColor)) +
+                    row('Text anim', sel('markdown', 'textAnimIn', md.textAnimIn, mdAnims)) +
+                    row('Slide duration', num('markdown', 'slideDuration', md.slideDuration, 1, 60)) +
+                    row('Element gap', num('markdown', 'mdGap', md.mdGap, 0, 40)));
+            if (window.lucide && lucide.createIcons) lucide.createIcons();
+            drawTemplateEditorPreview();
         }
 
         function showNoticeModal(opts) {
