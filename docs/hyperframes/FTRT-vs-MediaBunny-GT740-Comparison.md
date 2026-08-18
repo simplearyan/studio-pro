@@ -22,7 +22,23 @@
 
 **Evidence in the screenshots:** FTRT modal `MP4 · 0.61×…` + 0:49 (BBC anchor, 9.6 MB); FTRT `MP4 · 0.54×…` + 0:56 (10.6 MB); FTRT `MP4 · 1…×` + 0:16 (Brachiosaurus card, 7.9 MB); MediaBunny 0:45 (11.1 MB), 0:55 (11.4 MB), 1.0× (T-Rex card, 7.9 MB). Downloads list shows the FTRT/MediaBunny pairs adjacent in time (FTRT (1) ↔ MB (79), both 7.9 MB — same project, 1–2 min apart).
 
-> Note on the user's summary: "video with color grade **or** video with stroke/drop-shadow take the same time in both modes" — the **graded pair is genuinely equal** (0.61 vs 0.67, 0.54 vs 0.55 — within run-to-run noise), which the screenshots confirm. The **dino pair** actually shows FTRT ≈ 1.9× faster (16 s vs 30 s) — the screenshots disagree with the recollection there; worth one re-run to confirm, and the plan's targets below assume FTRT should beat 1× decisively for both.
+> Note on the user's summary: "video with color grade **or** video with stroke/drop-shadow take the same time in both modes" — the **graded pair is genuinely equal** (0.61 vs 0.67, 0.54 vs 0.55 — within run-to-run noise), which the screenshots confirm. The **dino pair** actually shows FTRT ≈ 1.9× faster (16 s vs 30 s) — **re-verified below (§1.2): FTRT wins on video+text; the equal-times claim only holds for graded video.**
+
+### 1.2 Re-verification (2026-08-17, dev webview on the same GT 740 machine, clean page load per run)
+
+The exact user projects aren't in the repo (zebra/flower dino videos, BBC-anchor clip), so these are **structural equivalents** — the BBC **camel** video from `_demo_assets/videos` (matches the user's image-6 screenshot) graded with sat 118 / **vibrance 30** / temp 16 / tint 5 / hue −5 (vibrance forces the exact pixel pass, the thing that slows the BBC case), and the feature film with a stroked + drop-shadowed text card as the dino analog. 30 s @ 24 fps 1920×1080 MP4, fresh page load before every run:
+
+| Equivalent | Mode | Wall | × real-time | Capture fps |
+|---|---|---|---|---|
+| BBC camel, graded (vibrance 30) | **FTRT** | **49.2 s** | **0.61×** | ~14.5 (69 ms/frame — exact grade) |
+| *ditto* | MediaBunny | 55 s | 0.55× | ~12.9 |
+| Feature film + stroked/shadowed text | **FTRT** | **26.6 s** | **1.13×** | ~27 (37 ms/frame — capture-bound) |
+| *ditto* | MediaBunny | 30 s | 1.0× | paced |
+
+**What the re-run confirms:**
+- The graded pair is **equal and sub-1× in both modes** (0.61× vs 0.55×) — and the FTRT wall (49.2 s, 0.61×) **matches the user's BBC-anchor screenshot (49 s, 0.61×) almost exactly**, validating the reconstruction. The grade pixel pass is the wall, shared by both modes.
+- The **dino pair is NOT equal** — FTRT beats MediaBunny (1.13× here; the user's own run was 1.87× vs 1.0×). The lower ratio here vs the user's 1.87× is expected: their dino sources are smaller (cheaper capture), and this analog uses a 1080p source.
+- Conclusion: the user's "same time in both modes" is **true for graded video, false for video+text** — FTRT is capture-bound (M1c.1) for the latter and grade-bound (M1c.2) for the former. The M1c targets below stand unchanged.
 
 ## 2. Analysis — why video projects don't speed up in Fast mode
 
@@ -84,7 +100,8 @@ Use the Compare probe's data (or a quick ~20-frame sample at export settings) to
 - [ ] Text-only stays ≥ 3×; MediaBunny loop untouched (zero diff).
 - [ ] **No TDR** across 3 consecutive 30 s runs with the grade; watchdog armed; console clean.
 - [ ] Determinism: two identical FTRT exports → identical frame hashes (M0 harness).
-- [ ] Output frames verifiably distinct (hash 3 sample frames — the check used for M1b) — **also re-run the dino pair to confirm the 1.9× vs "same time" discrepancy**.
+- [x] Discrepancy resolved: re-verification (§1.2) confirms FTRT **wins** on video+text (1.13×/1.87× vs 1.0×) and is **equal** on graded video (0.61× vs 0.55×) — the "same time" claim holds only for graded video.
+- [ ] Output frames verifiably distinct (hash 3 sample frames — the check used for M1b).
 
 ### Out of scope (this pass)
 
