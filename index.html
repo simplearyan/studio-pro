@@ -4907,14 +4907,21 @@
 
             // Temperature / tint: GPU-composited soft-light overlays by default.
             // The exact per-pixel pass stays as the opt-in — vibrance is luminance-
-            // adaptive and cannot be replicated with a fixed overlay, so it always
-            // uses the exact path, and clip.effects.colorGradeExact forces it too.
-            // Measured: the pixel pass is ~100% of grade cost (68-107 ms/frame at
-            // 1080p vs ~0.1 ms composited — see docs/export/FTRT-Probe-Comparison §5).
+            // adaptive and cannot be replicated with a fixed overlay. In Fast (FTRT)
+            // export mode (State.exportGradeFast) vibrance uses a CSS saturate()
+            // approximation (GPU-composited, ~1 ms/frame) — measured on GT 7xx the
+            // exact pass costs ~117 ms/frame because getImageData readback alone is
+            // ~60 ms REGARDLESS of resolution, so a half-res pixel pass only reached
+            // ~1.4×. The fixed saturate() is visually close (avg diff < 8/255 at
+            // vibrance 30 on a stress pattern) and lives ONLY in the Fast lane —
+            // MediaBunny and preview keep the full-res exact pass, stable and
+            // identical to each other. clip.effects.colorGradeExact always forces
+            // the exact pass in every mode.
             // CRITICAL: only request willReadFrequently when the pixel pass runs —
             // the hint forces CPU-backed rasterization for EVERY operation, which
             // would also make the GPU filter/overlay path cost ~50 ms/frame.
-            const useExactGrade = clip.effects.colorGradeExact === true || Math.abs(vibrance) > 0.5;
+            const fastGrade = State.exportGradeFast === true;
+            const useExactGrade = clip.effects.colorGradeExact === true || (Math.abs(vibrance) > 0.5 && !fastGrade);
 
             // Image clips are static — cache the graded canvas so playback/scrubbing
             // doesn't re-run the pixel pass every frame. The signature covers the size,
@@ -4942,6 +4949,12 @@
             const parts = [];
             if (blur > 0.5) parts.push(`blur(${blur}px)`);
             if (Math.abs(saturation - 100) > 0.5) parts.push(`saturate(${saturation}%)`);
+            // Fast-mode vibrance: CSS saturate() approximation — GPU-composited,
+            // ~free (measured 0.7 ms/frame at 1080p vs ~117 ms exact on GT 7xx).
+            // Strength 0.3 × vibrance calibrates closest to the exact luminance-
+            // adaptive pass on a high-saturation stress pattern (avg diff < 8/255
+            // at vibrance 30); Fast lane only, MediaBunny/preview stay exact.
+            if (fastGrade && Math.abs(vibrance) > 0.5) parts.push(`saturate(${100 + vibrance * 0.3}%)`);
             if (Math.abs(hue) > 0.5) parts.push(`hue-rotate(${hue}deg)`);
             if (Math.abs(brightness - 100) > 0.5) parts.push(`brightness(${brightness}%)`);
             if (Math.abs(contrast - 100) > 0.5) parts.push(`contrast(${contrast}%)`);
@@ -5004,7 +5017,7 @@
             }
             if (clip.type === 'image') {
                 clip._ccCache = {
-                    sig: `${cw}x${ch}|${saturation}|${vibrance}|${hue}|${temperature}|${tint}|${brightness}|${contrast}|${blur}|${useExactGrade ? 'exact' : 'gpu'}|${source === clip.imageEl && clip.imageEl.src ? clip.imageEl.src : ''}`,
+                    sig: `${cw}x${ch}|${saturation}|${vibrance}|${hue}|${temperature}|${tint}|${brightness}|${contrast}|${blur}|${useExactGrade ? 'exact' : (fastGrade ? 'gpu-fast' : 'gpu')}|${source === clip.imageEl && clip.imageEl.src ? clip.imageEl.src : ''}`,
                     canvas
                 };
             }
@@ -29283,6 +29296,9 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             const tick = Math.max(1, Math.round(frames / 20));
 
             // Pass 1 — Standard (MediaBunny cadence): precision 1× pacing per frame.
+            // Uses the full-res exact grade (identical to what the MediaBunny tab
+            // renders) — the flag mirrors startFTRTExport's mode gating.
+            State.exportGradeFast = false;
             statusEl.textContent = 'Standard pass… 0/' + frames;
             const stdT0 = performance.now();
             for (let f = 0; f < frames; f++) {
@@ -29296,6 +29312,10 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             const stdWall = (performance.now() - stdT0) / 1000;
 
             // Pass 2 — FTRT cadence: un-paced frame pump with a 3 ms pacing floor.
+            // The Fast lane's grade approximation is active (State.
+            // exportGradeFast), so this pass measures what a Fast export actually
+            // renders — the honest comparison against the Standard pass above.
+            State.exportGradeFast = true;
             // The floor mirrors MediaBunny fast mode's setTimeout(2) — it bounds how
             // fast the loop can issue GPU work (and allocations) so the GPU process
             // can retire and reclaim between frames. On a 1 GB GT 740, an unbounded
@@ -29311,6 +29331,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 if (f % tick === 0) statusEl.textContent = 'Fast pass… ' + f + '/' + frames;
             }
             const ftrtWall = (performance.now() - ftrtT0) / 1000;
+            State.exportGradeFast = false;
 
             State.currentTime = prevTime;
             for (const el of probePausedVideos) { try { el.play().catch(() => {}); } catch (_) {} }
@@ -30830,6 +30851,9 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
         // docs/hyperframes/M1-FTRT-Export-Plan.md §3.3 / §4.
         window.startFTRTExport = async function (exportW, exportH, fps, startTime, endTime, format = 'mp4') {
             mbExportFormat = format;
+            // Fast-only grade approximation (half-res vibrance etc.). MediaBunny and
+            // the preview never set this flag, so they keep the full-res exact pass.
+            State.exportGradeFast = true;
             const timeStep = 1 / fps;
             const totalFrames = Math.max(1, Math.ceil((endTime - startTime) / timeStep));
             const exportStartWall = performance.now();
@@ -30918,6 +30942,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
 
             if (reversedVideo) {
                 console.warn('[FTRT] reversed video clip(s) in range — routing to the MediaBunny safe lane.');
+                State.exportGradeFast = false;
                 if (State.speakerNode) State.speakerNode.gain.value = prevSpeakerGain;
                 window.startMediaBunnyExport(exportW, exportH, fps, startTime, endTime, format);
                 return;
@@ -31080,6 +31105,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     if (choice === 'mediabunny') {
                         worker.postMessage({ type: 'cancel' });
                         State.isExporting = false;
+                        State.exportGradeFast = false;
                         if (State.speakerNode) State.speakerNode.gain.value = prevSpeakerGain;
                         fallbackRelaunched = true;
                         console.warn('[FTRT] user chose MediaBunny — relaunching with identical settings.');
@@ -31105,6 +31131,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
 
             const restoreAndFinish = () => {
                 if (State.speakerNode) State.speakerNode.gain.value = prevSpeakerGain;
+                State.exportGradeFast = false;
                 // Stop prefetchers, release pooled bitmaps, pause elements. The pool
                 // hook in drawCanvas reads clip._framePool, so nulling it here (before
                 // any later redraw) returns the app to live-element preview drawing.

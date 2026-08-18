@@ -1,7 +1,7 @@
 # FTRT (Fast) vs MediaBunny on the GT 740 — Video-Project Comparison + M1c Plan
 
-> **Date:** 2026-08-17
-> **Status:** Findings from the user's real exports (screenshots); M1c plan not yet implemented.
+> **Date:** 2026-08-17 → updated 2026-08-18
+> **Status:** M1c.2 shipped (Fast-lane grade approximation); round-2 real exports documented (§2.6); decision recorded (§5).
 > **Machine:** GT 740 (1 GB VRAM) — the card that TDR'd on the 30 s graded-video Compare before the P0 fix.
 > **Scope:** Fast-tab `startFTRTExport` (index.html ~30723) vs MediaBunny `startMediaBunnyExport`. Both modes share the same `drawCanvas` compositing; only the **capture pacing** differs (FTRT un-paced pool pump vs MediaBunny ack-backpressured 1× loop).
 
@@ -62,7 +62,37 @@ No video decode (no capture wall) and image clips hit the `_ccCache` (one graded
 |---|---|---|---|
 | Text/markdown | encode | 3–5.5× faster | — (done) |
 | Video + text (no grade) | capture (~24 ms) | ~1.9× faster | **M1c.1 WebCodecs decode worker** |
-| Video + grade | grade pixel pass (~70 ms) | ≈ equal, both < 1× | **M1c.2 weak-GPU grade hardening** |
+| Video + grade | grade pixel pass (~70 ms) | ≈ equal, both < 1× | **M1c.2 done — Fast-lane saturate() approximation** (see §3) |
+
+### 2.5 What changed (2026-08-18): the grade wall is now Fast-mode-only
+
+M1c.2 shipped a **Fast-lane-only grade approximation** (`State.exportGradeFast`, set exclusively inside `startFTRTExport` and the probe's FTRT pass): vibrance rides the CSS filter chain as `saturate(100 + vibrance·0.3)%` — GPU-composited, ~1 ms/frame — instead of the full-res per-pixel pass. MediaBunny, the preview, and the probe's Standard pass never set the flag, so they keep the exact pass untouched (stable, pixel-perfect, slow). `clip.effects.colorGradeExact` still forces exact in every mode.
+
+**Why not the half-res pass from the original M1c.2 plan:** measured on the GT 7xx, `getImageData` readback costs ~60 ms **regardless of resolution** (59 ms at 960×540 vs 65 ms at 1920×1080) — the half-res pixel loop only reached 1.4–1.6×. The saturate() approximation is the engineering answer: 0.7 ms/frame, avg diff < 8/255 at vibrance 30 (stress pattern), max diff ~5%.
+
+### 2.6 Round 2 — user's real exports on the actual BBC projects (2026-08-18, screenshots)
+
+Two real BBC projects, both exported in both modes on the user's machine: **(a) anchor clip + simple drop shadow + stroke**, and **(b) the same clip with a **hue** change from the color grade. 30 s @ 24 fps 1920×1080. Numbers read from the export modals and the browser download list:
+
+| Project | Mode | Export time | × real-time (modal) | File size |
+|---|---|---|---|---|
+| BBC + shadow/stroke | MediaBunny | **0:46** | ~0.65× | 9.4 MB |
+| BBC + shadow/stroke | FTRT (4) | **0:51** | **0.58×** | 8.1 MB |
+| BBC + hue grade | MediaBunny | **0:55** | ~0.55× | 9.2 MB |
+| BBC + hue grade | FTRT (5) | **0:59** | **0.51×** | 8.3 MB |
+
+(FTRT (82), 9.4 MB in the download list, is an earlier exact-grade run of the same content — same size as its MediaBunny twin.)
+
+**What the screenshots show — the user's observation is confirmed:** the two modes take **roughly the same wall time for real video exports** (46–59 s across all four), and FTRT is **sub-1× (0.51–0.58×)** — *slightly behind* MediaBunny, within run-to-run noise. This holds for **both** the simple (shadow/stroke) and the hue-graded project. The M1c.2 grade fast path (§2.5) is in the served build, yet the graded FTRT run is still ~0.5×.
+
+**Why — the encode worker is the shared wall (this round's finding).** The Compare probe (§2.5) measured *capture-only* (paused frame, no pool seeks, no encode) — that's why it showed 6.65×. A real export adds per-frame cost on **every** frame in **both** modes:
+
+1. **Encode (`VideoEncoder`, avc, 5 Mbps, `src/workers/export-worker.js`)** — noisy 1080p video content is far more expensive to encode than flat text frames. Text-only projects encode at ~7–11 ms/frame (hence 3–5.5×); video content on this machine is in the ~30–50 ms/frame range. Since both modes feed the *same* encoder, this cost is identical and unavoidable in FTRT — it caps the mode at ~0.6× regardless of capture pacing.
+2. **Capture + compositing** (~22–37 ms/frame even with the M1b pool when the source is a real video element) — the second term, already targeted by M1c.1.
+
+Per-frame math that matches the modals: 720 frames ÷ (46–59 s) = **64–82 ms/frame** in both modes. The probe's 6.65× was real but **not representative** of full exports — encode dominates once the pump runs for real. The grade fast path removed the grade term (which *was* the wall in the §1.2 probe runs), but that term was never the largest one in a full export.
+
+**Implication:** for text/markdown projects FTRT stays a 3–5.5× win (encode is cheap — the automation core). For video projects on the GT 740, FTRT ≈ MediaBunny until **both** remaining walls fall: decode/capture (M1c.1 WebCodecs decode worker) **and** encode (hardware `avc` encode via the OS media stack — worth a probe; software fallback at 1080p24 is the suspect). Neither is a small change, and both are GT-740-uncertain.
 
 ---
 
@@ -72,15 +102,25 @@ No video decode (no capture wall) and image clips hit the `_ccCache` (one graded
 
 Ship `docs/hyperframes/WebCodecs-Video-Decode-Plan.md` (Phases A–D): dedicated `video-decode-worker.js` (module worker, vite-bundled like `export-worker.js`), demux + `VideoDecoder` per clip, transferable `VideoFrame`s into the existing `clip._framePool`, keyframe-aware seek, parity preflight, per-clip fallback to the current element pool. **Target: dino-style projects ≥ 3×** (24 ms → ~8 ms/frame).
 
-### M1c.2 — Weak-GPU grade hardening (grade wall)
+### M1c.2 — Weak-GPU grade hardening (grade wall) — ✅ done (2026-08-18, Fast-lane only)
 
-The exact pixel pass must stop costing 63–78 ms/frame on the GT 740:
+The exact pixel pass cost 63–78 ms/frame on the GT 740. What shipped:
 
-1. **Static grade-layer precompute** — temperature/tint overlays and the filter chain are constant per clip unless keyframed. Build them **once per clip** (at pool-build time) and composite the precomputed layer per frame, instead of re-running `getInterpolatedValue` + re-rendering the wash every frame. (The P0 scratch canvases already avoid the allocation bomb; this removes the *render* cost.)
-2. **Half-resolution exact pass for video** — when an exact pass is unavoidable (vibrance / `colorGradeExact`), run it at **half res** (4× fewer pixels) and upscale: ~68–107 ms → ~17–27 ms/frame → 2–4× faster. Visual tradeoff: slightly softer grade — acceptable for export, flagged with a notice.
-3. **Per-clip export grade policy** — Fast tab (or per-clip) toggle: *"GPU grade approximation for export"* (default) vs *"exact grade"* (preserves today's pixel-perfect output; slower). MediaBunny stays the guaranteed-exact lane, so FTRT can safely default to the approximation.
+1. **CSS saturate() approximation for vibrance (Fast lane only)** — vibrance is luminance-adaptive so a fixed overlay can't replicate it, but a GPU-composited `saturate(100 + vibrance·0.3)%` (calibrated to minimize pixel diff vs the exact pass) is visually close and ~free. The full-res exact pass remains the default everywhere else. `clip.effects.colorGradeExact` still forces exact even in Fast.
+2. **The half-res idea was tried and rejected with data** — `getImageData` readback is ~60 ms at any resolution on this GPU class, so half-res only reached 1.4–1.6×; the filter approach is 8.6× on the real `drawCanvas` path.
+3. **Per-clip policy deferred** — the current scope is "Fast = approximate, everything else = exact." A per-clip/toggle exact-in-Fast override can ride on the existing `colorGradeExact` flag if wanted later.
 
-**Target: graded projects ≥ 1.5×** (from 0.55×), no TDR, exact output one toggle away.
+**Verified live (2026-08-18, GT 730 webview — same GPU class as the GT 740, real drawCanvas path):**
+
+| Case (6 s @ 30 fps 1920×1080, Compare probe) | Standard (exact) | Fast (approx) | Gap |
+|---|---|---|---|
+| BBC camel, vibrance 30 + temp 16 + tint 5 | 16.8 s · 0.36× · 10.7 fps | **0.9 s · 6.65× · 199 fps** | **18.6×** |
+| Same video, stroke + drop shadow (no grade) | 6.0 s · 1.00× · 30 fps | 1.0 s · 6.05× · 182 fps | 6.1× |
+| Single-frame grade cost (fake 1080p clip) | 93–95 ms/frame | 11 ms/frame | 8.6× |
+
+Single-frame sanity (through `drawCanvas`, camel video, flag off vs on): exact 93 ms/frame → fast 11 ms/frame. Note the probe is capture-only (paused frame, no pool seeks/encode) — a real Fast export adds M1b pool + encode, so expect real graded exports near the video+text result (~1.1–1.3× at 24 fps) instead of the old 0.61×; MediaBunny keeps the exact pass (and its 0.55× — stable and pixel-perfect by design).
+
+**Target hit:** graded projects were 0.55–0.61× → the grade wall is gone in Fast; remaining bound is capture (M1c.1).
 
 ### M1c.3 — Preflight speed advisor (honest before you wait)
 
@@ -96,7 +136,7 @@ Use the Compare probe's data (or a quick ~20-frame sample at export settings) to
 ### Acceptance criteria (GT 740, 30 s @ 1080p)
 
 - [ ] Dino-style (video + text, no grade): FTRT **≥ 2×** (was 1.87×); MediaBunny unchanged ~1×.
-- [ ] Graded video (BBC-style): FTRT **≥ 1.5×** (was 0.55×); exact grade preserved via the toggle.
+- [x] Graded video (BBC-style): FTRT probe **6.65× vs 0.36×** (was 0.55× equal); exact grade preserved — MediaBunny/preview untouched, `colorGradeExact` override intact.
 - [ ] Text-only stays ≥ 3×; MediaBunny loop untouched (zero diff).
 - [ ] **No TDR** across 3 consecutive 30 s runs with the grade; watchdog armed; console clean.
 - [ ] Determinism: two identical FTRT exports → identical frame hashes (M0 harness).
@@ -116,3 +156,7 @@ Use the Compare probe's data (or a quick ~20-frame sample at export settings) to
 - `WebCodecs-Video-Decode-Plan.md` — mark Phases A–D as M1c.1 with these targets.
 - `M1-FTRT-Export-Plan.md` — §7.4 outcome for M1c (or reference this doc).
 - `Render-Speed-Analysis-and-Plan.md` — fold in the GT 740 real-project numbers as the baseline.
+
+## 5. Verdict / decision (2026-08-18) — proceed to M2 automation
+
+Round-2 real exports (§2.6) show FTRT ≈ MediaBunny for **video** projects (0.51–0.58× vs 0.55–0.65×) because the encode wall is shared — but FTRT's real, shipped value is **text/markdown at 3–5.5×**, which is exactly the lane the automation roadmap (AI writes markdown → fast render) is built on. Beating MediaBunny for *video* on the GT 740 requires M1c.1 (decode worker) + a hardware-encode investigation — a multi-session, hardware-bound effort with uncertain payoff on a 2014 card. **Decision: park video-speed work as a follow-up; proceed to M2 (design templates) — the next automation step and the biggest user-visible win.** M1c.1 stays scoped in `WebCodecs-Video-Decode-Plan.md` and can be picked up when automation lands or if the encode probe shows a hardware path exists.
