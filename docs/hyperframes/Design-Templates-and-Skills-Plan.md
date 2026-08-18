@@ -1,6 +1,6 @@
 # Design Templates & Skills — HyperFrames Analysis and Studio Pro Plan
 
-> **Date:** August 2026 · **Status:** M1 (template engine) ✅ 2026-08-18; M2 (gallery UI) ✅ 2026-08-18 — toolbar `layout-template` button, gallery modal (category chips, palette-gradient/captured thumbnails, Apply / Use-as-defaults, Save-current-look), Escape/backdrop close, all wired to `applyDesignTemplate`. M3 (template editor) in progress.
+> **Date:** August 2026 · **Status:** M1 (engine) ✅ 2026-08-18; M2 (gallery UI) ✅ 2026-08-18; **M3-first-slice (edit-in-app) + M4 (share)** ✅ 2026-08-18 — per-card actions (Edit/Rename/Export/Delete; built-ins read-only + Export), the edit-in-app banner (apply as defaults → tweak in normal panels → Update re-captures via `buildTemplateFromProject`), and `.sptpl.json` export/import with duplicate-id guard.
 > **Sources:** github.com/heygen-com/hyperframes (README, skills), hyperframes.heygen.com/design, heygen.com/research/html-to-video
 > **Scope:** Two questions:
 > **Sources:** github.com/heygen-com/hyperframes (README, skills), hyperframes.heygen.com/design, heygen.com/research/html-to-video
@@ -291,8 +291,8 @@ Template application is a state rewrite — route it through the same state-snap
 |---|---|---|
 | **M1 — Template engine** ✅ 2026-08-18 | Schema, storage, `applyDesignTemplate` (override-aware), `captureTemplateFromProject`, 4 built-in templates, `template:` front-matter key, one-Undo-step | `applyDesignTemplate('tpl_x')` restyles a whole project from one call; Undo works |
 | **M2 — Gallery UI** ✅ 2026-08-18 | Templates modal, category chips, thumbnails, Apply/Use-as-defaults, Save-current-look | One click = project looks like the template; per-item overrides survive |
-| **M3 — Template editor** | Edit members through existing editors; save as new template | "Make my current look a reusable template" — the fully-customizable promise |
-| **M4 — Share** | Export/import `.sptpl.json` | Templates travel between projects/machines |
+| **M3 — Template editor** ✅ first slice 2026-08-18 (full member editor remaining) | Edit-in-app: apply template as defaults → tweak in the normal panels → Update re-captures (`buildTemplateFromProject`); rename + delete for saved templates; built-ins read-only with guidance | "Make my current look a reusable template" — the fully-customizable promise |
+| **M4 — Share** ✅ 2026-08-18 | Export/import `.sptpl.json` (duplicate-id guard, schema validation) | Templates travel between projects/machines |
 | **M5 — Composition tie-in** | Template + Markdown skeleton → `.spcomp` | The "skills" moment: project-type templates drive automated production |
 
 ---
