@@ -12801,6 +12801,14 @@
                 refreshAfterHistory();
                 return;
             }
+            if (snap.kind === 'designTemplate') {
+                const cur = captureDesignTemplateUndo();
+                restoreDesignTemplateUndo(snap);
+                redoStack.push(cur);
+                if (redoStack.length > UNDO_MAX) redoStack.shift();
+                refreshAfterHistory();
+                return;
+            }
             const cur = snapshotClipEdits(Object.keys(snap.clips));
             applyClipSnapshot(snap);
             redoStack.push(cur);
@@ -12814,6 +12822,14 @@
             if (snap.kind === 'timeline') {
                 const cur = captureTimelineSnapshot();
                 applyTimelineSnapshot(snap);
+                undoStack.push(cur);
+                if (undoStack.length > UNDO_MAX) undoStack.shift();
+                refreshAfterHistory();
+                return;
+            }
+            if (snap.kind === 'designTemplate') {
+                const cur = captureDesignTemplateUndo();
+                restoreDesignTemplateUndo(snap);
                 undoStack.push(cur);
                 if (undoStack.length > UNDO_MAX) undoStack.shift();
                 refreshAfterHistory();
@@ -16648,6 +16664,293 @@
             } catch(e){}
         }
 
+        // ── Design templates (M2 Phase 1 — engine only, gallery UI is Phase 2) ───
+        // A design template bundles a project's LOOK: canvas globals (aspect, bg),
+        // caption style + karaoke animation, markdown heading/text/image style, and a
+        // preset pack (referenced by id so DEFAULT_PRESETS stays the single source of
+        // truth). Applying one writes the same layers the app already writes — per-
+        // caption overrides and per-element [key:value] props survive — see
+        // docs/hyperframes/Design-Templates-and-Skills-Plan.md §C/§D.
+        const DESIGN_TEMPLATE_STORAGE_KEY = 'studioPro_designTemplates';
+        const DESIGN_TEMPLATE_CAPTION_KEYS = [
+            'fontSize','fontFamily','fontWeight','scale','fillColor',
+            'strokeEnable','strokeColor','strokeWidth',
+            'shadowEnable','shadowColor','shadowBlur','shadowX','shadowY',
+            'bgEnable','bgColor','bgOpacity','bgPadding','bgRadius',
+            'bgStrokeEnable','bgStrokeColor','bgStrokeWidth',
+            'bgShadowEnable','bgShadowColor','bgShadowBlur','bgShadowX','bgShadowY',
+            'bgExtrudeEnable','bgExtrudeColor','bgExtrudeDepth','bgExtrudeDir',
+            'textureEnable','textureSrc','textureOpacity','textureBlendMode','textureFitting','textureScale',
+            'animIn','animInDur','animInDelay','animOut','animOutDur','animOutDelay','animEase',
+            'animPreset','animFullSpan','wordPopScale','wordStretchScale','wordTrailOpacity',
+            'letterTravel','letterPopScale','letterRotateDeg','animFade',
+            'highlightColor','position','bottomOffset','lineHeight','letterSpacing'
+        ];
+        const DESIGN_TEMPLATE_MD_KEYS = [
+            'headingFontFamily','headingFontSize','headingFontWeight','headingColor',
+            'headingPosition','headingOffset','headingStrokeEnable','headingStrokeColor','headingStrokeWidth',
+            'headingShadowEnable','headingShadowColor','headingShadowBlur','headingShadowX','headingShadowY',
+            'headingExtrudeEnable','headingExtrudeColor','headingExtrudeDir','headingExtrudeDepth','headingAnimIn',
+            'textFontFamily','textFontSize','textFontWeight','textColor','textPosition','textOffset',
+            'textStrokeEnable','textStrokeColor','textStrokeWidth',
+            'textShadowEnable','textShadowColor','textShadowBlur','textShadowX','textShadowY',
+            'textExtrudeEnable','textExtrudeColor','textExtrudeDir','textExtrudeDepth','textAnimIn',
+            'imageScale','imageBorderRadius','imagePosition','imageOffset','imageAnimIn',
+            'mathFontSize','mathColor','mathAnimIn','mathPosition','mathOffset',
+            'mdGap','mockShowAltText','slideDuration','trackMode','startAt','startAtCustom'
+        ];
+        const designTemplatePick = (obj, keys) => { const o = {}; for (const k of keys) if (obj && obj[k] !== undefined) o[k] = obj[k]; return o; };
+
+        const DEFAULT_DESIGN_TEMPLATES = [
+            {
+                format: 'studio-pro-design-template', version: 1,
+                id: 'tpl_launch', name: 'Product Launch', projectType: 'product-launch',
+                description: 'Dark canvas + neon headline + capsule captions for product/launch videos.',
+                thumbnail: '',
+                palette: ['#0b0b0f', '#fde047', '#22d3ee', '#ffffff'],
+                globals: { aspect: '16:9', backgroundColor: '#0b0b0f', captionPosition: 'bottom', bottomOffset: 60 },
+                captionStyle: {
+                    fontSize: 40, fontFamily: 'Rubik', fontWeight: 700, fillColor: '#ffffff',
+                    strokeEnable: false, shadowEnable: true, shadowColor: '#000000', shadowBlur: 12, shadowY: 6,
+                    bgEnable: true, bgColor: '#0b0b0f', bgOpacity: 0.85, bgRadius: 999, bgPadding: 10,
+                    bgStrokeEnable: false, bgShadowEnable: true, bgShadowColor: '#000000', bgShadowBlur: 20, bgShadowY: 8
+                },
+                captionAnimation: { animPreset: 'wordHighlight', animFullSpan: true, highlightColor: '#fde047', wordPopScale: 1.22 },
+                markdownStyle: {
+                    headingFontFamily: 'Anton', headingFontSize: 80, headingFontWeight: 900, headingColor: '#fde047',
+                    headingStrokeEnable: true, headingStrokeColor: '#0b0b0f', headingStrokeWidth: 4,
+                    headingShadowEnable: true, headingShadowColor: '#000000', headingShadowBlur: 20, headingShadowY: 10,
+                    headingAnimIn: 'zoomIn',
+                    textFontFamily: 'Inter', textFontSize: 32, textColor: '#eeeeee', textAnimIn: 'slideUp',
+                    textStrokeEnable: false, textShadowEnable: true, textShadowColor: '#000000', textShadowBlur: 10, textShadowY: 4,
+                    imageAnimIn: 'fade', slideDuration: 5, mdGap: 8
+                },
+                presetPack: ['preset_text_cyberpunk', 'preset_shape_pill']
+            },
+            {
+                format: 'studio-pro-design-template', version: 1,
+                id: 'tpl_explainer', name: 'Explainer', projectType: 'explainer',
+                description: 'Clean blue-accent type and bottom captions with a pop word highlight — for faceless explainers.',
+                thumbnail: '',
+                palette: ['#0f172a', '#38bdf8', '#e2e8f0', '#ffffff'],
+                globals: { aspect: '16:9', backgroundColor: '#0f172a', captionPosition: 'bottom', bottomOffset: 48 },
+                captionStyle: {
+                    fontSize: 34, fontFamily: 'Inter', fontWeight: 700, fillColor: '#ffffff',
+                    strokeEnable: false, shadowEnable: true, shadowColor: '#0f172a', shadowBlur: 10, shadowY: 4,
+                    bgEnable: false, bgStrokeEnable: false, bgShadowEnable: false
+                },
+                captionAnimation: { animPreset: 'wordColor', animFullSpan: true, highlightColor: '#38bdf8' },
+                markdownStyle: {
+                    headingFontFamily: 'Rubik', headingFontSize: 72, headingFontWeight: 800, headingColor: '#38bdf8',
+                    headingStrokeEnable: false, headingShadowEnable: true, headingShadowColor: '#0f172a', headingShadowBlur: 16, headingShadowY: 8,
+                    headingAnimIn: 'slideLeft',
+                    textFontFamily: 'Inter', textFontSize: 30, textColor: '#e2e8f0', textAnimIn: 'fade',
+                    textStrokeEnable: false, textShadowEnable: false,
+                    imageAnimIn: 'fade', slideDuration: 6, mdGap: 10
+                },
+                presetPack: ['preset_text_minimal', 'preset_shape_blur_card']
+            },
+            {
+                format: 'studio-pro-design-template', version: 1,
+                id: 'tpl_shorts', name: 'Shorts Captions', projectType: 'social-clips',
+                description: 'Vertical 9:16, big Anton captions with word-pop karaoke — for Shorts/Reels.',
+                thumbnail: '',
+                palette: ['#09090b', '#f43f5e', '#fef08a', '#ffffff'],
+                globals: { aspect: '9:16', backgroundColor: '#09090b', captionPosition: 'bottom', bottomOffset: 90 },
+                captionStyle: {
+                    fontSize: 64, fontFamily: 'Anton', fontWeight: 900, fillColor: '#ffffff',
+                    strokeEnable: true, strokeColor: '#000000', strokeWidth: 5,
+                    shadowEnable: true, shadowColor: '#000000', shadowBlur: 12, shadowY: 6,
+                    bgEnable: true, bgColor: '#000000', bgOpacity: 0.72, bgRadius: 16, bgPadding: 10,
+                    bgStrokeEnable: false, bgShadowEnable: false
+                },
+                captionAnimation: { animPreset: 'wordPop', animFullSpan: true, wordPopScale: 1.3, highlightColor: '#fef08a', letterPopScale: 1.2 },
+                markdownStyle: {
+                    headingFontFamily: 'Anton', headingFontSize: 92, headingFontWeight: 900, headingColor: '#f43f5e',
+                    headingStrokeEnable: true, headingStrokeColor: '#000000', headingStrokeWidth: 6,
+                    headingShadowEnable: true, headingShadowColor: '#000000', headingShadowBlur: 16, headingShadowY: 8,
+                    headingAnimIn: 'pop',
+                    textFontFamily: 'Inter', textFontSize: 34, textColor: '#ffffff', textAnimIn: 'slideUp',
+                    textStrokeEnable: true, textStrokeColor: '#000000', textStrokeWidth: 2,
+                    textShadowEnable: true, textShadowColor: '#000000', textShadowBlur: 8, textShadowY: 4,
+                    imageAnimIn: 'zoomIn', slideDuration: 4, mdGap: 6
+                },
+                presetPack: ['preset_text_cartoon']
+            },
+            {
+                format: 'studio-pro-design-template', version: 1,
+                id: 'tpl_minimal', name: 'Minimal', projectType: 'minimal',
+                description: 'Neutral grays, no decoration — a clean base to build on.',
+                thumbnail: '',
+                palette: ['#111111', '#ffffff', '#888888', '#000000'],
+                globals: { aspect: '16:9', backgroundColor: '#111111', captionPosition: 'bottom', bottomOffset: 60 },
+                captionStyle: {
+                    fontSize: 32, fontFamily: 'Inter', fontWeight: 300, fillColor: '#ffffff', letterSpacing: 2,
+                    strokeEnable: false, shadowEnable: true, shadowColor: '#000000', shadowBlur: 8, shadowY: 2,
+                    bgEnable: false, bgStrokeEnable: false, bgShadowEnable: false
+                },
+                captionAnimation: { animPreset: 'fade', animFade: true, letterTravel: 0 },
+                markdownStyle: {
+                    headingFontFamily: 'Inter', headingFontSize: 64, headingFontWeight: 300, headingColor: '#ffffff',
+                    headingStrokeEnable: false, headingShadowEnable: true, headingShadowColor: '#000000', headingShadowBlur: 12, headingShadowY: 6,
+                    headingAnimIn: 'fade',
+                    textFontFamily: 'Inter', textFontSize: 28, textColor: '#cccccc', textAnimIn: 'fade',
+                    textStrokeEnable: false, textShadowEnable: false,
+                    imageAnimIn: 'fade', slideDuration: 6, mdGap: 12
+                },
+                presetPack: ['preset_text_minimal']
+            }
+        ];
+
+        function loadDesignTemplates() {
+            try { const s = localStorage.getItem(DESIGN_TEMPLATE_STORAGE_KEY); return s ? JSON.parse(s) : []; } catch (e) { return []; }
+        }
+        function saveDesignTemplates(list) {
+            try { localStorage.setItem(DESIGN_TEMPLATE_STORAGE_KEY, JSON.stringify(list)); } catch (e) {}
+        }
+        function getDesignTemplate(id) {
+            return DEFAULT_DESIGN_TEMPLATES.find(t => t.id === id) || loadDesignTemplates().find(t => t.id === id) || null;
+        }
+
+        // Resolve a template's preset pack to full preset objects (single source of
+        // truth: DEFAULT_PRESETS / custom presets), honoring the deleted list. The
+        // gallery UI (Phase 2) feeds these into the Presets tab as a template pack.
+        window.getDesignTemplatePresetPack = function(templateId) {
+            const t = getDesignTemplate(templateId);
+            if (!t || !Array.isArray(t.presetPack)) return [];
+            let deleted = [];
+            try { deleted = JSON.parse(localStorage.getItem('deleted_presets') || '[]'); } catch (e) {}
+            return t.presetPack
+                .map(id => DEFAULT_PRESETS.find(p => p.id === id) || loadCustomPresets().find(p => p.id === id))
+                .filter(Boolean)
+                .filter(p => !deleted.includes(p.id));
+        };
+
+        function applyTemplateBg(color) {
+            State.canvasBgColor = color;
+            const cp = document.getElementById('canvasColorPicker');
+            const cs = document.getElementById('canvasColorSwatch');
+            if (cp) cp.value = color;
+            if (cs) cs.style.backgroundColor = color;
+            const w = document.getElementById('canvasAspectWrapper');
+            if (w) w.style.backgroundColor = color;
+        }
+
+        // Undo entries for template application need the globals AND both config
+        // layers (a plain clip-edits snapshot would miss bg/aspect/caption style).
+        function captureDesignTemplateUndo() {
+            return {
+                kind: 'designTemplate',
+                canvasBgColor: State.canvasBgColor,
+                aspectIndex: State.preview.aspectIndex,
+                subtitleConfig: JSON.parse(JSON.stringify(State.subtitleConfig)),
+                markdownConfig: JSON.parse(JSON.stringify(State.markdownConfig)),
+                clips: snapshotClipEdits(State.clips.map(c => c.id)).clips
+            };
+        }
+        function restoreDesignTemplateUndo(snap) {
+            State.canvasBgColor = snap.canvasBgColor;
+            State.preview.aspectIndex = snap.aspectIndex;
+            State.subtitleConfig = JSON.parse(JSON.stringify(snap.subtitleConfig));
+            State.markdownConfig = JSON.parse(JSON.stringify(snap.markdownConfig));
+            applyClipSnapshot(snap);
+            applyTemplateBg(snap.canvasBgColor);
+            const ia = document.getElementById('iconAspect');
+            const ba = document.getElementById('btnToggleAspect');
+            if (ia) ia.setAttribute('data-lucide', ASPECT_RATIOS[snap.aspectIndex].icon);
+            if (ba) ba.title = 'Aspect Ratio: ' + ASPECT_RATIOS[snap.aspectIndex].label;
+            if (window.lucide) lucide.createIcons();
+            saveSubtitlesToStorage();
+            saveMarkdownConfig();
+            try { resizeCanvas(); } catch (e) {}
+        }
+
+        // Apply a design template to the current project. mode 'project' (default)
+        // also re-styles markdown-generated clips and mirrors the caption look onto
+        // synced caption clips; mode 'defaults' writes config only (used by the
+        // markdown front-matter template: key, where generation styles the new clips).
+        // Override discipline mirrors applyCaptionPreset: per-caption overrides and
+        // per-element [key:value] md props are never clobbered.
+        window.applyDesignTemplate = function(templateId, mode) {
+            const t = getDesignTemplate(templateId);
+            if (!t) { console.warn('[StudioPro] Unknown design template: ' + templateId); return false; }
+            const restyle = mode !== 'defaults';
+            pushUndo(captureDesignTemplateUndo(), 'designTemplate:' + t.id);
+
+            // 1. Canvas globals
+            if (t.globals) {
+                if (t.globals.aspect) {
+                    const idx = ASPECT_RATIOS.findIndex(a => a.label === t.globals.aspect);
+                    if (idx !== -1 && idx !== State.preview.aspectIndex) {
+                        State.preview.aspectIndex = idx;
+                        const ia = document.getElementById('iconAspect');
+                        const ba = document.getElementById('btnToggleAspect');
+                        if (ia) ia.setAttribute('data-lucide', ASPECT_RATIOS[idx].icon);
+                        if (ba) ba.title = 'Aspect Ratio: ' + ASPECT_RATIOS[idx].label;
+                        if (window.lucide) lucide.createIcons();
+                    }
+                }
+                if (t.globals.backgroundColor) applyTemplateBg(t.globals.backgroundColor);
+            }
+
+            // 2. Caption style + karaoke animation (both live in subtitleConfig)
+            const capFx = Object.assign({}, t.captionStyle || {}, t.captionAnimation || {});
+            if (Object.keys(capFx).length) {
+                Object.assign(State.subtitleConfig, capFx);
+                State.clips.filter(c => c.subtitleId).forEach(clip => {
+                    const s = State.subtitles.find(x => x.id === clip.subtitleId);
+                    if (!clip.effects) clip.effects = {};
+                    Object.keys(capFx).forEach(k => {
+                        if (!s || !s.effects || s.effects[k] === undefined) clip.effects[k] = capFx[k];
+                    });
+                });
+                saveSubtitlesToStorage();
+            }
+
+            // 3. Markdown style
+            if (t.markdownStyle && Object.keys(t.markdownStyle).length) {
+                Object.assign(State.markdownConfig, t.markdownStyle);
+                saveMarkdownConfig();
+            }
+
+            // 4. Re-style markdown-generated clips (respects _mdProps) + refresh UI
+            if (restyle) {
+                try { applyMarkdownStyle(); } catch (e) { console.warn('[StudioPro] markdown restyle failed:', e); drawCanvas(); }
+            }
+            try { resizeCanvas(); } catch (e) {}
+            try { if (typeof renderSubtitlesPanel === 'function') renderSubtitlesPanel(); } catch (e) {}
+            try { updateSidebarPanel(); } catch (e) {}
+            drawCanvas();
+            return true;
+        };
+
+        // "Save current look as template" — snapshot the live config layers + a
+        // thumbnail, persist to localStorage, and return the template object.
+        window.captureTemplateFromProject = function(name, projectType) {
+            const base = {
+                format: 'studio-pro-design-template',
+                version: 1,
+                id: 'tpl_' + (projectType || 'custom') + '_' + Date.now().toString(36),
+                name: name || String(projectType || 'Custom').replace(/-/g, ' ') + ' Template',
+                projectType: projectType || 'custom',
+                description: '',
+                thumbnail: window.capturePresetThumbnail(),
+                palette: [],
+                globals: {
+                    aspect: (ASPECT_RATIOS[State.preview.aspectIndex] || ASPECT_RATIOS[0]).label,
+                    backgroundColor: State.canvasBgColor,
+                    captionPosition: State.subtitleConfig.position,
+                    bottomOffset: State.subtitleConfig.bottomOffset
+                },
+                captionStyle: designTemplatePick(State.subtitleConfig, DESIGN_TEMPLATE_CAPTION_KEYS),
+                captionAnimation: designTemplatePick(State.subtitleConfig, DESIGN_TEMPLATE_CAPTION_KEYS.filter(k => k.startsWith('anim') || ['highlightColor','wordPopScale','wordStretchScale','wordTrailOpacity','letterTravel','letterPopScale','letterRotateDeg','animFade','animFullSpan'].includes(k))),
+                markdownStyle: designTemplatePick(State.markdownConfig, DESIGN_TEMPLATE_MD_KEYS),
+                presetPack: []
+            };
+            saveDesignTemplates([...loadDesignTemplates(), base]);
+            return base;
+        };
+
         // ── Format seconds for display ────────────────────────────────────────────
         window.formatSubTime = function(seconds) {
             const m = Math.floor(seconds / 60);
@@ -20259,8 +20562,11 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 for (const k in fm) {
                     const v = fm[k];
                     if (k === 'template') {
-                        // V2: template engine not shipped yet — accept + warn, never fail.
-                        console.warn('[StudioPro] template: "' + v + '" — templates are a V2 feature; ignoring for now.');
+                        // M2: apply the named design template as defaults (config only —
+                        // generation styles the new clips; existing clips stay untouched).
+                        const t = getDesignTemplate(String(v));
+                        if (t) { try { window.applyDesignTemplate(t.id, 'defaults'); } catch (e) { console.warn('[StudioPro] template apply failed:', e); } }
+                        else console.warn('[StudioPro] Unknown template: "' + v + '" — expected one of ' + [...DEFAULT_DESIGN_TEMPLATES, ...loadDesignTemplates()].map(t => t.id).join(', '));
                     } else if (k === 'aspect') {
                         const idx = ASPECT_RATIOS.findIndex(a => a.label === String(v));
                         if (idx !== -1) State.preview.aspectIndex = idx;
