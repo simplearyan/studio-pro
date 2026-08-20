@@ -6177,9 +6177,20 @@
                         } else {
                         const borderRadius = clip.effects.borderRadius !== undefined ? clip.effects.borderRadius : 0;
 
-                        const clipTime = State.currentTime - clip.start;
-                        const timeLeft = clip.duration - clipTime;
-                        const aState = calculateAnimationState(clip, clipTime, timeLeft, w, h);
+                        let clipTime = State.currentTime - clip.start;
+                        let timeLeft = clip.duration - clipTime;
+                        let aState = calculateAnimationState(clip, clipTime, timeLeft, w, h);
+
+                        // ── Image load gate (Issue #2 fix) ────────────────────────────────
+                        // When a markdown image is still decoding, freeze the animation at
+                        // t=0 so the mock card appears at full opacity (no fade/slide). Once
+                        // the image finishes loading, the next frame renders the real image
+                        // from the true animation position — no pop, no blurry transition.
+                        if (clip.type === 'image' && clip._mdMedia && !clip._imgReady && !clip._missingMedia) {
+                            aState = { animAlpha: 1, animScale: 1, animX: 0, animY: 0, animRot: 0, mosaicLevel: 0, puzzleLevel: 0, puzzleDir: 'random' };
+                            clipTime = 0;
+                            timeLeft = clip.duration;
+                        }
 
                         ctx.save();
                         const finalScale = baseScale * aState.animScale;
@@ -6488,12 +6499,27 @@
                         const borderRadius = clip.effects.borderRadius !== undefined ? clip.effects.borderRadius : 0;
 
                         // Animation Math
-                        const clipTime = State.currentTime - clip.start;
-                        const timeLeft = clip.duration - clipTime;
-                        const aState = calculateAnimationState(clip, clipTime, timeLeft, w, h);
+                        let clipTime = State.currentTime - clip.start;
+                        let timeLeft = clip.duration - clipTime;
+                        let aState = calculateAnimationState(clip, clipTime, timeLeft, w, h);
                         let mosaicLevel = aState.mosaicLevel;
                         let puzzleLevel = aState.puzzleLevel;
                         let puzzleDir = aState.puzzleDir;
+
+                        // ── Image load gate for real draw path (Issue #2) ───────────────
+                        // When a markdown image just loaded (first frame after _imgReady
+                        // flipped), start the animation from t=0 so the fade/slide begins
+                        // cleanly with the real image, not from the current mid-animation
+                        // position which would show a sudden alpha/position jump.
+                        if (clip.type === 'image' && clip._mdMedia && clip._imgReady && !clip._imgAnimStarted) {
+                            clip._imgAnimStarted = true;
+                            clipTime = 0;
+                            timeLeft = clip.duration;
+                            aState = calculateAnimationState(clip, 0, clip.duration, w, h);
+                            mosaicLevel = aState.mosaicLevel;
+                            puzzleLevel = aState.puzzleLevel;
+                            puzzleDir = aState.puzzleDir;
+                        }
 
                         ctx.save();
                         const finalScale = baseScale * aState.animScale;
@@ -6529,7 +6555,24 @@
                                 offCtx.drawImage(smallCanvas, 0, 0, dw, dh);
                                 offCtx.imageSmoothingEnabled = true;
                             } else {
-                                offCtx.drawImage(source, sx, sy, sw, sh, 0, 0, dw, dh);
+                                // Alpha pre-multiplication for offscreen path (same H.264 fix)
+                                // Draw the image at the animation alpha on top of the
+                                // background so every pixel sent to the encoder is opaque
+                                // — no semi-transparent pixels for 4:2:0 to corrupt.
+                                const _offAlpha = ctx.globalAlpha;
+                                if (_offAlpha < 0.999 && (targetCtx || State.isExporting)) {
+                                    const _bg = createOffscreenCanvas(dw, dh);
+                                    const _bgCtx = _bg.getContext('2d');
+                                    _bgCtx.imageSmoothingEnabled = true;
+                                    _bgCtx.imageSmoothingQuality = 'high';
+                                    _bgCtx.fillStyle = fillBgColor || '#000000';
+                                    _bgCtx.fillRect(0, 0, dw, dh);
+                                    _bgCtx.globalAlpha = _offAlpha;
+                                    _bgCtx.drawImage(source, sx, sy, sw, sh, 0, 0, dw, dh);
+                                    offCtx.drawImage(_bg, 0, 0);
+                                } else {
+                                    offCtx.drawImage(source, sx, sy, sw, sh, 0, 0, dw, dh);
+                                }
                             }
 
                             if (hasMask) {
@@ -6609,7 +6652,27 @@
                                 offCtx.drawImage(source, sx, sy, sw, sh, 0, 0, dw, dh);
                                 drawPuzzleBlocks(ctx, offCanvas, puzzleLevel, puzzleDir, clip.effects.animPuzzleSize || 8, puzzleSeedFromId(clip.id), !!clip.effects.animPuzzleSnap);
                             } else {
-                                ctx.drawImage(source, sx, sy, sw, sh, -dw/2, -dh/2, dw, dh);
+                                // ── Alpha pre-multiplication for H.264 export ──────────────────
+                                // Semi-transparent pixels confuse H.264 4:2:0 chroma subsampling,
+                                // producing blurry artifacts on fade/slide animations. Pre-multiply
+                                // against the background so every pixel sent to the encoder is opaque.
+                                const _srcAlpha = ctx.globalAlpha;
+                                if (_srcAlpha < 0.999 && (targetCtx || State.isExporting)) {
+                                    const _sc = createOffscreenCanvas(dw, dh);
+                                    const _sx = _sc.getContext('2d');
+                                    _sx.imageSmoothingEnabled = true;
+                                    _sx.imageSmoothingQuality = 'high';
+                                    _sx.fillStyle = fillBgColor || '#000000';
+                                    _sx.fillRect(0, 0, dw, dh);
+                                    _sx.globalAlpha = _srcAlpha;
+                                    _sx.drawImage(source, sx, sy, sw, sh, 0, 0, dw, dh);
+                                    _sx.globalAlpha = 1;
+                                    ctx.globalAlpha = 1;
+                                    ctx.drawImage(_sc, -dw/2, -dh/2, dw, dh);
+                                    ctx.globalAlpha = _srcAlpha;
+                                } else {
+                                    ctx.drawImage(source, sx, sy, sw, sh, -dw/2, -dh/2, dw, dh);
+                                }
                             }
                         }
 
@@ -21351,7 +21414,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 const mdProps = {};
                 if (p.scale) { const n = numProp(p.scale); if (n !== null) mdProps.scale = n; }
                 if (p.anim) { const a = validAnim(p.anim); if (a) mdProps.animIn = a; else console.warn('[StudioPro] unknown [anim:] "' + p.anim + '"'); }
-                return withMdAudio({
+                const clip = withMdAudio({
                     id: id + '_image' + imgIdx,
                     sceneId: State.activeSceneId || null,
                     trackId: trackId,
@@ -21383,6 +21446,20 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         opacity: 100, blendMode: 'source-over'
                     }
                 }, img.audioName);
+                // Image-ready tracking: when the URL image finishes loading, flag it
+                // and redraw so drawCanvas switches from mock to the real image on the
+                // next frame. Without this, the first export frame may capture a mock
+                // card (the image is still decoding) and the fade animation plays on
+                // the mock instead of the real image.
+                clip._imgReady = isMock || (imgEl && imgEl.complete && imgEl.naturalWidth > 0);
+                if (!isMock && imgEl && !clip._imgReady) {
+                    imgEl.addEventListener('load', function onImgReady() {
+                        imgEl.removeEventListener('load', onImgReady);
+                        clip._imgReady = true;
+                        drawCanvas();
+                    });
+                }
+                return clip;
             }
             function mdVideoClip(v, index, vIdx, id, start, dur, trackId, colorIndex) {
                 const isMock = !!v.mock;
@@ -27901,6 +27978,17 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     img.onerror = function(){};
                     img.src = _srcUrl;
                     clip.imageEl = img;
+                    // Image-ready tracking (mirrors mdImageClip): set _imgReady when
+                    // the URL image finishes decoding so drawCanvas switches from
+                    // the mock placeholder to the real image without a visual pop.
+                    clip._imgReady = img.complete && img.naturalWidth > 0;
+                    if (!clip._imgReady) {
+                        img.addEventListener('load', function onRestoreImgReady() {
+                            img.removeEventListener('load', onRestoreImgReady);
+                            clip._imgReady = true;
+                            drawCanvas();
+                        });
+                    }
                 } else if (clip.type === 'video') {
                     const v = document.createElement('video');
                     v.preload = 'auto';
@@ -31134,6 +31222,54 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             return videoEl.readyState >= 2;
         };
 
+        // ── Export image preload gate ─────────────────────────────────────────
+        // Ensures every image clip in the export range is fully decoded before
+        // the capture loop starts. Without this, the first export frames may
+        // capture a mock placeholder or a half-decoded image, producing blurry
+        // artifacts on fade/slide animations (Issue #2). Inspired by Sequence
+        // Animator Pro's approach: all images stored as loaded Image objects
+        // before any animation touches them.
+        async function preloadExportImages(startTime, endTime) {
+            // Find ALL image clips in the export range (loaded or not)
+            const allImageClips = State.clips.filter(c =>
+                c.type === 'image' && !c.hidden && c.fileUrl &&
+                c.start < endTime && (c.start + c.duration) > startTime &&
+                c.imageEl
+            );
+            if (allImageClips.length === 0) return;
+            // Immediately mark already-loaded images as ready
+            allImageClips.forEach(c => {
+                if (c.imageEl.complete && c.imageEl.naturalWidth > 0) {
+                    c._imgReady = true;
+                }
+            });
+            // Only wait for images still decoding
+            const imageClips = allImageClips.filter(c => !c._imgReady);
+            if (imageClips.length === 0) {
+                console.log('[Export] all ' + allImageClips.length + ' image(s) already loaded.');
+                return;
+            }
+            console.log('[Export] preloading ' + imageClips.length + ' of ' + allImageClips.length + ' image(s)...');
+            const loads = imageClips.map(c => new Promise((resolve) => {
+                const el = c.imageEl;
+                if (el.complete) { c._imgReady = true; return resolve(); }
+                const done = () => {
+                    c._imgReady = true;
+                    // Decode to GPU-ready bitmap so first drawImage is instant
+                    // (avoids the decode-during-first-frame stall that causes
+                    // the blurry first frame on weak GPUs).
+                    try { el.decode().then(() => resolve()).catch(() => resolve()); }
+                    catch (_) { resolve(); }
+                };
+                el.addEventListener('load', done, { once: true });
+                el.addEventListener('error', done, { once: true });
+                // Timeout: don't block export forever on a dead URL
+                setTimeout(done, 8000);
+            }));
+            await Promise.all(loads);
+            console.log('[Export] all images ready.');
+        }
+
         // Pre-render export audio deterministically (OfflineAudioContext) so video
         // and audio are captured at the same speed in every export mode. Shared by
         // MediaBunny (chunks streamed by wall clock) and Fast/FTRT (all chunks queued
@@ -31344,10 +31480,16 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             const timeStep = 1 / fps;
             const totalFrames = Math.ceil((endTime - startTime) / timeStep);
             State.currentTime = startTime;
+
+            // Pre-load all images in the export range before capture starts
+            // (Issue #2 fix — inspired by Sequence Animator Pro)
+            await preloadExportImages(startTime, endTime);
             
             // Use OffscreenCanvas for main export canvas
             const exportCanvas = createOffscreenCanvas(exportW, exportH);
             const exportCtx = exportCanvas.getContext('2d');
+            exportCtx.imageSmoothingEnabled = true;
+            exportCtx.imageSmoothingQuality = 'high';
             
             // --- Audio setup: Pre-render audio using OfflineAudioContext ---
             const audioSampleRate = 48000;
@@ -31878,6 +32020,11 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             // Fast-only grade approximation (half-res vibrance etc.). MediaBunny and
             // the preview never set this flag, so they keep the full-res exact pass.
             State.exportGradeFast = true;
+
+            // Pre-load all images in the export range before capture starts
+            // (Issue #2 fix — inspired by Sequence Animator Pro)
+            await preloadExportImages(startTime, endTime);
+
             const timeStep = 1 / fps;
             const totalFrames = Math.max(1, Math.ceil((endTime - startTime) / timeStep));
             const exportStartWall = performance.now();
@@ -31961,6 +32108,8 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
 
             const exportCanvas = createOffscreenCanvas(exportW, exportH);
             const exportCtx = exportCanvas.getContext('2d');
+            exportCtx.imageSmoothingEnabled = true;
+            exportCtx.imageSmoothingQuality = 'high';
 
             const prevSpeakerGain = State.speakerNode ? State.speakerNode.gain.value : 1;
 
