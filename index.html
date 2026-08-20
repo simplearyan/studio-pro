@@ -6556,20 +6556,22 @@
                                 offCtx.imageSmoothingEnabled = true;
                             } else {
                                 // Alpha pre-multiplication for offscreen path (same H.264 fix)
-                                // Draw the image at the animation alpha on top of the
-                                // background so every pixel sent to the encoder is opaque
-                                // — no semi-transparent pixels for 4:2:0 to corrupt.
+                                // The background is already on the main canvas — do NOT
+                                // fill the scratch canvas with fillBgColor (that would
+                                // double the background, making fades dark/blurry).
+                                // Instead, draw the image at full opacity on a scratch
+                                // canvas, then composite that at the animation alpha so
+                                // every pixel sent to the encoder is opaque.
                                 const _offAlpha = ctx.globalAlpha;
                                 if (_offAlpha < 0.999 && (targetCtx || State.isExporting)) {
                                     const _bg = createOffscreenCanvas(dw, dh);
                                     const _bgCtx = _bg.getContext('2d');
                                     _bgCtx.imageSmoothingEnabled = true;
                                     _bgCtx.imageSmoothingQuality = 'high';
-                                    _bgCtx.fillStyle = fillBgColor || '#000000';
-                                    _bgCtx.fillRect(0, 0, dw, dh);
-                                    _bgCtx.globalAlpha = _offAlpha;
                                     _bgCtx.drawImage(source, sx, sy, sw, sh, 0, 0, dw, dh);
+                                    offCtx.globalAlpha = _offAlpha;
                                     offCtx.drawImage(_bg, 0, 0);
+                                    offCtx.globalAlpha = 1;
                                 } else {
                                     offCtx.drawImage(source, sx, sy, sw, sh, 0, 0, dw, dh);
                                 }
@@ -6653,23 +6655,19 @@
                                 drawPuzzleBlocks(ctx, offCanvas, puzzleLevel, puzzleDir, clip.effects.animPuzzleSize || 8, puzzleSeedFromId(clip.id), !!clip.effects.animPuzzleSnap);
                             } else {
                                 // ── Alpha pre-multiplication for H.264 export ──────────────────
-                                // Semi-transparent pixels confuse H.264 4:2:0 chroma subsampling,
-                                // producing blurry artifacts on fade/slide animations. Pre-multiply
-                                // against the background so every pixel sent to the encoder is opaque.
+                                // Background is already on the main canvas — do NOT fill
+                                // the scratch canvas with fillBgColor (would double it).
+                                // Draw the image at full opacity on a scratch canvas, then
+                                // composite at the animation alpha. The encoder sees fully
+                                // opaque pixels — no 4:2:0 alpha artifacts.
                                 const _srcAlpha = ctx.globalAlpha;
                                 if (_srcAlpha < 0.999 && (targetCtx || State.isExporting)) {
                                     const _sc = createOffscreenCanvas(dw, dh);
                                     const _sx = _sc.getContext('2d');
                                     _sx.imageSmoothingEnabled = true;
                                     _sx.imageSmoothingQuality = 'high';
-                                    _sx.fillStyle = fillBgColor || '#000000';
-                                    _sx.fillRect(0, 0, dw, dh);
-                                    _sx.globalAlpha = _srcAlpha;
                                     _sx.drawImage(source, sx, sy, sw, sh, 0, 0, dw, dh);
-                                    _sx.globalAlpha = 1;
-                                    ctx.globalAlpha = 1;
                                     ctx.drawImage(_sc, -dw/2, -dh/2, dw, dh);
-                                    ctx.globalAlpha = _srcAlpha;
                                 } else {
                                     ctx.drawImage(source, sx, sy, sw, sh, -dw/2, -dh/2, dw, dh);
                                 }
@@ -19379,7 +19377,7 @@ Explore the fascinating world of animals and dinosaurs that roamed the Earth mil
 
 The Tyrannosaurus Rex was one of the largest land carnivores of all time, measuring up to 40 feet long and 12 feet tall.
 
-![T-Rex](https://images.pexels.com/photos/247376/pexels-photo-247376.jpeg?auto=compress&cs=tinysrgb&w=800)
+![T-Rex](https://images.pexels.com/photos/247376/pexels-photo-247376.jpeg?auto=compress&cs=tinysrgb&w=1920)
 
 ---
 
@@ -19387,7 +19385,7 @@ The Tyrannosaurus Rex was one of the largest land carnivores of all time, measur
 
 With its incredibly long neck reaching up to 30 feet, the Brachiosaurus could browse treetops that other dinosaurs couldn't reach.
 
-![Brachiosaurus](https://images.pexels.com/photos/12875626/pexels-photo-12875626.jpeg?auto=compress&cs=tinysrgb&w=800)
+![Brachiosaurus](https://images.pexels.com/photos/12875626/pexels-photo-12875626.jpeg?auto=compress&cs=tinysrgb&w=1920)
 
 ---
 
@@ -19395,7 +19393,7 @@ With its incredibly long neck reaching up to 30 feet, the Brachiosaurus could br
 
 Eagles are birds of prey with incredible vision — they can spot prey from over a mile away!
 
-![Eagle](https://images.pexels.com/photos/32068807/pexels-photo-32068807.jpeg?auto=compress&cs=tinysrgb&w=800)
+![Eagle](https://images.pexels.com/photos/32068807/pexels-photo-32068807.jpeg?auto=compress&cs=tinysrgb&w=1920)
 
 ---
 
@@ -19403,7 +19401,7 @@ Eagles are birds of prey with incredible vision — they can spot prey from over
 
 Elephants are the largest land animals on Earth, with the African elephant weighing up to 6,000 kilograms.
 
-![Elephant](https://images.pexels.com/photos/941693/pexels-photo-941693.jpeg?auto=compress&cs=tinysrgb&w=800)
+![Elephant](https://images.pexels.com/photos/941693/pexels-photo-941693.jpeg?auto=compress&cs=tinysrgb&w=1920)
 
 ---
 
@@ -19411,7 +19409,7 @@ Elephants are the largest land animals on Earth, with the African elephant weigh
 
 Dolphins are highly intelligent marine mammals known for their playful behavior and complex social structures.
 
-![Dolphin](https://images.pexels.com/photos/33603933/pexels-photo-33603933.jpeg?auto=compress&cs=tinysrgb&w=800)
+![Dolphin](https://images.pexels.com/photos/33603933/pexels-photo-33603933.jpeg?auto=compress&cs=tinysrgb&w=1920)
 
 ---
 
@@ -19419,7 +19417,7 @@ Dolphins are highly intelligent marine mammals known for their playful behavior 
 
 Known as the king of the jungle, lions are the only cats that live in groups called prides.
 
-![Lion](https://images.pexels.com/photos/247502/pexels-photo-247502.jpeg?auto=compress&cs=tinysrgb&w=800)
+![Lion](https://images.pexels.com/photos/247502/pexels-photo-247502.jpeg?auto=compress&cs=tinysrgb&w=1920)
 
 ---
 
@@ -19427,7 +19425,7 @@ Known as the king of the jungle, lions are the only cats that live in groups cal
 
 Great white sharks can detect a single drop of blood in 25 gallons of water and sense electromagnetic fields.
 
-![Shark](https://images.pexels.com/photos/33522109/pexels-photo-33522109.jpeg?auto=compress&cs=tinysrgb&w=800)
+![Shark](https://images.pexels.com/photos/33522109/pexels-photo-33522109.jpeg?auto=compress&cs=tinysrgb&w=1920)
 
 ---
 
@@ -19435,7 +19433,7 @@ Great white sharks can detect a single drop of blood in 25 gallons of water and 
 
 Butterflies taste with their feet and have a lifespan that ranges from a few weeks to nearly a year depending on the species.
 
-![Butterfly](https://images.pexels.com/photos/674010/pexels-photo-674010.jpeg?auto=compress&cs=tinysrgb&w=800)
+![Butterfly](https://images.pexels.com/photos/674010/pexels-photo-674010.jpeg?auto=compress&cs=tinysrgb&w=1920)
 
 ---
 
@@ -19443,7 +19441,7 @@ Butterflies taste with their feet and have a lifespan that ranges from a few wee
 
 Wolves communicate through howls, body language, and scent marking — a single howl can be heard up to 10 miles away.
 
-![Wolf](https://images.pexels.com/photos/36129744/pexels-photo-36129744.jpeg?auto=compress&cs=tinysrgb&w=800)
+![Wolf](https://images.pexels.com/photos/36129744/pexels-photo-36129744.jpeg?auto=compress&cs=tinysrgb&w=1920)
 
 ---
 
@@ -19451,7 +19449,7 @@ Wolves communicate through howls, body language, and scent marking — a single 
 
 Owls can rotate their heads up to 270 degrees and have silent flight thanks to special feather adaptations.
 
-![Owl](https://images.pexels.com/photos/36828322/pexels-photo-36828322.jpeg?auto=compress&cs=tinysrgb&w=800)
+![Owl](https://images.pexels.com/photos/36828322/pexels-photo-36828322.jpeg?auto=compress&cs=tinysrgb&w=1920)
 
 ---
 
@@ -19459,7 +19457,7 @@ Owls can rotate their heads up to 270 degrees and have silent flight thanks to s
 
 Emperor penguins are the tallest and heaviest of all penguin species, standing nearly 4 feet tall.
 
-![Penguin](https://images.pexels.com/photos/28386059/pexels-photo-28386059.jpeg?auto=compress&cs=tinysrgb&w=800)
+![Penguin](https://images.pexels.com/photos/28386059/pexels-photo-28386059.jpeg?auto=compress&cs=tinysrgb&w=1920)
 
 ---
 
@@ -19477,7 +19475,7 @@ From the smallest butterfly to the mightiest T-Rex, every creature plays a uniqu
 
 **Numbers** hide everywhere: from the **spiral of a shell** to the rhythm of the stars. **Patterns** are the fingerprints of nature.
 
-![Math Chalkboard](https://images.pexels.com/photos/1329711/pexels-photo-1329711.jpeg?auto=compress&cs=tinysrgb&w=800)
+![Math Chalkboard](https://images.pexels.com/photos/1329711/pexels-photo-1329711.jpeg?auto=compress&cs=tinysrgb&w=1920)
 
 ---
 
@@ -19493,7 +19491,7 @@ $$x = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}$$
 
 In any **right triangle**, the square of the hypotenuse equals the sum of the squares of the other two sides.
 
-![Geometry](https://images.pexels.com/photos/256541/pexels-photo-256541.jpeg?auto=compress&cs=tinysrgb&w=800) [right]
+![Geometry](https://images.pexels.com/photos/256541/pexels-photo-256541.jpeg?auto=compress&cs=tinysrgb&w=1920) [right]
 
 $$a^2 + b^2 = c^2$$ [left]
 
@@ -19511,7 +19509,7 @@ $$\\pi = \\frac{C}{d} \\approx 3.14159265$$
 
 Often called the **most beautiful equation** in mathematics, it links five fundamental constants.
 
-![Equation Chalk](https://images.pexels.com/photos/1169754/pexels-photo-1169754.jpeg?auto=compress&cs=tinysrgb&w=800) [left]
+![Equation Chalk](https://images.pexels.com/photos/1169754/pexels-photo-1169754.jpeg?auto=compress&cs=tinysrgb&w=1920) [left]
 
 $$e^{i\\pi} + 1 = 0$$ [right]
 
@@ -19529,7 +19527,7 @@ $$\\frac{d}{dx} x^n = n \\cdot x^{n-1}$$
 
 From the **Fibonacci sequence** in sunflowers to **fractals** in snowflakes, mathematics shapes the world around us.
 
-![Earth & Space](https://images.pexels.com/photos/356040/pexels-photo-356040.jpeg?auto=compress&cs=tinysrgb&w=800)
+![Earth & Space](https://images.pexels.com/photos/356040/pexels-photo-356040.jpeg?auto=compress&cs=tinysrgb&w=1920)
 
 ---
 
