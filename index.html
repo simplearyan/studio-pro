@@ -30902,33 +30902,6 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 return;
             }
 
-            // The captureStream + MediaRecorder pipeline is unreliable for
-            // long recordings (Chrome drops frames when the tab is backgrounded
-            // or the compositor doesn't fire). Redirect all video formats to
-            // the MediaBunny WebCodecs pipeline which works reliably.
-            if (format === 'video-mp4' || format === 'video-webm') {
-                const aspectStr = ASPECT_RATIOS[State.preview.aspectIndex].value;
-                const [wRatio, hRatio] = aspectStr.split('/').map(Number);
-                const baseRes = State.exportResolution || 1920;
-                let exportW2, exportH2;
-                if (wRatio >= hRatio) {
-                    exportW2 = baseRes;
-                    exportH2 = baseRes * (hRatio / wRatio);
-                } else {
-                    exportH2 = baseRes;
-                    exportW2 = baseRes * (wRatio / hRatio);
-                }
-                exportW2 = Math.floor(exportW2 / 2) * 2;
-                exportH2 = Math.floor(exportH2 / 2) * 2;
-                const fps2 = State.exportFps || 24;
-                const mbFmt = format === 'video-mp4' ? 'mp4' : 'webm';
-                State.isExporting = true;
-                State.cancelExport = false;
-                stopMedia();
-                window.startMediaBunnyExport(exportW2, exportH2, fps2, startTime, endTime, mbFmt);
-                return;
-            }
-
             State.isExporting = true;
             State.cancelExport = false;
             
@@ -31011,8 +30984,17 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
 
             const recorder = new MediaRecorder(finalStream, { mimeType: mimeType });
             const chunks = [];
+            console.log('[EXPORT] Recorder created. mimeType:', mimeType, 'state:', recorder.state,
+                'stream tracks:', finalStream.getTracks().length,
+                'video tracks:', finalStream.getVideoTracks().length);
             
-            recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+            recorder.ondataavailable = e => {
+                if (e.data.size > 0) {
+                    chunks.push(e.data);
+                    if (chunks.length <= 5) console.log('[EXPORT] chunk', chunks.length, 'size:', e.data.size);
+                }
+            };
+            recorder.onerror = e => console.error('[EXPORT] recorder error:', e.error);
             
             recorder.onstop = () => {
                 if (!State.cancelExport) {
@@ -31092,7 +31074,10 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             });
 
             const exportStartWall = performance.now();
+            console.log('[EXPORT] Starting recorder. canvas:', exportCanvas.width, 'x', exportCanvas.height,
+                'ctx:', !!exportCtx, 'track state:', _exportVideoTrack ? _exportVideoTrack.readyState : 'none');
             recorder.start();
+            console.log('[EXPORT] Recorder state after start:', recorder.state);
             
             function exportLoop() {
                 if (!State.isExporting) return;
@@ -31167,10 +31152,20 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         drawCanvas();
                     }
                 } catch (e) {
-                    console.error('[StudioPro] export drawCanvas error:', e.message, e.stack);
-                    console.error('[StudioPro] at t=', State.currentTime.toFixed(2),
-                        'clips=', State.clips.length,
-                        'activeScene=', State.activeSceneId);
+                    console.error('[EXPORT] drawCanvas ERROR:', e.message);
+                }
+
+                // Log first few frames for diagnostics
+                if (State._exportFrameCount === undefined) State._exportFrameCount = 0;
+                State._exportFrameCount++;
+                if (State._exportFrameCount <= 3) {
+                    // Sample center pixel to verify canvas has content
+                    try {
+                        const px = exportCtx.getImageData(exportW/2, exportH/2, 1, 1).data;
+                        console.log('[EXPORT] frame', State._exportFrameCount,
+                            't=', State.currentTime.toFixed(2),
+                            'center pixel:', Array.from(px));
+                    } catch(pe) { console.log('[EXPORT] pixel sample failed:', pe.message); }
                 }
 
                 // Force captureStream to deliver this frame to MediaRecorder.
