@@ -30902,6 +30902,33 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 return;
             }
 
+            // The captureStream + MediaRecorder pipeline is unreliable for
+            // long recordings (Chrome drops frames when the tab is backgrounded
+            // or the compositor doesn't fire). Redirect all video formats to
+            // the MediaBunny WebCodecs pipeline which works reliably.
+            if (format === 'video-mp4' || format === 'video-webm') {
+                const aspectStr = ASPECT_RATIOS[State.preview.aspectIndex].value;
+                const [wRatio, hRatio] = aspectStr.split('/').map(Number);
+                const baseRes = State.exportResolution || 1920;
+                let exportW2, exportH2;
+                if (wRatio >= hRatio) {
+                    exportW2 = baseRes;
+                    exportH2 = baseRes * (hRatio / wRatio);
+                } else {
+                    exportH2 = baseRes;
+                    exportW2 = baseRes * (wRatio / hRatio);
+                }
+                exportW2 = Math.floor(exportW2 / 2) * 2;
+                exportH2 = Math.floor(exportH2 / 2) * 2;
+                const fps2 = State.exportFps || 24;
+                const mbFmt = format === 'video-mp4' ? 'mp4' : 'webm';
+                State.isExporting = true;
+                State.cancelExport = false;
+                stopMedia();
+                window.startMediaBunnyExport(exportW2, exportH2, fps2, startTime, endTime, mbFmt);
+                return;
+            }
+
             State.isExporting = true;
             State.cancelExport = false;
             
