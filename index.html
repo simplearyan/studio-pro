@@ -28279,6 +28279,83 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             input.click();
         }
 
+        // ── M4: Markdown ↔ .spcomp bridge ───────────────────────────────────
+        // markdownToSpcomp: generate clips from markdown, then export as .spcomp
+        // Agent workflow: write markdown → generate → export .spcomp → render
+        function markdownToSpcomp(markdownText) {
+            if (!markdownText || !markdownText.trim()) {
+                throw new Error('No markdown text provided');
+            }
+            // Set the markdown text and generate clips
+            State.markdownText = markdownText;
+            const ta = document.getElementById('markdownTextarea');
+            if (ta) ta.value = markdownText;
+            // Run the existing markdown parser to generate clips
+            try {
+                window.parseMarkdownToClips();
+            } catch (e) {
+                console.warn('[M4] parseMarkdownToClips failed:', e);
+            }
+            // Export as .spcomp
+            return exportSpcomp();
+        }
+
+        // Download .spcomp from markdown text (for agent workflow)
+        function downloadMarkdownAsSpcomp(markdownText, name) {
+            const spcomp = markdownToSpcomp(markdownText);
+            const blob = new Blob([JSON.stringify(spcomp, null, 2)], { type: 'application/json' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = (name || 'script').replace(/[^a-z0-9-_ ]/gi, '_') + '.spcomp';
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 100);
+            return spcomp;
+        }
+
+        // spcompToMarkdown: best-effort export of .spcomp clips back to markdown
+        // Uses _mdGenerated metadata when available, otherwise reconstructs from clip properties
+        function spcompToMarkdown(spcompData) {
+            if (!spcompData || !spcompData.clips) {
+                throw new Error('No .spcomp data provided');
+            }
+            // If the .spcomp has embedded markdown, return it directly
+            if (spcompData.markdown?.text) {
+                return spcompData.markdown.text;
+            }
+            // Best-effort reconstruction from clips
+            const lines = [];
+            const fps = spcompData.canvas?.fps || 30;
+            const q = (t) => Math.round(t * fps) / fps;
+            // Group clips by start time (approximate slide boundaries)
+            const sorted = [...spcompData.clips].sort((a, b) => (a.start || 0) - (b.start || 0));
+            let currentSlide = [];
+            let lastStart = -1;
+            for (const clip of sorted) {
+                const start = q(clip.start || 0);
+                if (start !== lastStart && currentSlide.length > 0) {
+                    lines.push(currentSlide.join('\n'));
+                    lines.push('---');
+                    currentSlide = [];
+                }
+                lastStart = start;
+                if (clip.type === 'text' && clip.text) {
+                    // Reconstruct heading/text from clip properties
+                    const isHeading = (clip.fontSize || 0) >= 48;
+                    const prefix = isHeading ? '## ' : '';
+                    const posTag = clip.position ? ' [' + clip.position + ']' : '';
+                    currentSlide.push(prefix + clip.text + posTag);
+                } else if (clip.type === 'image') {
+                    const alt = clip.alt || 'image';
+                    const src = clip._srcUrl || clip.src || 'mock';
+                    const posTag = clip.position ? ' [' + clip.position + ']' : '';
+                    currentSlide.push('![' + alt + '](' + src + ')' + posTag);
+                }
+            }
+            if (currentSlide.length > 0) lines.push(currentSlide.join('\n'));
+            return lines.join('\n');
+        }
+
         function applyProject(data) {
             if (!data || data.app !== 'StudioPro') throw new Error('Not a StudioPro project file');
             if (data.version !== PROJECT_VERSION) throw new Error('Unsupported project version: ' + data.version);
