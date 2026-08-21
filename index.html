@@ -649,6 +649,8 @@
                     <i data-lucide="layers" class="w-5 h-5 text-brand-500"></i> Projects
                 </h2>
                 <div class="flex items-center gap-2">
+                    <button onclick="downloadSpcomp(_activeProjectName)" class="text-surface-500 hover:text-brand-600 dark:hover:text-brand-400 bg-surface-100 dark:bg-surface-900 p-1.5 rounded-md border border-surface-200 dark:border-surface-700" title="Export as .spcomp"><i data-lucide="file-down" class="w-4 h-4"></i></button>
+                    <button onclick="importSpcompFile()" class="text-surface-500 hover:text-brand-600 dark:hover:text-brand-400 bg-surface-100 dark:bg-surface-900 p-1.5 rounded-md border border-surface-200 dark:border-surface-700" title="Import .spcomp"><i data-lucide="file-up" class="w-4 h-4"></i></button>
                     <button onclick="hideProjectsModal()" class="text-surface-500 hover:text-surface-900 dark:hover:text-white bg-surface-100 dark:bg-surface-900 p-1.5 rounded-md"><i data-lucide="x" class="w-4 h-4"></i></button>
                 </div>
             </div>
@@ -28096,6 +28098,185 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 }
             }
             return clip;
+        }
+
+        // ── M3: .spcomp portable composition export ───────────────────────────
+        // Produces a self-contained JSON file with embedded assets (data URIs),
+        // quantized time, no runtime fields. Agent-editable, diff-friendly.
+        function exportSpcomp(projData) {
+            const data = projData || serializeProject();
+            const fps = State.exportFps || State.preview?.fps || 30;
+            const aspectStr = ASPECT_RATIOS[State.preview.aspectIndex]?.value || '16/9';
+            const [wRatio, hRatio] = aspectStr.split('/').map(Number);
+            const baseRes = State.exportResolution || 1920;
+            let cw, ch;
+            if (wRatio >= hRatio) { cw = baseRes; ch = Math.round(baseRes * (hRatio / wRatio)); }
+            else { ch = baseRes; cw = Math.round(baseRes * (wRatio / hRatio)); }
+            cw = Math.floor(cw / 2) * 2; ch = Math.floor(ch / 2) * 2;
+
+            // Quantize time to frames
+            const q = (t) => Math.round(t * fps) / fps;
+
+            // Runtime fields to strip from clips
+            const RUNTIME_STRIP = new Set([
+                '_imgReady', '_imgAnimStarted', '_imgAnimStart', '_imgAnimDuration',
+                '_missingMedia', '_mdMedia', '_mdMock', '_srcUrl', '_ccCache',
+                'audioEl', 'videoEl', 'imageEl', 'buffer', 'playPromise',
+                'stdRevNode', '_frameReady', '_mdLoaded', 'sfx',
+                '__vecLastSprite', '_mathLastGood', '_mathLastExtrude', '_mathPreview'
+            ]);
+
+            const clipToSpcomp = (c) => {
+                const out = {};
+                for (const k of Object.keys(c)) {
+                    if (RUNTIME_STRIP.has(k)) continue;
+                    if (k === 'start' || k === 'duration' || k === 'trimStart' || k === 'trimEnd') {
+                        out[k] = q(c[k] || 0);
+                        continue;
+                    }
+                    // Embed image src as data URI
+                    if (k === 'src' && c.type === 'image' && c.imageEl && c.imageEl.src) {
+                        try {
+                            const canvas = document.createElement('canvas');
+                            canvas.width = c.imageEl.naturalWidth || c.imageEl.width;
+                            canvas.height = c.imageEl.naturalHeight || c.imageEl.height;
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(c.imageEl, 0, 0);
+                            out.src = canvas.toDataURL('image/jpeg', 0.92);
+                        } catch (e) {
+                            out.src = ''; // Cross-origin or failed
+                        }
+                        continue;
+                    }
+                    // Embed video src — skip (too large), mark as missing
+                    if (k === 'src' && c.type === 'video') {
+                        out.src = '';
+                        out._videoMissing = true;
+                        continue;
+                    }
+                    out[k] = c[k];
+                }
+                return out;
+            };
+
+            return {
+                spcomp: 1,
+                meta: {
+                    name: data.markdownText ? 'Markdown Export' : 'StudioPro Project',
+                    author: 'StudioPro',
+                    created: new Date().toISOString(),
+                    tool: 'StudioPro v' + (PROJECT_VERSION || '0.2.x')
+                },
+                canvas: {
+                    width: cw,
+                    height: ch,
+                    fps: fps,
+                    duration: q(data.duration || State.duration),
+                    bg: data.canvasBgColor || '#000000'
+                },
+                tracks: (data.tracks || []).map(t => ({
+                    id: t.id, type: t.type, name: t.name,
+                    volume: t.volume ?? 1, muted: t.muted ?? false
+                })),
+                clips: (data.clips || []).map(clipToSpcomp),
+                markdown: data.markdownText ? {
+                    text: data.markdownText,
+                    config: data.markdownConfig || {}
+                } : undefined
+            };
+        }
+
+        // Download .spcomp file
+        function downloadSpcomp(name) {
+            const spcomp = exportSpcomp();
+            const blob = new Blob([JSON.stringify(spcomp, null, 2)], { type: 'application/json' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = (name || 'project').replace(/[^a-z0-9-_ ]/gi, '_') + '.spcomp';
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 100);
+        }
+
+        // ── M3: .spcomp import ────────────────────────────────────────────────
+        // Loads a .spcomp file into the current project. Re-fetches data URI
+        // assets into live elements. Restores markdown if present.
+        function importSpcomp(spcompData) {
+            if (!spcompData || spcompData.spcomp !== 1) {
+                throw new Error('Not a valid .spcomp file (missing spcomp: 1)');
+            }
+            const canvas = spcompData.canvas || {};
+            const fps = canvas.fps || 30;
+
+            // Build a project-compatible object for applyProject
+            const project = {
+                app: 'StudioPro',
+                version: PROJECT_VERSION,
+                duration: canvas.duration || 10,
+                canvasBgColor: canvas.bg || '#000000',
+                aspectIndex: 0, // Will be computed from canvas dimensions
+                tracks: (spcompData.tracks || []).map(t => ({
+                    id: t.id, type: t.type, name: t.name,
+                    colorIndex: 0, hidden: false, locked: false,
+                    volume: t.volume ?? 1, muted: t.muted ?? false, solo: false
+                })),
+                clips: (spcompData.clips || []).map(c => {
+                    const clip = Object.assign({}, c);
+                    // Restore data URI images into live elements
+                    if (clip.type === 'image' && clip.src && clip.src.startsWith('data:image/')) {
+                        clip._srcUrl = clip.src;
+                        clip.fileUrl = clip.src;
+                    }
+                    // Restore data URI videos
+                    if (clip.type === 'video' && clip.src && clip.src.startsWith('data:')) {
+                        clip._srcUrl = clip.src;
+                        clip.fileUrl = clip.src;
+                    }
+                    return clip;
+                }),
+                markdownText: spcompData.markdown?.text || '',
+                markdownConfig: spcompData.markdown?.config || {},
+                subtitles: [],
+                subtitleConfig: {},
+                subtitleGen: {},
+                subtitleFix: {},
+                audioLibGroup: '',
+                audioLibrary: []
+            };
+
+            // Apply the project
+            applyProject(project);
+
+            // Set export resolution from canvas dimensions
+            if (canvas.width) State.exportResolution = canvas.width;
+
+            // Set fps
+            State.exportFps = fps;
+
+            return spcompData.meta?.name || 'Imported .spcomp';
+        }
+
+        // File picker for .spcomp import
+        function importSpcompFile() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.spcomp,application/json';
+            input.onchange = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    try {
+                        const data = JSON.parse(ev.target.result);
+                        const name = importSpcomp(data);
+                        showNoticeModal({ title: 'Imported', message: name + ' loaded successfully', tone: 'success' });
+                    } catch (err) {
+                        showNoticeModal({ title: 'Import failed', message: err.message, tone: 'error' });
+                    }
+                };
+                reader.readAsText(file);
+            };
+            input.click();
         }
 
         function applyProject(data) {
