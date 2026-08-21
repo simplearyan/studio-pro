@@ -30296,7 +30296,9 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             if (badge) {
                 const hasImages = (State.clips || []).some(c => c.type === 'image' && !c._mdMedia);
                 if (hasImages && (preset === 'draft' || preset === 'standard')) {
+                    badge.innerHTML = '<i data-lucide="sparkles" class="w-3 h-3 inline -mt-0.5"></i> Use High or Ultra for clean image animations';
                     badge.classList.remove('hidden');
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
                 } else {
                     badge.classList.add('hidden');
                 }
@@ -30324,8 +30326,9 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             // Text/MD clips encode at ~15% of target, video at ~50-70%.
             const hasVideo = (State.clips || []).some(c => c.type === 'video' && !c.hidden);
             const hasImages = (State.clips || []).some(c => c.type === 'image' && !c.hidden);
-            // Content complexity multiplier: text=0.15, images=0.25, video=0.6, mixed=0.4
-            const contentMultiplier = hasVideo ? 0.6 : (hasImages ? 0.25 : 0.15);
+            // Content complexity multiplier: text=0.15, images=0.35, video=0.6, mixed=0.45
+            // Images with fade/slideUp animations need more bits than static images
+            const contentMultiplier = hasVideo ? 0.6 : (hasImages ? 0.35 : 0.15);
             const audioBitrate = 128000; // 128 kbps audio
             const effectiveVideoBitrate = bitrate * contentMultiplier;
             const totalBitrate = effectiveVideoBitrate + audioBitrate;
@@ -30338,9 +30341,12 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             const estTimeStr = estMins > 0 ? estMins + 'm ' + estSecs + 's' : estSecs + 's';
             const targetMbps = (bitrate / 1e6).toFixed(0);
             el.textContent = '~' + sizeMB + ' MB · ~' + estTimeStr + ' export';
-            // Show target bitrate in the label below the grid
+            // Show target bitrate + content guidance in the label below the grid
             const labelEl = document.getElementById('qualityBitrateLabel');
-            if (labelEl) labelEl.textContent = targetMbps + ' Mbps target · actual depends on content';
+            if (labelEl) {
+                const contentHint = hasVideo ? 'Good for video' : (hasImages ? 'Good for images & animations' : 'Good for text & shapes');
+                labelEl.textContent = targetMbps + ' Mbps max · ' + contentHint;
+            }
         }
 
         function switchExportTab(tabId) {
@@ -30992,7 +30998,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             const estBitrate = getExportBitrate(format.includes('mp4') ? 'mp4' : 'webm');
             const _hasVideoForEst = (State.clips || []).some(c => c.type === 'video' && c.start < endT && (c.start + c.duration) > startT);
             const _hasImagesForEst = (State.clips || []).some(c => c.type === 'image' && c.start < endT && (c.start + c.duration) > startT);
-            const _contentMult = _hasVideoForEst ? 0.6 : (_hasImagesForEst ? 0.25 : 0.15);
+            const _contentMult = _hasVideoForEst ? 0.6 : (_hasImagesForEst ? 0.35 : 0.15);
             const estSize = ((estBitrate * _contentMult + 128000) * (endT - startT) / 8 / 1024 / 1024).toFixed(1);
             const estExportSec = _hasVideoForEst ? (endT - startT) * 0.5 : (endT - startT) * 1.0;
             const estExportMins = Math.floor(estExportSec / 60);
