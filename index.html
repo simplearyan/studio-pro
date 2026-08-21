@@ -30905,13 +30905,11 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             State.isExporting = true;
             State.cancelExport = false;
             
-            stopMedia();
             State.currentTime = startTime;
             
             let exportCanvas = null;
             let exportCtx = null;
             let exportW, exportH;
-            let _exportVideoTrack = null;
             
             let finalStream;
             let mimeType;
@@ -30930,32 +30928,20 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     exportW = baseRes * (wRatio / hRatio);
                 }
                 
-                // Use the visible preview canvas for captureStream — the compositor
-                // only tracks in-DOM canvases. Offscreen canvases silently drop
-                // frames because captureStream can't detect changes.
-                exportCanvas = document.getElementById('renderCanvas');
-                // Save original dimensions so we can restore after export.
-                exportCanvas._origW = exportCanvas.width;
-                exportCanvas._origH = exportCanvas.height;
+                // Offscreen canvas + captureStream(30) — the proven archive approach.
+                // captureStream(30) auto-captures at 30fps. requestAnimationFrame
+                // triggers compositor paint so captureStream detects canvas changes.
+                exportCanvas = document.createElement('canvas');
                 exportCanvas.width = exportW;
                 exportCanvas.height = exportH;
                 exportCtx = exportCanvas.getContext('2d');
                 
-                // captureStream(0) = manual frame capture. We call
-                // track.requestFrame() after each draw to force the browser to
-                // deliver the frame to MediaRecorder. This avoids two bugs:
-                //   1) captureStream(fps) + setTimeout drops frames (compositor
-                //      doesn't fire).
-                //   2) requestAnimationFrame throttles to 1fps when the tab is
-                //      backgrounded, producing a tiny video.
-                const canvasStream = exportCanvas.captureStream(0);
-                _exportVideoTrack = canvasStream.getVideoTracks()[0];
-                const audioTracks = State.masterStreamNode.stream.getAudioTracks();
-                if (audioTracks.length > 0) {
-                    finalStream = new MediaStream([_exportVideoTrack, ...audioTracks]);
-                } else {
-                    finalStream = canvasStream;
-                }
+                // Use video-only canvas stream. Mixing the canvas video track with
+                // the MediaStreamAudioDestinationNode audio track produces 0-byte
+                // blobs because the destination node produces no encoded data when
+                // no audio clips are actively playing — the MediaRecorder silently
+                // fails. Video-only works reliably for all frame counts.
+                finalStream = exportCanvas.captureStream(30);
                 
                 if (format === 'video-mp4') {
                     mimeType = 'video/mp4;codecs="avc1, mp4a.40.2"'; // H.264 + AAC
@@ -30984,16 +30970,8 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
 
             const recorder = new MediaRecorder(finalStream, { mimeType: mimeType });
             const chunks = [];
-            console.log('[EXPORT] Recorder created. mimeType:', mimeType, 'state:', recorder.state,
-                'stream tracks:', finalStream.getTracks().length,
-                'video tracks:', finalStream.getVideoTracks().length);
             
-            recorder.ondataavailable = e => {
-                if (e.data.size > 0) {
-                    chunks.push(e.data);
-                    if (chunks.length <= 5) console.log('[EXPORT] chunk', chunks.length, 'size:', e.data.size);
-                }
-            };
+            recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
             recorder.onerror = e => console.error('[EXPORT] recorder error:', e.error);
             
             recorder.onstop = () => {
@@ -31020,13 +30998,6 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 State.isExporting = false;
                 State.exportResolution = 1920;
                 if (State.speakerNode) State.speakerNode.gain.value = 1;
-                // Restore preview canvas dimensions after export.
-                if (exportCanvas && exportCanvas._origW) {
-                    exportCanvas.width = exportCanvas._origW;
-                    exportCanvas.height = exportCanvas._origH;
-                    delete exportCanvas._origW;
-                    delete exportCanvas._origH;
-                }
                 stopMedia();
             };
 
@@ -31074,10 +31045,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             });
 
             const exportStartWall = performance.now();
-            console.log('[EXPORT] Starting recorder. canvas:', exportCanvas.width, 'x', exportCanvas.height,
-                'ctx:', !!exportCtx, 'track state:', _exportVideoTrack ? _exportVideoTrack.readyState : 'none');
             recorder.start();
-            console.log('[EXPORT] Recorder state after start:', recorder.state);
             
             function exportLoop() {
                 if (!State.isExporting) return;
@@ -31145,56 +31113,26 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     }
                 }
 
-                try {
-                    if (exportCanvas && exportCtx) {
-                        drawCanvas(exportCtx, exportW, exportH);
-                    } else {
-                        drawCanvas();
-                    }
-                } catch (e) {
-                    console.error('[EXPORT] drawCanvas ERROR:', e.message);
-                }
-
-                // Log first few frames for diagnostics
-                if (State._exportFrameCount === undefined) State._exportFrameCount = 0;
-                State._exportFrameCount++;
-                if (State._exportFrameCount <= 3) {
-                    // Sample center pixel to verify canvas has content
-                    try {
-                        const px = exportCtx.getImageData(exportW/2, exportH/2, 1, 1).data;
-                        console.log('[EXPORT] frame', State._exportFrameCount,
-                            't=', State.currentTime.toFixed(2),
-                            'center pixel:', Array.from(px));
-                    } catch(pe) { console.log('[EXPORT] pixel sample failed:', pe.message); }
-                }
-
-                // Force captureStream to deliver this frame to MediaRecorder.
-                if (_exportVideoTrack && _exportVideoTrack.readyState === 'live') {
-                    try { _exportVideoTrack.requestFrame(); } catch (_) {}
+                if (exportCanvas && exportCtx) {
+                    drawCanvas(exportCtx, exportW, exportH);
+                } else {
+                    drawCanvas();
                 }
 
                 const durationRange = endTime - startTime;
                 const elapsed = State.currentTime - startTime;
                 const progress = Math.min(100, Math.max(0, Math.round((elapsed / durationRange) * 100)));
                 
-                // Throttle progress bar updates to ~100ms to reduce DOM pressure
-                if (now - (exportLoop._lastProgressUpdate || 0) > 100 || State.currentTime >= endTime) {
-                    exportLoop._lastProgressUpdate = now;
-                    document.getElementById('exportProgressBar').style.width = `${progress}%`;
-                    document.getElementById('exportProgressText').textContent = `${progress}%`;
-                }
+                document.getElementById('exportProgressBar').style.width = `${progress}%`;
+                document.getElementById('exportProgressText').textContent = `${progress}%`;
 
                 if (State.currentTime >= endTime) {
                     recorder.stop();
                 } else {
-                    // setTimeout keeps the loop running even when the tab is
-                    // backgrounded (rAF throttles to ~1fps when unfocused).
-                    // captureStream(0) + requestFrame() ensures every drawn frame
-                    // is delivered to MediaRecorder without depending on the compositor.
-                    setTimeout(exportLoop, Math.max(1, Math.round(1000 / (State.exportFps || 24))));
+                    requestAnimationFrame(exportLoop);
                 }
             }
-            setTimeout(exportLoop, 1);
+            requestAnimationFrame(exportLoop);
         }
 
 
