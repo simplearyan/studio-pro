@@ -567,6 +567,10 @@
                     <p class="text-[11px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-wider truncate">Export time</p>
                     <p id="exportDoneTime" class="text-sm font-bold font-mono tabular-nums text-surface-900 dark:text-white mt-0.5 truncate">–</p>
                 </div>
+                <div class="rounded-lg bg-surface-50 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 px-2.5 py-2 min-w-0">
+                    <p class="text-[11px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-wider truncate">Bitrate</p>
+                    <p id="exportDoneBitrate" class="text-sm font-bold font-mono tabular-nums text-surface-900 dark:text-white mt-0.5 truncate">–</p>
+                </div>
             </div>
 
             <div class="flex items-center justify-end gap-3 pt-4 border-t border-surface-100 dark:border-surface-700">
@@ -30308,9 +30312,23 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             const bitrate = getExportBitrate(format.includes('mp4') ? 'mp4' : 'webm');
             const endEl = document.getElementById('exportEndTime');
             const dur = endEl ? (parseFloat(endEl.value) || State.duration || 10) : 10;
-            const sizeMB = (bitrate * dur / 8 / 1024 / 1024).toFixed(0);
-            const mbps = (bitrate / 1e6).toFixed(1);
-            el.textContent = '~' + sizeMB + ' MB (' + mbps + ' Mbps)';
+            // Content-aware estimate: videoBitsPerSecond is a TARGET cap, not actual.
+            // Text/MD clips encode at ~15% of target, video at ~50-70%.
+            const hasVideo = (State.clips || []).some(c => c.type === 'video' && !c.hidden);
+            const hasImages = (State.clips || []).some(c => c.type === 'image' && !c.hidden);
+            // Content complexity multiplier: text=0.15, images=0.25, video=0.6, mixed=0.4
+            const contentMultiplier = hasVideo ? 0.6 : (hasImages ? 0.25 : 0.15);
+            const audioBitrate = 128000; // 128 kbps audio
+            const effectiveVideoBitrate = bitrate * contentMultiplier;
+            const totalBitrate = effectiveVideoBitrate + audioBitrate;
+            const sizeMB = (totalBitrate * dur / 8 / 1024 / 1024).toFixed(1);
+            const mbps = (effectiveVideoBitrate / 1e6).toFixed(1);
+            // Estimate export time: ~1x for text/MD clips, ~0.5x for video with grade
+            const estTimeSec = hasVideo ? dur * 0.5 : dur * 1.0;
+            const estMins = Math.floor(estTimeSec / 60);
+            const estSecs = Math.floor(estTimeSec % 60);
+            const estTimeStr = estMins > 0 ? estMins + 'm ' + estSecs + 's' : estSecs + 's';
+            el.textContent = '~' + sizeMB + ' MB (' + mbps + ' Mbps eff.) · ~' + estTimeStr + ' export';
         }
 
         function switchExportTab(tabId) {
@@ -30781,6 +30799,9 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             document.getElementById('exportDoneFormat').textContent = info.format + (info.note ? ' · ' + info.note : '');
             document.getElementById('exportDoneSize').textContent = fmtExportSize(info.sizeBytes);
             document.getElementById('exportDoneTime').textContent = fmtExportDuration(info.exportMs / 1000);
+            // Calculate actual bitrate from file size and duration
+            const actualBitrate = info.sizeBytes && info.durationSec ? (info.sizeBytes * 8 / info.durationSec / 1e6).toFixed(1) + ' Mbps' : '–';
+            document.getElementById('exportDoneBitrate').textContent = actualBitrate;
             document.getElementById('exportProgress').classList.add('hidden');
             document.getElementById('exportSuccess').classList.remove('hidden');
             document.getElementById('exportSuccess').classList.add('flex');
@@ -30954,8 +30975,19 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 'video-ftrt-mp4': 'Fast MP4', 'video-ftrt-webm': 'Fast WebM',
                 'audio-webm': 'Audio WebM', 'audio-wav': 'Audio WAV'
             };
+            const qualityLabels = { draft: 'Draft', standard: 'Standard', high: 'High', ultra: 'Ultra', custom: 'Custom' };
+            const qualityLabel = qualityLabels[State.exportQuality || 'standard'] || 'Standard';
+            const estBitrate = getExportBitrate(format.includes('mp4') ? 'mp4' : 'webm');
+            const _hasVideoForEst = (State.clips || []).some(c => c.type === 'video' && c.start < endT && (c.start + c.duration) > startT);
+            const _hasImagesForEst = (State.clips || []).some(c => c.type === 'image' && c.start < endT && (c.start + c.duration) > startT);
+            const _contentMult = _hasVideoForEst ? 0.6 : (_hasImagesForEst ? 0.25 : 0.15);
+            const estSize = ((estBitrate * _contentMult + 128000) * (endT - startT) / 8 / 1024 / 1024).toFixed(1);
+            const estExportSec = _hasVideoForEst ? (endT - startT) * 0.5 : (endT - startT) * 1.0;
+            const estExportMins = Math.floor(estExportSec / 60);
+            const estExportSecs = Math.floor(estExportSec % 60);
+            const estExportStr = estExportMins > 0 ? estExportMins + 'm' + estExportSecs + 's' : estExportSecs + 's';
             document.getElementById('exportDetailLine').textContent =
-                (formatLabels[format] || format) + ' · ' + fps + ' fps · ' + (endT - startT).toFixed(1) + 's';
+                (formatLabels[format] || format) + ' · ' + qualityLabel + ' · ' + fps + ' fps · ' + (endT - startT).toFixed(1) + 's · ~' + estSize + ' MB · ETA ~' + estExportStr;
             
             document.getElementById('exportSettings').classList.add('hidden');
             document.getElementById('exportProgress').classList.remove('hidden');
@@ -31254,6 +31286,34 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 
                 document.getElementById('exportProgressBar').style.width = `${progress}%`;
                 document.getElementById('exportProgressText').textContent = `${progress}%`;
+
+                // Update elapsed timer + ETA (captureStream path)
+                const elapsedSec = (performance.now() - exportStartWall) / 1000;
+                const mins = Math.floor(elapsedSec / 60);
+                const secs = Math.floor(elapsedSec % 60);
+                document.getElementById('exportTimerDisplay').textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
+
+                // ETA based on progress (show after 5% for reliability)
+                const progressFraction = Math.max(0.001, progress / 100);
+                const etaEl = document.getElementById('exportEtaDisplay');
+                if (progressFraction > 0.05 && elapsedSec > 2) {
+                    const estimatedTotal = elapsedSec / progressFraction;
+                    const etaSec = Math.max(0, estimatedTotal - elapsedSec);
+                    const etaMins = Math.floor(etaSec / 60);
+                    const etaSecs = Math.floor(etaSec % 60);
+                    etaEl.textContent = `~${etaMins}:${etaSecs.toString().padStart(2, '0')} remaining`;
+                    etaEl.style.opacity = '0.6';
+                } else {
+                    etaEl.style.opacity = '0';
+                }
+
+                // Show actual fps after first second
+                if (elapsedSec > 1) {
+                    const actualFps = (progress / 100 * durationRange * (State.exportFps || 30)) / elapsedSec;
+                    const fpsEl = document.getElementById('exportFpsDetail');
+                    fpsEl.textContent = actualFps.toFixed(1) + ' fps actual';
+                    fpsEl.style.opacity = '0.6';
+                }
 
                 if (State.currentTime >= endTime) {
                     recorder.stop();
