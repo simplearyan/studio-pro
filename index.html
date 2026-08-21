@@ -407,6 +407,7 @@
                             <span class="text-xs text-surface-500 dark:text-surface-400 font-bold">Mbps</span>
                         </div>
                     </div>
+                    <p id="qualityBitrateLabel" class="text-[11px] font-mono tabular-nums text-surface-500 dark:text-surface-400 mb-2">15 Mbps target · actual depends on content</p>
                     <div class="flex items-center justify-between">
                         <span id="qualityBadge" class="hidden text-[11px] font-bold text-brand-600 dark:text-brand-400">
                             <i data-lucide="sparkles" class="w-3 h-3 inline -mt-0.5"></i> Recommended for image animations
@@ -30335,7 +30336,11 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             const estMins = Math.floor(estTimeSec / 60);
             const estSecs = Math.floor(estTimeSec % 60);
             const estTimeStr = estMins > 0 ? estMins + 'm ' + estSecs + 's' : estSecs + 's';
-            el.textContent = '~' + sizeMB + ' MB (' + mbps + ' Mbps eff.) · ~' + estTimeStr + ' export';
+            const targetMbps = (bitrate / 1e6).toFixed(0);
+            el.textContent = '~' + sizeMB + ' MB · ~' + estTimeStr + ' export';
+            // Show target bitrate in the label below the grid
+            const labelEl = document.getElementById('qualityBitrateLabel');
+            if (labelEl) labelEl.textContent = targetMbps + ' Mbps target · actual depends on content';
         }
 
         function switchExportTab(tabId) {
