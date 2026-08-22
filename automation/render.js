@@ -74,6 +74,7 @@ function parseArgs() {
     format: 'mp4',
     quality: 'high',
     template: null,
+    debug: false,
     help: false
   };
 
@@ -97,6 +98,9 @@ function parseArgs() {
         break;
       case '-t': case '--template':
         result.template = args[++i];
+        break;
+      case '--debug':
+        result.debug = true;
         break;
       case '-h': case '--help':
         result.help = true;
@@ -129,12 +133,13 @@ Options:
   -f, --format <fmt>        Format: mp4, webm, mediabunny-mp4, mediabunny-webm (default: mp4)
   -q, --quality <preset>    Quality: draft, standard, high, ultra (default: high)
   -t, --template <id>       Apply design template before render
+  --debug                   Open Chrome window for debugging (default: headless)
   -h, --help                Show this help
 
 Examples:
   node render.js scripts/product-launch.md
   node render.js scripts/demo.md -o output/demo.mp4 -r 720p
-  node render.js scripts/launch.md -f mediabunny-mp4 -q ultra
+  node render.js scripts/launch.md -f mediabunny-mp4 --debug
   `);
 }
 
@@ -161,6 +166,7 @@ async function render(scriptPath, options) {
   console.log(`   FPS:        ${fps}`);
   console.log(`   Format:     ${format}`);
   console.log(`   Quality:    ${quality}`);
+  console.log(`   Debug:      ${options.debug ? 'Yes (Chrome visible)' : 'No (headless)'}`);
   if (template) console.log(`   Template:   ${template}`);
   console.log('');
 
@@ -182,13 +188,13 @@ async function render(scriptPath, options) {
   }
   console.log(`   Found: ${devUrl}`);
 
-  // 2. Launch Chrome with GPU (canvas-labs-portal approach: headless: false)
-  console.log('🚀 Launching Chrome with GPU...');
+  // 2. Launch Chrome — headless by default, visible window with --debug
+  console.log(`🚀 Launching Chrome (${options.debug ? 'visible window' : 'headless'})...`);
   let browser;
   try {
     browser = await puppeteer.launch({
       executablePath: config.chromePath,
-      headless: false,  // GPU available — same as canvas-labs-portal
+      headless: options.debug ? false : 'new',  // false = visible, 'new' = headless
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
