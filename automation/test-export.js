@@ -19,8 +19,8 @@ async function main() {
   console.log(`🚀 Test: ${testLabel} (${format})`);
   const browser = await puppeteer.launch({
     executablePath: config.chromePath,
-    headless: 'new',
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--enable-webcodecs', '--enable-unsafe-swiftshader']
+    headless: 'shell',  // New headless with GPU support
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--enable-webcodecs']
   });
 
   const page = await browser.newPage();

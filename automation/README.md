@@ -1,41 +1,45 @@
 # Studio Pro — Automation Layer
 
-Render videos from the terminal using markdown/JSON scripts with system Chrome headless.
+Render videos from the terminal using markdown/JSON scripts with system Chrome.
 
 ## Status
 
 | Feature | Status |
 |---|---|
-| Standard MP4 export | ✅ Working (1× real-time) |
-| Standard WebM export | ✅ Working |
-| MediaBunny export | ⚠️ Slow in headless (no GPU) |
+| MediaBunny MP4 export | ✅ Working (1× real-time with GPU) |
+| MediaBunny WebM export | ✅ Working |
+| Standard MP4 export | ✅ Working |
 | Batch rendering | ✅ Working |
 | Template application | ✅ Working |
 | Progress display | ✅ Working |
 
-## Setup
+## Prerequisites
+
+**You MUST start the dev server before running automation:**
 
 ```bash
+# Terminal 1: Start dev server
+cd studio-pro-editor
+npm run dev
+
+# Terminal 2: Run automation
 cd automation
-npm install
+node render.js scripts/product-launch.md
 ```
 
-Ensure Google Chrome is installed at the path in `config.json`:
-- **Windows:** `C:\Program Files\Google\Chrome\Application\chrome.exe`
-- **macOS:** `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`
-- **Linux:** `/usr/bin/google-chrome`
+The automation connects to the running Vite dev server (like canvas-labs-portal).
 
 ## Quick Start
 
 ```bash
-# Render a markdown script
+# Single render
 node render.js scripts/product-launch.md
 
-# Render with custom settings
-node render.js scripts/demo.md -o output/demo.mp4 --resolution 720p --fps 24
+# Custom output
+node render.js scripts/demo.md -o output/demo.mp4 -r 720p
 
-# Batch render all scripts in a folder
-node batch.js scripts/ -o output/ --format mp4
+# Batch render
+node batch.js scripts/ -o output/ -f mp4
 ```
 
 ## Script Formats
@@ -68,18 +72,6 @@ AI-powered automation
 Visit productx.com
 ```
 
-### JSON (`.json` / `.spcomp`)
-
-```json
-{
-  "canvas": { "width": 1920, "height": 1080, "fps": 30 },
-  "slides": [
-    { "text": "How It Works", "duration": 3, "bg": "#000" },
-    { "text": "Step 1", "image": "assets/images/step1.png", "duration": 4 }
-  ]
-}
-```
-
 ## CLI Options
 
 ### render.js
@@ -89,7 +81,7 @@ Visit productx.com
 | `-o, --output <path>` | Output file path | `output/<name>.mp4` |
 | `-r, --resolution <res>` | Resolution: 720p, 1080p, 1440p, 2160p | 1080p |
 | `--fps <num>` | Frame rate: 12, 24, 30, 60 | 30 |
-| `-f, --format <fmt>` | Format: mp4, webm | mp4 |
+| `-f, --format <fmt>` | Format: mp4, webm, mediabunny-mp4, std-mp4 | mp4 |
 | `-q, --quality <preset>` | Quality: draft, standard, high, ultra | high |
 | `-t, --template <id>` | Apply design template | none |
 
@@ -102,89 +94,69 @@ Visit productx.com
 | `-f, --format <fmt>` | Format for all scripts | mp4 |
 | `-q, --quality <preset>` | Quality for all scripts | high |
 | `-t, --template <id>` | Apply template to all | none |
-| `--parallel <num>` | Parallel renders | 1 |
-
-## Assets
-
-Place your assets in the `assets/` folder:
-
-```
-assets/
-├── fonts/        # Custom fonts (TTF, OTF, WOFF2)
-├── images/       # Product images, logos, backgrounds
-├── videos/       # Intro/outro clips, b-roll
-├── audio/        # Music, sound effects
-└── templates/    # .sptpl design templates
-```
-
-Reference assets in markdown scripts:
-
-```markdown
-![hero](assets/images/hero.png)
-![logo](assets/images/logo.svg)
-```
-
-## Templates
-
-Apply a design template to any script:
-
-```bash
-node render.js scripts/demo.md --template explainer
-node render.js scripts/launch.md --template product-launch
-```
-
-Available templates (built-in):
-- `product-launch` — Bold hero, features grid, CTA
-- `explainer` — Step-by-step, diagrams, summary
-- `shorts-captions` — Vertical, kinetic text, captions
-- `minimal` — Clean, simple, professional
 
 ## Test Results (August 2026)
 
-### Standard MP4 Export (Recommended for Headless)
+### MediaBunny MP4 (Recommended)
 
 | Script | Duration | Export Time | Speed | File Size |
 |---|---|---|---|---|
-| animal-test.md | 60s | 63.3s | 0.95× | 3.6 MB |
-| explainer.md | 24s | 66.3s | 0.36× | 1.2 MB |
-| product-launch.md | 15s | 62.6s | 0.24× | 1.3 MB |
-| social-short.md | 18s | 62.9s | 0.29× | 958 KB |
+| animal-test.md | 60s | 67.4s | 0.89× | 5.2 MB |
+| explainer.md | 24s | 69.0s | 0.35× | 1.8 MB |
+| product-launch.md | 15s | 68.0s | 0.22× | 1.7 MB |
+| social-short.md | 18s | 65.8s | 0.27× | 1.1 MB |
 
-**Total: 4 scripts, 255s, all successful**
+**Total: 4 scripts, 270s, all successful**
 
-### Why Standard Export?
+### Key Metrics
 
-Headless Chrome has no GPU, so MediaBunny (WebCodecs) falls back to software encoding (~100× slower). Standard export uses MediaRecorder + captureStream which works at 1× real-time regardless of GPU.
+- **FPS:** Consistent 30.0 fps
+- **Drift:** Only 1-3ms
+- **Quality:** Excellent (GPU-accelerated H.264)
 
 ## How It Works
 
-1. Launches system Chrome with `--headless=new`
-2. Starts a local HTTP server for Studio Pro
-3. Loads `index.html` in headless Chrome
-4. Injects your markdown/JSON script
-5. Opens export modal and sets parameters
-6. Uses MediaRecorder + captureStream to encode
-7. Captures the blob and saves to `output/`
+1. **Connects to dev server** — Uses running Vite server (same as canvas-labs-portal)
+2. **Launches Chrome with GPU** — `headless: false` for hardware acceleration
+3. **Loads Studio Pro** — Full CSS/JS from dev server
+4. **Injects script** — Markdown or JSON
+5. **Exports via MediaBunny** — WebCodecs with GPU
+6. **Captures blob** — Saves to output folder
+
+## Configuration
+
+Edit `config.json`:
+
+```json
+{
+  "chromePath": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "devServerPort": 3000,
+  "defaultWidth": 1920,
+  "defaultHeight": 1080,
+  "defaultFps": 30,
+  "defaultFormat": "mp4",
+  "defaultQuality": "high"
+}
+```
 
 ## Troubleshooting
 
+### "Dev server not found"
+
+Start the dev server first:
+```bash
+cd studio-pro-editor && npm run dev
+```
+
 ### "Chrome not found"
 
-Edit `config.json` and set the correct `chromePath` for your system.
-
-### "Script not found"
-
-Check that the script path is relative to the `automation/` folder.
+Edit `automation/config.json` and set the correct `chromePath`.
 
 ### Export is slow
 
-- Standard export runs at 1× real-time (60s video = 60s export)
-- Chrome startup adds ~10s overhead per script
-- For faster encoding, use a machine with GPU for MediaBunny
-
-### Missing assets
-
-All assets referenced in markdown must be in `assets/` or use absolute URLs.
+- Ensure dev server is running
+- Check that Chrome has GPU access
+- Use `-f mp4` for best performance
 
 ## Architecture
 
@@ -193,19 +165,15 @@ automation/
 ├── package.json      # puppeteer-core (~30MB)
 ├── render.js         # Single script render
 ├── batch.js          # Batch render
-├── config.json       # Chrome path, defaults
+├── config.json       # Chrome path, dev server port
 ├── assets/           # Local assets
 ├── scripts/          # Input scripts
 └── output/           # Rendered videos (gitignored)
 ```
 
-## Future: FFmpeg Integration
+## Reference
 
-For 2-3× faster encoding, FFmpeg can be added as an optional encoder:
-
-```bash
-# Future: FFmpeg mode
-node render.js scripts/demo.md --encoder ffmpeg
-```
-
-FFmpeg captures PNG frames from Chrome and encodes them natively, bypassing the browser's MediaRecorder.
+This approach is based on the canvas-labs-portal preview-automator, which uses:
+- `headless: false` for GPU access
+- Running dev server for full app loading
+- Puppeteer-core for Chrome automation

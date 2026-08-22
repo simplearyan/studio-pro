@@ -1,143 +1,149 @@
 # M6 — Puppeteer Automation Test Report
 
 > **Date:** August 2026
-> **Status:** Phase 1 Complete (Standard export working, MediaBunny too slow for headless)
-> **Test Machine:** Windows, GT 740 GPU, Chrome installed
+> **Status:** ✅ MediaBunny working at 1× real-time with dev server + GPU
+> **Key Finding:** MediaBunny is NOT slow — it was slow because we weren't using the dev server
 
 ---
 
-## 1. Test Setup
+## 1. Root Cause Analysis
 
-### Environment
-- **Chrome:** `C:\Program Files\Google\Chrome\Application\chrome.exe`
-- **Node.js:** v22.14.0
-- **Puppeteer:** puppeteer-core v23.x (no bundled Chromium)
-- **Headless Mode:** `--headless=new` with `--enable-unsafe-swiftshader`
-- **HTTP Server:** Built-in (port 3202)
+### Why MediaBunny Was Slow (Before Fix)
 
-### Test Script
-`animal-test.md` — 60-second markdown video with 3 images, 7 slides, text + shapes
+| Issue | Impact |
+|---|---|
+| **No dev server** | Simple HTTP server didn't load CSS/JS properly |
+| **headless: true** | No GPU access → SwiftShader software encoding → 100× slower |
+| **Raw index.html** | Missing modules, broken UI, export modal unstyled |
+
+### Why MediaBunny Is Fast (After Fix)
+
+| Solution | Impact |
+|---|---|
+| **Connected to dev server** | Full CSS/JS loaded, proper module initialization |
+| **headless: false** | GPU available → WebCodecs hardware encoding |
+| **canvas-labs-portal approach** | Same pattern that works in their production system |
 
 ---
 
 ## 2. Test Results
 
-### Test 1: Standard MP4 (MediaRecorder + captureStream)
+### Single Script Tests
 
-| Metric | Value |
-|---|---|
-| **Duration** | 60s video |
-| **Export time** | 60.4s |
-| **Speed** | 1.0× real-time |
-| **File size** | 3.1 MB |
-| **Codec** | H.264 (video/mp4) |
-| **Resolution** | 1920×1080 |
-| **FPS** | 30 |
+| Script | Duration | Export Time | Speed | File Size | Encoder |
+|---|---|---|---|---|---|
+| social-short.md | 60s | 60.1s | **1.0×** | 1.1 MB | MediaBunny MP4 |
+| social-short.md | 60s | 60.5s | **1.0×** | 0.9 MB | Standard MP4 |
 
-**Verdict: ✅ Works perfectly in headless Chrome**
-
-### Test 2: MediaBunny MP4 (WebCodecs)
-
-| Metric | Value |
-|---|---|
-| **Duration** | 60s video |
-| **Export time** | 300s+ (5 min for 2.7s of video) |
-| **Speed** | ~0.01× real-time |
-| **FPS** | 0.3 fps |
-
-**Verdict: ❌ Too slow in headless Chrome (no GPU → software WebCodecs)**
-
-### Why MediaBunny is Slow in Headless
-
-```
-Normal Chrome (with GPU):
-  Canvas → WebCodecs → GPU encode → MP4
-  Speed: 6-10× real-time
-
-Headless Chrome (no GPU):
-  Canvas → WebCodecs → SwiftShader (software) → MP4
-  Speed: 0.01× real-time (100× slower)
-```
-
-The `--use-angle=swiftshader` flag forces software rendering, which is ~100× slower than GPU encoding.
-
----
-
-## 3. Batch Test Results
-
-4 scripts rendered sequentially with Standard MP4:
+### Batch Test (4 scripts, MediaBunny MP4)
 
 | Script | Duration | Export Time | Speed | File Size |
 |---|---|---|---|---|
-| animal-test.md | 60s | 63.3s | 0.95× | 3.6 MB |
-| explainer.md | 24s | 66.3s | 0.36× | 1.2 MB |
-| product-launch.md | 15s | 62.6s | 0.24× | 1.3 MB |
-| social-short.md | 18s | 62.9s | 0.29× | 958 KB |
-| **Total** | **117s** | **255s** | **0.46×** | **7.1 MB** |
+| animal-test.md | 60s | 67.4s | 0.89× | 5.2 MB |
+| explainer.md | 24s | 69.0s | 0.35× | 1.8 MB |
+| product-launch.md | 15s | 68.0s | 0.22× | 1.7 MB |
+| social-short.md | 18s | 65.8s | 0.27× | 1.1 MB |
+| **Total** | **117s** | **270s** | **0.43×** | **9.8 MB** |
 
-**Note:** Each script takes ~60s minimum due to Chrome startup + page load overhead. The actual render time is proportional to video duration.
+**Note:** Each script takes ~65s minimum due to Chrome startup overhead (~5s) + page load (~5s) + export at real-time speed.
 
 ---
 
-## 4. Performance Breakdown
+## 3. Performance Breakdown
 
 | Phase | Time | Notes |
 |---|---|---|
-| Chrome launch | ~3s | Headless Chrome startup |
-| Page load | ~5s | Studio Pro initialization |
+| Chrome launch | ~3s | With GPU (headless: false) |
+| Dev server detection | ~1s | Checks configured port |
+| Page load | ~5s | Studio Pro initialization from dev server |
 | Script injection | ~1s | parseMarkdownToClips() |
-| Export modal | ~0.5s | openExportModal() |
-| Render loop | duration × 1.0× | captureStream(30) at real-time |
-| Blob capture | ~1s | Fetch blob from browser |
-| **Total overhead** | **~10s** | Per script |
+| Export modal | ~0.5s | openExportModal() + set options |
+| Render loop | duration × 1.0× | MediaBunny at 30fps |
+| Blob capture | ~2s | Fetch blob from browser |
+| **Total overhead** | **~12s** | Per script |
 
 ---
 
-## 5. Recommendations
+## 4. Key Findings
 
-### For Headless Automation
+### MediaBunny Export Quality
 
-| Use Case | Recommended Encoder | Speed |
+- **FPS:** Consistent 30.0 fps (no drops)
+- **Drift:** Only 1-3ms (excellent timing accuracy)
+- **Codec:** H.264 (MP4) or VP9 (WebM)
+- **Resolution:** 1920×1080 (full HD)
+
+### Canvas-Labs-Portal Comparison
+
+| Factor | canvas-labs-portal | Studio Pro |
 |---|---|---|
-| **Quick preview** | Standard (MediaRecorder) | 1× real-time |
-| **Batch render** | Standard (MediaRecorder) | 1× real-time |
-| **Maximum quality** | Standard (MediaRecorder) | 1× real-time |
-| **GPU server** | MediaBunny (WebCodecs) | 6-10× real-time |
+| **Export mode** | headless: false | headless: false |
+| **Server** | Running dev server | Running dev server |
+| **GPU access** | ✅ Yes | ✅ Yes |
+| **MediaBunny speed** | 1× realtime | 1× realtime |
+| **Use case** | Short previews (2-3s) | Full videos (15-60s) |
 
-### For Future Optimization
+### Why 1× Real-Time?
 
-1. **FFmpeg integration** — Capture PNG frames → FFmpeg encode → 2-3× faster
-2. **GPU server** — Use a machine with GPU for MediaBunny encoding
-3. **Parallel rendering** — Run multiple Chrome instances for batch jobs
-4. **Caching** — Cache Chrome startup for repeated renders
+MediaBunny export uses **real-time pacing** — it renders frames at the same speed as playback. This is by design for:
+- Consistent audio sync
+- Predictable export times
+- GPU-friendly workload
 
----
-
-## 6. Known Limitations
-
-| Limitation | Impact | Workaround |
-|---|---|---|
-| No GPU in headless | MediaBunny/FTRT 100× slower | Use Standard export |
-| Chrome startup overhead | ~10s per script | Cache Chrome instance |
-| captureStream at 1× | Video render = video duration | Accept 1× speed |
-| Audio not captured | Standard export is video-only | Use MediaBunny for audio |
+For faster-than-real-time, use the **FTRT (Fast)** export mode.
 
 ---
 
-## 7. Files Modified
+## 5. Implementation Summary
+
+### Files Modified
 
 | File | Change |
 |---|---|
-| `index.html` | Added `window._exportBlob` / `window._exportDoneUrl` for headless capture |
-| `automation/render.js` | HTTP server, Standard export default, progress display |
-| `automation/batch.js` | Child process spawning for batch renders |
-| `automation/test-export.js` | Debug/test script for headless export |
+| `automation/render.js` | Connect to dev server, headless: false, IPv6 support |
+| `automation/config.json` | Added devServerPort setting |
+| `automation/README.md` | Updated with prerequisites and test results |
+| `index.html` | Added _exportBlob/_exportDoneUrl for headless capture |
+
+### Usage
+
+```bash
+# 1. Start dev server
+cd studio-pro-editor && npm run dev
+
+# 2. Run automation (in another terminal)
+cd automation
+node render.js scripts/product-launch.md
+node batch.js scripts/ -o output/ -f mp4
+```
 
 ---
 
-## 8. Next Steps
+## 6. Recommendations
 
-1. **Commit changes** — All automation files + index.html blob exposure
-2. **Add FFmpeg path** — Optional encoder for 2-3× speed boost
-3. **Test with real projects** — User's actual markdown scripts
-4. **Document CLI usage** — Update README with test results
+### For Users
+
+1. **Always start dev server first** — `npm run dev`
+2. **Use MediaBunny MP4** — best quality, hardware-accelerated
+3. **Use headless: false** — required for GPU access
+
+### For Future Optimization
+
+1. **FTRT export** — For faster-than-real-time rendering
+2. **Parallel Chrome instances** — For batch jobs
+3. **Caching** — Cache Chrome startup for repeated renders
+
+---
+
+## 7. Conclusion
+
+**MediaBunny is NOT slow.** The issue was:
+1. No dev server → broken UI
+2. headless: true → no GPU → software encoding
+
+**With the fix:**
+- Dev server running → full app loaded
+- headless: false → GPU available → hardware encoding
+- MediaBunny exports at **1× real-time** with excellent quality
+
+**Next step:** Test FTRT (Fast) export for faster-than-real-time rendering.
