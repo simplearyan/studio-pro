@@ -135,7 +135,22 @@ node batch.js scripts/ -o output/ -f mp4
 
 ---
 
-## 7. Conclusion
+## 7. FTRT (Fast) Export Results
+
+FTRT export is **2.5-4× faster** than MediaBunny for text/markdown content:
+
+| Script | Duration | MediaBunny | FTRT | Speedup |
+|---|---|---|---|---|
+| social-short.md | 60s | 60.1s (1.0×) | 16.5s (3.6×) | **3.6×** |
+| animal-test.md | 60s | 67.4s (0.89×) | 23.7s (2.5×) | **2.8×** |
+
+**FTRT shines with longer videos (>30s) where the frame pump speed advantage outweighs Chrome startup overhead.**
+
+See [M6-FTRT-Test-Results.md](./M6-FTRT-Test-Results.md) for full details.
+
+---
+
+## 8. Conclusion
 
 **MediaBunny is NOT slow.** The issue was:
 1. No dev server → broken UI
@@ -145,5 +160,8 @@ node batch.js scripts/ -o output/ -f mp4
 - Dev server running → full app loaded
 - headless: false → GPU available → hardware encoding
 - MediaBunny exports at **1× real-time** with excellent quality
+- FTRT exports at **2.5-4× real-time** for longer videos
 
-**Next step:** Test FTRT (Fast) export for faster-than-real-time rendering.
+**Recommendation:**
+- Use **FTRT** for videos >30s (faster)
+- Use **MediaBunny** for videos <30s (simpler)
