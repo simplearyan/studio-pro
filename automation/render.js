@@ -71,8 +71,8 @@ function parseArgs() {
     output: null,
     resolution: '1080p',
     fps: 30,
-    format: 'mp4',
-    quality: 'high',
+    format: 'ftrt-mp4',  // Default to FTRT (faster than realtime)
+    quality: 'ultra',    // Default to ultra quality
     template: null,
     debug: false,
     help: false
@@ -130,15 +130,15 @@ Options:
   -o, --output <path>       Output file path (default: output/<name>.mp4)
   -r, --resolution <res>    Resolution: 720p, 1080p, 1440p, 2160p (default: 1080p)
   --fps <num>               Frame rate: 12, 24, 30, 60 (default: 30)
-  -f, --format <fmt>        Format: mp4, webm, mediabunny-mp4, mediabunny-webm (default: mp4)
-  -q, --quality <preset>    Quality: draft, standard, high, ultra (default: high)
+  -f, --format <fmt>        Format: ftrt-mp4, mediabunny-mp4, std-mp4 (default: ftrt-mp4)
+  -q, --quality <preset>    Quality: draft, standard, high, ultra (default: ultra)
   -t, --template <id>       Apply design template before render
   --debug                   Open Chrome window for debugging (default: headless)
   -h, --help                Show this help
 
 Examples:
   node render.js scripts/product-launch.md
-  node render.js scripts/demo.md -o output/demo.mp4 -r 720p
+  node render.js scripts/demo.md -r 720p --fps 60
   node render.js scripts/launch.md -f mediabunny-mp4 --debug
   `);
 }
@@ -157,7 +157,13 @@ async function render(scriptPath, options) {
 
   const { w: width, h: height } = RESOLUTION_MAP[resolution] || RESOLUTION_MAP['1080p'];
   const scriptName = basename(scriptPath).replace(/\.[^.]+$/, '');
-  const outputPath = output || resolve(config.outputDir, `${scriptName}.${format}`);
+  
+  // Generate detailed filename: scriptname_quality_fps_format_resolution
+  const formatLabel = format.replace('video-', '').replace('ftrt-', 'FTRT_').replace('mediabunny-', 'MB_').replace('std-', 'STD_');
+  const detailedName = output 
+    ? output 
+    : resolve(config.outputDir, `${scriptName}_${quality}_${fps}fps_${formatLabel}_${resolution}.mp4`);
+  const outputPath = detailedName;
 
   console.log(`\n🎬 Studio Pro — Headless Render`);
   console.log(`   Script:     ${scriptPath}`);
