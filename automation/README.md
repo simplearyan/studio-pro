@@ -99,20 +99,30 @@ node render.js <script> [options]
 **Examples:**
 
 ```bash
-# Default: FTRT + ultra quality
+# DEFAULT — Just run it! (FTRT + ultra + 30fps + 1080p)
 node render.js scripts/product-launch.md
-# Output: product-launch_ultra_30fps_FTRT_mp4_1080p.mp4
+# Output: product-launch_ultra_30Mbps_30fps_FTRT-H264_1080p.mp4
 
-# Custom settings
-node render.js scripts/demo.md -r 720p --fps 60 -q high
+# CUSTOM — Pick what you want
+node render.js scripts/demo.md -f ftrt-webm --fps 24 -q high
+# Output: demo_high_15Mbps_24fps_FTRT-VP9_1080p.webm
 
-# MediaBunny mode
+# MediaBunny mode (1× realtime, GPU)
 node render.js scripts/demo.md -f mediabunny-mp4
+# Output: demo_ultra_30Mbps_30fps_MB-H264_1080p.mp4
 
-# Debug mode (Chrome visible)
+# Standard mode (fallback, no GPU needed)
+node render.js scripts/demo.md -f std-mp4
+# Output: demo_ultra_30Mbps_30fps_STD-H264_1080p.mp4
+
+# Low resolution draft
+node render.js scripts/demo.md -r 720p -q draft
+# Output: demo_draft_3Mbps_30fps_FTRT-H264_720p.mp4
+
+# Debug mode (Chrome window visible)
 node render.js scripts/demo.md --debug
 
-# Custom output
+# Custom output path
 node render.js scripts/demo.md -o output/my-video.mp4
 ```
 
@@ -185,7 +195,7 @@ social-short_ultra_30Mbps_30fps_FTRT-H264_1080p.mp4
 | Standard | 8 Mbps | `standard_8Mbps` |
 | Draft | 3 Mbps | `draft_3Mbps` |
 
-## Speed Benchmarks
+## Speed Benchmarks (Tested 2026-08-22)
 
 ### FTRT Mode (Default) — 4× Realtime
 
@@ -203,10 +213,25 @@ social-short_ultra_30Mbps_30fps_FTRT-H264_1080p.mp4
 
 | Script | Duration | Export Time | Speed | File Size |
 |---|---|---|---|---|
-| social-short.md | 60s | 60.1s | **1.0×** | 1.1 MB |
+| social-short.md | 60s | 60.4s | **1.0×** | 1.1 MB |
 | animal-test.md | 60s | 67.4s | **0.89×** | 5.2 MB |
 | explainer.md | 24s | 69.0s | **0.35×** | 1.8 MB |
 | product-launch.md | 15s | 68.0s | **0.22×** | 1.7 MB |
+
+### Standard Mode — 1× Realtime (Fallback)
+
+| Script | Duration | Export Time | Speed | File Size |
+|---|---|---|---|---|
+| social-short.md | 60s | 60.7s | **0.99×** | 1.0 MB |
+
+### All Modes Comparison (social-short.md, 60s)
+
+| Mode | Export Time | Speed | Codec | File Size |
+|---|---|---|---|---|
+| **FTRT** (default) | 14.9s | **4.0×** | H.264 | 1.1 MB |
+| **FTRT** (VP9) | 11.4s | **5.3×** | VP9 | 0.8 MB |
+| **MediaBunny** | 60.4s | 1.0× | H.264 | 1.1 MB |
+| **Standard** | 60.7s | 0.99× | H.264 | 1.0 MB |
 
 ### Headless Mode Comparison
 
@@ -356,8 +381,9 @@ node tests/test-export.js [format] [label]
 
 ## Related Documentation
 
-- `docs/hyperframes/M6-Test-Report.md` — Full test results
-- `docs/hyperframes/M6-FTRT-Test-Results.md` — FTRT benchmark details
-- `docs/hyperframes/M6-Headless-Test-Results.md` — Headless mode analysis
-- `docs/hyperframes/M6-CanvasLabs-Analysis.md` — canvas-labs-portal comparison
-- `docs/hyperframes/M6-Puppeteer-Automation-Plan.md` — Original plan
+- `docs/automation/README.md` — Quick links + speed summary
+- `docs/automation/Test-Report.md` — Full test results
+- `docs/automation/FTRT-Test-Results.md` — FTRT benchmark details
+- `docs/automation/Headless-Test-Results.md` — Headless mode analysis
+- `docs/automation/CanvasLabs-Analysis.md` — canvas-labs-portal comparison
+- `docs/automation/Puppeteer-Automation-Plan.md` — Original plan
