@@ -1,55 +1,98 @@
-# M6 — Puppeteer Automation Layer
+# M6 — Puppeteer Automation (Final Plan)
 
 > **Date:** August 2026
-> **Status:** Plan
-> **Goal:** Automate video production using Puppeteer + system Chrome, with JSON/MD scripts and local assets
+> **Status:** Phase 1 Complete (scaffold done)
+> **Goal:** Automate video production using Puppeteer-core + system Chrome, with MD/JSON scripts, local assets, and MediaBunny encoding (FFmpeg as future enhancement)
+> **Depends on:** M0-M5 (deterministic core, FTRT export, templates, .spcomp, agent loop, AI panel)
+> **Encoder:** MediaBunny (WebCodecs) now — FFmpeg optional future upgrade
 
 ---
 
-## 1. Architecture
+## 1. TL;DR
+
+We add an `automation/` folder to Studio Pro that lets you render videos from the terminal using markdown or JSON scripts. It launches system Chrome headless, loads Studio Pro, injects the script, and exports the video — no FFmpeg installation required (uses WebCodecs/MediaBunny inside Chrome), with an optional FFmpeg path for 2-3× faster encoding.
+
+---
+
+## 2. Why a Separate Folder?
+
+| Benefit | Explanation |
+|---|---|
+| **No bloat in main app** | `puppeteer-core` (~30MB) stays outside the browser app |
+| **System Chrome** | Uses installed Chrome — no bundled Chromium (~150MB savings) |
+| **Independent versions** | `automation/` updates deps without touching the app |
+| **CI/CD friendly** | Install deps only when running automation |
+| **Clean git** | Can be `.gitignored` or in a separate repo later |
+
+---
+
+## 3. Architecture
 
 ```
 studio-pro-editor/
-├── automation/                    # ← Separate folder (not in main project)
-│   ├── package.json              # Minimal deps: puppeteer-core, sharp
+├── automation/
+│   ├── package.json              # Only puppeteer-core (~30MB)
 │   ├── render.js                 # Main render script
 │   ├── batch.js                  # Batch render multiple scripts
-│   ├── server.js                 # Optional: HTTP server for headless rendering
-│   ├── assets/                   # Local assets for automation
-│   │   ├── fonts/                # Custom fonts (Plus Jakarta Sans, etc.)
+│   ├── config.json               # Chrome path, encoder choice, defaults
+│   ├── README.md                 # Usage docs
+│   ├── assets/                   # Local assets
+│   │   ├── fonts/                # Custom fonts (Plus Jakarta Sans, Anton, etc.)
 │   │   ├── images/               # Product images, logos, backgrounds
-│   │   ├── videos/               # Intro/outro clips, b-roll
-│   │   ├── audio/                # Music, sound effects
-│   │   └── templates/            # Reusable .sptpl design templates
+│   │   ├── videos/               # Intro/outro, b-roll clips
+│   │   ├── audio/                # Music, SFX
+│   │   └── templates/            # .sptpl design templates
 │   ├── scripts/                  # Input scripts (MD or JSON)
 │   │   ├── product-launch.md
 │   │   ├── explainer.json
 │   │   └── social-short.md
-│   ├── output/                   # Rendered videos
-│   └── config.json              # Chrome path, default settings
+│   └── output/                   # Rendered videos
 ├── index.html                    # Main app (unchanged)
 └── ...
 ```
 
 ---
 
-## 2. Why Separate Folder?
+## 4. Encoder — MediaBunny Now, FFmpeg Later
 
-| Benefit | Explanation |
+### Current: MediaBunny (zero-install)
+
+```
+Headless Chrome → loads Studio Pro → WebCodecs encodes → downloads MP4
+```
+
+| Pros | Cons |
 |---|---|
-| **No bloat in main project** | Puppeteer deps (~300MB) don't affect the browser app |
-| **System Chrome** | Use installed Chrome instead of bundled Chromium (~150MB savings) |
-| **Independent versions** | automation/ can update deps without touching the app |
-| **CI/CD friendly** | Install deps only when running automation |
-| **Clean git** | automation/ can be .gitignored or separate repo |
+| No FFmpeg install needed | 2-3× slower than FFmpeg |
+| Same code as browser | Limited to H.264, VP9 |
+| Deterministic (same Chrome = same output) | No H.265/HEVC |
+| Works on any machine with Chrome | No hardware encode control |
+
+**Speed:** 30s text video = ~3s, 30s video = ~15s
+
+### Future: FFmpeg (optional speed boost)
+
+```
+Headless Chrome → captures PNG frames → FFmpeg encodes → MP4
+```
+
+| Pros | Cons |
+|---|---|
+| 2-3× faster encoding | Requires FFmpeg installed |
+| H.265/HEVC support | Different code path than browser |
+| Better rate control | More complex setup |
+
+**Speed:** 30s text video = ~1.5s, 30s video = ~6s
+
+**Decision:** Ship with MediaBunny only. Add FFmpeg as a config option in a future phase.
 
 ---
 
-## 3. How It Works
+## 5. How It Works (Step by Step)
 
-### Step 1: Write a script (MD or JSON)
+### Step 1: User writes a script
 
-**Markdown script** (`scripts/product-launch.md`):
+**Markdown** (`scripts/product-launch.md`):
 ```markdown
 ---
 slideDuration: 3
@@ -76,98 +119,161 @@ AI-powered automation
 Visit productx.com
 ```
 
-**JSON script** (`scripts/explainer.json`):
+**JSON** (`scripts/explainer.json`):
 ```json
 {
   "canvas": { "width": 1920, "height": 1080, "fps": 30 },
   "slides": [
-    { "text": "How It Works", "duration": 3, "bg": "#000000" },
-    { "text": "Step 1: Connect", "image": "assets/images/step1.png", "duration": 4 },
-    { "text": "Step 2: Configure", "image": "assets/images/step2.png", "duration": 4 },
-    { "text": "Step 3: Launch", "image": "assets/images/step3.png", "duration": 4 }
+    { "text": "How It Works", "duration": 3, "bg": "#000" },
+    { "text": "Step 1", "image": "assets/images/step1.png", "duration": 4 },
+    { "text": "Step 2", "image": "assets/images/step2.png", "duration": 4 }
   ]
 }
 ```
 
-### Step 2: Render with Puppeteer
+### Step 2: User runs the render command
 
 ```bash
 cd automation
-node render.js scripts/product-launch.md --output output/product.mp4
+node render.js scripts/product-launch.md -o output/product.mp4
 ```
 
-### Step 3: What render.js does
+### Step 3: render.js does the work
 
-1. Launch Chrome with `--headless=new` flag
-2. Navigate to `file:///path/to/index.html` (local Studio Pro)
-3. Inject the script (MD or JSON)
-4. Call `parseMarkdownToClips()` to generate timeline
-5. Call `exportSpcomp()` to get the composition
-6. Use WebCodecs or MediaRecorder to capture frames
-7. Encode to MP4/WebM
-8. Save to output/
+1. Launch Chrome with `--headless=new`
+2. Navigate to `file:///path/to/studio-pro-editor/index.html`
+3. Wait for app to load
+4. Inject the script (MD → `parseMarkdownToClips()` or JSON → `importSpcomp()`)
+5. Optionally apply a template (`applyDesignTemplate()`)
+6. Call `openExportModal()` → set format, resolution, fps, quality
+7. Click "Start Export" programmatically
+8. Wait for export to complete (`State.isExporting === false`)
+9. Capture the exported blob from the browser
+10. Save to `output/`
+
+### Step 4: Output
+
+```
+output/
+└── product.mp4    # 30s, 1080p, 30fps, 10 Mbps
+```
 
 ---
 
-## 4. Implementation Details
+## 6. Implementation Plan
 
-### package.json (minimal)
+### Phase 1: Scaffold (1 day)
 
-```json
-{
-  "name": "studio-pro-automation",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "render": "node render.js",
-    "batch": "node batch.js",
-    "server": "node server.js"
-  },
-  "dependencies": {
-    "puppeteer-core": "^23.0.0",
-    "sharp": "^0.33.0"
-  }
-}
-```
+| Task | File | What |
+|---|---|---|
+| Create `automation/` folder | — | Directory structure |
+| `package.json` | `automation/package.json` | `puppeteer-core` only |
+| `config.json` | `automation/config.json` | Chrome path, defaults |
+| `render.js` skeleton | `automation/render.js` | Launch Chrome, load app, close |
 
-### config.json
+### Phase 2: Script Loading (2 days)
 
-```json
-{
-  "chromePath": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-  "defaultWidth": 1920,
-  "defaultHeight": 1080,
-  "defaultFps": 30,
-  "outputFormat": "mp4",
-  "outputBitrate": "8M"
-}
-```
+| Task | File | What |
+|---|---|---|
+| MD script loading | `render.js` | Read .md → inject → `parseMarkdownToClips()` |
+| JSON/.spcomp loading | `render.js` | Read .json → inject → `importSpcomp()` |
+| Template application | `render.js` | `applyDesignTemplate(id)` before render |
+| Asset resolution | `render.js` | Resolve `assets/` paths to absolute file:// URIs |
 
-### render.js (core logic)
+### Phase 3: Export Capture (3 days)
+
+| Task | File | What |
+|---|---|---|
+| MediaBunny path | `render.js` | Open export modal → set params → click Start → wait → capture blob |
+| FFmpeg path (optional) | `render.js` | Capture frames as PNG → `ffmpeg -framerate 30 -i frame-%d.png -c:v libx264 out.mp4` |
+| Progress display | `render.js` | Show ETA, FPS, percentage in terminal |
+| Error handling | `render.js` | Timeout, missing assets, Chrome not found |
+
+### Phase 4: CLI Interface (1 day)
+
+| Task | File | What |
+|---|---|---|
+| Argument parsing | `render.js` | `--output`, `--format`, `--resolution`, `--fps`, `--quality`, `--template` |
+| Help text | `render.js` | `node render.js --help` |
+| Config override | `render.js` | `--config custom-config.json` |
+
+### Phase 5: Batch Rendering (1 day)
+
+| Task | File | What |
+|---|---|---|
+| Batch script | `batch.js` | Process all scripts in a folder |
+| Parallel renders | `batch.js` | Render N scripts simultaneously (configurable) |
+| Output naming | `batch.js` | `{script-name}-{resolution}-{date}.mp4` |
+| Summary report | `batch.js` | Show total time, file sizes, successes/failures |
+
+### Phase 6: Documentation (1 day)
+
+| Task | File | What |
+|---|---|---|
+| README | `automation/README.md` | Setup, usage, examples, troubleshooting |
+| Examples | `automation/scripts/` | 3-4 ready-to-render demo scripts |
+| Assets | `automation/assets/` | Sample fonts, images for demos |
+
+---
+
+## 7. render.js — Core Logic
 
 ```javascript
 import puppeteer from 'puppeteer-core';
-import { readFileSync, writeFileSync } from 'fs';
-import { resolve } from 'path';
+import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
 
-const config = JSON.parse(readFileSync('config.json', 'utf8'));
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const config = JSON.parse(readFileSync(resolve(__dirname, 'config.json'), 'utf8'));
 
-async function render(scriptPath, outputPath) {
+async function render(scriptPath, options = {}) {
+    const {
+        output = 'output/render.mp4',
+        format = 'mp4',
+        resolution = '1080p',
+        fps = 30,
+        quality = 'high',
+        template = null,
+        encoder = config.encoder || 'mediabunny'
+    } = options;
+
+    console.log(`🎬 Rendering: ${scriptPath}`);
+    console.log(`   Format: ${format}, Resolution: ${resolution}, FPS: ${fps}`);
+    console.log(`   Encoder: ${encoder}`);
+
     // 1. Launch Chrome
     const browser = await puppeteer.launch({
         executablePath: config.chromePath,
         headless: 'new',
-        args: ['--no-sandbox', '--disable-gpu']
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--enable-webcodecs',
+            '--enable-gpu',
+            '--use-angle=swiftshader'  // Software GPU for headless
+        ]
     });
 
-    // 2. Open Studio Pro
     const page = await browser.newPage();
-    await page.setViewport({ width: config.defaultWidth, height: config.defaultHeight });
-    await page.goto('file:///path/to/index.html');
+    await page.setViewport({ width: 1920, height: 1080 });
 
-    // 3. Load script
-    const script = readFileSync(scriptPath, 'utf8');
-    if (scriptPath.endsWith('.md')) {
+    // 2. Load Studio Pro
+    const appPath = resolve(__dirname, '..', 'index.html');
+    await page.goto(`file:///${appPath.replace(/\\/g, '/')}`, {
+        waitUntil: 'networkidle0'
+    });
+
+    // 3. Wait for app to be ready
+    await page.waitForFunction(() => typeof State !== 'undefined', {
+        timeout: 10000
+    });
+
+    // 4. Load script
+    const script = readFileSync(resolve(__dirname, scriptPath), 'utf8');
+    const isMarkdown = scriptPath.endsWith('.md');
+
+    if (isMarkdown) {
         await page.evaluate((md) => {
             State.markdownText = md;
             parseMarkdownToClips();
@@ -177,200 +283,247 @@ async function render(scriptPath, outputPath) {
         await page.evaluate((data) => importSpcomp(data), json);
     }
 
-    // 4. Render frames
-    const frames = await page.evaluate(async () => {
-        const frames = [];
-        const duration = State.duration;
-        const fps = State.exportFps || 30;
-        const timeStep = 1 / fps;
+    // 5. Apply template if specified
+    if (template) {
+        await page.evaluate((tid) => {
+            applyDesignTemplate(tid, 'apply');
+        }, template);
+    }
 
-        for (let t = 0; t < duration; t += timeStep) {
-            State.currentTime = t;
-            drawCanvas();
-            const bitmap = await createImageBitmap(document.getElementById('renderCanvas'));
-            frames.push({ time: t, bitmap });
-        }
-        return frames;
+    // 6. Set export parameters
+    await page.evaluate((params) => {
+        openExportModal();
+        // Set format, resolution, fps, quality via the UI
+        // ... (programmatic UI interaction)
+    }, { format, resolution, fps, quality });
+
+    // 7. Start export and wait for completion
+    const startTime = Date.now();
+    await page.evaluate(() => submitExport());
+
+    await page.waitForFunction(() => !State.isExporting, {
+        timeout: 300000  // 5 minute timeout
     });
 
-    // 5. Encode to video (using sharp or FFmpeg)
-    // ... encoding logic ...
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    console.log(`✅ Export complete in ${elapsed}s`);
 
-    // 6. Save
-    writeFileSync(outputPath, videoBuffer);
+    // 8. Capture output (blob download via CDP)
+    // ... (browser-side blob → file transfer)
 
     await browser.close();
+    console.log(`📁 Saved to: ${output}`);
 }
 ```
 
 ---
 
-## 5. JSON Script Format
+## 8. config.json
 
 ```json
 {
-  "meta": {
-    "name": "Product Launch",
-    "version": "1.0"
-  },
-  "canvas": {
-    "width": 1920,
-    "height": 1080,
-    "fps": 30,
-    "bg": "#1a1a2e"
-  },
-  "template": "product-launch",
-  "slides": [
-    {
-      "type": "heading",
-      "text": "Introducing ProductX",
-      "duration": 3,
-      "position": "center",
-      "animation": "fadeIn",
-      "fontSize": 80
-    },
-    {
-      "type": "text",
-      "text": "The future of productivity",
-      "duration": 2,
-      "position": "bottom",
-      "animation": "slideUp"
-    },
-    {
-      "type": "image",
-      "src": "assets/images/product.png",
-      "duration": 4,
-      "position": "center",
-      "animation": "zoomIn"
-    },
-    {
-      "type": "composite",
-      "elements": [
-        { "type": "heading", "text": "Key Features", "position": "top" },
-        { "type": "image", "src": "assets/images/feature1.png", "position": "right" },
-        { "type": "text", "text": "AI-powered automation", "position": "left" }
-      ],
-      "duration": 5
+  "chromePath": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "encoder": "mediabunny",
+  "ffmpegPath": null,
+  "defaultWidth": 1920,
+  "defaultHeight": 1080,
+  "defaultFps": 30,
+  "defaultQuality": "high",
+  "defaultFormat": "mp4",
+  "timeout": 300000,
+  "parallel": 1,
+  "outputDir": "./output"
+}
+```
+
+### Platform-specific Chrome paths
+
+| OS | Path |
+|---|---|
+| **Windows** | `C:\Program Files\Google\Chrome\Application\chrome.exe` |
+| **macOS** | `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` |
+| **Linux** | `/usr/bin/google-chrome` |
+
+---
+
+## 9. CLI Usage
+
+```bash
+cd automation
+
+# Single render (MediaBunny, default settings)
+node render.js scripts/product-launch.md -o output/product.mp4
+
+# Single render with FFmpeg (if installed)
+node render.js scripts/product-launch.md -o output/product.mp4 --encoder ffmpeg
+
+# Custom settings
+node render.js scripts/product-launch.md \
+  --format webm \
+  --resolution 720p \
+  --fps 24 \
+  --quality ultra \
+  --template explainer
+
+# Batch render all scripts
+node batch.js scripts/ -o output/ --format mp4
+
+# Batch with parallel renders
+node batch.js scripts/ -o output/ --parallel 4
+
+# Preview mode (frames only, no video)
+node render.js scripts/product-launch.md --preview --frames 30
+
+# List available templates
+node render.js --list-templates
+
+# Show help
+node render.js --help
+```
+
+---
+
+## 10. Batch Rendering
+
+```javascript
+// batch.js
+import { readdir } from 'fs/promises';
+import { render } from './render.js';
+
+async function batch(inputDir, outputDir, options) {
+    const files = await readdir(inputDir);
+    const scripts = files.filter(f => f.endsWith('.md') || f.endsWith('.json'));
+
+    console.log(`📦 Batch rendering ${scripts.length} scripts...`);
+
+    const results = [];
+    for (const script of scripts) {
+        const start = Date.now();
+        try {
+            await render(`${inputDir}/${script}`, {
+                output: `${outputDir}/${script.replace(/\.[^.]+$/, '')}.mp4`,
+                ...options
+            });
+            results.push({ script, status: '✅', time: Date.now() - start });
+        } catch (err) {
+            results.push({ script, status: '❌', error: err.message });
+        }
     }
-  ]
+
+    console.log('\n📊 Batch Summary:');
+    console.table(results);
 }
 ```
 
 ---
 
-## 6. Batch Rendering
+## 11. Integration with Existing Features
 
-```bash
-# Render all scripts in scripts/ folder
-node batch.js scripts/ --output output/ --format mp4
+| Feature | How automation uses it |
+|---|---|
+| **M0 — Deterministic** | Same input → same output, every render |
+| **M1 — FTRT export** | Faster-than-real-time in headless Chrome |
+| **M2 — Templates** | `--template explainer` applies design before render |
+| **M3 — .spcomp** | `node render.js script.spcomp -o out.mp4` |
+| **M4 — Agent loop** | AI generates .spcomp → automation renders it |
+| **M5 — AI panel** | CLI equivalent: prompt → markdown → render |
+| **Bitrate presets** | `--quality ultra` maps to the in-app preset |
+| **captureStream fix** | Headless Chrome uses the same export path |
 
-# Render with specific template
-node batch.js scripts/product-launch.md --template minimal --output output/
+---
 
-# Render multiple resolutions
-node batch.js scripts/ --resolution 1080p,720p,4K --output output/
+## 12. Asset Resolution
+
+Assets in scripts are resolved relative to `automation/assets/`:
+
+```markdown
+![hero](assets/images/hero.png)        → automation/assets/images/hero.png
+![logo](../../shared/logo.svg)          → studio-pro-editor/shared/logo.svg
+```
+
+The render script resolves paths to absolute `file://` URIs before injecting into Chrome:
+
+```javascript
+function resolveAssetPath(src) {
+    if (src.startsWith('http')) return src;  // Already absolute
+    if (src.startsWith('data:')) return src;  // Already embedded
+    return `file:///${resolve(__dirname, 'assets', src).replace(/\\/g, '/')}`;
+}
 ```
 
 ---
 
-## 7. Assets Folder Structure
+## 13. Error Handling
 
-```
-assets/
-├── fonts/
-│   ├── PlusJakartaSans-Bold.ttf
-│   ├── PlusJakartaSans-Regular.ttf
-│   └── Anton-Regular.ttf
-├── images/
-│   ├── product-hero.png
-│   ├── feature1.png
-│   ├── feature2.png
-│   ├── background-dark.jpg
-│   └── logo.png
-├── videos/
-│   ├── intro.mp4
-│   ├── outro.mp4
-│   └── b-roll-*.mp4
-├── audio/
-│   ├── bgm-corporate.mp3
-│   ├── sfx-whoosh.mp3
-│   └── sfx-ding.mp3
-└── templates/
-    ├── product-launch.sptpl
-    ├── explainer.sptpl
-    └── social-short.sptpl
+| Error | Handling |
+|---|---|
+| **Chrome not found** | Show path in config.json, suggest install |
+| **Missing asset** | List all missing assets, fail with clear message |
+| **Export timeout** | Default 5min, configurable via `--timeout` |
+| **Script parse error** | Show line number and error from `parseMarkdownToClips()` |
+| **GPU crash** | Retry with `--disable-gpu` flag |
+| **Memory overflow** | Reduce parallel count, process scripts sequentially |
+
+---
+
+## 14. File Size Estimates
+
+The automation layer predicts output file size before rendering:
+
+```javascript
+function estimateFileSize(duration, resolution, quality) {
+    const BITRATE_MAP = { draft: 2, standard: 5, high: 10, ultra: 20 };
+    const RESOLUTION_MULT = { '720p': 0.5, '1080p': 1, '1440p': 2, '2160p': 4 };
+    const bitrate = BITRATE_MAP[quality] * RESOLUTION_MULT[resolution];
+    return ((bitrate * duration) / 8).toFixed(1);  // MB
+}
 ```
 
 ---
 
-## 8. CLI Usage
+## 15. Acceptance Criteria
 
-```bash
-# Single render
-cd automation
-node render.js scripts/product-launch.md -o output/product.mp4
+- [ ] `automation/` folder with `package.json`, `render.js`, `config.json`
+- [ ] System Chrome detection (configurable path, platform-specific defaults)
+- [ ] Markdown script rendering (`.md` → timeline → video)
+- [ ] JSON/.spcomp script rendering (`.json`/`.spcomp` → timeline → video)
+- [ ] Template application (`--template` flag)
+- [ ] Local asset resolution (`assets/` folder, absolute paths)
+- [ ] MediaBunny encoding (default, zero-install)
+- [ ] FFmpeg encoding (optional, 2-3× faster)
+- [ ] CLI interface with `--help`, all options documented
+- [ ] Batch rendering (multiple scripts, parallel option)
+- [ ] Progress display (ETA, FPS, percentage)
+- [ ] Error handling (missing Chrome, missing assets, timeout)
+- [ ] README with setup, usage, examples, troubleshooting
+- [ ] 3-4 demo scripts in `scripts/` folder
+- [ ] Sample assets in `assets/` folder
 
-# Batch render
-node batch.js scripts/ -o output/ --format mp4
+---
 
-# With custom config
-node render.js script.md --config custom-config.json --output out.mp4
+## 16. Implementation Order
 
-# Preview mode (no encode, just frames)
-node render.js script.md --preview --frames 30
+```
+Day 1:  Phase 1 — Scaffold (package.json, config.json, render.js skeleton)
+Day 2-3: Phase 2 — Script loading (MD, JSON, templates, asset resolution)
+Day 4-6: Phase 3 — Export capture (MediaBunny path, FFmpeg path, progress)
+Day 7:  Phase 4 — CLI interface (arg parsing, help, config override)
+Day 8:  Phase 5 — Batch rendering (batch.js, parallel, summary)
+Day 9:  Phase 6 — Documentation (README, examples, assets)
+Day 10: Testing + polish
 ```
 
 ---
 
-## 9. Integration with AI Panel
+## 17. Future Enhancements
 
-The AI panel (M5) can generate .spcomp files. The automation layer can:
-
-1. Take AI-generated .spcomp
-2. Load into headless Chrome
-3. Render to video
-4. Save to output/
-
-```bash
-# AI generates → automation renders
-node render.js ai-output.spcomp -o output/ai-video.mp4
-```
-
----
-
-## 10. Benefits Over Alternatives
-
-| Approach | Pros | Cons |
-|---|---|---|
-| **Puppeteer + system Chrome** | Fast, no bundled Chromium, uses existing Chrome | Requires Chrome installed |
-| **Full Puppeteer** | Bundled Chromium, consistent | ~300MB dependency |
-| **Playwright** | Multi-browser support | Heavier dependency |
-| **Remotion** | React-based, good DX | Requires React project, build step |
-| **FFmpeg + canvas** | Fast encoding | No GUI preview, complex setup |
-
-**Our approach:** Puppeteer-core + system Chrome = lightweight, fast, uses existing installation.
-
----
-
-## 11. Acceptance Criteria
-
-- [ ] automation/ folder with package.json, render.js, config.json
-- [ ] System Chrome detection (configurable path)
-- [ ] Markdown script rendering
-- [ ] JSON script rendering
-- [ ] Local assets loading (fonts, images, videos)
-- [ ] Batch rendering (multiple scripts)
-- [ ] Output to MP4/WebM
-- [ ] CLI interface with options
-- [ ] Documentation (README.md in automation/)
-- [ ] Integration with M5 AI panel output
-
----
-
-## 12. Future Enhancements
-
-- **WebUI:** Browser-based batch render interface
-- **Queue system:** Process multiple renders in parallel
-- **Webhook:** Notify when render completes
-- **Cloud render:** Optional cloud Chrome for heavy renders
-- **Template marketplace:** Share .sptpl templates
+| Enhancement | Description |
+|---|---|
+| **WebUI** | Browser-based batch render interface |
+| **Queue system** | Process multiple renders in parallel with job queue |
+| **Webhook** | Notify when render completes (Slack, Discord, email) |
+| **Cloud render** | Optional cloud Chrome for heavy renders |
+| **Template marketplace** | Share `.sptpl` templates |
+| **Watch mode** | Re-render when script file changes |
+| **Incremental render** | Only re-render changed slides |
+| **Multi-resolution** | Render same script at 720p + 1080p + 4K in one pass |
