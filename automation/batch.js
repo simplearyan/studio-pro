@@ -31,8 +31,8 @@ function parseArgs() {
     outputDir: './output',
     resolution: '1080p',
     fps: 30,
-    format: 'mp4',
-    quality: 'high',
+    format: 'ftrt-mp4',  // Default to FTRT
+    quality: 'ultra',    // Default to ultra
     template: null,
     parallel: 1,
     help: false
@@ -142,7 +142,8 @@ async function batch(inputDir, options) {
     const promises = batch.map(async (script) => {
       const scriptStart = Date.now();
       const scriptName = basename(script).replace(/\.[^.]+$/, '');
-      const outputPath = resolve(outputDir, `${scriptName}.${format}`);
+      // Always use .mp4 extension (FTRT/mediabunny all output mp4)
+      const outputPath = resolve(outputDir, `${scriptName}.mp4`);
       const scriptPath = resolve(inputDir, script);
       const renderJs = resolve(__dirname, 'render.js');
 
