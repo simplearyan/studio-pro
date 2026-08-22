@@ -127,19 +127,62 @@ Usage:
   node render.js <script> [options]
 
 Options:
-  -o, --output <path>       Output file path (default: output/<name>.mp4)
-  -r, --resolution <res>    Resolution: 720p, 1080p, 1440p, 2160p (default: 1080p)
-  --fps <num>               Frame rate: 12, 24, 30, 60 (default: 30)
-  -f, --format <fmt>        Format: ftrt-mp4, mediabunny-mp4, std-mp4 (default: ftrt-mp4)
-  -q, --quality <preset>    Quality: draft, standard, high, ultra (default: ultra)
+  -o, --output <path>       Output file path (default: auto-generated with all params)
+  -r, --resolution <res>    720p, 1080p, 1440p, 2160p (default: 1080p)
+  --fps <num>               12, 24, 30, 60 (default: 30)
+  -f, --format <fmt>        Render mode + codec:
+                              ftrt-mp4      FTRT + H.264 (4× realtime, recommended)
+                              ftrt-webm     FTRT + VP9 (4× realtime, smaller files)
+                              mediabunny-mp4  MediaBunny + H.264 (1× realtime)
+                              mediabunny-webm MediaBunny + VP9 (1× realtime)
+                              std-mp4       Standard + H.264 (1× realtime, fallback)
+                              std-webm      Standard + VP9 (1× realtime, fallback)
+                            (default: ftrt-mp4)
+  -q, --quality <preset>    Quality preset with bitrate cap:
+                              draft     3 Mbps  — Quick preview, small files
+                              standard  8 Mbps  — Social media quality
+                              high     15 Mbps  — YouTube recommended
+                              ultra    30 Mbps  — Maximum quality
+                            (default: ultra)
   -t, --template <id>       Apply design template before render
   --debug                   Open Chrome window for debugging (default: headless)
   -h, --help                Show this help
 
+Default Parameters:
+  --format   ftrt-mp4    (FTRT + H.264, 4× realtime)
+  --quality  ultra       (30 Mbps cap, maximum quality)
+  --fps      30          (30 frames per second)
+  --resolution 1080p     (1920×1080 Full HD)
+  --debug    false       (headless mode, no Chrome window)
+
+Output Filename Convention:
+  scriptname_quality_fps_encoder_resolution.ext
+  Example: social-short_ultra_30Mbps_30fps_FTRT-H264_1080p.mp4
+
+  Encoder labels:
+    FTRT-H264   Fast export, H.264 (default, 4× realtime)
+    FTRT-VP9    Fast export, VP9 (4× realtime, smaller)
+    MB-H264     MediaBunny, H.264 (1× realtime)
+    MB-VP9      MediaBunny, VP9 (1× realtime)
+    STD-H264    Standard, H.264 (1× realtime)
+    STD-VP9     Standard, VP9 (1× realtime)
+
 Examples:
+  # Default: FTRT + ultra + 30fps + 1080p
   node render.js scripts/product-launch.md
-  node render.js scripts/demo.md -r 720p --fps 60
-  node render.js scripts/launch.md -f mediabunny-mp4 --debug
+  # Output: product-launch_ultra_30Mbps_30fps_FTRT-H264_1080p.mp4
+
+  # Custom quality and FPS
+  node render.js scripts/demo.md -q high --fps 60
+  # Output: demo_high_15Mbps_60fps_FTRT-H264_1080p.mp4
+
+  # MediaBunny mode
+  node render.js scripts/demo.md -f mediabunny-mp4
+  # Output: demo_ultra_30Mbps_30fps_MB-H264_1080p.mp4
+
+  # Low resolution draft
+  node render.js scripts/demo.md -r 720p -q draft
+  # Output: demo_draft_3Mbps_30fps_FTRT-H264_720p.mp4
   `);
 }
 
@@ -158,11 +201,47 @@ async function render(scriptPath, options) {
   const { w: width, h: height } = RESOLUTION_MAP[resolution] || RESOLUTION_MAP['1080p'];
   const scriptName = basename(scriptPath).replace(/\.[^.]+$/, '');
   
-  // Generate detailed filename: scriptname_quality_fps_format_resolution
-  const formatLabel = format.replace('video-', '').replace('ftrt-', 'FTRT_').replace('mediabunny-', 'MB_').replace('std-', 'STD_');
+  // Generate detailed filename with all parameters
+  // Format: scriptname_quality_fps_encoder_format_resolution.mp4
+  // Example: social-short_ultra_30fps_FTRT-H264_1080p.mp4
+  //
+  // Encoder labels:
+  //   FTRT-H264   = Fast export, H.264 codec (default, 4× realtime)
+  //   FTRT-VP9    = Fast export, VP9 codec
+  //   MB-H264     = MediaBunny, H.264 codec (1× realtime)
+  //   MB-VP9      = MediaBunny, VP9 codec
+  //   STD-H264    = Standard captureStream, H.264 (1× realtime)
+  //   STD-VP9     = Standard captureStream, VP9
+  //
+  // Quality labels (with bitrate):
+  //   ultra_30Mbps  = Maximum quality, 30 Mbps cap
+  //   high_15Mbps   = YouTube standard, 15 Mbps cap
+  //   standard_8Mbps = Social media, 8 Mbps cap
+  //   draft_3Mbps   = Quick preview, 3 Mbps cap
+  
+  const ENCODER_MAP = {
+    'ftrt-mp4': 'FTRT-H264',
+    'ftrt-webm': 'FTRT-VP9',
+    'mediabunny-mp4': 'MB-H264',
+    'mediabunny-webm': 'MB-VP9',
+    'std-mp4': 'STD-H264',
+    'std-webm': 'STD-VP9'
+  };
+  
+  const QUALITY_MAP = {
+    'ultra': 'ultra_30Mbps',
+    'high': 'high_15Mbps',
+    'standard': 'standard_8Mbps',
+    'draft': 'draft_3Mbps'
+  };
+  
+  const encoderLabel = ENCODER_MAP[format] || format;
+  const qualityLabel = QUALITY_MAP[quality] || quality;
+  const ext = format.includes('webm') ? 'webm' : 'mp4';
+  
   const detailedName = output 
     ? output 
-    : resolve(config.outputDir, `${scriptName}_${quality}_${fps}fps_${formatLabel}_${resolution}.mp4`);
+    : resolve(config.outputDir, `${scriptName}_${qualityLabel}_${fps}fps_${encoderLabel}_${resolution}.${ext}`);
   const outputPath = detailedName;
 
   console.log(`\n🎬 Studio Pro — Headless Render`);

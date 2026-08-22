@@ -146,23 +146,44 @@ node batch.js scripts/ -t explainer
 
 ## Filename Convention
 
-Output files follow a structured naming convention:
+Output files follow a structured naming convention with all parameters visible:
 
 ```
-scriptname_quality_fps_format_resolution.mp4
+scriptname_quality_bitrate_fps_encoder_resolution.ext
 ```
 
 **Example:**
 ```
-social-short_ultra_30fps_FTRT_mp4_1080p.mp4
-│           │      │    │    │    │
-│           │      │    │    │    └── Resolution
-│           │      │    │    └─────── Encoder (FTRT/MB/STD)
-│           │      │    └──────────── Format (mp4/webm)
-│           │      └───────────────── FPS
-│           └──────────────────────── Quality
-└──────────────────────────────────── Script name
+social-short_ultra_30Mbps_30fps_FTRT-H264_1080p.mp4
+│           │      │     │    │        │     │
+│           │      │     │    │        │     └── Resolution (720p/1080p/1440p/2160p)
+│           │      │     │    │        └──────── Encoder + Codec
+│           │      │     │    └───────────────── FPS (12/24/30/60)
+│           │      │     └────────────────────── Quality (draft/standard/high/ultra)
+│           │      └──────────────────────────── Bitrate (3/8/15/30 Mbps)
+│           └─────────────────────────────────── Render mode (FTRT/MB/STD)
+└────────────────────────────────────────────── Script name
 ```
+
+### Encoder Labels
+
+| Label | Mode | Codec | Speed |
+|---|---|---|---|
+| `FTRT-H264` | FTRT + H.264 | Default | 4× realtime |
+| `FTRT-VP9` | FTRT + VP9 | Smaller files | 4× realtime |
+| `MB-H264` | MediaBunny + H.264 | GPU | 1× realtime |
+| `MB-VP9` | MediaBunny + VP9 | GPU | 1× realtime |
+| `STD-H264` | Standard + H.264 | Fallback | 1× realtime |
+| `STD-VP9` | Standard + VP9 | Fallback | 1× realtime |
+
+### Quality Labels
+
+| Preset | Bitrate | Label in Filename |
+|---|---|---|
+| Ultra | 30 Mbps | `ultra_30Mbps` |
+| High | 15 Mbps | `high_15Mbps` |
+| Standard | 8 Mbps | `standard_8Mbps` |
+| Draft | 3 Mbps | `draft_3Mbps` |
 
 ## Speed Benchmarks
 
