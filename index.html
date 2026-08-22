@@ -6126,7 +6126,8 @@
                         ctx.restore();
                     } else if (clip.type === 'html') {
                         // ── HTML Clip Rendering ──────────────────────────────────────────────
-                        // Uses html2canvas to render HTML/CSS/JS to Canvas
+                        // Renders HTML/CSS/JS to Canvas via iframe + html2canvas
+                        // Fixes: no infinite loop, sanitized CSS, stale-session protection
                         const clipTime = State.currentTime - clip.start;
                         const timeLeft = clip.duration - clipTime;
                         const aState = calculateAnimationState(clip, clipTime, timeLeft, w, h);
@@ -6144,19 +6145,26 @@
                         
                         // Shadow
                         if (clip.effects.shadowEnable) {
-                            ctx.shadowColor = clip.effects.shadowColor || 'rgba(0,0,0,0.5)';
+                            ctx.shadowColor = clip.effects.shadowColor || '#000000';
                             ctx.shadowBlur = clip.effects.shadowBlur || 20;
                             ctx.shadowOffsetX = clip.effects.shadowX || 0;
                             ctx.shadowOffsetY = clip.effects.shadowY || 10;
                         }
                         
-                        // Render HTML to bitmap (async, uses html2canvas)
+                        // ── html2canvas rendering ────────────────────────────────────────────
                         if (typeof html2canvas !== 'undefined') {
-                            // Create or reuse offscreen iframe for this clip
+                            // Clean stale session refs (from project restore)                            if (clip._htmlIframe && !clip._htmlIframe.parentNode) {
+                                clip._htmlIframe = null;
+                                clip._htmlReady = false;
+                                clip._htmlCanvas = null;
+                            }
+                            
+                            // Create offscreen iframe
                             if (!clip._htmlIframe) {
-                                clip._htmlIframe = document.createElement('iframe');
-                                clip._htmlIframe.style.cssText = 'position:absolute;left:-9999px;width:' + w + 'px;height:' + h + 'px;border:none;';
-                                document.body.appendChild(clip._htmlIframe);
+                                const iframe = document.createElement('iframe');
+                                iframe.style.cssText = 'position:absolute;left:-9999px;width:' + w + 'px;height:' + h + 'px;border:none;';
+                                document.body.appendChild(iframe);
+                                clip._htmlIframe = iframe;
                                 clip._htmlReady = false;
                             }
                             
@@ -6165,38 +6173,66 @@
                             if (clip._htmlSig !== sig) {
                                 clip._htmlSig = sig;
                                 clip._htmlReady = false;
-                                const doc = clip._htmlIframe.contentDocument;
-                                if (doc) {
-                                    doc.open();
-                                    doc.write(`<!DOCTYPE html><html><head><style>*{margin:0;padding:0;box-sizing:border-box;}body{width:${w}px;height:${h}px;overflow:hidden;background:${clip.backgroundColor || 'transparent'};}${clip.css || ''}</style></head><body>${clip.html || ''}${clip.js ? '<script>' + clip.js + '<\/script>' : ''}</body></html>`);
-                                    doc.close();
-                                    // Wait for render
-                                    clip._htmlIframe.contentWindow.requestAnimationFrame(() => {
-                                        clip._htmlIframe.contentWindow.requestAnimationFrame(() => {
-                                            clip._htmlReady = true;
+                                clip._htmlCanvas = null; // invalidate old canvas
+                                try {
+                                    const doc = clip._htmlIframe.contentDocument;
+                                    if (doc) {
+                                        // Sanitize CSS: replace rgba() with hex to avoid html2canvas parse errors
+                                        const safeCss = (clip.css || '').replace(/rgba?\([^)]+\)/g, (m) => {
+                                            try {
+                                                const parts = m.match(/[\d.]+/g);
+                                                if (parts && parts.length >= 3) {
+                                                    const r = Math.round(parseFloat(parts[0]));
+                                                    const g = Math.round(parseFloat(parts[1]));
+                                                    const b = Math.round(parseFloat(parts[2]));
+                                                    const a = parts[3] !== undefined ? parseFloat(parts[3]) : 1;
+                                                    if (a < 1) return m; // keep rgba with alpha as-is for now
+                                                    return '#' + [r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('');
+                                                }
+                                            } catch(e) {}
+                                            return m;
                                         });
-                                    });
+                                        doc.open();
+                                        doc.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{width:${w}px;height:${h}px;overflow:hidden;background:transparent;}${safeCss}</style></head><body>${clip.html || ''}${clip.js ? '<script>' + clip.js + '<\/script>' : ''}</body></html>`);
+                                        doc.close();
+                                        // Wait for layout, then mark ready
+                                        setTimeout(() => { clip._htmlReady = true; }, 50);
+                                    }
+                                } catch(e) {
+                                    console.warn('[HTMLClip] iframe write error:', e.message);
                                 }
                             }
                             
-                            // Capture to canvas when ready
-                            if (clip._htmlReady && clip._htmlIframe.contentDocument && clip._htmlIframe.contentDocument.body) {
-                                html2canvas(clip._htmlIframe.contentDocument.body, {
-                                    width: w,
-                                    height: h,
-                                    backgroundColor: null,
-                                    scale: 1,
-                                    logging: false,
-                                }).then(canvas => {
-                                    clip._htmlCanvas = canvas;
-                                }).catch(err => {
-                                    console.warn('[HTMLClip] Render error:', err);
-                                });
-                                
-                                // Draw cached canvas
-                                if (clip._htmlCanvas) {
-                                    ctx.drawImage(clip._htmlCanvas, -w/2, -h/2, w, h);
+                            // Capture to canvas when ready (NO infinite loop)
+                            if (clip._htmlReady && !clip._htmlRendering && !clip._htmlCanvas) {
+                                try {
+                                    clip._htmlRendering = true;
+                                    html2canvas(clip._htmlIframe.contentDocument.body, {
+                                        width: w,
+                                        height: h,
+                                        backgroundColor: null,
+                                        scale: 1,
+                                        logging: false,
+                                        allowTaint: true,
+                                        useCORS: false,
+                                    }).then(canvas => {
+                                        clip._htmlCanvas = canvas;
+                                        clip._htmlRendering = false;
+                                        // NO requestAnimationFrame(drawCanvas) — avoids infinite loop
+                                    }).catch(err => {
+                                        clip._htmlRendering = false;
+                                        clip._htmlReady = false; // retry next frame
+                                        console.warn('[HTMLClip] html2canvas error:', err.message);
+                                    });
+                                } catch(e) {
+                                    clip._htmlRendering = false;
+                                    console.warn('[HTMLClip] render error:', e.message);
                                 }
+                            }
+                            
+                            // Draw cached canvas
+                            if (clip._htmlCanvas) {
+                                ctx.drawImage(clip._htmlCanvas, -w/2, -h/2, w, h);
                             }
                         } else {
                             // Fallback: gray placeholder
@@ -7852,7 +7888,7 @@
                         clip.effects[effectName] = parseFloat(value);
                     }
                     
-                    if (clip.type === 'image' || clip.type === 'video' || clip.type === 'text' || clip.type === 'shape' || clip.type === 'scene') needsCanvasRedraw = true;
+                    if (clip.type === 'image' || clip.type === 'video' || clip.type === 'text' || clip.type === 'shape' || clip.type === 'scene' || clip.type === 'html') needsCanvasRedraw = true;
                     if (clip.type === 'text' || clip.type === 'shape') needsClipsRedraw = true;
                     if (clip.audioNodes) applyAudioEffects(clip);
 
@@ -9169,7 +9205,7 @@
             }
 
             const clip = State.clips.find(c => c.id === State.selectedClipId);
-            if (!clip || !['image', 'video', 'text', 'audio', 'shape', 'scene'].includes(clip.type)) {
+            if (!clip || !['image', 'video', 'text', 'audio', 'shape', 'scene', 'html'].includes(clip.type)) {
                 sidebarContent.className = "flex flex-col items-center justify-center p-4 w-full flex-1 min-h-0";
                 sidebarContent.innerHTML = `
                     <div class="flex flex-col items-center justify-center text-surface-500 dark:text-surface-300 py-16 h-full w-full">
@@ -10248,7 +10284,7 @@
                     `, { rightSlot: propSwitch('extrudeEnable', fx.extrudeEnable, `setClipEffect('${clip.id}', 'extrudeEnable', this.checked); updateSidebarPanel();`), bodyClass: !fx.extrudeEnable ? 'opacity-50 pointer-events-none' : '' }) : '';
 
             const blendOpacity = fx.opacity !== undefined ? fx.opacity : 100;
-            const blendingHTML = (clip.type === 'image' || clip.type === 'video' || clip.type === 'text' || clip.type === 'shape' || clip.type === 'scene') ? propCard('cardOpacity', 'layers', 'Opacity & Blending', `
+            const blendingHTML = (clip.type === 'image' || clip.type === 'video' || clip.type === 'text' || clip.type === 'shape' || clip.type === 'scene' || clip.type === 'html') ? propCard('cardOpacity', 'layers', 'Opacity & Blending', `
                         ${propRow('Opacity', propSlider('opacity', blendOpacity, 0, 100, 1, "this.value + '%'"), blendOpacity + '%', { reset: propReset('opacity', blendOpacity, 100) })}
                         <div>
                             <label for="${clip.id}_blendMode" class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1">Blend Mode</label>
@@ -10295,7 +10331,7 @@
                         </div>
                     `) : '';
 
-            let strokeHTML = (clip.type === 'text' || clip.type === 'shape' || clip.type === 'image' || clip.type === 'video') ? propCard('cardStroke', 'edit-3', 'Stroke & Outline', `
+            let strokeHTML = (clip.type === 'text' || clip.type === 'shape' || clip.type === 'image' || clip.type === 'video' || clip.type === 'html') ? propCard('cardStroke', 'edit-3', 'Stroke & Outline', `
                         ${colorRow('strokeColor', strokeColor, 'Stroke Color')}
                         ${propRow('Stroke Width', propSlider('strokeWidth', strokeWidth, 1, 50, 1, "this.value + 'px'"), strokeWidth + 'px', { reset: propReset('strokeWidth', strokeWidth, 4) })}
                     `, {
@@ -10403,7 +10439,7 @@
             const rotateVal = fx.rotate !== undefined ? fx.rotate : 0;
             const radiusVal = fx.borderRadius !== undefined ? fx.borderRadius : 0;
 
-            const transformHTML = (clip.type === 'image' || clip.type === 'video' || clip.type === 'text' || clip.type === 'shape' || clip.type === 'scene') ? propCard('cardTransform', 'maximize', 'Transform', `
+            const transformHTML = (clip.type === 'image' || clip.type === 'video' || clip.type === 'text' || clip.type === 'shape' || clip.type === 'scene' || clip.type === 'html') ? propCard('cardTransform', 'maximize', 'Transform', `
                         ${propRow('Scale', propSlider('scale', scaleVal, 0, 3, 0.05, "Number(this.value).toFixed(2) + 'x'"), Number(scaleVal).toFixed(2) + 'x', { reset: propReset('scale', scaleVal, 1) })}
                         ${propRow('Rotate', propSlider('rotate', rotateVal, 0, 360, 1, "this.value + '°'"), rotateVal + '°', { reset: propReset('rotate', rotateVal, 0) })}
                         ${((clip.type === 'shape' && fx.shapeType === 'rect') || (clip.type !== 'text' && clip.type !== 'shape')) ? propRow('Border Radius', propSlider('borderRadius', radiusVal, 0, 200, 1, "this.value + 'px'"), radiusVal + 'px', { reset: propReset('borderRadius', radiusVal, 0) }) : ''}
@@ -23020,7 +23056,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 effects: {
                     scale: 1, rotate: 0, offsetX: 0, offsetY: 0, opacity: 100,
                     strokeEnable: false, strokeColor: '#ffffff', strokeWidth: 4,
-                    shadowEnable: false, shadowColor: 'rgba(0,0,0,0.5)', shadowBlur: 20, shadowX: 0, shadowY: 10,
+                    shadowEnable: false, shadowColor: '#000000', shadowBlur: 20, shadowX: 0, shadowY: 10,
                     borderRadius: 0,
                     animIn: 'none', animOut: 'none', animLoop: 'none',
                     animInDur: 1.0, animOutDur: 1.0, animInDelay: 0, animOutDelay: 0, animInEase: 'easeOut',
@@ -28327,6 +28363,14 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             delete clip._mathLastExtrude;
             delete clip.__vecLastSprite;
             delete clip._mathPreview;
+            // HTML clip session-only refs: iframe/canvas don't survive serialization
+            if (clip.type === 'html') {
+                delete clip._htmlIframe;
+                delete clip._htmlCanvas;
+                delete clip._htmlReady;
+                delete clip._htmlSig;
+                delete clip._htmlRendering;
+            }
             // URL-based media needs no re-import: rebuild the element from the
             // persisted source URL and keep the clip live. data: URLs (pasted
             // clipboard images) survive refresh; http(s) URLs re-fetch (see
