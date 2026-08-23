@@ -1,0 +1,213 @@
+#!/usr/bin/env node
+
+/**
+ * StudioPro Code-to-Video Renderer
+ * 
+ * Renders a JavaScript composition file to MP4/WebM.
+ * The JS file uses the StudioPro API to define clips, animations, and effects.
+ * 
+ * Usage:
+ *   node render.js examples/product-launch.js
+ *   node render.js examples/social-reel.js output.mp4 --quality standard
+ *   node render.js examples/kinetic-text.js --format webm --mode ftrt
+ * 
+ * Default settings (if user doesn't specify):
+ *   Quality: ultra (30 Mbps)
+ *   Format: mp4
+ *   Mode: ftrt (fastest)
+ *   FPS: 30
+ */
+
+const path = require('path');
+const fs = require('fs');
+const { StudioPro } = require('./api');
+
+// ── Default settings ───────────────────────────────────────────────────────
+
+const DEFAULTS = {
+    quality: 'ultra',     // ultra=30Mbps, standard=15Mbps, draft=8Mbps
+    format: 'mp4',        // mp4 or webm
+    mode: 'ftrt',         // ftrt (fast) or standard (realtime)
+    fps: 30,
+    width: 1920,
+    height: 1080,
+    headless: true
+};
+
+// ── Parse arguments ────────────────────────────────────────────────────────
+
+function parseArgs(args) {
+    const result = {
+        script: null,
+        output: null,
+        options: { ...DEFAULTS }
+    };
+
+    for (let i = 0; i < args.length; i++) {
+        const arg = args[i];
+
+        if (arg === '--help' || arg === '-h') {
+            printHelp();
+            process.exit(0);
+        }
+
+        if (arg === '--quality' && args[i + 1]) {
+            result.options.quality = args[++i];
+        } else if (arg === '--format' && args[i + 1]) {
+            result.options.format = args[++i];
+        } else if (arg === '--mode' && args[i + 1]) {
+            result.options.mode = args[++i];
+        } else if (arg === '--fps' && args[i + 1]) {
+            result.options.fps = parseInt(args[++i]);
+        } else if (arg === '--no-headless') {
+            result.options.headless = false;
+        } else if (arg === '--url' && args[i + 1]) {
+            result.options.url = args[++i];
+        } else if (!arg.startsWith('-') && !result.script) {
+            result.script = arg;
+        } else if (!arg.startsWith('-') && !result.output) {
+            result.output = arg;
+        }
+    }
+
+    return result;
+}
+
+// ── Help text ──────────────────────────────────────────────────────────────
+
+function printHelp() {
+    console.log(`
+╔══════════════════════════════════════════════════════════════╗
+║  StudioPro Code-to-Video Renderer                          ║
+╠══════════════════════════════════════════════════════════════╣
+║                                                              ║
+║  Usage:                                                      ║
+║    node render.js <script.js> [output] [options]             ║
+║                                                              ║
+║  Arguments:                                                  ║
+║    script.js    JavaScript file defining the composition     ║
+║    output       Output filename (default: script.mp4)        ║
+║                                                              ║
+║  Options:                                                    ║
+║    --quality <draft|standard|ultra>  (default: ultra)        ║
+║    --format <mp4|webm>               (default: mp4)          ║
+║    --mode <ftrt|standard>            (default: ftrt)         ║
+║    --fps <30>                        (default: 30)           ║
+║    --no-headless                     Show browser window     ║
+║    --url <http://localhost:3000>     StudioPro URL           ║
+║    --help                            Show this help          ║
+║                                                              ║
+║  Quality presets:                                            ║
+║    draft     8 Mbps  — fast, smaller files                   ║
+║    standard  15 Mbps — balanced                              ║
+║    ultra     30 Mbps — highest quality                       ║
+║                                                              ║
+║  Examples:                                                   ║
+║    node render.js examples/product-launch.js                 ║
+║    node render.js examples/social-reel.js reel.mp4           ║
+║    node render.js examples/kinetic-text.js --format webm     ║
+║                                                              ║
+╚══════════════════════════════════════════════════════════════╝
+`);
+}
+
+// ── Main render function ───────────────────────────────────────────────────
+
+async function render(scriptPath, outputPath, options) {
+    // Validate script exists
+    if (!fs.existsSync(scriptPath)) {
+        console.error(`❌ Script not found: ${scriptPath}`);
+        process.exit(1);
+    }
+
+    // Generate output path if not provided
+    if (!outputPath) {
+        const scriptName = path.basename(scriptPath, '.js');
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        outputPath = `${scriptName}_${options.quality}_${options.fps}fps_${options.mode}_${options.format}`;
+    }
+
+    // Ensure output has correct extension
+    if (!outputPath.endsWith(`.${options.format}`)) {
+        outputPath = `${outputPath}.${options.format}`;
+    }
+
+    // Print render info
+    console.log(`
+╔══════════════════════════════════════════════════════════════╗
+║  StudioPro Code-to-Video                                    ║
+╠══════════════════════════════════════════════════════════════╣
+║  Script:  ${scriptPath.padEnd(48)}║
+║  Output:  ${outputPath.padEnd(48)}║
+║  Quality: ${options.quality.padEnd(48)}║
+║  Format:  ${options.format.padEnd(48)}║
+║  Mode:    ${options.mode.padEnd(48)}║
+║  FPS:     ${String(options.fps).padEnd(48)}║
+╚══════════════════════════════════════════════════════════════╝
+`);
+
+    const startTime = Date.now();
+
+    // Launch StudioPro
+    const studio = new StudioPro({
+        headless: options.headless,
+        url: options.url || DEFAULTS.url
+    });
+
+    try {
+        // 1. Launch browser
+        console.log('🚀 Launching Chrome...');
+        await studio.launch();
+
+        // 2. Execute the composition script
+        console.log('📝 Executing composition script...');
+        await studio.execute(scriptPath);
+
+        // 3. Export video
+        console.log('🎬 Exporting video...');
+        await studio.export(outputPath, options);
+
+        // 4. Calculate time taken
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        console.log(`
+╔══════════════════════════════════════════════════════════════╗
+║  ✅ Render Complete!                                        ║
+╠══════════════════════════════════════════════════════════════╣
+║  Output:   ${outputPath.padEnd(47)}║
+║  Time:     ${elapsed.padEnd(47)}s║
+║  Quality:  ${options.quality.padEnd(47)}║
+║  Format:   ${options.format.padEnd(47)}║
+╚══════════════════════════════════════════════════════════════╝
+`);
+
+    } catch (err) {
+        console.error(`\n❌ Render failed: ${err.message}`);
+        if (err.stack) console.error(err.stack);
+        process.exit(1);
+    } finally {
+        await studio.close();
+    }
+}
+
+// ── CLI entry ──────────────────────────────────────────────────────────────
+
+if (require.main === module) {
+    const args = process.argv.slice(2);
+
+    if (args.length === 0) {
+        printHelp();
+        process.exit(0);
+    }
+
+    const parsed = parseArgs(args);
+
+    if (!parsed.script) {
+        console.error('❌ No script specified');
+        console.error('Usage: node render.js <script.js> [output] [options]');
+        process.exit(1);
+    }
+
+    render(parsed.script, parsed.output, parsed.options);
+}
+
+module.exports = { render };
