@@ -159,8 +159,8 @@
                     <label class="px-3 py-1.5 text-[10px] font-bold text-surface-400 uppercase tracking-widest bg-surface-800 border-b border-surface-700 shrink-0 flex items-center gap-2">
                         <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> Live Preview
                     </label>
-                    <div class="flex-1 bg-surface-950 p-2 min-h-0 overflow-hidden flex items-center justify-center">
-                        <iframe id="htmlEditorPreview" class="w-full h-full border border-surface-700 rounded bg-white"></iframe>
+                    <div id="htmlEditorPreviewWrap" class="flex-1 bg-surface-950 p-2 min-h-0 overflow-hidden flex items-center justify-center">
+                        <iframe id="htmlEditorPreview" class="border border-surface-700 rounded bg-white"></iframe>
                     </div>
                 </div>
             </div>
@@ -23169,9 +23169,26 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             const js = document.getElementById('htmlEditorJS').value || '';
             const preview = document.getElementById('htmlEditorPreview');
             if (!preview) return;
+            // Match canvas aspect ratio (16:9 default) so preview looks like canvas
+            const aspectStr = ASPECT_RATIOS[State.preview.aspectIndex].value;
+            const [wr, hr] = aspectStr.split('/').map(Number);
+            const cw = 1920, ch = Math.round(1920 * hr / wr);
             // Use srcdoc to avoid cross-origin sandbox issues
-            const doc = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{width:100%;height:100%;overflow:hidden;background:#1e1b4b;}</style><style>${css}</style></head><body>${html}${js ? '<script>' + js + '<\/script>' : ''}</body></html>`;
+            const doc = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{width:${cw}px;height:${ch}px;overflow:hidden;background:#1e1b4b;transform-origin:0 0;}</style><style>${css}</style></head><body>${html}${js ? '<script>' + js + '<\/script>' : ''}</body></html>`;
             preview.srcdoc = doc;
+            // Scale iframe to fit container while preserving aspect ratio
+            requestAnimationFrame(() => {
+                const container = preview.parentElement;
+                if (!container) return;
+                const cw2 = container.clientWidth - 16;
+                const ch2 = container.clientHeight - 16;
+                const scale = Math.min(cw2 / cw, ch2 / ch);
+                preview.style.width = cw + 'px';
+                preview.style.height = ch + 'px';
+                preview.style.transform = `scale(${scale})`;
+                preview.style.transformOrigin = 'top left';
+                preview.style.margin = 'auto';
+            });
         }
 
         window._htmlEditorApplyPreset = function(key) {
