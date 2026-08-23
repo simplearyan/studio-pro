@@ -1,6 +1,9 @@
 # Code-to-Video Automation
 
 > Write JavaScript → Get video. No React, no build steps, no accounts.
+> Designed for AI agents to create videos programmatically.
+
+---
 
 ## Quick Start
 
@@ -13,6 +16,8 @@ node automation/code-to-video/render.js automation/code-to-video/examples/produc
 
 # 3. Output: product-launch_ultra_30fps_ftrt_mp4.mp4
 ```
+
+---
 
 ## How It Works
 
@@ -32,79 +37,79 @@ JS Composition File
    MP4/WebM file
 ```
 
-## Writing a Composition
+---
 
-### Option 1: Use the Composition API
+## AI Agent Workflow
+
+### Step 1: Read AGENTS.md
+
+Always read `skills/AGENTS.md` first. It contains:
+- Full API reference
+- Rules and constraints
+- Workflow steps
+- Tips and examples
+
+### Step 2: Read Design Tokens
+
+Read `templates/design-tokens.md` to know the visual style:
+- Colors (primary, secondary, accent)
+- Fonts (display, body)
+- Spacing (unit, padding)
+- Motion (easing, duration)
+
+### Step 3: Read a Skill Doc
+
+Read the appropriate skill based on the request:
+
+| Request | Skill File |
+|---|---|
+| "Create a product launch video" | `skills/product-launch.md` |
+| "Create a social media reel" | `skills/social-reel.md` |
+| "Create kinetic typography" | `skills/kinetic-text.md` |
+| "Create a [specific type]" | Write your own using the API |
+
+### Step 4: Write the Composition
 
 ```javascript
 // my-video.js
 module.exports = function(StudioPro, State) {
-    // Load fonts
-    StudioPro.fonts.loadGoogle('Poppins');
+    // 1. Load fonts
+    StudioPro.fonts.loadGoogleBatch(['Poppins', 'Inter']);
 
-    // Create the composition
+    // 2. Create composition
     StudioPro.createComposition({
         id: 'my-video',
-        duration: 10,
-        fps: 30,
+        duration: 15,
         clips: [
             StudioPro.html(
-                '<div class="card"><h1>Hello World</h1></div>',
+                '<div class="card"><h1>Hello</h1></div>',
                 '.card { background: linear-gradient(135deg, #667eea, #764ba2); }',
                 '',
                 { start: 0, duration: 5, fonts: ['Poppins'] }
             ),
             StudioPro.text('Welcome', {
-                start: 5,
-                duration: 5,
+                start: 5, duration: 5,
                 effects: { fontFamily: 'Poppins', fontSize: 72, fillColor: '#ffffff' }
             })
         ]
     });
 
-    // Apply animations
-    const clips = State.clips;
-    if (clips[0]) {
-        StudioPro.keyframes(clips[0], {
-            opacity: [{ frame: 0, value: 0 }, { frame: 15, value: 100 }],
-            scale: [{ frame: 0, value: 0.9 }, { frame: 15, value: 1.0 }]
-        });
-    }
-};
-```
-
-### Option 2: Use Helper Builders
-
-```javascript
-module.exports = function(StudioPro, State) {
-    // Build clips individually
-    const card = StudioPro.html(
-        '<div class="card">Product Launch</div>',
-        '.card { background: linear-gradient(135deg, #667eea, #764ba2); }',
-        '',
-        { start: 0, duration: 5 }
-    );
-
-    const title = StudioPro.text('Introducing ProductX', {
-        start: 2,
-        duration: 5,
-        effects: { fontFamily: 'Poppins', fontSize: 72 }
-    });
-
-    const logo = StudioPro.image('logo.png', {
-        start: 7,
-        duration: 3,
-        effects: { opacity: 0 }
-    });
-
-    // Create composition with all clips
-    StudioPro.createComposition({
-        id: 'product-launch',
-        duration: 15,
-        clips: [card, title, logo]
+    // 3. Apply animations
+    StudioPro.keyframes(State.clips[0], {
+        opacity: [{ frame: 0, value: 0 }, { frame: 15, value: 100 }],
+        scale: [{ frame: 0, value: 0.9 }, { frame: 15, value: 1.0 }]
     });
 };
 ```
+
+### Step 5: Export
+
+```bash
+node render.js my-video.js
+# Output: my-video_ultra_30fps_ftrt_mp4.mp4
+```
+
+---
 
 ## API Reference
 
@@ -180,6 +185,8 @@ StudioPro.fonts.cssImport('Poppins'); // @import url(...)
 StudioPro.fonts.linkTag('Poppins');   // <link rel="stylesheet" ...>
 ```
 
+---
+
 ## CLI Options
 
 ```bash
@@ -209,6 +216,8 @@ Options:
 | `ftrt` | 4× realtime | Fastest — frame-index loop, seek-and-capture |
 | `standard` | 1× realtime | Real-time — wall-clock playback |
 
+---
+
 ## Examples
 
 ### Product Launch (15s)
@@ -229,6 +238,70 @@ node render.js examples/kinetic-text.js kinetic.mp4 --quality standard
 ```
 Creates a 12-second kinetic typography video with spring animations.
 
+---
+
+## Skills
+
+Step-by-step workflows for specific video types:
+
+| Skill | File | Duration | Style |
+|---|---|---|---|
+| Product Launch | `skills/product-launch.md` | 10-15s | Professional, gradient |
+| Social Reel | `skills/social-reel.md` | 8-12s | Bold, fast-paced |
+| Kinetic Text | `skills/kinetic-text.md` | 10-15s | Animated typography |
+
+Each skill contains:
+- Overview of the video type
+- Step-by-step workflow
+- Timing guide
+- Style guide (colors, fonts, animations)
+- Customization tips
+
+---
+
+## Templates
+
+Reusable HTML/CSS/JS assets:
+
+| Template | File | Use Case |
+|---|---|---|
+| Gradient Card | `templates/gradient-card.html` | Product intros, CTAs |
+| Glassmorphism | `templates/glassmorphism.html` | Modern UI cards |
+| Premium Gradient | `templates/premium-gradient.html` | Wisteria mesh gradient |
+| Design Tokens | `templates/design-tokens.md` | Brand style definitions |
+
+---
+
+## Design Tokens
+
+Frame.md-style visual brand tokens:
+
+```markdown
+# Frame Design: Dark Modern
+
+## Colors
+- Primary: #667eea
+- Secondary: #764ba2
+- Background: #0a0a0f
+
+## Fonts
+- Display: Poppins (700)
+- Body: Inter (400)
+
+## Motion
+- Default Easing: easeOut
+- Default Duration: 0.5s
+```
+
+5 predefined token sets:
+- Dark Modern
+- Warm Gradient
+- Cool Professional
+- Minimal Light
+- Premium Mesh
+
+---
+
 ## File Structure
 
 ```
@@ -236,25 +309,39 @@ code-to-video/
 ├── README.md              # This file
 ├── api.js                 # Node.js API wrapper (Puppeteer)
 ├── render.js              # CLI entry point
+│
+├── skills/                # AI agent workflows
+│   ├── AGENTS.md          # Agent contract (read FIRST)
+│   ├── product-launch.md  # Skill: marketing videos
+│   ├── social-reel.md     # Skill: short-form social
+│   └── kinetic-text.md    # Skill: kinetic typography
+│
+├── templates/             # Reusable assets
+│   ├── design-tokens.md   # frame.md-style visual tokens
+│   ├── gradient-card.html # Gradient card template
+│   ├── glassmorphism.html # Glassmorphism card template
+│   └── premium-gradient.html # Wisteria mesh gradient
+│
 ├── examples/              # Example compositions
 │   ├── product-launch.js  # Product launch video
 │   ├── social-reel.js     # Vertical social reel
 │   └── kinetic-text.js    # Kinetic typography
-├── templates/             # Reusable HTML/CSS/JS templates
-│   └── (future: gradient-card.html, glassmorphism.html, etc.)
-├── skills/                # AI agent workflow docs
-│   └── (future: AGENTS.md, product-launch-video.md, etc.)
+│
 └── output/                # Rendered videos (gitignored)
 ```
+
+---
 
 ## For AI Agents
 
 This API is designed for AI agents to write videos programmatically:
 
-1. **Read the request** — "Create a 10-second product launch video"
-2. **Write a JS file** — Using `StudioPro.createComposition()` and `StudioPro.keyframes()`
-3. **Execute it** — `node render.js my-video.js`
-4. **Get the output** — MP4 file ready to share
+1. **Read AGENTS.md** — Learn the API
+2. **Read design tokens** — Know the visual style
+3. **Read a skill doc** — Follow the workflow
+4. **Write a JS file** — Using `StudioPro.createComposition()` and `StudioPro.keyframes()`
+5. **Execute it** — `node render.js my-video.js`
+6. **Get the output** — MP4 file ready to share
 
 The agent doesn't need to know about:
 - React or build steps
@@ -263,3 +350,30 @@ The agent doesn't need to know about:
 - Puppeteer or Chrome headless
 
 Just write JavaScript using the StudioPro API and let the automation handle the rest.
+
+---
+
+## Tips
+
+### Timing
+- **Scene 1 (Hook):** 2-3 seconds — grab attention
+- **Scene 2 (Value):** 3-5 seconds — show what it does
+- **Scene 3 (CTA):** 2-3 seconds — tell them what to do
+- **Total:** 10-15 seconds for most videos
+
+### Animations
+- **Fade in:** `animIn: 'fade'` — safe, professional
+- **Slide up:** `animIn: 'slideUp'` — dynamic, modern
+- **Zoom in:** `animIn: 'zoomIn'` — dramatic
+- **Spring:** Use `StudioPro.keyframes()` with spring easing for bouncy feel
+
+### Colors
+- **Dark backgrounds:** `#0a0a0f`, `#1a1a2e`, `#0b0b0f`
+- **Light text:** `#ffffff`, `#f0f0f0`
+- **Gradients:** Linear gradients with 2-3 colors
+- **Accents:** `#667eea`, `#764ba2`, `#f093fb`
+
+### Fonts
+- **Display:** Poppins, Space Grotesk, Montserrat
+- **Body:** Inter, Roboto, Open Sans
+- **Mono:** Fira Code, JetBrains Mono

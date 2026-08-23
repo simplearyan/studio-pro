@@ -18,13 +18,31 @@
  *   node render.js examples/product-launch.js
  */
 
-const puppeteer = require('puppeteer');
-const path = require('path');
-const fs = require('fs');
+import puppeteer from 'puppeteer-core';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
 
-// Find the StudioPro app URL
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Find the StudioPro app URL and Chrome path
 const STUDIO_PRO_URL = process.env.STUDIO_PRO_URL || 'http://localhost:3000';
-const CHROME_PATH = process.env.CHROME_PATH || undefined;
+
+// Try to read Chrome path from config.json
+let CHROME_PATH = process.env.CHROME_PATH || undefined;
+if (!CHROME_PATH) {
+    try {
+        const configPath = path.join(__dirname, '..', 'config.json');
+        if (fs.existsSync(configPath)) {
+            const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+            CHROME_PATH = config.chromePath;
+        }
+    } catch (e) {
+        // config.json not found, use default
+    }
+}
 
 class StudioPro {
     constructor(options = {}) {
@@ -76,25 +94,45 @@ class StudioPro {
         const scriptContent = fs.readFileSync(scriptPath, 'utf-8');
         console.log(`[StudioPro] Executing script: ${scriptPath}`);
 
-        // Execute the script in the browser context
-        // The script can use window.StudioPro directly
-        const result = await this.page.evaluate((code) => {
+        // Parse the function on the Node side, then pass to browser as string
+        // 1. Strip JSDoc comments, module.exports = / export default
+        let fnBody = scriptContent
+            .replace(/\/\*[\s\S]*?\*\//g, '')    // strip /* ... */
+            .replace(/\/\/.*$/gm, '')              // strip // ...
+            .replace(/\s*module\.exports\s*=\s*/g, '')
+            .replace(/\s*export\s+default\s+/g, '')
+            .replace(/;\s*$/, '')
+            .trim();
+
+        // 2. Convert 'function(StudioPro, State) { ... }' to arrow function string
+        let fnStr;
+        if (fnBody.startsWith('function')) {
+            // Find the first { and last } to extract params and body
+            const firstBrace = fnBody.indexOf('{');
+            const lastBrace = fnBody.lastIndexOf('}');
+            if (firstBrace !== -1 && lastBrace !== -1) {
+                const params = fnBody.substring(fnBody.indexOf('('), fnBody.indexOf(')') + 1);
+                const body = fnBody.substring(firstBrace, lastBrace + 1);
+                fnStr = `${params} => ${body}`;
+            } else {
+                fnStr = fnBody;
+            }
+        } else {
+            fnStr = fnBody;
+        }
+
+        console.log('[StudioPro] Transpiled function (first 200 chars):', fnStr.substring(0, 200));
+
+        // 3. Execute in browser: create the arrow function and call it
+        const result = await this.page.evaluate((fnCode) => {
             try {
-                // Create a function from the script code
-                const fn = new Function('StudioPro', 'State', `
-                    ${code}
-                `);
-                
-                // Execute with StudioPro API
-                const sp = window.StudioPro;
-                const state = window.State;
-                const composition = fn(sp, state);
-                
+                const scriptFn = new Function('return ' + fnCode)();
+                const composition = scriptFn(window.StudioPro, window.State);
                 return { success: true, composition };
             } catch (err) {
-                return { success: false, error: err.message };
+                return { success: false, error: err.message + ' | ' + err.stack };
             }
-        }, scriptContent);
+        }, fnStr);
 
         if (!result.success) {
             throw new Error(`Script execution failed: ${result.error}`);
@@ -153,42 +191,128 @@ class StudioPro {
         console.log(`[StudioPro] Exporting to ${outputPath}...`);
         console.log(`[StudioPro] Quality: ${quality}, Format: ${format}, Mode: ${mode}`);
 
-        // Trigger the export via the UI
-        // This simulates clicking the export button with the right options
-        const result = await this.page.evaluate(async (opts) => {
+        // Trigger the export via the UI (same flow as existing render.js)
+        const FORMAT_MAP = {
+            'mp4': 'video-mediabunny-mp4',
+            'webm': 'video-mediabunny',
+            'ftrt-mp4': 'video-ftrt-mp4',
+            'ftrt-webm': 'video-ftrt-webm',
+            'standard-mp4': 'video-mp4',
+            'standard-webm': 'video-webm'
+        };
+
+        const formatValue = FORMAT_MAP[`${mode}-${format}`] || FORMAT_MAP[format] || 'video-ftrt-mp4';
+
+        const result = await this.page.evaluate(async (params) => {
             try {
-                // Set export options
-                if (opts.quality) {
-                    const qualityBtn = document.querySelector(`[data-quality="${opts.quality}"]`);
-                    if (qualityBtn) qualityBtn.click();
-                }
+                // Check what functions are available
+                const funcs = {
+                    openExportModal: typeof openExportModal,
+                    submitExport: typeof submitExport,
+                    exportSelectOption: typeof exportSelectOption,
+                    setExportQuality: typeof setExportQuality,
+                    startExport: typeof startExport
+                };
 
-                // Click export button
-                const exportBtn = document.getElementById('btnExport');
-                if (!exportBtn) throw new Error('Export button not found');
-                exportBtn.click();
-
-                // Wait for export to start
+                // Open export modal
+                openExportModal();
                 await new Promise(r => setTimeout(r, 1000));
 
-                return { success: true, message: 'Export started' };
+                // Set radio buttons
+                function setRadio(name, value) {
+                    const radio = document.querySelector(`input[name="${name}"][value="${value}"]`);
+                    if (radio) {
+                        radio.checked = true;
+                        radio.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                }
+
+                setRadio('exportFormat', params.formatValue);
+                setRadio('exportResolution', '1920');
+                setRadio('exportFrameRate', '30');
+                if (params.quality && typeof setExportQuality === 'function') {
+                    setExportQuality(params.quality);
+                }
+                setRadio('exportScope', 'full');
+                if (typeof exportSelectOption === 'function') exportSelectOption();
+
+                await new Promise(r => setTimeout(r, 500));
+
+                // Click Start Export
+                if (typeof submitExport === 'function') {
+                    submitExport();
+                } else {
+                    throw new Error('submitExport not found');
+                }
+
+                // Wait a moment and check if export started
+                await new Promise(r => setTimeout(r, 1000));
+                const isExporting = window.State?.isExporting;
+
+                return { success: true, message: 'Export started', isExporting, funcs };
             } catch (err) {
                 return { success: false, error: err.message };
             }
-        }, { quality, format, mode });
+        }, { formatValue, quality });
 
         if (!result.success) {
             throw new Error(`Export failed: ${result.error}`);
         }
 
-        // Wait for export to complete (simplified — in real impl, monitor progress)
+        // Wait for export to complete (poll progress)
         console.log('[StudioPro] Export started, waiting for completion...');
-        await this.page.waitForFunction(
-            '!window.State || !window.State.isExporting',
-            { timeout: 300000 } // 5 minute timeout
-        );
+        const exportStart = Date.now();
+        let lastProgress = 0;
+        while (true) {
+            const status = await this.page.evaluate(() => ({
+                done: !window.State || !window.State.isExporting,
+                progress: parseInt(document.getElementById('exportProgressText')?.textContent) || 0,
+                currentTime: window.State?.currentTime || 0
+            }));
 
-        console.log(`[StudioPro] Export complete: ${outputPath}`);
+            if (status.done) break;
+
+            const p = status.progress;
+            if (p >= lastProgress + 10) {
+                lastProgress = p;
+                const elapsedSec = ((Date.now() - exportStart) / 1000).toFixed(0);
+                process.stdout.write(`\r   ${p}% (${elapsedSec}s)`);
+            }
+
+            await new Promise(r => setTimeout(r, 500));
+        }
+
+        const elapsed = ((Date.now() - exportStart) / 1000).toFixed(1);
+        console.log(`\n[StudioPro] Export complete in ${elapsed}s`);
+
+        // Wait for blob URL to be available
+        await new Promise(r => setTimeout(r, 1000));
+
+        // Capture the export blob via _exportDoneUrl
+        const blobData = await this.page.evaluate(async () => {
+            if (!window._exportDoneUrl) return { error: '_exportDoneUrl is null' };
+            try {
+                const resp = await fetch(window._exportDoneUrl);
+                const blob = await resp.blob();
+                return new Promise(resolve => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve({ data: reader.result, size: blob.size });
+                    reader.readAsDataURL(blob);
+                });
+            } catch (e) {
+                return { error: e.message };
+            }
+        });
+
+        if (blobData?.error) {
+            console.log(`[StudioPro] Blob capture failed: ${blobData.error}`);
+        } else if (blobData?.data) {
+            const base64 = blobData.data.split(',')[1];
+            const buffer = Buffer.from(base64, 'base64');
+            fs.writeFileSync(outputPath, buffer);
+            console.log(`[StudioPro] Saved: ${outputPath} (${(buffer.length / 1024 / 1024).toFixed(2)} MB)`);
+        }
+
         return outputPath;
     }
 
@@ -235,7 +359,7 @@ async function renderScript(scriptPath, outputPath, options = {}) {
 
 // ── CLI entry point ────────────────────────────────────────────────────────
 
-if (require.main === module) {
+if (process.argv[1] && process.argv[1].endsWith('api.js')) {
     const args = process.argv.slice(2);
 
     if (args.length < 1) {
@@ -276,4 +400,4 @@ Examples:
     renderScript(scriptPath, outputPath, options);
 }
 
-module.exports = { StudioPro, renderScript };
+export { StudioPro, renderScript };

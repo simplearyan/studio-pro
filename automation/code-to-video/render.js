@@ -18,9 +18,14 @@
  *   FPS: 30
  */
 
-const path = require('path');
-const fs = require('fs');
-const { StudioPro } = require('./api');
+import path from 'path';
+import fs from 'fs';
+import { StudioPro } from './api.js';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // ── Default settings ───────────────────────────────────────────────────────
 
@@ -191,7 +196,7 @@ async function render(scriptPath, outputPath, options) {
 
 // ── CLI entry ──────────────────────────────────────────────────────────────
 
-if (require.main === module) {
+if (process.argv[1] && process.argv[1].endsWith('render.js')) {
     const args = process.argv.slice(2);
 
     if (args.length === 0) {
@@ -210,4 +215,4 @@ if (require.main === module) {
     render(parsed.script, parsed.output, parsed.options);
 }
 
-module.exports = { render };
+export { render };

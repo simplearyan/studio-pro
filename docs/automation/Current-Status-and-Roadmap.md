@@ -1,18 +1,18 @@
 # StudioPro Automation — Current Status & Roadmap
 
-> **Date:** August 2026
-> **Purpose:** Authoritative document of what's built, what's planned, and the folder structure for two automation tracks: **Markdown → Video** and **Code → Video**.
+> **Date:** August 2026 (Updated)
+> **Purpose:** Authoritative document of what's built, what's planned, and the folder structure.
 
 ---
 
-## 1. Where We Are Now (Accurate as of August 2026)
+## 1. Where We Are Now
 
 ### ✅ Phase 0 — Determinism Foundation (DONE)
 
 | Feature | Status | Evidence |
 |---|---|---|
 | Time quantization | ✅ Done | `quantizeTimeToFrame()` in export loop |
-| Seeded shake | ✅ Done | `puzzleSeedFromId()` + `mulberry32` PRNG replaces `Math.random()` |
+| Seeded shake | ✅ Done | `puzzleSeedFromId()` + `mulberry32` PRNG |
 | Preview=render parity | ✅ Done | Same `drawCanvas()` path for both |
 | Font determinism audit | ✅ Done | Google + system fonts auto-inject into HTML clip iframes |
 
@@ -93,26 +93,64 @@
 | Default quality | ✅ Done | Ultra (30Mbps) |
 | Output file naming | ✅ Done | Includes quality, fps, mode, format, resolution |
 
+### ✅ Phase 7 — Composition API (DONE)
+
+| Feature | Status | Evidence |
+|---|---|---|
+| `StudioPro.createComposition()` | ✅ Done | One call creates entire video |
+| `StudioPro.text()` | ✅ Done | Text clip builder |
+| `StudioPro.html()` | ✅ Done | HTML clip builder |
+| `StudioPro.image()` | ✅ Done | Image clip builder |
+| `StudioPro.video()` | ✅ Done | Video clip builder |
+| `StudioPro.audio()` | ✅ Done | Audio clip builder |
+| `StudioPro.shape()` | ✅ Done | Shape clip builder |
+| `StudioPro.scene()` | ✅ Done | Scene clip builder |
+| Auto-track creation | ✅ Done | Creates tracks if not provided |
+| Auto-duration extension | ✅ Done | Extends project if clips exceed duration |
+
+### ✅ Phase 8 — Animation System (DONE)
+
+| Feature | Status | Evidence |
+|---|---|---|
+| `StudioPro.interpolate()` | ✅ Done | Frame → value mapping |
+| `StudioPro.spring()` | ✅ Done | Physics-based animation |
+| `StudioPro.keyframes()` | ✅ Done | Per-property keyframe animation |
+| `StudioPro.getKeyValue()` | ✅ Done | Read keyframe value at any frame |
+| Easing functions | ✅ Done | linear, easeIn, easeOut, easeInOut, cubic, bounce, elastic, spring |
+| Integration with `calculateAnimationState()` | ✅ Done | Keyframes override animation state |
+
+### ✅ Phase 9 — Code-to-Video Automation (DONE)
+
+| Feature | Status | Evidence |
+|---|---|---|
+| `automation/code-to-video/` folder | ✅ Done | Complete folder structure |
+| `api.js` | ✅ Done | Node.js Puppeteer wrapper |
+| `render.js` | ✅ Done | CLI entry point |
+| Example compositions | ✅ Done | 3 examples (product-launch, social-reel, kinetic-text) |
+| `skills/AGENTS.md` | ✅ Done | Agent contract with full API reference |
+| `skills/product-launch.md` | ✅ Done | Skill doc: marketing videos |
+| `skills/social-reel.md` | ✅ Done | Skill doc: short-form social |
+| `skills/kinetic-text.md` | ✅ Done | Skill doc: kinetic typography |
+| `templates/design-tokens.md` | ✅ Done | frame.md-style visual tokens (5 sets) |
+| `templates/gradient-card.html` | ✅ Done | Reusable gradient card template |
+| `templates/glassmorphism.html` | ✅ Done | Reusable glassmorphism template |
+| `templates/premium-gradient.html` | ✅ Done | Reusable Wisteria mesh gradient |
+
 ---
 
 ## 2. What's NOT Done (The Real Gaps)
 
 | # | Gap | Priority | Effort | Why It Matters |
 |---|---|---|---|---|
-| 1 | **Composition API** (`createComposition()` with clips array) | 🔴 High | 1-2 wks | Agents can't write entire videos — only individual clips |
-| 2 | **Animation interpolation** (`interpolate()`, `spring()`) | 🔴 High | 1-2 wks | No frame-level animation control from code |
-| 3 | **Transition system** (fade/slide/wipe between clips) | 🟡 Medium | 1 wk | Videos look amateur without transitions |
-| 4 | **Audio sync API** (`StudioPro.audio()`) | 🟡 Medium | 1 wk | No programmatic audio from code |
-| 5 | **Design template system** (`.sptpl` format) | 🟢 Low | 1-2 wks | Reusable brand looks |
-| 6 | **Agent skills** (documented workflows) | 🟢 Low | 1 wk | AI agents need instructions for common video types |
-| 7 | **Preview server** (hot reload while editing) | 🟢 Low | 1-2 wks | Better DX for code-to-video workflow |
-| 8 | **In-app AI panel** (BYO-key prompt → video) | 🟢 Low | 1-2 wks | The "wow" UX for non-technical users |
+| 1 | **Transitions** (fade/slide/wipe between clips) | 🔴 High | 1-2 days | Videos look amateur without transitions |
+| 2 | **More templates** (countdown, testimonial, stats) | 🟡 Medium | 1 day | More reusable assets for agents |
+| 3 | **More skills** (explainer, data-viz, testimonial) | 🟡 Medium | 1 day | More workflows for agents |
+| 4 | **Preview server** (hot reload while editing) | 🟢 Low | 1-2 days | Better DX for code-to-video |
+| 5 | **In-app AI panel** (BYO-key prompt → video) | 🟢 Low | 1-2 days | The "wow" UX |
 
 ---
 
-## 3. Folder Structure — Two Automation Tracks
-
-### Track A: Markdown → Video (Existing, Stable)
+## 3. Folder Structure
 
 ```
 automation/
@@ -120,7 +158,7 @@ automation/
 ├── config.json                  # Default settings
 ├── render.js                    # Main render script (Puppeteer + MediaBunny)
 ├── batch.js                     # Batch render multiple scripts
-├── package.json                 # Dependencies (puppeteer, mediabunny)
+├── package.json                 # Dependencies
 ├── package-lock.json
 ├── .gitignore
 │
@@ -139,222 +177,61 @@ automation/
 ├── output/                      # Rendered videos (gitignored)
 │   └── *.mp4, *.webm
 │
-└── tests/                       # Test scripts
-    └── test-export.js
+├── tests/                       # Test scripts
+│   └── test-export.js
+│
+└── code-to-video/               # NEW — Code → Video API
+    ├── README.md                # Full API reference
+    ├── api.js                   # Node.js Puppeteer wrapper
+    ├── render.js                # CLI entry point
+    │
+    ├── skills/                  # AI agent workflows
+    │   ├── AGENTS.md            # Agent contract (read FIRST)
+    │   ├── product-launch.md    # Skill: marketing videos
+    │   ├── social-reel.md       # Skill: short-form social
+    │   └── kinetic-text.md      # Skill: kinetic typography
+    │
+    ├── templates/               # Reusable assets
+    │   ├── design-tokens.md     # frame.md-style visual tokens
+    │   ├── gradient-card.html   # Gradient card template
+    │   ├── glassmorphism.html   # Glassmorphism card template
+    │   └── premium-gradient.html # Wisteria mesh gradient
+    │
+    ├── examples/                # Example compositions
+    │   ├── product-launch.js
+    │   ├── social-reel.js
+    │   └── kinetic-text.js
+    │
+    └── output/                  # Rendered videos (gitignored)
 ```
 
-**How it works:**
-1. Write a Markdown file with headings, images, text
+---
+
+## 4. The Two Automation Tracks
+
+### Track A: Markdown → Video (Stable, Done)
+1. Write Markdown file
 2. Run `node render.js scripts/product-launch.md`
-3. Puppeteer opens Chrome, loads StudioPro, compiles MD → clips
-4. MediaBunny exports to MP4/WebM at 4× realtime (FTRT)
+3. Puppeteer opens Chrome, compiles MD → clips
+4. MediaBunny exports to MP4 at 4× realtime
 
-### Track B: Code → Video (New, API-Driven)
-
-```
-automation/code-to-video/
-├── README.md                    # How to use Code → Video API
-├── api.js                       # StudioPro API wrapper for Node.js
-├── templates/                   # Reusable HTML/CSS/JS clip templates
-│   ├── gradient-card.html
-│   ├── glassmorphism.html
-│   ├── animated-text.html
-│   ├── product-showcase.html
-│   ├── data-chart.html
-│   └── premium-gradient.html
-│
-├── examples/                    # Example compositions
-│   ├── product-launch.js        # Full video: composition API + clips
-│   ├── social-reel.js           # Short-form content
-│   ├── explainer.js             # Tutorial/explainer video
-│   └── kinetic-text.js          # Text-heavy animations
-│
-├── skills/                      # AI agent skill docs
-│   ├── AGENTS.md                # Agent contract
-│   ├── product-launch-video.md  # Skill: marketing video workflow
-│   ├── faceless-explainer.md    # Skill: text-to-video
-│   ├── social-clips.md          # Skill: short-form content
-│   └── motion-graphics.md       # Skill: kinetic type, data viz
-│
-└── output/                      # Rendered videos (gitignored)
-```
-
-**How it works:**
-1. AI agent writes a JS file using `StudioPro.createComposition()` API
-2. Run `node automation/code-to-video/render.js examples/product-launch.js`
-3. Puppeteer opens Chrome, loads StudioPro, executes the composition
-4. MediaBunny exports to MP4 at FTRT speed
+### Track B: Code → Video (Done)
+1. AI agent writes JS file using `StudioPro.createComposition()` API
+2. Run `node code-to-video/render.js examples/product-launch.js`
+3. Puppeteer opens Chrome, executes composition
+4. MediaBunny exports to MP4 at 4× realtime
 
 ---
 
-## 4. The Code → Video API Design
+## 5. What "Done" Looks Like
 
-### Current API (Already Built)
+A user (or AI agent) can:
+1. Build a timeline in the GUI — or write Markdown — or write code
+2. Hit **Export** and get a deterministic MP4 **4× faster than real-time**
+3. Use `StudioPro.createComposition()` to write entire videos programmatically
+4. Use `StudioPro.interpolate()` / `StudioPro.spring()` for frame-level animation
+5. Use design tokens for consistent brand styling
+6. Follow skill docs for common video types
+7. Export with FTRT speed, quality presets, batch rendering
 
-```javascript
-// Load fonts
-StudioPro.fonts.loadGoogle('Poppins');
-StudioPro.fonts.loadGoogleBatch(['Inter', 'Roboto']);
-
-// Create an HTML clip
-StudioPro.createHtmlClip(
-  '<div class="card"><h1>Hello</h1></div>',
-  '.card { background: linear-gradient(135deg, #667eea, #764ba2); }',
-  '',
-  { fonts: ['Poppins'], start: 0, duration: 5 }
-);
-
-// Get project info
-StudioPro.project(); // { width: 1920, height: 1080, fps: 30, duration: 60 }
-```
-
-### Needed API (Next Phase)
-
-```javascript
-// Create a full composition (like Remotion's <Composition>)
-StudioPro.createComposition({
-  id: 'product-launch',
-  duration: 15,        // seconds
-  fps: 30,
-  width: 1920,
-  height: 1080,
-  backgroundColor: '#0b0b0f',
-  clips: [
-    { type: 'html', html: gradientCard, css: gradientCSS, start: 0, duration: 5 },
-    { type: 'text', text: 'Introducing ProductX', start: 2, duration: 5,
-      effects: { fontFamily: 'Poppins', fontSize: 72, fillColor: '#ffffff',
-                 animIn: 'fadeIn', animInDur: 1.0 } },
-    { type: 'image', src: 'logo.png', start: 7, duration: 3,
-      effects: { opacity: 0, animIn: 'fade', animInDur: 1.5 } }
-  ]
-});
-
-// Frame-level animation (like Remotion's interpolate())
-StudioPro.interpolate(frame, [0, 30], { from: 0, to: 1, easing: 'easeOut' });
-
-// Spring physics (like Remotion's spring())
-StudioPro.spring(frame, { from: 0, to: 1, damping: 10, mass: 0.5 });
-
-// Programmatic audio
-StudioPro.audio({
-  src: 'music.mp3',
-  start: 0,
-  duration: 15,
-  volume: 0.8,
-  fadeIn: 1.0,
-  fadeOut: 2.0
-});
-
-// Transitions between clips
-StudioPro.transition({
-  type: 'fade',       // fade, slide, wipe, zoom
-  duration: 0.5,
-  between: [clipA, clipB]
-});
-```
-
----
-
-## 5. Markdown → Video vs Code → Video — Comparison
-
-| Aspect | Markdown → Video | Code → Video |
-|---|---|---|
-| **Authoring** | Write plain Markdown | Write JavaScript/HTML/CSS |
-| **Learning curve** | Very low (anyone can write MD) | Medium (need JS knowledge) |
-| **Flexibility** | Limited to MD structure | Unlimited (full HTML/CSS/JS) |
-| **AI agent fit** | Good (LLMs write Markdown well) | Better (LLMs write code better) |
-| **Complex animations** | Not possible (static slides) | Full CSS animations + JS |
-| **Use cases** | Explainers, social posts, tutorials | Product launches, motion graphics, data viz |
-| **Speed** | Fast (simple MD → clips) | Fast (API → clips) |
-| **Export speed** | 4× realtime (FTRT) | 4× realtime (FTRT) |
-| **Current status** | ✅ Fully working | ✅ Basic HTML clips working, API partially built |
-| **Next step** | Polish + more templates | Composition API + animation system |
-
----
-
-## 6. Implementation Roadmap — What to Build Next
-
-### Phase 7: Composition API (1-2 weeks)
-
-**Goal:** AI agents can write entire videos programmatically.
-
-```javascript
-// This is the "Remotion moment" for StudioPro
-StudioPro.createComposition({
-  id: 'my-video',
-  duration: 15,
-  clips: [
-    { type: 'html', html: '...', css: '...', start: 0, duration: 5 },
-    { type: 'text', text: 'Hello', start: 2, duration: 3, effects: { animIn: 'fadeIn' } }
-  ]
-});
-```
-
-**Files to change:**
-- `index.html` — Add `createComposition()` to `window.StudioPro`
-- `automation/code-to-video/api.js` — Node.js wrapper
-- `automation/code-to-video/render.js` — CLI entry point
-
-### Phase 8: Animation System (1-2 weeks)
-
-**Goal:** Frame-level animation control from code.
-
-```javascript
-StudioPro.interpolate(frame, [0, 30], { from: 0, to: 1, easing: 'easeOut' });
-StudioPro.spring(frame, { from: 0, to: 1, damping: 10 });
-```
-
-**Files to change:**
-- `index.html` — Add `interpolate()`, `spring()`, `keyframes()` to API
-
-### Phase 9: Audio + Transitions (1 week)
-
-**Goal:** Complete video production from code.
-
-```javascript
-StudioPro.audio({ src: 'music.mp3', volume: 0.8 });
-StudioPro.transition({ type: 'fade', duration: 0.5 });
-```
-
-### Phase 10: Agent Skills + Templates (1 week)
-
-**Goal:** Documented workflows for AI agents.
-
-```
-automation/code-to-video/skills/
-├── AGENTS.md
-├── product-launch-video.md
-├── faceless-explainer.md
-├── social-clips.md
-└── motion-graphics.md
-```
-
----
-
-## 7. Decision: Should We Add More API?
-
-**Yes, but incrementally.**
-
-The current API (`StudioPro.fonts.*`, `StudioPro.createHtmlClip()`) is good for creating individual clips. What's missing is the **composition-level API** that lets agents write entire videos in one call.
-
-**Recommended approach:**
-1. **Don't rewrite** — extend `window.StudioPro` with new methods
-2. **Keep backward compatibility** — existing `createHtmlClip()` still works
-3. **Add composition API** — `createComposition()` is the main new feature
-4. **Add animation API** — `interpolate()`, `spring()` for frame-level control
-5. **Document everything** — both in README and in `skills/AGENTS.md`
-
----
-
-## 8. Summary
-
-| Category | Status | What's Next |
-|---|---|---|
-| **MD → Video** | ✅ Fully working | Polish, more templates |
-| **Code → Video** | ✅ Basic HTML clips | Composition API, animation system |
-| **StudioPro API** | ✅ Fonts + createHtmlClip | createComposition, interpolate, spring |
-| **Automation** | ✅ render.js + batch.js | code-to-video/render.js |
-| **Agent Skills** | ❌ Not built | AGENTS.md + workflow docs |
-| **Design Templates** | ❌ Not built | .sptpl format + gallery |
-
-**The honest answer:** We've done M0-M6 of the original plan. The remaining work (M7-M8: Composition API, Animation System, Agent Skills, Preview Server) is the "code-to-video" track that makes StudioPro as powerful as Remotion for AI agents — but without React, without build steps, and with our unique advantages (visual editor, premium gradients, multiple export modes).
+**That is the Remotion experience — but without React, without build steps, with a visual editor, and with our unique advantages (premium gradients, multiple export modes, no accounts).**
