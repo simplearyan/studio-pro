@@ -4071,6 +4071,41 @@
                 if (type === 'spin') animRot += clipTime * Math.PI;
             }
 
+            // ── M8: Keyframe Animation Override ────────────────────────────────
+            // If the clip has keyframes, they override the animation state
+            // This allows AI agents to set precise per-property animations
+            if (clip.keyframes && Object.keys(clip.keyframes).length > 0) {
+                // Calculate the absolute frame for this clip
+                const fps = State.fps || 30;
+                const absFrame = Math.round(clipTime * fps);
+
+                // Apply keyframe values for each property
+                for (const [prop, kfs] of Object.entries(clip.keyframes)) {
+                    if (!kfs || kfs.length === 0) continue;
+                    const value = StudioPro.getKeyValue(clip, prop, absFrame);
+                    if (value === undefined) continue;
+
+                    switch (prop) {
+                        case 'opacity': animAlpha = value / 100; break;
+                        case 'scale': animScale = value; break;
+                        case 'x': animX = value * w / 100; break;
+                        case 'y': animY = value * h / 100; break;
+                        case 'rotation': animRot = value * Math.PI / 180; break;
+                        case 'filter': {
+                            // Parse CSS filter string
+                            if (typeof value === 'string') {
+                                const blurMatch = value.match(/blur\((\d+(?:\.\d+)?)px\)/);
+                                if (blurMatch) {
+                                    // Apply blur via context filter (handled in drawCanvas)
+                                    clip._keyframeFilter = value;
+                                }
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+
             return { animAlpha, animScale, animX, animY, animRot, mosaicLevel, puzzleLevel, puzzleDir };
         }
 
@@ -6322,7 +6357,43 @@
                             
                             // Draw cached canvas — old frame stays visible until new render completes
                             if (clip._htmlCanvas) {
-                                ctx.drawImage(clip._htmlCanvas, -w/2, -h/2, w, h);
+                                const borderRadius = clip.effects.borderRadius !== undefined ? clip.effects.borderRadius : 0;
+                                // Apply border radius clipping like image/video clips
+                                if (borderRadius > 0 || clip.effects.shadowEnable) {
+                                    const offCanvas = createOffscreenCanvas(w, h);
+                                    const offCtx = offCanvas.getContext('2d');
+                                    if (borderRadius > 0) {
+                                        offCtx.beginPath();
+                                        if (offCtx.roundRect) offCtx.roundRect(0, 0, w, h, borderRadius);
+                                        else offCtx.rect(0, 0, w, h);
+                                        offCtx.clip();
+                                    }
+                                    offCtx.drawImage(clip._htmlCanvas, 0, 0, w, h);
+                                    if (clip.effects.shadowEnable) {
+                                        ctx.shadowColor = clip.effects.shadowColor || '#000000';
+                                        ctx.shadowBlur = clip.effects.shadowBlur || 20;
+                                        ctx.shadowOffsetX = clip.effects.shadowX || 0;
+                                        ctx.shadowOffsetY = clip.effects.shadowY || 10;
+                                    }
+                                    ctx.drawImage(offCanvas, -w/2, -h/2, w, h);
+                                    ctx.shadowColor = 'transparent';
+                                    ctx.shadowBlur = 0;
+                                } else {
+                                    ctx.drawImage(clip._htmlCanvas, -w/2, -h/2, w, h);
+                                }
+                                // Stroke/Outline for HTML clips (same as image/video)
+                                if (clip.effects.strokeEnable) {
+                                    ctx.strokeStyle = clip.effects.strokeColor || '#ffffff';
+                                    ctx.lineWidth = clip.effects.strokeWidth || 4;
+                                    ctx.lineJoin = 'round';
+                                    ctx.beginPath();
+                                    if (borderRadius > 0 && ctx.roundRect) {
+                                        ctx.roundRect(-w/2, -h/2, w, h, borderRadius);
+                                    } else {
+                                        ctx.rect(-w/2, -h/2, w, h);
+                                    }
+                                    ctx.stroke();
+                                }
                             }
                         } else {
                             // Fallback: gray placeholder
@@ -8237,7 +8308,375 @@
                 currentTime: State.currentTime,
                 clipCount: State.clips.length,
                 trackCount: State.tracks.length
-            })
+            }),
+
+            // ── M7: Composition API ─────────────────────────────────────────
+            // Create an entire video in one call — inspired by Remotion's <Composition>
+            createComposition: (config) => {
+                const { id, duration, fps, width, height, backgroundColor, clips: clipDefs = [], clearExisting = false } = config;
+
+                // 1. Update project settings
+                if (duration) State.duration = duration;
+                if (fps) State.fps = fps;
+                // Note: width/height are typically set at project creation, not changed here
+
+                // 2. Optionally clear existing clips
+                if (clearExisting) {
+                    State.clips = [];
+                    // Create fresh tracks
+                    State.tracks = [
+                        { id: 'track_video_1', type: 'video', label: 'Video 1', colorIndex: 0, order: 0, locked: false },
+                        { id: 'track_audio_1', type: 'audio', label: 'Audio 1', colorIndex: 3, order: 1, locked: false }
+                    ];
+                }
+
+                // 3. Create clips from definitions
+                const createdClips = [];
+                for (const def of clipDefs) {
+                    const clip = StudioPro._createClipFromDef(def);
+                    if (clip) {
+                        State.clips.push(clip);
+                        createdClips.push(clip);
+                    }
+                }
+
+                // 4. Update timeline and canvas
+                calcOverlaps();
+                renderClips();
+                needsCanvasRedraw = true;
+                drawCanvas();
+
+                console.log(`[StudioPro] Composition created: ${createdClips.length} clips, ${duration}s, ${fps || 30}fps`);
+                return createdClips;
+            },
+
+            // ── M7: Helper clip builders ─────────────────────────────────────
+            // Convenience methods to build clip definitions for createComposition()
+
+            /** Create a text clip definition */
+            text: (text, options = {}) => ({
+                type: 'text',
+                text,
+                ...options
+            }),
+
+            /** Create an HTML clip definition */
+            html: (html, css = '', js = '', options = {}) => ({
+                type: 'html',
+                html, css, js,
+                ...options
+            }),
+
+            /** Create an image clip definition */
+            image: (src, options = {}) => ({
+                type: 'image',
+                src,
+                ...options
+            }),
+
+            /** Create a video clip definition */
+            video: (src, options = {}) => ({
+                type: 'video',
+                src,
+                ...options
+            }),
+
+            /** Create an audio clip definition */
+            audio: (src, options = {}) => ({
+                type: 'audio',
+                src,
+                ...options
+            }),
+
+            /** Create a shape clip definition */
+            shape: (shapeType = 'rect', options = {}) => ({
+                type: 'shape',
+                shapeType,
+                ...options
+            }),
+
+            /** Create a scene clip definition */
+            scene: (options = {}) => ({
+                type: 'scene',
+                ...options
+            }),
+
+            // ── M7: Internal clip factory ────────────────────────────────────
+            _createClipFromDef: (def) => {
+                const type = def.type || 'text';
+                const trackType = (type === 'audio') ? 'audio' : 'video';
+
+                // Find or create a track
+                let trackId = def.trackId;
+                if (!trackId) {
+                    trackId = getAvailableTrack(trackType, def.start || State.currentTime, def.duration || 5);
+                }
+                let targetTrack = State.tracks.find(t => t.id === trackId);
+                if (!targetTrack) {
+                    // Create a new track
+                    const newTrack = {
+                        id: 'track_' + trackType + '_' + (State.tracks.length + 1),
+                        type: trackType,
+                        label: trackType === 'audio' ? 'Audio ' + (State.tracks.filter(t => t.type === 'audio').length + 1) : 'Video ' + (State.tracks.filter(t => t.type === 'video').length + 1),
+                        colorIndex: State.tracks.length % PALETTES.length,
+                        order: State.tracks.length,
+                        locked: false
+                    };
+                    State.tracks.push(newTrack);
+                    targetTrack = newTrack;
+                    trackId = newTrack.id;
+                }
+
+                const clipColor = (targetTrack.colorIndex + (State.clips.length % 6)) % PALETTES.length;
+                const startTime = def.start !== undefined ? def.start : State.currentTime;
+                const duration = def.duration || 5;
+
+                // Base clip object
+                const baseClip = {
+                    id: type.substr(0, 3) + '_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+                    sceneId: State.activeSceneId || null,
+                    trackId: trackId,
+                    colorIndex: clipColor,
+                    type: type,
+                    title: def.title || (type.charAt(0).toUpperCase() + type.slice(1) + ' Clip'),
+                    start: startTime,
+                    duration: duration,
+                    effects: {
+                        scale: 1, rotate: 0, offsetX: 0, offsetY: 0, opacity: 100,
+                        strokeEnable: false, strokeColor: '#ffffff', strokeWidth: 4,
+                        shadowEnable: false, shadowColor: '#000000', shadowBlur: 20, shadowX: 0, shadowY: 10,
+                        borderRadius: 0,
+                        animIn: 'none', animOut: 'none', animLoop: 'none',
+                        animInDur: 1.0, animOutDur: 1.0, animInDelay: 0, animOutDelay: 0, animInEase: 'easeOut',
+                        animSlideDir: 'up', animSlideOffCanvas: true,
+                        blendMode: 'source-over'
+                    },
+                    keyframes: {}
+                };
+
+                // Apply user effects override
+                if (def.effects) {
+                    Object.assign(baseClip.effects, def.effects);
+                }
+
+                // Apply animation presets
+                if (def.animIn) baseClip.effects.animIn = def.animIn;
+                if (def.animInDur) baseClip.effects.animInDur = def.animInDur;
+                if (def.animOut) baseClip.effects.animOut = def.animOut;
+                if (def.animOutDur) baseClip.effects.animOutDur = def.animOutDur;
+                if (def.animInDelay) baseClip.effects.animInDelay = def.animInDelay;
+                if (def.animInEase) baseClip.effects.animInEase = def.animInEase;
+
+                // Type-specific properties
+                switch (type) {
+                    case 'html':
+                        baseClip.html = def.html || '';
+                        baseClip.css = def.css || '';
+                        baseClip.js = def.js || '';
+                        baseClip.fonts = def.fonts || [];
+                        baseClip.renderWidth = 1920;
+                        baseClip.renderHeight = 1080;
+                        baseClip.backgroundColor = 'transparent';
+                        break;
+
+                    case 'text':
+                        baseClip.text = def.text || '';
+                        baseClip.fontSize = def.fontSize || 48;
+                        baseClip.fontFamily = def.fontFamily || 'Inter';
+                        baseClip.fillColor = def.fillColor || '#ffffff';
+                        baseClip.textAlign = def.textAlign || 'center';
+                        baseClip.lineHeight = def.lineHeight || 1.4;
+                        baseClip.letterSpacing = def.letterSpacing || 0;
+                        baseClip.padding = def.padding || 40;
+                        break;
+
+                    case 'image':
+                        // For images, we need to load the source
+                        baseClip.src = def.src || '';
+                        baseClip.objectFit = def.objectFit || 'cover';
+                        break;
+
+                    case 'video':
+                        baseClip.src = def.src || '';
+                        baseClip.objectFit = def.objectFit || 'cover';
+                        baseClip.speed = def.speed || 1;
+                        break;
+
+                    case 'audio':
+                        baseClip.src = def.src || '';
+                        baseClip.volume = def.volume !== undefined ? def.volume : 1;
+                        break;
+
+                    case 'shape':
+                        baseClip.shapeType = def.shapeType || 'rect';
+                        baseClip.fillColor = def.fillColor || '#667eea';
+                        baseClip.width = def.width || 400;
+                        baseClip.height = def.height || 300;
+                        break;
+
+                    case 'scene':
+                        baseClip.sceneId = def.sceneId || null;
+                        break;
+                }
+
+                // Apply user-specified start and duration
+                if (def.start !== undefined) baseClip.start = def.start;
+                if (def.duration !== undefined) baseClip.duration = def.duration;
+
+                // Extend project duration if needed
+                if (baseClip.start + baseClip.duration > State.duration) {
+                    State.duration = Math.ceil(baseClip.start + baseClip.duration + 10);
+                    updateTimelineWidth();
+                }
+
+                return baseClip;
+            },
+
+            // ── M8: Animation System ──────────────────────────────────────────
+            // Frame-level animation control — inspired by Remotion's interpolate()
+
+            /**
+             * Map a frame number to a value within a range.
+             * @param {number} frame - Current frame number
+             * @param {number[]} inputRange - [startFrame, endFrame]
+             * @param {object} config - { from, to, easing, extrapolateLeft, extrapolateRight }
+             * @returns {number} Interpolated value
+             */
+            interpolate: (frame, inputRange, config) => {
+                const { from, to, easing = 'linear', extrapolateLeft = 'extend', extrapolateRight = 'extend' } = config;
+                const [startFrame, endFrame] = inputRange;
+
+                // Handle extrapolation before range
+                if (frame < startFrame) {
+                    if (extrapolateLeft === 'clamp') return from;
+                    // extend: continue the trend
+                    const trendFrame = startFrame + 1;
+                    const trendValue = from + (to - from) * StudioPro._applyEasing(0, easing);
+                    const slope = (trendValue - from);
+                    return from + slope * (frame - startFrame);
+                }
+
+                // Handle extrapolation after range
+                if (frame > endFrame) {
+                    if (extrapolateRight === 'clamp') return to;
+                    // extend: continue the trend
+                    const trendFrame = endFrame - 1;
+                    const trendValue = from + (to - from) * StudioPro._applyEasing(1, easing);
+                    const slope = (to - trendValue);
+                    return to + slope * (frame - endFrame);
+                }
+
+                // Normalize frame to 0-1
+                const progress = (frame - startFrame) / (endFrame - startFrame);
+
+                // Apply easing
+                const easedProgress = StudioPro._applyEasing(progress, easing);
+
+                // Interpolate
+                return from + (to - from) * easedProgress;
+            },
+
+            /**
+             * Physics-based spring animation.
+             * @param {number} frame - Current frame number
+             * @param {object} config - { from, to, fps, config: { damping, mass, stiffness } }
+             * @returns {number} Spring value
+             */
+            spring: (frame, config) => {
+                const { from = 0, to = 1, fps = 30, config: springConfig = {} } = config;
+                const { damping = 10, mass = 1, stiffness = 100 } = springConfig;
+
+                const t = frame / fps; // Convert frames to seconds
+
+                // Spring physics
+                const omega = Math.sqrt(stiffness / mass);
+                const zeta = damping / (2 * Math.sqrt(stiffness * mass));
+
+                let value;
+                if (zeta < 1) {
+                    // Underdamped (bouncy)
+                    const omegaD = omega * Math.sqrt(1 - zeta * zeta);
+                    value = 1 - Math.exp(-zeta * omega * t) * (
+                        Math.cos(omegaD * t) + (zeta * omega / omegaD) * Math.sin(omegaD * t)
+                    );
+                } else {
+                    // Critically damped or overdamped
+                    value = 1 - (1 + omega * t) * Math.exp(-omega * t);
+                }
+
+                return from + (to - from) * value;
+            },
+
+            /**
+             * Apply per-property keyframe animation to a clip.
+             * @param {object} clip - The clip object
+             * @param {object} keyframes - { propertyName: [{ frame, value, easing? }, ...] }
+             */
+            keyframes: (clip, keyframesMap) => {
+                if (!clip) return;
+                if (!clip.keyframes) clip.keyframes = {};
+                Object.assign(clip.keyframes, keyframesMap);
+                needsCanvasRedraw = true;
+                drawCanvas();
+            },
+
+            /**
+             * Get the interpolated value of a clip's property at a given frame.
+             * Used internally by calculateAnimationState()
+             */
+            getKeyValue: (clip, property, frame) => {
+                if (!clip.keyframes || !clip.keyframes[property]) return undefined;
+                const kfs = clip.keyframes[property];
+                if (!kfs || kfs.length === 0) return undefined;
+
+                // Sort keyframes by frame
+                const sorted = [...kfs].sort((a, b) => a.frame - b.frame);
+
+                // Before first keyframe
+                if (frame <= sorted[0].frame) return sorted[0].value;
+
+                // After last keyframe
+                if (frame >= sorted[sorted.length - 1].frame) return sorted[sorted.length - 1].value;
+
+                // Find surrounding keyframes
+                for (let i = 0; i < sorted.length - 1; i++) {
+                    const kf1 = sorted[i];
+                    const kf2 = sorted[i + 1];
+                    if (frame >= kf1.frame && frame <= kf2.frame) {
+                        const progress = (frame - kf1.frame) / (kf2.frame - kf1.frame);
+                        const easing = kf2.easing || kf1.easing || 'linear';
+                        const easedProgress = StudioPro._applyEasing(progress, easing);
+                        return kf1.value + (kf2.value - kf1.value) * easedProgress;
+                    }
+                }
+
+                return sorted[0].value;
+            },
+
+            // ── Internal easing helper ────────────────────────────────────────
+            _applyEasing: (t, easing) => {
+                switch (easing) {
+                    case 'linear': return t;
+                    case 'easeIn': return t * t;
+                    case 'easeOut': return t * (2 - t);
+                    case 'easeInOut': return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+                    case 'easeInCubic': return t * t * t;
+                    case 'easeOutCubic': return (--t) * t * t + 1;
+                    case 'easeInOutCubic': return t < 0.5 ? 4 * t * t * t : (t - 1) * (2 * t - 2) * (2 * t - 2) + 1;
+                    case 'bounce': {
+                        if (t < 1 / 2.75) return 7.5625 * t * t;
+                        if (t < 2 / 2.75) return 7.5625 * (t -= 1.5 / 2.75) * t + 0.75;
+                        if (t < 2.5 / 2.75) return 7.5625 * (t -= 2.25 / 2.75) * t + 0.9375;
+                        return 7.5625 * (t -= 2.625 / 2.75) * t + 0.984375;
+                    }
+                    case 'elastic': {
+                        if (t === 0 || t === 1) return t;
+                        return -Math.pow(2, 10 * (t - 1)) * Math.sin((t - 1.1) * 5 * Math.PI);
+                    }
+                    case 'spring': return 1 - Math.cos(t * Math.PI * 0.5);
+                    default: return t;
+                }
+            }
         };
         console.log('[StudioPro] API available at window.StudioPro — use StudioPro.fonts.loadGoogle("Poppins") to load fonts');
 
