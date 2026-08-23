@@ -159,8 +159,8 @@
                     <label class="px-3 py-1.5 text-[10px] font-bold text-surface-400 uppercase tracking-widest bg-surface-800 border-b border-surface-700 shrink-0 flex items-center gap-2">
                         <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> Live Preview
                     </label>
-                    <div id="htmlEditorPreviewWrap" class="flex-1 bg-surface-950 p-3 min-h-0 overflow-y-auto flex items-center justify-center">
-                        <iframe id="htmlEditorPreview" class="border border-surface-700 rounded bg-white max-h-full"></iframe>
+                    <div id="htmlEditorPreviewWrap" class="flex-1 bg-surface-950 p-3 min-h-0 flex items-center justify-center overflow-hidden">
+                        <iframe id="htmlEditorPreview" class="border border-surface-700 rounded bg-white" style="width:100%;max-height:100%;"></iframe>
                     </div>
                 </div>
             </div>
@@ -23174,16 +23174,17 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             const aspectStr = ASPECT_RATIOS[State.preview.aspectIndex].value;
             const [wr, hr] = aspectStr.split('/').map(Number);
             const canvasAspect = wr / hr;
-            // Set wrapper to canvas aspect ratio, iframe fills it
-            wrap.style.aspectRatio = `${wr} / ${hr}`;
-            wrap.style.width = '100%';
-            wrap.style.height = 'auto';
-            wrap.style.maxHeight = '100%';
-            preview.style.width = '100%';
-            preview.style.height = '100%';
-            preview.style.transform = '';
+            // Size iframe to fill container width, height based on aspect ratio
+            requestAnimationFrame(() => {
+                const containerW = wrap.clientWidth - 24; // padding
+                const containerH = wrap.clientHeight - 24;
+                let w = containerW;
+                let h = w / canvasAspect;
+                if (h > containerH) { h = containerH; w = h * canvasAspect; }
+                preview.style.width = Math.floor(w) + 'px';
+                preview.style.height = Math.floor(h) + 'px';
+            });
             // Render at canvas resolution for pixel-accurate preview
-            const cw = 1920, ch = Math.round(1920 * hr / wr);
             const doc = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>*{margin:0;padding:0;box-sizing:border-box;}html,body{width:100%;height:100%;overflow:hidden;background:#1e1b4b;}</style><style>${css}</style></head><body>${html}${js ? '<script>' + js + '<\/script>' : ''}</body></html>`;
             preview.srcdoc = doc;
         }
