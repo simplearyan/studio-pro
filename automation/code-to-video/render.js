@@ -162,25 +162,28 @@ async function render(scriptPath, outputPath, options) {
 `);
 
     const startTime = Date.now();
+    const maxRetries = options.retries || 3;
 
-    // Launch StudioPro
-    const studio = new StudioPro({
-        headless: options.headless,
-        url: options.url || DEFAULTS.url
-    });
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        // Launch StudioPro
+        const studio = new StudioPro({
+            headless: options.headless,
+            url: options.url || DEFAULTS.url,
+            retries: maxRetries
+        });
 
-    try {
-        // 1. Launch browser
-        console.log('🚀 Launching Chrome...');
-        await studio.launch();
+        try {
+            // 1. Launch browser
+            console.log('🚀 Launching Chrome...');
+            await studio.launch();
 
-        // 2. Execute the composition script
-        console.log('📝 Executing composition script...');
-        await studio.execute(scriptPath);
+            // 2. Execute the composition script
+            console.log('📝 Executing composition script...');
+            await studio.execute(scriptPath);
 
-        // 3. Export video
-        console.log('🎬 Exporting video...');
-        await studio.export(outputPath, options);
+            // 3. Export video
+            console.log('🎬 Exporting video...');
+            await studio.export(outputPath, options);
 
         // 4. Calculate time taken
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
@@ -196,11 +199,22 @@ async function render(scriptPath, outputPath, options) {
 `);
 
     } catch (err) {
-        console.error(`\n❌ Render failed: ${err.message}`);
+        console.error(`\n❌ Render failed (attempt ${attempt}/${maxRetries}): ${err.message}`);
+        
+        if (attempt < maxRetries) {
+            console.log(`\n🔄 Retrying in 2 seconds...`);
+            await new Promise(r => setTimeout(r, 2000));
+            continue;
+        }
+        
+        console.error('\n❌ All attempts failed');
         if (err.stack) console.error(err.stack);
         process.exit(1);
     } finally {
         await studio.close();
+    }
+    
+    break; // Success — exit loop
     }
 }
 
