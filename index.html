@@ -117,6 +117,56 @@
     <!-- Drag Tooltip (fixed positioning to prevent clipping under toolbar / ruler) -->
     <div id="dragTooltip" class="fixed z-[9999] bg-surface-900 text-white text-[10px] font-bold px-2 py-1 rounded shadow-lg border border-surface-700 pointer-events-none hidden" style="transform: translate(-50%, -100%); margin-top: -8px;"></div>
 
+    <!-- HTML Code Editor Modal -->
+    <div id="htmlEditorModal" class="fixed inset-0 bg-surface-950/80 backdrop-blur-sm z-[110] hidden flex-col p-3 sm:p-4 transition-all duration-300">
+        <div class="bg-surface-900 rounded-xl shadow-2xl flex flex-col w-full max-w-6xl h-[90dvh] m-auto border border-surface-700 overflow-hidden">
+            <!-- Header -->
+            <div class="flex items-center justify-between px-4 py-2.5 bg-surface-800 border-b border-surface-700 shrink-0">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="code" class="w-4 h-4 text-brand-400"></i>
+                    <span class="text-sm font-bold text-white">HTML Code Editor</span>
+                    <span id="htmlEditorClipName" class="text-xs text-surface-400"></span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="_htmlEditorApplyPreset('gradientCard')" class="px-2 py-1 text-[10px] font-bold bg-surface-700 hover:bg-surface-600 rounded text-surface-300 transition-colors">Gradient</button>
+                    <button onclick="_htmlEditorApplyPreset('glassmorphism')" class="px-2 py-1 text-[10px] font-bold bg-surface-700 hover:bg-surface-600 rounded text-surface-300 transition-colors">Glass</button>
+                    <button onclick="_htmlEditorApplyPreset('minimal')" class="px-2 py-1 text-[10px] font-bold bg-surface-700 hover:bg-surface-600 rounded text-surface-300 transition-colors">Minimal</button>
+                    <button onclick="_htmlEditorApplyPreset('dataViz')" class="px-2 py-1 text-[10px] font-bold bg-surface-700 hover:bg-surface-600 rounded text-surface-300 transition-colors">Chart</button>
+                    <div class="w-px h-5 bg-surface-600 mx-1"></div>
+                    <button onclick="closeHtmlEditor(false)" class="px-3 py-1.5 text-xs font-bold bg-surface-700 hover:bg-surface-600 rounded text-surface-300 transition-colors">Cancel</button>
+                    <button onclick="closeHtmlEditor(true)" class="px-3 py-1.5 text-xs font-bold bg-brand-600 hover:bg-brand-500 rounded text-white transition-colors">Apply</button>
+                </div>
+            </div>
+            <!-- Body: editors + preview -->
+            <div class="flex-1 flex min-h-0 flex-col sm:flex-row">
+                <!-- Code panels -->
+                <div class="flex flex-col w-full sm:w-1/2 border-r border-surface-700 min-h-0">
+                    <div class="flex flex-col flex-1 min-h-0">
+                        <label class="px-3 py-1.5 text-[10px] font-bold text-surface-400 uppercase tracking-widest bg-surface-800 border-b border-surface-700 shrink-0">HTML</label>
+                        <textarea id="htmlEditorHTML" class="flex-1 w-full bg-surface-900 p-3 text-xs font-mono text-green-300 outline-none resize-none min-h-0" spellcheck="false" placeholder="<div>Your HTML here</div>"></textarea>
+                    </div>
+                    <div class="flex flex-col flex-1 min-h-0 border-t border-surface-700">
+                        <label class="px-3 py-1.5 text-[10px] font-bold text-surface-400 uppercase tracking-widest bg-surface-800 border-b border-surface-700 shrink-0">CSS</label>
+                        <textarea id="htmlEditorCSS" class="flex-1 w-full bg-surface-900 p-3 text-xs font-mono text-blue-300 outline-none resize-none min-h-0" spellcheck="false" placeholder=".class { color: red; }"></textarea>
+                    </div>
+                    <div class="flex flex-col h-28 border-t border-surface-700 shrink-0">
+                        <label class="px-3 py-1.5 text-[10px] font-bold text-surface-400 uppercase tracking-widest bg-surface-800 border-b border-surface-700 shrink-0">JavaScript <span class="text-surface-600">(optional)</span></label>
+                        <textarea id="htmlEditorJS" class="flex-1 w-full bg-surface-900 p-3 text-xs font-mono text-yellow-300 outline-none resize-none" spellcheck="false" placeholder="/* Animation logic */"></textarea>
+                    </div>
+                </div>
+                <!-- Live preview -->
+                <div class="flex flex-col w-full sm:w-1/2 min-h-0">
+                    <label class="px-3 py-1.5 text-[10px] font-bold text-surface-400 uppercase tracking-widest bg-surface-800 border-b border-surface-700 shrink-0 flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> Live Preview
+                    </label>
+                    <div class="flex-1 bg-surface-950 p-2 min-h-0 overflow-hidden flex items-center justify-center">
+                        <iframe id="htmlEditorPreview" class="w-full h-full border border-surface-700 rounded bg-white" sandbox="allow-scripts"></iframe>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Export Overlay -->
     <div id="exportOverlay" class="fixed inset-0 bg-surface-950/80 backdrop-blur-sm z-[100] hidden flex-col items-center overflow-y-auto p-4 py-6 transition-all duration-300">
         
@@ -11929,7 +11979,12 @@
                         <details id="cardHtmlContent" class="group bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 shadow-sm rounded-lg shrink-0 w-full overflow-hidden flex flex-col" open>
                             <summary class="flex items-center justify-between px-3 py-2 cursor-pointer list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700">
                                 <div class="text-sm font-bold text-surface-800 dark:text-surface-200 flex items-center gap-2"><i data-lucide="code" class="w-4 h-4 text-surface-500 dark:text-surface-300"></i> HTML Content</div>
-                                <i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>
+                                <div class="flex items-center gap-1">
+                                    <button onclick="event.preventDefault();event.stopPropagation();openHtmlEditor('${clip.id}')" class="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-600 transition-colors" title="Open code editor">
+                                        <i data-lucide="maximize-2" class="w-3.5 h-3.5 text-surface-500 dark:text-surface-300"></i>
+                                    </button>
+                                    <i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>
+                                </div>
                             </summary>
                             <div class="px-3 py-2 flex flex-col gap-2 bg-surface-50 dark:bg-surface-900/50 flex-1">
                                 <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">HTML</label>
@@ -23051,6 +23106,96 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             
             updateSidebarPanel();
             drawCanvas();
+        };
+
+        // ── HTML Code Editor Modal ────────────────────────────────────────────
+        let _htmlEditorClipId = null;
+        let _htmlEditorLiveTimer = null;
+
+        window.openHtmlEditor = function(clipId) {
+            const clip = State.clips.find(c => c.id === clipId);
+            if (!clip || clip.type !== 'html') return;
+            _htmlEditorClipId = clipId;
+            const modal = document.getElementById('htmlEditorModal');
+            const htmlTA = document.getElementById('htmlEditorHTML');
+            const cssTA = document.getElementById('htmlEditorCSS');
+            const jsTA = document.getElementById('htmlEditorJS');
+            const preview = document.getElementById('htmlEditorPreview');
+            document.getElementById('htmlEditorClipName').textContent = clip.name || 'HTML Clip';
+            htmlTA.value = clip.html || '';
+            cssTA.value = clip.css || '';
+            jsTA.value = clip.js || '';
+            // Show modal
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            // Initial preview render
+            _updateHtmlEditorPreview();
+            // Live preview on input
+            const liveUpdate = () => _updateHtmlEditorPreview();
+            htmlTA.addEventListener('input', liveUpdate);
+            cssTA.addEventListener('input', liveUpdate);
+            jsTA.addEventListener('input', liveUpdate);
+            // Store refs for cleanup
+            htmlTA._liveHandler = liveUpdate;
+            cssTA._liveHandler = liveUpdate;
+            jsTA._liveHandler = liveUpdate;
+            // Re-init lucide icons in modal
+            if (window.lucide) lucide.createIcons();
+        };
+
+        window.closeHtmlEditor = function(apply) {
+            const modal = document.getElementById('htmlEditorModal');
+            const htmlTA = document.getElementById('htmlEditorHTML');
+            const cssTA = document.getElementById('htmlEditorCSS');
+            const jsTA = document.getElementById('htmlEditorJS');
+            // Clean up event listeners
+            if (htmlTA._liveHandler) { htmlTA.removeEventListener('input', htmlTA._liveHandler); delete htmlTA._liveHandler; }
+            if (cssTA._liveHandler) { cssTA.removeEventListener('input', cssTA._liveHandler); delete cssTA._liveHandler; }
+            if (jsTA._liveHandler) { jsTA.removeEventListener('input', jsTA._liveHandler); delete jsTA._liveHandler; }
+            if (apply && _htmlEditorClipId) {
+                const clip = State.clips.find(c => c.id === _htmlEditorClipId);
+                if (clip) {
+                    clip.html = htmlTA.value;
+                    clip.css = cssTA.value;
+                    clip.js = jsTA.value;
+                    clip._htmlSig = '';
+                    clip._htmlCanvas = null;
+                    updateSidebarPanel();
+                    drawCanvas();
+                }
+            }
+            _htmlEditorClipId = null;
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        };
+
+        function _updateHtmlEditorPreview() {
+            const html = document.getElementById('htmlEditorHTML').value || '';
+            const css = document.getElementById('htmlEditorCSS').value || '';
+            const js = document.getElementById('htmlEditorJS').value || '';
+            const preview = document.getElementById('htmlEditorPreview');
+            if (!preview) return;
+            try {
+                const doc = preview.contentDocument || preview.contentWindow.document;
+                doc.open();
+                doc.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{width:100%;height:100%;overflow:hidden;background:#1e1b4b;}</style><style>${css}</style></head><body>${html}${js ? '<script>' + js + '<\/script>' : ''}</body></html>`);
+                doc.close();
+            } catch(e) { console.warn('[HtmlEditor] preview error:', e.message); }
+        }
+
+        window._htmlEditorApplyPreset = function(key) {
+            const clip = State.clips.find(c => c.id === _htmlEditorClipId);
+            if (!clip) return;
+            // Temporarily apply to clip to get template data, then read back to textareas
+            const prevHtml = clip.html, prevCss = clip.css;
+            window._applyHtmlTemplate(_htmlEditorClipId, key);
+            document.getElementById('htmlEditorHTML').value = clip.html || '';
+            document.getElementById('htmlEditorCSS').value = clip.css || '';
+            document.getElementById('htmlEditorJS').value = clip.js || '';
+            // Restore clip to pre-apply state (Apply button will do the real write)
+            clip.html = prevHtml; clip.css = prevCss;
+            clip._htmlSig = '';
+            _updateHtmlEditorPreview();
         };
 
         // ── Add HTML Clip Button ──────────────────────────────────────────────
