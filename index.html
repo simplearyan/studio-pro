@@ -26052,13 +26052,10 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
 
             // Canvas Interaction Handlers
             canvasAspectWrapper.addEventListener('mousedown', (e) => {
-                const pos = getCanvasMousePos(e);
-                
-                let activeVisualClips = State.clips.filter(c =>
+                const pos = getCanvasMousePos(e);                let activeVisualClips = State.clips.filter(c =>
                     !c.hidden &&
-                    (c.type === 'video' || c.type === 'image' || c.type === 'text' || c.type === 'shape') &&
-                    State.currentTime >= c.start &&
-                    State.currentTime < c.start + c.duration
+                    (c.type === 'video' || c.type === 'image' || c.type === 'text' || c.type === 'shape' || c.type === 'html') &&
+                    State.currentTime >= c.start && State.currentTime < c.start + c.duration
                 );
 
                 activeVisualClips.sort((a, b) => {
@@ -26083,6 +26080,10 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     } else if (clip.type === 'shape') {
                         dw = clip.effects.shapeWidth || 200;
                         dh = clip.effects.shapeHeight || 200;
+                    } else if (clip.type === 'html') {
+                        // HTML clips render at canvas resolution — use canvas size for hit-test
+                        dw = canvas.width;
+                        dh = canvas.height;
                     } else {
                         let source = clip.type === 'image' ? clip.imageEl : clip.videoEl;
                         // Mock media have no source element but should stay click-selectable.
@@ -27086,7 +27087,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 if (hoveredTrackId && hoveredTrackId !== clip.trackId) {
                     const tgtTrack = State.tracks.find(t=>t.id===hoveredTrackId);
                     if (tgtTrack) {
-                        const isVisual = clip.type === 'video' || clip.type === 'image' || clip.type === 'text' || clip.type === 'scene' || clip.type === 'shape';
+                        const isVisual = clip.type === 'video' || clip.type === 'image' || clip.type === 'text' || clip.type === 'scene' || clip.type === 'shape' || clip.type === 'html';
                         const isTgtVisual = tgtTrack.type === 'video';
                         const isAudio = clip.type === 'audio';
                         const isTgtAudio = tgtTrack.type === 'audio';
@@ -27144,7 +27145,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                             mcEl.style.transition = 'none'; // Ensure instant visual feedback
                             
                             if (typedDelta !== 0) {
-                                const mcIsVisual = mcClip.type === 'video' || mcClip.type === 'image' || mcClip.type === 'text' || mcClip.type === 'shape' || mcClip.type === 'scene';
+                                const mcIsVisual = mcClip.type === 'video' || mcClip.type === 'image' || mcClip.type === 'text' || mcClip.type === 'shape' || mcClip.type === 'scene' || mcClip.type === 'html';
                                 const mcTypedTracks = mcIsVisual ? State.tracks.filter(t => t.type === 'video') : State.tracks.filter(t => t.type === 'audio');
                                 const mcInitialIndex = mcTypedTracks.findIndex(t => t.id === mc.trackId);
                                 
