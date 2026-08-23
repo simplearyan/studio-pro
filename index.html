@@ -3475,6 +3475,14 @@
             btnToggleAspect.title = `Aspect Ratio: ${aspect.label}`;
             
             resizeCanvas();
+            // Invalidate all HTML clip canvases so they re-render at the new aspect ratio
+            State.clips.filter(c => c.type === 'html').forEach(c => {
+                if (c._htmlIframe) { c._htmlIframe.remove(); c._htmlIframe = null; }
+                c._htmlCanvas = null;
+                c._htmlReady = false;
+                c._htmlSig = '';
+                c._htmlNeedsRefresh = true;
+            });
             lucide.createIcons();
         });
 
