@@ -132,6 +132,12 @@
                     <button onclick="_htmlEditorApplyPreset('glassmorphism')" class="px-2 py-1 text-[10px] font-bold bg-surface-700 hover:bg-surface-600 rounded text-surface-300 transition-colors">Glass</button>
                     <button onclick="_htmlEditorApplyPreset('minimal')" class="px-2 py-1 text-[10px] font-bold bg-surface-700 hover:bg-surface-600 rounded text-surface-300 transition-colors">Minimal</button>
                     <button onclick="_htmlEditorApplyPreset('dataViz')" class="px-2 py-1 text-[10px] font-bold bg-surface-700 hover:bg-surface-600 rounded text-surface-300 transition-colors">Chart</button>
+                    <button onclick="_htmlEditorApplyPreset('wisteriaHaze')" class="px-2 py-1 text-[10px] font-bold bg-purple-900 hover:bg-purple-700 rounded text-purple-300 transition-colors">Wisteria</button>
+                    <button onclick="_htmlEditorApplyPreset('aurora')" class="px-2 py-1 text-[10px] font-bold bg-indigo-900 hover:bg-indigo-700 rounded text-indigo-300 transition-colors">Aurora</button>
+                    <button onclick="_htmlEditorApplyPreset('neonGlow')" class="px-2 py-1 text-[10px] font-bold bg-cyan-900 hover:bg-cyan-700 rounded text-cyan-300 transition-colors">Neon</button>
+                    <button onclick="_htmlEditorApplyPreset('coralSunset')" class="px-2 py-1 text-[10px] font-bold bg-pink-900 hover:bg-pink-700 rounded text-pink-300 transition-colors">Sunset</button>
+                    <button onclick="_htmlEditorApplyPreset('meshGradient')" class="px-2 py-1 text-[10px] font-bold bg-violet-900 hover:bg-violet-700 rounded text-violet-300 transition-colors">Mesh</button>
+                    <button onclick="_htmlEditorApplyPreset('oceanDeep')" class="px-2 py-1 text-[10px] font-bold bg-blue-900 hover:bg-blue-700 rounded text-blue-300 transition-colors">Ocean</button>
                     <div class="w-px h-5 bg-surface-600 mx-1"></div>
                     <button onclick="closeHtmlEditor(false)" class="px-3 py-1.5 text-xs font-bold bg-surface-700 hover:bg-surface-600 rounded text-surface-300 transition-colors">Cancel</button>
                     <button onclick="closeHtmlEditor(true)" class="px-3 py-1.5 text-xs font-bold bg-brand-600 hover:bg-brand-500 rounded text-white transition-colors">Apply</button>
@@ -6317,6 +6323,35 @@
                             ctx.textBaseline = 'middle';
                             ctx.fillText('HTML Clip', 0, 0);
                         }
+
+                        // DOM selection bounding box for HTML clips
+                        if (((State.multiSelectedClipIds && State.multiSelectedClipIds.includes(clip.id)) || clip.id === State.selectedClipId) && !State.isExporting && !targetCtx) {
+                            const container = document.getElementById('domBoundingBoxContainer');
+                            if (container) {
+                                const wrapper = document.getElementById('canvasAspectWrapper');
+                                const scaleUI = wrapper.clientWidth / canvas.width;
+                                const flipH = clip.effects.flipH ? -1 : 1;
+                                const flipV = clip.effects.flipV ? -1 : 1;
+                                const boxRot = rotate + (aState.animRot || 0) * 180 / Math.PI;
+                                const pad = 32;
+                                const w_box = Math.abs(w * scaleUI * finalScale) + pad;
+                                const h_box = Math.abs(h * scaleUI * finalScale) + pad;
+                                const cx_ui = cx * scaleUI;
+                                const cy_ui = cy * scaleUI;
+                                const box = document.createElement('div');
+                                box.style.position = 'absolute';
+                                box.style.left = `${cx_ui}px`;
+                                box.style.top = `${cy_ui}px`;
+                                box.style.width = `${w_box}px`;
+                                box.style.height = `${h_box}px`;
+                                box.style.transform = `translate(-50%, -50%) rotate(${boxRot}deg) scale(${flipH}, ${flipV})`;
+                                box.style.border = '2px solid #6366f1';
+                                box.style.boxShadow = '0 0 10px rgba(99, 102, 241, 0.4)';
+                                const handleHtml = `<div style="position:absolute;width:12px;height:12px;background:white;border:3px solid #6366f1;border-radius:50%;left:-7px;top:-7px;"></div><div style="position:absolute;width:12px;height:12px;background:white;border:3px solid #6366f1;border-radius:50%;right:-7px;top:-7px;"></div><div style="position:absolute;width:12px;height:12px;background:white;border:3px solid #6366f1;border-radius:50%;left:-7px;bottom:-7px;"></div><div style="position:absolute;width:12px;height:12px;background:white;border:3px solid #6366f1;border-radius:50%;right:-7px;bottom:-7px;"></div><div style="position:absolute;width:2px;height:40px;background:#6366f1;left:50%;top:-40px;transform:translateX(-50%);"></div><div style="position:absolute;width:12px;height:12px;background:#6366f1;border:2px solid white;border-radius:50%;left:50%;top:-46px;transform:translateX(-50%);"></div>`;
+                                box.innerHTML = handleHtml;
+                                container.appendChild(box);
+                            }
+                        }
                         
                         ctx.restore();
                     } else if (clip.type === 'scene') {
@@ -12003,6 +12038,16 @@
                                     <button onclick="_applyHtmlTemplate('${clip.id}','glassmorphism')" class="flex-1 py-1.5 text-[10px] font-bold bg-surface-200 dark:bg-surface-700 hover:bg-surface-300 dark:hover:bg-surface-600 rounded transition-colors">Glass</button>
                                     <button onclick="_applyHtmlTemplate('${clip.id}','minimal')" class="flex-1 py-1.5 text-[10px] font-bold bg-surface-200 dark:bg-surface-700 hover:bg-surface-300 dark:hover:bg-surface-600 rounded transition-colors">Minimal</button>
                                     <button onclick="_applyHtmlTemplate('${clip.id}','dataViz')" class="flex-1 py-1.5 text-[10px] font-bold bg-surface-200 dark:bg-surface-700 hover:bg-surface-300 dark:hover:bg-surface-600 rounded transition-colors">Chart</button>
+                                </div>
+                                <div class="flex gap-2 mt-1">
+                                    <button onclick="_applyHtmlTemplate('${clip.id}','wisteriaHaze')" class="flex-1 py-1.5 text-[10px] font-bold bg-purple-100 dark:bg-purple-900 hover:bg-purple-200 dark:hover:bg-purple-800 text-purple-700 dark:text-purple-300 rounded transition-colors">Wisteria</button>
+                                    <button onclick="_applyHtmlTemplate('${clip.id}','aurora')" class="flex-1 py-1.5 text-[10px] font-bold bg-indigo-100 dark:bg-indigo-900 hover:bg-indigo-200 dark:hover:bg-indigo-800 text-indigo-700 dark:text-indigo-300 rounded transition-colors">Aurora</button>
+                                    <button onclick="_applyHtmlTemplate('${clip.id}','neonGlow')" class="flex-1 py-1.5 text-[10px] font-bold bg-cyan-100 dark:bg-cyan-900 hover:bg-cyan-200 dark:hover:bg-cyan-800 text-cyan-700 dark:text-cyan-300 rounded transition-colors">Neon</button>
+                                    <button onclick="_applyHtmlTemplate('${clip.id}','coralSunset')" class="flex-1 py-1.5 text-[10px] font-bold bg-pink-100 dark:bg-pink-900 hover:bg-pink-200 dark:hover:bg-pink-800 text-pink-700 dark:text-pink-300 rounded transition-colors">Sunset</button>
+                                </div>
+                                <div class="flex gap-2 mt-1">
+                                    <button onclick="_applyHtmlTemplate('${clip.id}','meshGradient')" class="flex-1 py-1.5 text-[10px] font-bold bg-violet-100 dark:bg-violet-900 hover:bg-violet-200 dark:hover:bg-violet-800 text-violet-700 dark:text-violet-300 rounded transition-colors">Mesh</button>
+                                    <button onclick="_applyHtmlTemplate('${clip.id}','oceanDeep')" class="flex-1 py-1.5 text-[10px] font-bold bg-blue-100 dark:bg-blue-900 hover:bg-blue-200 dark:hover:bg-blue-800 text-blue-700 dark:text-blue-300 rounded transition-colors">Ocean</button>
                                 </div>
                             </div>
                         </details>
@@ -23099,6 +23144,30 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 dataViz: {
                     html: '<div class="chart">\n  <div class="bar" style="height: 60%; background: #3b82f6;"></div>\n  <div class="bar" style="height: 80%; background: #10b981;"></div>\n  <div class="bar" style="height: 40%; background: #f59e0b;"></div>\n  <div class="bar" style="height: 90%; background: #ef4444;"></div>\n</div>',
                     css: '.chart { width: 100%; height: 100%; display: flex; align-items: flex-end; justify-content: center; gap: 20px; padding: 40px; background: #1f2937; }\n.bar { width: 60px; border-radius: 8px 8px 0 0; }'
+                },
+                wisteriaHaze: {
+                    html: '<div class="wisteria">\n  <h1>Wisteria Haze</h1>\n  <p>Premium Mesh Gradient</p>\n</div>',
+                    css: '.wisteria { position: relative; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; overflow: hidden; }\n.wisteria::before { content: ""; position: absolute; inset: -14px; background: radial-gradient(72% 58% at 16% 82%, #EAF4FC 0%, #EAF4FC 22%, transparent 72%), radial-gradient(56% 72% at 78% 26%, #B28FCE 0%, #B28FCE 22%, transparent 72%), radial-gradient(78% 62% at 88% 84%, #F4B3C2 0%, #F4B3C2 22%, transparent 72%), radial-gradient(50% 44% at 24% 16%, #A0D8EF 0%, #A0D8EF 22%, transparent 72%), radial-gradient(130% 120% at 30% 20%, #EAF4FC, #EAF4FC); filter: blur(7px); }\n.wisteria h1 { position: relative; color: #1a1a2e; font-size: 56px; font-weight: 700; z-index: 1; }\n.wisteria p { position: relative; color: #4a4a6a; font-size: 22px; z-index: 1; margin-top: 10px; }'
+                },
+                aurora: {
+                    html: '<div class="aurora">\n  <h1>Aurora</h1>\n  <p>Animated Gradient</p>\n</div>',
+                    css: '@keyframes auroraShift { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }\n.aurora { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; background: linear-gradient(-45deg, #0f0c29, #302b63, #24243e, #0f0c29, #3a1c71, #d76d7f); background-size: 400% 400%; animation: auroraShift 8s ease infinite; }\n.aurora h1 { color: white; font-size: 64px; font-weight: 200; letter-spacing: 12px; text-shadow: 0 0 40px rgba(255,255,255,0.3); }\n.aurora p { color: rgba(255,255,255,0.6); font-size: 18px; margin-top: 15px; letter-spacing: 4px; text-transform: uppercase; }'
+                },
+                neonGlow: {
+                    html: '<div class="neon">\n  <h1>NEON</h1>\n  <p>Glow Effect</p>\n</div>',
+                    css: '@keyframes neonFlicker { 0%, 100% { opacity: 1; } 50% { opacity: 0.8; } }\n.neon { width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; background: #0a0a0a; }\n.neon h1 { color: #fff; font-size: 80px; font-weight: 900; letter-spacing: 15px; text-shadow: 0 0 10px #fff, 0 0 20px #fff, 0 0 40px #00d4ff, 0 0 80px #00d4ff, 0 0 120px #00d4ff; animation: neonFlicker 2s ease-in-out infinite; }\n.neon p { color: #00d4ff; font-size: 20px; margin-top: 20px; letter-spacing: 8px; text-shadow: 0 0 10px #00d4ff; }'
+                },
+                coralSunset: {
+                    html: '<div class="coral">\n  <h1>Sunset Vibes</h1>\n  <p>Warm Gradient</p>\n</div>',
+                    css: '@keyframes sunsetPulse { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.1); } }\n.coral { position: relative; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; overflow: hidden; background: linear-gradient(135deg, #ff6b6b, #feca57, #ff9ff3, #f368e0); background-size: 300% 300%; animation: sunsetPulse 4s ease-in-out infinite; }\n.coral h1 { color: white; font-size: 52px; font-weight: 800; text-shadow: 0 4px 20px rgba(0,0,0,0.3); }\n.coral p { color: rgba(255,255,255,0.85); font-size: 22px; margin-top: 12px; }'
+                },
+                meshGradient: {
+                    html: '<div class="mesh">\n  <h1>Mesh Gradient</h1>\n  <p>Multi-point Radial</p>\n</div>',
+                    css: '.mesh { position: relative; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; overflow: hidden; background: #0f172a; }\n.mesh::before { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at 20% 30%, #8b5cf6 0%, transparent 50%), radial-gradient(circle at 80% 20%, #06b6d4 0%, transparent 50%), radial-gradient(circle at 50% 80%, #ec4899 0%, transparent 50%), radial-gradient(circle at 30% 70%, #10b981 0%, transparent 40%); filter: blur(40px); opacity: 0.7; }\n.mesh h1 { position: relative; color: white; font-size: 56px; font-weight: 700; z-index: 1; }\n.mesh p { position: relative; color: rgba(255,255,255,0.6); font-size: 20px; z-index: 1; margin-top: 10px; }'
+                },
+                oceanDeep: {
+                    html: '<div class="ocean">\n  <h1>Deep Ocean</h1>\n  <p>Animated Waves</p>\n</div>',
+                    css: '@keyframes wave { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-20px) rotate(2deg); } }\n.ocean { position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; overflow: hidden; background: linear-gradient(180deg, #0c1445, #1a237e, #0d47a1, #01579b); }\n.ocean::after { content: ""; position: absolute; bottom: 0; left: 0; right: 0; height: 40%; background: repeating-linear-gradient(0deg, transparent, transparent 40px, rgba(255,255,255,0.03) 40px, rgba(255,255,255,0.03) 80px); animation: wave 6s ease-in-out infinite; }\n.ocean h1 { position: relative; color: #b3e5fc; font-size: 52px; font-weight: 700; z-index: 1; }\n.ocean p { position: relative; color: rgba(179,229,252,0.6); font-size: 20px; z-index: 1; margin-top: 12px; letter-spacing: 3px; }'
                 }
             };
             
