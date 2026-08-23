@@ -6259,8 +6259,19 @@
                                             } catch(e) {}
                                             return m;
                                         });
+                                        // Build font <link> tags for Google Fonts (global + per-clip)
+                                        const clipFonts = clip.fonts || [];
+                                        const allFonts = [...new Set([...(State.googleFonts || []), ...clipFonts])];
+                                        const fontLinks = allFonts.map(fn => {
+                                            const apiName = fn.replace(/\s+/g, '+');
+                                            return `<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=${apiName}:wght@400;600;700;900&display=swap">`;
+                                        }).join('\n');
+                                        // Build @font-face rules for imported system/PC fonts
+                                        const sysFontRules = (State.importedSystemFonts || []).map(fn =>
+                                            `@font-face{font-family:'${fn}';src:local('${fn}');}`
+                                        ).join('\n');
                                         doc.open();
-                                        doc.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{width:${w}px;height:${h}px;overflow:hidden;background:transparent;}${safeCss}</style></head><body>${clip.html || ''}${clip.js ? '<script>' + clip.js + '<\/script>' : ''}</body></html>`);
+                                        doc.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">${fontLinks}<style>*{margin:0;padding:0;box-sizing:border-box;}${sysFontRules}body{width:${w}px;height:${h}px;overflow:hidden;background:transparent;}${safeCss}</style></head><body>${clip.html || ''}${clip.js ? '<script>' + clip.js + '<\/script>' : ''}</body></html>`);
                                         doc.close();
                                         // Wait for layout, then mark ready
                                         setTimeout(() => {
@@ -8142,6 +8153,93 @@
             updatePropertiesPanel();
             drawCanvas();
         };
+
+        // ── Studio Pro API for AI Agents ────────────────────────────────────────
+        // Clean API so AI agents can write HTML/CSS/JS code and easily use fonts,
+        // create clips, and interact with the editor programmatically.
+        window.StudioPro = {
+            fonts: {
+                /** Load a Google Font by name (e.g. 'Poppins', 'Inter'). Returns a promise. */
+                loadGoogle: (fontName, weights = '400;600;700;900') => {
+                    return new Promise((resolve, reject) => {
+                        if (!State.googleFonts) State.googleFonts = [];
+                        const apiName = fontName.replace(/\s+/g, '+');
+                        const url = `https://fonts.googleapis.com/css2?family=${apiName}:wght@${weights}&display=swap`;
+                        const linkId = `gfont-${fontName.replace(/\s+/g, '-').toLowerCase()}`;
+                        if (!document.getElementById(linkId)) {
+                            const link = document.createElement('link');
+                            link.id = linkId;
+                            link.rel = 'stylesheet';
+                            link.href = url;
+                            document.head.appendChild(link);
+                        }
+                        if (!State.googleFonts.includes(fontName)) {
+                            State.googleFonts.push(fontName);
+                            localStorage.setItem('studiopro_google_fonts', JSON.stringify(State.googleFonts));
+                        }
+                        document.fonts.ready.then(() => resolve(fontName));
+                    });
+                },
+                /** Load multiple Google Fonts at once */
+                loadGoogleBatch: (fontNames, weights = '400;600;700;900') => {
+                    return Promise.all(fontNames.map(fn => StudioPro.fonts.loadGoogle(fn, weights)));
+                },
+                /** Reference a system/PC font (must already be imported via the UI) */
+                useSystem: (fontName) => {
+                    if (!State.importedSystemFonts) State.importedSystemFonts = [];
+                    if (!State.importedSystemFonts.includes(fontName)) {
+                        State.importedSystemFonts.push(fontName);
+                        localStorage.setItem('studiopro_imported_system_fonts', JSON.stringify(State.importedSystemFonts));
+                    }
+                    return fontName;
+                },
+                /** List all available fonts (Google + system) */
+                list: () => ({
+                    google: [...(State.googleFonts || [])],
+                    system: [...(State.importedSystemFonts || [])],
+                    all: [...(State.googleFonts || []), ...(State.importedSystemFonts || [])]
+                }),
+                /** Generate CSS @import rule for use inside HTML clip code */
+                cssImport: (fontName) => {
+                    const apiName = fontName.replace(/\s+/g, '+');
+                    return `@import url('https://fonts.googleapis.com/css2?family=${apiName}:wght@400;600;700;900&display=swap');`;
+                },
+                /** Generate <link> tag for use inside HTML clip code */
+                linkTag: (fontName, weights = '400;600;700;900') => {
+                    const apiName = fontName.replace(/\s+/g, '+');
+                    return `<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=${apiName}:wght@${weights}&display=swap">`;
+                }
+            },
+            /** Create a new HTML clip with code and add to timeline */
+            createHtmlClip: (html = '', css = '', js = '', options = {}) => {
+                const clip = createClipBase('html');
+                clip.html = html;
+                clip.css = css;
+                clip.js = js;
+                clip.fonts = options.fonts || [];
+                if (options.trackId) clip.trackId = options.trackId;
+                if (options.start !== undefined) clip.start = options.start;
+                if (options.duration) clip.duration = options.duration;
+                if (options.x !== undefined) clip.effects.offsetX = options.x;
+                if (options.y !== undefined) clip.effects.offsetY = options.y;
+                if (options.scale !== undefined) clip.effects.scale = options.scale;
+                State.clips.push(clip);
+                needsCanvasRedraw = true;
+                drawCanvas();
+                return clip;
+            },
+            /** Get project state info */
+            project: () => ({
+                width: 1920,
+                height: 1080,
+                fps: State.fps || 30,
+                duration: State.duration || 60,
+                currentTime: State.currentTime,
+                clipCount: State.clips.length,
+                trackCount: State.tracks.length
+            })
+        };
+        console.log('[StudioPro] API available at window.StudioPro — use StudioPro.fonts.loadGoogle("Poppins") to load fonts');
 
         window.fetchSystemFonts = async () => {
             if (!('queryLocalFonts' in window)) {
@@ -10596,7 +10694,7 @@
                         bodyClass: !shadowEnable ? 'opacity-50 pointer-events-none' : ''
                     });
 
-            const systemFontsHTML = isText ? `
+            const systemFontsHTML = (isText || isHtml) ? `
                 <details id="cardSystemFonts" class="group bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 shadow-sm rounded-lg shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'} overflow-hidden flex flex-col" ${(State.ui && State.ui.detailsState && State.ui.detailsState['cardSystemFonts']) ? 'open' : ''}>
                     <summary class="flex items-center justify-between px-3 py-2 ${isHorizontal ? '' : 'cursor-pointer'} list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700 " onclick="${isHorizontal ? 'event.preventDefault();' : ''}">
                         <div class="text-sm font-bold text-surface-800 dark:text-surface-200 flex items-center gap-2"><i data-lucide="laptop" class="w-4 h-4 text-surface-500 dark:text-surface-300"></i> System Fonts (PC)</div>
@@ -10645,7 +10743,7 @@
                 </details>
             ` : '';
 
-            const googleFontsHTML = isText ? `
+            const googleFontsHTML = (isText || isHtml) ? `
                 <details id="cardGoogleFonts" class="group bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 shadow-sm rounded-lg shrink-0 ${isHorizontal ? 'w-[280px]' : 'w-full'} overflow-hidden flex flex-col" ${(State.ui && State.ui.detailsState && State.ui.detailsState['cardGoogleFonts']) ? 'open' : ''}>
                     <summary class="flex items-center justify-between px-3 py-2 ${isHorizontal ? '' : 'cursor-pointer'} list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700 " onclick="${isHorizontal ? 'event.preventDefault();' : ''}">
                         <div class="text-sm font-bold text-surface-800 dark:text-surface-200 flex items-center gap-2"><i data-lucide="globe" class="w-4 h-4 text-surface-500 dark:text-surface-300"></i> Google Fonts</div>
@@ -12080,7 +12178,7 @@
                 if (blendingHTML) navItems.push({ id: 'cardOpacity', name: 'Blending', icon: 'eye' });
                 if (shadowHTML) navItems.push({ id: 'cardShadow', name: 'Shadow', icon: 'layers' });
                 if (textureHTML) navItems.push({ id: 'cardTexture', name: 'Texture', icon: 'grid' });
-                if (isText) {
+                if (isText || isHtml) {
                     if (systemFontsHTML) navItems.push({ id: 'cardSystemFonts', name: 'PC Fonts', icon: 'laptop' });
                     if (googleFontsHTML) navItems.push({ id: 'cardGoogleFonts', name: 'Google Fonts', icon: 'globe' });
                 }
@@ -12220,7 +12318,7 @@
                         `;
                     }
                     
-                    sidebarContent.innerHTML = sceneHTML + sourceHTML + transformHTML + (isText ? (textHTML + typographyHTML + spacingHTML + letterStylesHTML + textBgHTML) : '') + (isHtml ? htmlHTML : '') + (isShape ? shapeHTML : '') + cropHTML + maskHTML + strokeHTML + extrudeHTML + blendingHTML + shadowHTML + textureHTML + (isText ? systemFontsHTML : '') + (isText ? googleFontsHTML : '');
+                    sidebarContent.innerHTML = sceneHTML + sourceHTML + transformHTML + (isText ? (textHTML + typographyHTML + spacingHTML + letterStylesHTML + textBgHTML) : '') + (isHtml ? htmlHTML : '') + (isShape ? shapeHTML : '') + cropHTML + maskHTML + strokeHTML + extrudeHTML + blendingHTML + shadowHTML + textureHTML + ((isText || isHtml) ? systemFontsHTML : '') + ((isText || isHtml) ? googleFontsHTML : '');
                 }
             }
             
@@ -23333,6 +23431,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 html: defaultHtml,
                 css: defaultCss,
                 js: '',
+                fonts: [],
                 renderWidth: 1920,
                 renderHeight: 1080,
                 backgroundColor: 'transparent',
