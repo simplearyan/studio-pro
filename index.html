@@ -3155,6 +3155,7 @@
             cardTransform: 'basic', cardCrop: 'basic', cardOpacity: 'basic',
             cardSpeed: 'basic', cardContent: 'basic', cardTypography: 'basic',
             cardSpacing: 'basic', cardCaption: 'basic',
+            cardHtmlContent: 'basic',
             cardColor: 'adjust', cardTextBg: 'adjust', cardStroke: 'adjust', cardShadow: 'adjust',
             cardMask: 'effects', cardLetterStyles: 'effects', cardExtrude: 'effects',
             cardTexture: 'effects', cardSfx: 'effects',
@@ -6196,7 +6197,14 @@
                                         doc.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{width:${w}px;height:${h}px;overflow:hidden;background:transparent;}${safeCss}</style></head><body>${clip.html || ''}${clip.js ? '<script>' + clip.js + '<\/script>' : ''}</body></html>`);
                                         doc.close();
                                         // Wait for layout, then mark ready
-                                        setTimeout(() => { clip._htmlReady = true; }, 50);
+                                        setTimeout(() => {
+                                        clip._htmlReady = true;
+                                        // Schedule a redraw so the freshly-written iframe renders
+                                        if (!window._htmlRedrawQueued) {
+                                            window._htmlRedrawQueued = true;
+                                            requestAnimationFrame(() => { window._htmlRedrawQueued = false; drawCanvas(); });
+                                        }
+                                    }, 50);
                                     }
                                 } catch(e) {
                                     console.warn('[HTMLClip] iframe write error:', e.message);
@@ -6218,7 +6226,11 @@
                                     }).then(canvas => {
                                         clip._htmlCanvas = canvas;
                                         clip._htmlRendering = false;
-                                        // NO requestAnimationFrame(drawCanvas) — avoids infinite loop
+                                        // Trigger one redraw so the new canvas appears immediately
+                                        if (!window._htmlRedrawQueued) {
+                                            window._htmlRedrawQueued = true;
+                                            requestAnimationFrame(() => { window._htmlRedrawQueued = false; drawCanvas(); });
+                                        }
                                     }).catch(err => {
                                         clip._htmlRendering = false;
                                         clip._htmlReady = false; // retry next frame
@@ -6230,9 +6242,15 @@
                                 }
                             }
                             
-                            // Draw cached canvas
+                            // Draw cached canvas (or show loading placeholder)
                             if (clip._htmlCanvas) {
                                 ctx.drawImage(clip._htmlCanvas, -w/2, -h/2, w, h);
+                            } else {
+                                // Loading placeholder while html2canvas renders
+                                ctx.fillStyle = '#1e1b4b';
+                                ctx.globalAlpha = 0.5;
+                                ctx.fillRect(-w/2, -h/2, w, h);
+                                ctx.globalAlpha = 1;
                             }
                         } else {
                             // Fallback: gray placeholder
@@ -11905,6 +11923,32 @@
                     }
                 }
 
+                // Populate HTML clip editor card (before grouped layout)
+                if (isHtml) {
+                    htmlHTML = `
+                        <details id="cardHtmlContent" class="group bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-700 shadow-sm rounded-lg shrink-0 w-full overflow-hidden flex flex-col" open>
+                            <summary class="flex items-center justify-between px-3 py-2 cursor-pointer list-none appearance-none select-none bg-surface-100 dark:bg-surface-800/80 border-b border-surface-200 dark:border-surface-700">
+                                <div class="text-sm font-bold text-surface-800 dark:text-surface-200 flex items-center gap-2"><i data-lucide="code" class="w-4 h-4 text-surface-500 dark:text-surface-300"></i> HTML Content</div>
+                                <i data-lucide="chevron-down" class="w-4 h-4 text-surface-500 transition-transform group-open:rotate-180"></i>
+                            </summary>
+                            <div class="px-3 py-2 flex flex-col gap-2 bg-surface-50 dark:bg-surface-900/50 flex-1">
+                                <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">HTML</label>
+                                <textarea id="${clip.id}_htmlContent" rows="6" class="w-full bg-surface-50 dark:bg-surface-900/80 shadow-inner border border-surface-200 dark:border-surface-700 rounded-lg p-2 text-xs font-mono text-surface-900 dark:text-white outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 resize-none" oninput="const _c=State.clips.find(c=>c.id==='${clip.id}');if(_c){_c.html=this.value;_c._htmlSig='';_c._htmlCanvas=null;}drawCanvas();" placeholder="<div>Your HTML here</div>">${clip.html || ''}</textarea>
+                                <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">CSS</label>
+                                <textarea id="${clip.id}_cssContent" rows="4" class="w-full bg-surface-50 dark:bg-surface-900/80 shadow-inner border border-surface-200 dark:border-surface-700 rounded-lg p-2 text-xs font-mono text-surface-900 dark:text-white outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 resize-none" oninput="const _c=State.clips.find(c=>c.id==='${clip.id}');if(_c){_c.css=this.value;_c._htmlSig='';_c._htmlCanvas=null;}drawCanvas();" placeholder=".class { color: red; }">${clip.css || ''}</textarea>
+                                <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">JavaScript (optional)</label>
+                                <textarea id="${clip.id}_jsContent" rows="3" class="w-full bg-surface-50 dark:bg-surface-900/80 shadow-inner border border-surface-200 dark:border-surface-700 rounded-lg p-2 text-xs font-mono text-surface-900 dark:text-white outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 resize-none" oninput="const _c=State.clips.find(c=>c.id==='${clip.id}');if(_c){_c.js=this.value;_c._htmlSig='';_c._htmlCanvas=null;}drawCanvas();" placeholder="/* Animation logic */">${clip.js || ''}</textarea>
+                                <div class="flex gap-2 mt-1">
+                                    <button onclick="_applyHtmlTemplate('${clip.id}','gradientCard')" class="flex-1 py-1.5 text-[10px] font-bold bg-surface-200 dark:bg-surface-700 hover:bg-surface-300 dark:hover:bg-surface-600 rounded transition-colors">Gradient</button>
+                                    <button onclick="_applyHtmlTemplate('${clip.id}','glassmorphism')" class="flex-1 py-1.5 text-[10px] font-bold bg-surface-200 dark:bg-surface-700 hover:bg-surface-300 dark:hover:bg-surface-600 rounded transition-colors">Glass</button>
+                                    <button onclick="_applyHtmlTemplate('${clip.id}','minimal')" class="flex-1 py-1.5 text-[10px] font-bold bg-surface-200 dark:bg-surface-700 hover:bg-surface-300 dark:hover:bg-surface-600 rounded transition-colors">Minimal</button>
+                                    <button onclick="_applyHtmlTemplate('${clip.id}','dataViz')" class="flex-1 py-1.5 text-[10px] font-bold bg-surface-200 dark:bg-surface-700 hover:bg-surface-300 dark:hover:bg-surface-600 rounded transition-colors">Chart</button>
+                                </div>
+                            </div>
+                        </details>
+                    `;
+                }
+
                 // Compile navigation items for Properties tab
                 const navItems = [];
                 if (sceneHTML) navItems.push({ id: 'cardScene', name: 'Scene', icon: 'layers' });
@@ -11918,6 +11962,7 @@
                     if (textBgHTML) navItems.push({ id: 'cardTextBg', name: 'Background', icon: 'square' });
                 }
                 if (isShape) navItems.push({ id: 'cardContent', name: 'Shape', icon: 'shapes' });
+                if (isHtml) navItems.push({ id: 'cardHtmlContent', name: 'HTML', icon: 'code' });
                 if (isImageOrVideo) {
                     navItems.push({ id: 'cardSource', name: 'Source', icon: 'link' });
                     if (cropHTML) navItems.push({ id: 'cardCrop', name: 'Crop', icon: 'crop' });
@@ -11972,9 +12017,13 @@
                     // in sync; keyboard card-jumps (T/Y/G/O/X/B) are group-aware and unaffected.
                     const basicCardIds = isText
                         ? ['cardContent', 'cardTypography', 'cardSpacing', 'cardCaption', 'cardTransform', 'cardOpacity', 'cardSpeed']
+                        : isHtml
+                        ? ['cardHtmlContent', 'cardTransform', 'cardOpacity', 'cardSpeed']
                         : ['cardTransform', 'cardCrop', 'cardOpacity', 'cardSpeed', 'cardContent', 'cardTypography', 'cardSpacing', 'cardCaption'];
                     const basicCardHtml = isText
                         ? [textHTML, typographyHTML, spacingHTML, captionHTML, transformHTML, blendingHTML, speedHTML]
+                        : isHtml
+                        ? [htmlHTML, transformHTML, blendingHTML, speedHTML]
                         : [transformHTML, cropHTML, blendingHTML, speedHTML, textHTML, typographyHTML, spacingHTML, captionHTML, shapeHTML];
                     // Adjust is also most-edited-first per type: video/image users live in
                     // Color Correction, so it leads; text users reach for the outline (Stroke)
@@ -28674,7 +28723,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             const lines = [];
             const fps = spcompData.canvas?.fps || 30;
             const q = (t) => Math.round(t * fps) / fps;
-            // Group clips by start time (approximate slide boundaries)
+            // Group clips by start time (approximate slide boundaries)
             const sorted = [...spcompData.clips].sort((a, b) => (a.start || 0) - (b.start || 0));
             let currentSlide = [];
             let lastStart = -1;
@@ -28694,7 +28743,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     currentSlide.push(prefix + clip.text + posTag);
                 } else if (clip.type === 'image') {
                     const alt = clip.alt || 'image';
-                    const src = clip._srcUrl || clip.src || 'mock';
+                    const src = clip._srcUrl || clip.src || 'mock';
                     const posTag = clip.position ? ' [' + clip.position + ']' : '';
                     currentSlide.push('![' + alt + '](' + src + ')' + posTag);
                 }

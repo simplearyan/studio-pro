@@ -30,37 +30,29 @@ A new clip type that lets users (and AI agents) write HTML/CSS to create complex
 
 ---
 
-## 2. Architecture Decision: Separate File vs Same File
+## 2. Architecture Decision: Option C — Separate Folder with Bundled html2canvas
 
-### Option A: Separate JS File (Recommended)
-
-```
-index.html          — Main editor (existing)
-html-clip.js        — HTML clip rendering engine (new)
-```
-
-**Pros:**
-- Keeps index.html clean (already 33,000+ lines)
-- Easier to maintain and test
-- Can be loaded conditionally
-
-**Cons:**
-- Need to coordinate between files
-- Slightly more complex build
-
-### Option B: Same File
+### Decision: Option C
 
 ```
-index.html          — Everything in one file
+src/html-clips/           — New module folder
+├── html2canvas.min.js    — Bundled library (198KB)
+├── renderer.js           — Core rendering engine
+├── editor.js             — UI components
+├── index.js              — Main exports
+└── README.md             — Documentation
 ```
 
-**Pros:**
-- Simpler (no coordination)
-- No build step needed
+**Why Option C:**
+- ✅ No external dependencies (CDN)
+- ✅ Works offline
+- ✅ Full control over html2canvas
+- ✅ Clean architecture (separate folder)
+- ✅ 198KB is negligible (< 10% of index.html)
 
-**Cons:**
-- index.html already massive
-- Harder to maintain
+**Rejected Options:**
+- Option A (Separate file): Less clean, no bundled library
+- Option B (CDN): External dependency, doesn't work offline
 
 ---
 
@@ -555,13 +547,13 @@ function previewHtmlClip() {
 
 ## 9. Dependencies
 
-### Required
+### Bundled (No CDN)
 
-| Library | Purpose | Size | CDN |
+| Library | Version | Size | Location |
 |---|---|---|---|
-| **html2canvas** | Render HTML to Canvas | ~40KB | ✅ Available |
+| **html2canvas** | 1.4.1 | 198KB | `src/html-clips/html2canvas.min.js` |
 
-### Not Required (for now)
+### Not Required
 
 | Library | Why Not |
 |---|---|
