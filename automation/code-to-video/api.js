@@ -57,6 +57,25 @@ class StudioPro {
      * Launch Chrome and connect to StudioPro
      */
     async launch() {
+        // Check Chrome path
+        if (!CHROME_PATH) {
+            throw new Error('Chrome not found. Set CHROME_PATH env or check automation/config.json');
+        }
+
+        // Check dev server
+        const http = await import('http');
+        const isServerUp = await new Promise((resolve) => {
+            const req = http.default.get(this.url, (res) => {
+                res.resume();
+                resolve(true);
+            });
+            req.on('error', () => resolve(false));
+            req.setTimeout(3000, () => { req.destroy(); resolve(false); });
+        });
+        if (!isServerUp) {
+            throw new Error(`Dev server not running at ${this.url}. Run 'npm run dev' first.`);
+        }
+
         console.log('[StudioPro] Launching Chrome...');
         this.browser = await puppeteer.launch({
             headless: this.headless ? 'new' : false,
@@ -262,7 +281,11 @@ class StudioPro {
         // Wait for export to complete (poll progress)
         console.log('[StudioPro] Export started, waiting for completion...');
         const exportStart = Date.now();
-        let lastProgress = 0;
+        let lastProgress = -1;
+
+        // Wait a moment for export to actually start
+        await new Promise(r => setTimeout(r, 2000));
+
         while (true) {
             const status = await this.page.evaluate(() => ({
                 done: !window.State || !window.State.isExporting,
@@ -270,13 +293,13 @@ class StudioPro {
                 currentTime: window.State?.currentTime || 0
             }));
 
-            if (status.done) break;
+            if (status.done && lastProgress >= 0) break;
 
             const p = status.progress;
-            if (p >= lastProgress + 10) {
+            if (p > lastProgress) {
                 lastProgress = p;
                 const elapsedSec = ((Date.now() - exportStart) / 1000).toFixed(0);
-                process.stdout.write(`\r   ${p}% (${elapsedSec}s)`);
+                process.stdout.write(`\r   ⏳ ${p}% (${elapsedSec}s)`);
             }
 
             await new Promise(r => setTimeout(r, 500));

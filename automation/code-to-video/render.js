@@ -125,16 +125,26 @@ async function render(scriptPath, outputPath, options) {
         process.exit(1);
     }
 
-    // Generate output path if not provided
+    // Generate output filename if not provided
     if (!outputPath) {
         const scriptName = path.basename(scriptPath, '.js');
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
         outputPath = `${scriptName}_${options.quality}_${options.fps}fps_${options.mode}_${options.format}`;
     }
 
     // Ensure output has correct extension
     if (!outputPath.endsWith(`.${options.format}`)) {
         outputPath = `${outputPath}.${options.format}`;
+    }
+
+    // Resolve output path relative to code-to-video/output/
+    const outputDir = path.join(__dirname, 'output');
+    if (!path.isAbsolute(outputPath)) {
+        outputPath = path.join(outputDir, outputPath);
+    }
+
+    // Ensure output directory exists
+    if (!fs.existsSync(outputDir)) {
+        fs.mkdirSync(outputDir, { recursive: true });
     }
 
     // Print render info
