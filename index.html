@@ -6224,7 +6224,7 @@
                             if (clip._htmlSig !== sig) {
                                 clip._htmlSig = sig;
                                 clip._htmlReady = false;
-                                clip._htmlCanvas = null; // invalidate old canvas
+                                clip._htmlNeedsRefresh = true; // mark for re-render, but keep old canvas visible
                                 try {
                                     const doc = clip._htmlIframe.contentDocument;
                                     if (doc) {
@@ -6262,7 +6262,7 @@
                             }
                             
                             // Capture to canvas when ready (NO infinite loop)
-                            if (clip._htmlReady && !clip._htmlRendering && !clip._htmlCanvas) {
+                            if (clip._htmlReady && !clip._htmlRendering && clip._htmlNeedsRefresh) {
                                 try {
                                     clip._htmlRendering = true;
                                     html2canvas(clip._htmlIframe.contentDocument.body, {
@@ -6276,6 +6276,7 @@
                                     }).then(canvas => {
                                         clip._htmlCanvas = canvas;
                                         clip._htmlRendering = false;
+                                        clip._htmlNeedsRefresh = false;
                                         // Trigger one redraw so the new canvas appears immediately
                                         if (!window._htmlRedrawQueued) {
                                             window._htmlRedrawQueued = true;
@@ -6292,15 +6293,9 @@
                                 }
                             }
                             
-                            // Draw cached canvas (or show loading placeholder)
+                            // Draw cached canvas — old frame stays visible until new render completes
                             if (clip._htmlCanvas) {
                                 ctx.drawImage(clip._htmlCanvas, -w/2, -h/2, w, h);
-                            } else {
-                                // Loading placeholder while html2canvas renders
-                                ctx.fillStyle = '#1e1b4b';
-                                ctx.globalAlpha = 0.5;
-                                ctx.fillRect(-w/2, -h/2, w, h);
-                                ctx.globalAlpha = 1;
                             }
                         } else {
                             // Fallback: gray placeholder
@@ -11988,11 +11983,11 @@
                             </summary>
                             <div class="px-3 py-2 flex flex-col gap-2 bg-surface-50 dark:bg-surface-900/50 flex-1">
                                 <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">HTML</label>
-                                <textarea id="${clip.id}_htmlContent" rows="6" class="w-full bg-surface-50 dark:bg-surface-900/80 shadow-inner border border-surface-200 dark:border-surface-700 rounded-lg p-2 text-xs font-mono text-surface-900 dark:text-white outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 resize-none" oninput="const _c=State.clips.find(c=>c.id==='${clip.id}');if(_c){_c.html=this.value;_c._htmlSig='';_c._htmlCanvas=null;}drawCanvas();" placeholder="<div>Your HTML here</div>">${clip.html || ''}</textarea>
+                                <textarea id="${clip.id}_htmlContent" rows="6" class="w-full bg-surface-50 dark:bg-surface-900/80 shadow-inner border border-surface-200 dark:border-surface-700 rounded-lg p-2 text-xs font-mono text-surface-900 dark:text-white outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 resize-none" oninput="const _c=State.clips.find(c=>c.id==='${clip.id}');if(_c){_c.html=this.value;_c._htmlSig='';}drawCanvas();" placeholder="<div>Your HTML here</div>">${clip.html || ''}</textarea>
                                 <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">CSS</label>
-                                <textarea id="${clip.id}_cssContent" rows="4" class="w-full bg-surface-50 dark:bg-surface-900/80 shadow-inner border border-surface-200 dark:border-surface-700 rounded-lg p-2 text-xs font-mono text-surface-900 dark:text-white outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 resize-none" oninput="const _c=State.clips.find(c=>c.id==='${clip.id}');if(_c){_c.css=this.value;_c._htmlSig='';_c._htmlCanvas=null;}drawCanvas();" placeholder=".class { color: red; }">${clip.css || ''}</textarea>
+                                <textarea id="${clip.id}_cssContent" rows="4" class="w-full bg-surface-50 dark:bg-surface-900/80 shadow-inner border border-surface-200 dark:border-surface-700 rounded-lg p-2 text-xs font-mono text-surface-900 dark:text-white outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 resize-none" oninput="const _c=State.clips.find(c=>c.id==='${clip.id}');if(_c){_c.css=this.value;_c._htmlSig='';}drawCanvas();" placeholder=".class { color: red; }">${clip.css || ''}</textarea>
                                 <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">JavaScript (optional)</label>
-                                <textarea id="${clip.id}_jsContent" rows="3" class="w-full bg-surface-50 dark:bg-surface-900/80 shadow-inner border border-surface-200 dark:border-surface-700 rounded-lg p-2 text-xs font-mono text-surface-900 dark:text-white outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 resize-none" oninput="const _c=State.clips.find(c=>c.id==='${clip.id}');if(_c){_c.js=this.value;_c._htmlSig='';_c._htmlCanvas=null;}drawCanvas();" placeholder="/* Animation logic */">${clip.js || ''}</textarea>
+                                <textarea id="${clip.id}_jsContent" rows="3" class="w-full bg-surface-50 dark:bg-surface-900/80 shadow-inner border border-surface-200 dark:border-surface-700 rounded-lg p-2 text-xs font-mono text-surface-900 dark:text-white outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 resize-none" oninput="const _c=State.clips.find(c=>c.id==='${clip.id}');if(_c){_c.js=this.value;_c._htmlSig='';}drawCanvas();" placeholder="/* Animation logic */">${clip.js || ''}</textarea>
                                 <div class="flex gap-2 mt-1">
                                     <button onclick="_applyHtmlTemplate('${clip.id}','gradientCard')" class="flex-1 py-1.5 text-[10px] font-bold bg-surface-200 dark:bg-surface-700 hover:bg-surface-300 dark:hover:bg-surface-600 rounded transition-colors">Gradient</button>
                                     <button onclick="_applyHtmlTemplate('${clip.id}','glassmorphism')" class="flex-1 py-1.5 text-[10px] font-bold bg-surface-200 dark:bg-surface-700 hover:bg-surface-300 dark:hover:bg-surface-600 rounded transition-colors">Glass</button>
@@ -23159,7 +23154,6 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     clip.css = cssTA.value;
                     clip.js = jsTA.value;
                     clip._htmlSig = '';
-                    clip._htmlCanvas = null;
                     updateSidebarPanel();
                     drawCanvas();
                 }
@@ -28564,6 +28558,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 delete clip._htmlReady;
                 delete clip._htmlSig;
                 delete clip._htmlRendering;
+                delete clip._htmlNeedsRefresh;
             }
             // URL-based media needs no re-import: rebuild the element from the
             // persisted source URL and keep the clip live. data: URLs (pasted
