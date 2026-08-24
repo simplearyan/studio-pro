@@ -32,7 +32,7 @@ const __dirname = dirname(__filename);
 const DEFAULTS = {
     quality: 'ultra',     // ultra=30Mbps, standard=15Mbps, draft=8Mbps
     format: 'mp4',        // mp4 or webm
-    mode: 'ftrt',         // ftrt (fast) or standard (realtime)
+    mode: 'mediabunny',   // mediabunny (default, reliable) or ftrt (fast but may stall on HTML clips)
     fps: 30,
     width: 1920,
     height: 1080,
@@ -136,10 +136,18 @@ async function render(scriptPath, outputPath, options) {
         outputPath = `${outputPath}.${options.format}`;
     }
 
-    // Resolve output path relative to code-to-video/output/
+    // Resolve output path — place in code-to-video/output/
     const outputDir = path.join(__dirname, 'output');
     if (!path.isAbsolute(outputPath)) {
-        outputPath = path.join(outputDir, outputPath);
+        // If user passed a relative path like 'output/file.mp4',
+        // don't double-nest it
+        const basename = path.basename(outputPath);
+        const dirPart = path.dirname(outputPath);
+        if (dirPart === 'output' || dirPart === '.') {
+            outputPath = path.join(outputDir, basename);
+        } else {
+            outputPath = path.join(outputDir, outputPath);
+        }
     }
 
     // Ensure output directory exists
@@ -180,6 +188,9 @@ async function render(scriptPath, outputPath, options) {
             // 2. Execute the composition script
             console.log('📝 Executing composition script...');
             await studio.execute(scriptPath);
+
+            // 2b. Pre-render HTML clips to canvas (eliminates black frames)
+            await studio.preloadHtmlClips();
 
             // 3. Export video
             console.log('🎬 Exporting video...');

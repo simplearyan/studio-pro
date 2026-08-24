@@ -274,3 +274,89 @@ When creating a video, read the design tokens FIRST to know the visual style:
 4. **Apply animations** → Use token motion values
 
 This ensures consistency across all videos for the same brand.
+
+---
+
+## html2canvas Compatibility (CRITICAL)
+
+**StudioPro uses html2canvas to render HTML clips to video.**
+html2canvas does NOT render HTML exactly like a browser. Follow these rules:
+
+### ❌ NEVER Use
+- **Emojis** — Render as colored squares. Use CSS badges instead
+- **CSS variables** — `var(--primary)` fails. Use hardcoded values
+- **Complex gradients** — Radial/complex gradients may fail. Use simple linear
+- **Box shadows** — May not render. Use borders instead
+- **CSS transforms** — `rotate()`, `scale()` may fail. Use StudioPro animations
+- **CSS animations** — `@keyframes` won't render. Use StudioPro keyframes
+- **Nested flex/grid** — Complex layouts may break. Keep it simple
+
+### ✅ SAFE to Use
+- **Hardcoded colors** — `#1A73E8`, `rgba(255,255,255,0.8)`
+- **Simple flexbox** — Single-level `display: flex; justify-content: center;`
+- **Text alignment** — `text-align: center;`
+- **Solid borders** — `border: 1px solid #DADCE0; border-radius: 16px;`
+- **Linear gradients** — `background: linear-gradient(135deg, #E8F0FE, #FFFFFF);`
+- **System fonts** — `font-family: 'Arial', sans-serif;`
+
+### 🎨 Safe Color Palette
+```css
+/* Primary */
+--primary: #1A73E8;    /* Use as: background: #1A73E8; */
+--text: #202124;       /* Use as: color: #202124; */
+--text-secondary: #5F6368;
+
+/* Semantic */
+--success: #34A853;
+--warning: #FBBC04;
+--error: #EA4335;
+
+/* Surface */
+--bg: #FFFFFF;
+--surface: #F8F9FA;
+--border: #DADCE0;
+```
+
+### 📐 Safe Layout Pattern
+```css
+/* Container — always use this pattern */
+.slide {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 80px;
+    font-family: 'Arial', sans-serif;
+    background: #FFFFFF;
+}
+
+/* Content — use text-align center */
+.content {
+    text-align: center;
+    max-width: 80%;
+}
+```
+
+### 🏷️ Safe Badge Pattern (instead of emojis)
+```html
+<!-- ❌ BAD — emoji won't render -->
+<div class="badge">📊 Report</div>
+
+<!-- ✅ GOOD — CSS badge -->
+<div class="badge" style="background: #1A73E8; color: white; padding: 8px 24px; border-radius: 100px; font-size: 18px; font-weight: 500;">Report</div>
+```
+
+### 🔘 Safe Button Pattern
+```html
+<!-- ❌ BAD — border-radius may fail -->
+<button class="btn">Learn More</button>
+
+<!-- ✅ GOOD — div with overflow hidden -->
+<div style="overflow: hidden; border-radius: 100px;">
+    <div style="background: white; color: #1A73E8; padding: 16px 40px; font-size: 18px; font-weight: 600;">Learn More</div>
+</div>
+```
+
+📖 **Full guide:** `skills/html2canvas-gotchas.md`

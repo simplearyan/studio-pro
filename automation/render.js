@@ -273,6 +273,27 @@ async function render(scriptPath, options) {
   }
   console.log(`   Found: ${devUrl}`);
 
+  // Verify it's Vite (not http-server)
+  const httpMod = await import('http');
+  const checkVite = await new Promise((resolve) => {
+    httpMod.default.get(devUrl, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => resolve(data));
+    }).on('error', () => resolve('')).setTimeout(3000, function() { this.destroy(); resolve(''); });
+  });
+  if (!checkVite.includes('@vite/client')) {
+    console.error('\n❌ Wrong server! Page is NOT served by Vite.');
+    console.error('   The page shows raw HTML without CSS/JS processing.');
+    console.error('   This causes: broken layout, missing styles, export failures.');
+    console.error('\n   Fix:');
+    console.error('   1. Kill the current server');
+    console.error('   2. cd studio-pro-editor && npm run dev');
+    console.error('\n   NEVER use: npx http-server, npx serve');
+    process.exit(1);
+  }
+  console.log('   ✅ Vite server verified');
+
   // 2. Launch Chrome — headless by default, visible window with --debug
   console.log(`🚀 Launching Chrome (${options.debug ? 'visible window' : 'headless'})...`);
   let browser;
@@ -309,15 +330,12 @@ async function render(scriptPath, options) {
     await page.goto(devUrl, {
       waitUntil: 'networkidle0',
       timeout: 30000
-    });
-
-    // Wait for app to initialize
+    });    // Wait for app to initialize
     await page.waitForFunction(() => 
-      typeof State !== 'undefined' && 
       typeof window.startMediaBunnyExport === 'function' &&
-      typeof openExportModal === 'function' &&
-      typeof submitExport === 'function', 
-    { timeout: 20000 });
+      typeof window.openExportModal === 'function' && 
+      typeof window.submitExport === 'function', 
+    { timeout: 30000 });
     console.log('✅ App loaded');
 
     // 4. Load script

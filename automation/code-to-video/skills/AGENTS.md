@@ -205,6 +205,52 @@ node render.js my-video.js
 
 ---
 
+## ⚠️ CRITICAL: Dev Server Setup
+
+**ALWAYS use `npm run dev` (Vite) — NEVER use `http-server` or `npx serve`.**
+
+| Server | CSS/Tailwind | JS Modules | Result |
+|---|---|---|---|
+| `npx http-server` | ❌ Raw CSS | ❌ No transforms | **Unstyled, broken UI** |
+| `npx serve` | ❌ Raw CSS | ❌ No transforms | **Unstyled, broken UI** |
+| `npm run dev` (Vite) | ✅ Processed | ✅ Transpiled | **Full working editor** |
+
+**Why:** StudioPro uses Tailwind CSS and ES modules. `http-server` serves raw files without Vite's build pipeline. The editor loads but **all styles are missing** — modals overlap, layout breaks, export buttons don't work.
+
+**Correct startup:**
+```bash
+cd studio-pro-editor
+npm run dev  # Starts Vite on port 3000
+```
+
+**If port 3000 is occupied:**
+```bash
+# Kill existing process
+netstat -ano | grep :3000 | findstr LISTENING
+# Kill by PID from above
+
+# Then start fresh
+npm run dev
+```
+
+**Both automation scripts now have a healthcheck** that detects wrong server type and shows a clear error message:
+
+```
+❌ Wrong server! Page is NOT served by Vite.
+   The page shows raw HTML without CSS/JS processing.
+   This causes: broken layout, missing styles, export failures.
+
+   Fix:
+   1. Kill the current server
+   2. cd studio-pro-editor && npm run dev
+
+   NEVER use: npx http-server, npx serve
+```
+
+The healthcheck works by fetching the page HTML and checking for `@vite/client` script tag (injected by Vite). If missing, it means the server is not Vite.
+
+---
+
 ## Rules
 
 ### Do's
@@ -221,6 +267,17 @@ node render.js my-video.js
 - ❌ Don't use `Math.random()` — use deterministic values
 - ❌ Don't create more than 20 clips in one composition
 - ❌ Don't use external URLs for assets — use local files or data URIs
+
+### html2canvas Rules (CRITICAL)
+- ❌ **NO emojis** — html2canvas renders them as colored squares. Use CSS badges instead
+- ❌ **NO CSS variables** — html2canvas doesn't support them. Use hardcoded values
+- ❌ **NO complex gradients** — Use simple linear gradients only
+- ❌ **NO box shadows** — Use borders instead
+- ❌ **NO CSS transforms/animations** — Use StudioPro animation system
+- ✅ **Simple flexbox** — Single-level only, avoid nested flex/grid
+- ✅ **Wait for fonts** — Always load fonts before rendering
+- ✅ **Test in canvas** — Verify rendering matches HTML editor preview
+- 📖 **Full guide:** `skills/html2canvas-gotchas.md`
 
 ---
 

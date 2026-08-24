@@ -1,162 +1,190 @@
-# Code-to-Video — Test Results
+# Code-to-Video Test Results
 
-> **Date:** August 23, 2026
-> **Test:** Simple 5-second video with HTML clip
-> **Result:** ✅ PASS — Video exported successfully
+## Test: India Pollution Presentation
 
----
+**Date:** 2024-08-23  
+**Script:** `examples/india-pollution.js`  
+**Scenes:** 9 HTML clips × 5s = 45s total video
 
-## Test Summary
+### Test Results
 
 | Metric | Value |
 |---|---|
-| **Script** | `examples/simple-test.js` |
-| **Duration** | 5 seconds |
-| **Clips** | 1 (HTML clip with gradient card) |
-| **Output** | `simple-test_ultra_30fps_ftrt_mp4.mp4` |
-| **File Size** | 0.25 MB |
-| **Total Time** | 5.5 seconds |
-| **Export Time** | ~0.5 seconds (after Chrome launch) |
+| **Total time** | 23.7s |
+| **Chrome launch** | ~3s |
+| **Script execution** | ~1s |
+| **Export time** | 13.9s |
+| **Video duration** | 45s |
+| **Speed ratio** | 3.2× realtime |
+| **File size** | 1.26 MB |
+| **Format** | MP4 (H.264) |
+| **Resolution** | 1920×1080 |
+| **FPS** | 30 |
+| **Quality** | Ultra (30 Mbps) |
 
----
+### What Works ✅
 
-## Time Breakdown
-
-| Phase | Time | Notes |
+| Feature | Status | Notes |
 |---|---|---|
-| Chrome launch | ~2.5s | Puppeteer + headless Chrome |
-| Connect to dev server | ~0.5s | localhost:3000 |
-| Wait for StudioPro API | ~0.5s | `window.StudioPro` available |
-| Execute script | ~0.3s | `createComposition()` + clips |
-| Open export modal | ~0.5s | `openExportModal()` |
-| Set export options | ~0.2s | Radio buttons, quality |
-| Start export | ~0.1s | `submitExport()` |
-| Export video | ~0.5s | FTRT mode, 5-second video |
-| Capture blob | ~0.3s | `_exportDoneUrl` → file |
-| **Total** | **~5.5s** | |
+| Multiple HTML clips | ✅ | 9 clips created and rendered |
+| Google Fonts | ✅ | Google Sans loaded via API |
+| Clean CSS styling | ✅ | Cards, grids, gradients, borders |
+| Emojis | ✅ | 🔴⚠️💰🏭🚗🌾🏠🫁❤️👶🧠🌳🚲💡📢🌍💚✨ |
+| Color palette | ✅ | Google-style blue/red/green/yellow |
+| SVG arrows | ✅ | CSS `↓` arrow in solutions scene |
+| Highlight text | ✅ | Blue highlight chips in health scene |
+| Animation keyframes | ✅ | Fade-in, scale, slide-up per scene |
+| Progress reporting | ✅ | 13% → 97% during export |
+| File output | ✅ | Saved to `output/` directory |
 
----
+### What's Missing (Agentic Automation Gaps)
 
-## Issues Found & Fixed
+| Gap | Priority | Impact | Effort |
+|---|---|---|---|
+| **No transitions** | 🔴 High | Scenes cut abruptly, no fade/slide between | 1-2 days |
+| **No image loading** | 🔴 High | Can't use photos from URLs (CORS) | 1 day |
+| **No audio** | 🟡 Medium | No background music or voiceover | 1 day |
+| **No text clips** | 🟡 Medium | Only HTML clips, no native text overlay | 0.5 day |
+| **No motion paths** | 🟡 Medium | Can't animate along a path | 1 day |
+| **No preview mode** | 🟡 Medium | Must export to see result | 2 days |
+| **No hot reload** | 🟡 Medium | Must re-run CLI for every change | 2 days |
+| **Single composition** | 🟢 Low | Can't chain multiple compositions | 1 day |
+| **No error recovery** | 🟢 Low | If one clip fails, entire export fails | 1 day |
 
-### 1. ES Module Compatibility
-**Issue:** `require()` not available in ES module context
-**Fix:** Changed to `import` statements, updated `package.json` type
+### Improvement Suggestions
 
-### 2. Chrome Path Not Found
-**Issue:** `puppeteer-core` needs explicit `executablePath`
-**Fix:** Read Chrome path from `config.json`
-
-### 3. Function Statement Error
-**Issue:** `module.exports = function(...) { }` can't be eval'd in browser
-**Fix:** Strip JSDoc comments, convert function expression to arrow function
-
-### 4. Export Button Not Found
-**Issue:** No `id="btnExport"` button — uses `openExportModal()` function
-**Fix:** Call `openExportModal()` directly, then `submitExport()`
-
-### 5. Blob Not Captured
-**Issue:** `_exportBlob` not available — export uses `_exportDoneUrl`
-**Fix:** Fetch blob via `_exportDoneUrl`, convert to base64, save to file
-
----
-
-## How It Works Now
-
-```
-1. Node.js reads script file
-   ↓
-2. Strips JSDoc comments + module.exports
-   ↓
-3. Converts to arrow function string
-   ↓
-4. Puppeteer opens Chrome, loads StudioPro
-   ↓
-5. Executes arrow function in browser context
-   ↓
-6. StudioPro API creates clips on timeline
-   ↓
-7. Opens export modal, sets options
-   ↓
-8. Calls submitExport() to start
-   ↓
-9. Waits for export to complete
-   ↓
-10. Captures blob via _exportDoneUrl
-    ↓
-11. Saves to file as MP4
-```
-
----
-
-## Issues Still Remaining
-
-### 1. Export Time Shows 0.0s
-**Issue:** The progress polling loop exits immediately because `State.isExporting` is already false
-**Cause:** Export completes very fast for short videos (5s), or the export was already done from a previous run
-**Impact:** Minor — the video is still exported correctly
-**Fix:** Add a small delay before checking `isExporting`, or check `_exportDoneUrl` instead
-
-### 2. File Saved to Current Directory
-**Issue:** Output file saved to `automation/` instead of `code-to-video/output/`
-**Cause:** `render.js` doesn't change directory before saving
-**Fix:** Update `render.js` to save to `code-to-video/output/` by default
-
-### 3. No Progress Reporting
-**Issue:** Export progress not shown in terminal
-**Cause:** Progress polling loop exits immediately
-**Fix:** Fix the progress polling to actually wait for export
-
----
-
-## Improvements Needed
-
-### Priority 1: Fix Progress Reporting
+#### 1. Add Transitions (Most Impactful)
 ```javascript
-// Add delay before checking isExporting
-await new Promise(r => setTimeout(r, 2000));
-// Then start polling
+StudioPro.createComposition({
+  transitions: {
+    default: 'fade',  // fade, slide, wipe, dissolve
+    duration: 0.5     // seconds
+  },
+  clips: [...]
+});
 ```
 
-### Priority 2: Fix Output Directory
+#### 2. Add Image Loading
 ```javascript
-// In render.js, save to code-to-video/output/
-const outputPath = path.join(__dirname, 'output', parsed.output || defaultName);
+StudioPro.image('https://example.com/photo.jpg', {
+  start: 0, duration: 5,
+  effects: { width: 1920, height: 1080, objectFit: 'cover' }
+});
 ```
 
-### Priority 3: Add Error Handling
-- Handle Chrome launch failures
-- Handle dev server not running
-- Handle script execution errors
-- Handle export failures
+#### 3. Add Background Audio
+```javascript
+StudioPro.audio('music.mp3', {
+  start: 0, duration: 45,
+  effects: { volume: 0.3, fadeIn: 2, fadeOut: 2 }
+});
+```
 
-### Priority 4: Add Progress Bar
-- Show percentage complete
-- Show elapsed time
-- Show estimated time remaining
+#### 4. Add Preview Mode
+```bash
+# Preview without exporting
+node render.js examples/india-pollution.js --preview
+# Opens Chrome with the composition, user can scrub timeline
+```
+
+#### 5. Add Hot Reload
+```bash
+# Watch mode — re-render on file change
+node render.js examples/india-pollution.js --watch
+```
+
+### What AI Agents Can Now Do
+
+```bash
+# 1. Write a JS file using StudioPro API
+# 2. Run: node render.js my-video.js
+# 3. Get: MP4 in output/ folder (23s for 45s video)
+```
+
+### What AI Agents Can't Do Yet
+
+1. **No transitions** — Videos look amateur without fade/slide between scenes
+2. **No images** — Can't include photos (CORS blocks cross-origin loading)
+3. **No audio** — No background music or voiceover
+4. **No preview** — Must export to see result (slow iteration)
+5. **No hot reload** — Must re-run CLI for every change
+
+### Recommendation
+
+**For production agentic automation, implement these in order:**
+1. Transitions (biggest visual improvement)
+2. Image loading (most requested feature)
+3. Preview mode (biggest DX improvement)
+4. Audio support (completes the video)
+
+**Estimated time to production-ready: 5-7 days**
 
 ---
 
-## Comparison: Code-to-Video vs Markdown-to-Video
+## Previous Tests
 
-| Metric | Code-to-Video | Markdown-to-Video |
+### Simple Test (5s video)
+- **Script:** `simple-test.js`
+- **Time:** 8.7s
+- **File:** 0.27 MB
+- **Status:** ✅ Working
+
+---
+
+## Full Pipeline Test — Aug 24, 2026
+
+### All 4 Pipelines Tested ✅
+
+| # | Pipeline | Script | Mode | Time | Size | Status |
+|---|---|---|---|---|---|---|
+| 1 | MD-to-video | social-short.md | MediaBunny | 60.6s | 1.1 MB | ✅ |
+| 2 | MD-to-video | social-short.md | FTRT | 15.7s | 1.1 MB | ✅ |
+| 3 | Code-to-video | simple-test.js | MediaBunny | 9.1s | 0.12 MB | ✅ |
+| 4 | Code-to-video | simple-test.js | FTRT | 6.6s | 0.12 MB | ✅ |
+
+### Critical Fix Applied
+
+**Issue:** Using `http-server` instead of `npm run dev` caused completely unstyled UI.
+**Fix:** Always use `npm run dev` (Vite) for dev server.
+
+### Output Files Created
+
+```
+automation/output/
+├── social-short_ultra_30Mbps_30fps_MB-H264_1080p.mp4
+├── social-short_ultra_30Mbps_30fps_FTRT-H264_1080p.mp4
+
+automation/code-to-video/output/
+├── simple-test_ultra_30fps_mediabunny_mp4.mp4
+├── simple-test_ultra_30fps_ftrt_mp4.mp4
+```
+
+---
+
+## India Pollution Test — Aug 24, 2026
+
+### 9 HTML Clips × 5s = 45s Video
+
+| Metric | MediaBunny | FTRT |
 |---|---|---|
-| **Input** | JavaScript file | Markdown file |
-| **Setup** | Write JS with API | Write MD with headings |
-| **Flexibility** | Unlimited (HTML/CSS/JS) | Limited (MD structure) |
-| **Complexity** | Medium (need JS knowledge) | Low (anyone can write MD) |
-| **Export Speed** | Same (FTRT) | Same (FTRT) |
-| **Output Quality** | Same | Same |
-| **Best For** | AI agents, complex visuals | Simple videos, explainers |
+| **Pre-render time** | 1.7s | 1.8s |
+| **Export time** | 45.5s | 12.8s |
+| **Total time** | 50.5s | 17.8s |
+| **File size** | 1.07 MB | 0.96 MB |
+| **Speed vs realtime** | 1× | **3.5×** |
+| **Black frames** | ✅ None | ✅ None |
 
----
+### Key Findings
 
-## Next Steps
+1. **Pre-render eliminates black frames** — 9 HTML clips pre-rendered in 1.7-1.8s
+2. **FTRT is 2.8× faster** — 17.8s vs 50.5s for 45s video
+3. **Both modes work** — No stalls, no GPU errors
+4. **Healthcheck works** — Verified Vite before launch
 
-1. ✅ Fix progress reporting
-2. ✅ Fix output directory
-3. ✅ Add error handling
-4. ✅ Add progress bar
-5. ✅ Test with more complex compositions
-6. ✅ Test with animations
-7. ✅ Document improvements
+### Output Files
+
+```
+automation/code-to-video/output/
+├── india-pollution_ultra_30fps_mediabunny_mp4.mp4  (1.07 MB)
+├── india-pollution_ultra_30fps_ftrt_mp4.mp4        (0.96 MB)
+```

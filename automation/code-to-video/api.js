@@ -46,7 +46,7 @@ class StudioPro {
         this.page = null;
         this.url = options.url || STUDIO_PRO_URL;
         this.headless = options.headless !== false;
-        this.timeout = options.timeout || 30000;
+        this.timeout = options.timeout || 120000;
     }
 
     async launch() {
@@ -54,31 +54,45 @@ class StudioPro {
             throw new Error('Chrome not found. Set CHROME_PATH or check config.json');
         }
 
-        // Check dev server
+        // Check dev server is running and is Vite (not http-server)
         const http = await import('http');
-        const isUp = await new Promise((resolve) => {
-            const req = http.default.get(this.url, (res) => {
-                res.resume();
-                resolve(true);
-            });
-            req.on('error', () => resolve(false));
-            req.setTimeout(3000, () => { req.destroy(); resolve(false); });
-        });
-        if (!isUp) {
-            throw new Error(`Dev server not running at ${this.url}. Run 'npm run dev' first.`);
+        const pageHtml = await new Promise((resolve, reject) => {
+            http.default.get(this.url, (res) => {
+                let data = '';
+                res.on('data', chunk => data += chunk);
+                res.on('end', () => resolve(data));
+            }).on('error', () => reject(new Error('not running'))).setTimeout(3000, function() { this.destroy(); reject(new Error('timeout')); });
+        }).catch(() => null);
+
+        if (!pageHtml) {
+            throw new Error(`❌ Dev server not running at ${this.url}\n   Run: npm run dev`);
         }
+
+        // Detect wrong server type (http-server shows directory listing)
+        if (pageHtml.includes('Index of /') || !pageHtml.includes('@vite/client')) {
+            throw new Error(
+                `❌ Wrong server detected! The page at ${this.url} is NOT served by Vite.\n\n` +
+                `   Your server is showing raw HTML without CSS/JS processing.\n` +
+                `   This causes: broken layout, missing Tailwind styles, export failures.\n\n` +
+                `   Fix:\n` +
+                `   1. Kill the current server\n` +
+                `   2. cd studio-pro-editor && npm run dev\n\n` +
+                `   NEVER use: npx http-server, npx serve, python -m http.server`
+            );
+        }
+        console.log('[StudioPro] Dev server verified (Vite)');
 
         console.log('[StudioPro] Launching Chrome...');
         this.browser = await puppeteer.launch({
             headless: this.headless ? 'new' : false,
             executablePath: CHROME_PATH,
-            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--window-size=1920,1080']
+            args: ['--no-sandbox', '--disable-setuid-sandbox', '--enable-webcodecs']
         });
         this.page = await this.browser.newPage();
         await this.page.setViewport({ width: 1920, height: 1080 });
 
         console.log(`[StudioPro] Connecting to ${this.url}...`);
-        await this.page.goto(this.url, { waitUntil: 'networkidle0', timeout: this.timeout });
+        await this.page.goto(this.url, { waitUntil: 'domcontentloaded', timeout: this.timeout });
         await this.page.waitForFunction('window.StudioPro !== undefined', { timeout: this.timeout });
         console.log('[StudioPro] Connected successfully');
     }
@@ -116,58 +130,78 @@ class StudioPro {
     }
 
     async export(outputPath, options = {}) {
-        const { quality = 'ultra', format = 'mp4', mode = 'ftrt' } = options;
+        const { quality = 'ultra', format = 'mp4', mode = 'mediabunny' } = options;
         const FORMAT_MAP = {
             'ftrt-mp4': 'video-ftrt-mp4', 'ftrt-webm': 'video-ftrt-webm',
             'standard-mp4': 'video-mp4', 'standard-webm': 'video-webm',
+            'mediabunny-mp4': 'video-mediabunny-mp4', 'mediabunny-webm': 'video-mediabunny',
             'mp4': 'video-mediabunny-mp4', 'webm': 'video-mediabunny'
         };
-        const formatValue = FORMAT_MAP[`${mode}-${format}`] || FORMAT_MAP[format] || 'video-ftrt-mp4';
+        const formatValue = FORMAT_MAP[`${mode}-${format}`] || FORMAT_MAP[format] || 'video-mediabunny-mp4';
 
         console.log(`[StudioPro] Starting export (format: ${formatValue})...`);
-        const result = await this.page.evaluate(async (params) => {
-            try {
-                if (typeof startExport === 'function') {
-                    startExport(params.formatValue, 0, window.State?.duration || 60);
-                } else {
-                    throw new Error('startExport not found');
+
+        // Step 1: Open modal + set radio values (matching working automation/render.js)
+        await this.page.evaluate((params) => {
+            openExportModal();
+
+            function setRadio(name, value) {
+                const radio = document.querySelector(`input[name="${name}"][value="${value}"]`);
+                if (radio) {
+                    radio.checked = true;
+                    radio.dispatchEvent(new Event('change', { bubbles: true }));
                 }
-                await new Promise(r => setTimeout(r, 500));
-                return { success: true, isExporting: window.State?.isExporting };
-            } catch (err) { return { success: false, error: err.message }; }
+            }
+
+            setRadio('exportFormat', params.formatValue);
+            setRadio('exportScope', 'full');
+            exportSelectOption();
         }, { formatValue });
 
-        if (!result.success) throw new Error(`Export failed: ${result.error}`);
+        // Step 2: Click Submit Export (separate evaluate — same as working render.js)
+        await this.page.evaluate(() => submitExport());
 
-        // Wait for export
+        // Step 3: Monitor progress
         console.log('[StudioPro] Waiting for export...');
         const exportStart = Date.now();
         let lastProgress = -1;
-        await new Promise(r => setTimeout(r, 2000));
 
         while (true) {
             const status = await this.page.evaluate(() => ({
-                done: !window.State || !window.State.isExporting,
-                progress: parseInt(document.getElementById('exportProgressText')?.textContent) || 0
+                done: !State.isExporting,
+                progress: parseInt(document.getElementById('exportProgressText')?.textContent) || 0,
+                currentTime: State.currentTime || 0
             }));
-            if (status.done && lastProgress >= 0) break;
-            if (status.progress > lastProgress) {
-                lastProgress = status.progress;
-                process.stdout.write(`\r   ⏳ ${status.progress}% (${((Date.now() - exportStart) / 1000).toFixed(0)}s)`);
+
+            if (status.done) break;
+
+            // Check if FTRT stall modal appeared
+            const modalVisible = await this.page.evaluate(() => {
+                const el = document.getElementById('ftrtFbOverlay');
+                return el && !el.classList.contains('hidden');
+            }).catch(() => false);
+            if (modalVisible) {
+                console.log('\n[StudioPro] FTRT stall detected — switching to MediaBunny...');
+                await this.page.evaluate(() => {
+                    const btn = document.getElementById('ftrtFbMediaBunny');
+                    if (btn) btn.click();
+                }).catch(() => {});
+                await new Promise(r => setTimeout(r, 2000));
             }
+
+            const p = status.progress;
+            if (p >= lastProgress + 5) {
+                lastProgress = p;
+                process.stdout.write(`\r   ⏳ ${p}% (${((Date.now() - exportStart) / 1000).toFixed(0)}s)`);
+            }
+
             await new Promise(r => setTimeout(r, 500));
         }
         console.log(`\n[StudioPro] Export complete in ${((Date.now() - exportStart) / 1000).toFixed(1)}s`);
 
-        // Wait for blob URL to be available
+        // Step 4: Capture blob
         console.log('[StudioPro] Capturing export...');
-        
-        // Wait for blob URL to be available (poll with timeout)
-        for (let i = 0; i < 10; i++) {
-            const hasUrl = await this.page.evaluate(() => !!window._exportDoneUrl);
-            if (hasUrl) break;
-            await new Promise(r => setTimeout(r, 1000));
-        }
+        await new Promise(r => setTimeout(r, 1000));
 
         const blobData = await this.page.evaluate(async () => {
             if (!window._exportDoneUrl) return { error: '_exportDoneUrl is null' };
@@ -190,6 +224,20 @@ class StudioPro {
         } else {
             console.log(`[StudioPro] Blob capture failed: ${blobData?.error}`);
         }
+    }
+
+    async preloadHtmlClips() {
+        console.log('[StudioPro] Pre-rendering HTML clips...');
+        const startTime = Date.now();
+        // Call the editor's built-in preRenderAllHtmlClips() which handles
+        // iframe creation, content writing, font loading, and html2canvas capture
+        await this.page.evaluate(() => {
+            if (typeof window.preRenderAllHtmlClips === 'function') {
+                return window.preRenderAllHtmlClips();
+            }
+        });
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        console.log(`[StudioPro] HTML clips pre-rendered in ${elapsed}s`);
     }
 
     async close() {
