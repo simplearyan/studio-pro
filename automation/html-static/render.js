@@ -56,13 +56,13 @@ function parseArgs(args) {
             process.exit(0);
         }
 
-        if (arg === '--quality' && args[i + 1]) {
+        if ((arg === '--quality' || arg === '-q') && args[i + 1]) {
             result.options.quality = args[++i];
-        } else if (arg === '--format' && args[i + 1]) {
+        } else if ((arg === '--format' || arg === '-f') && args[i + 1]) {
             result.options.format = args[++i];
-        } else if (arg === '--mode' && args[i + 1]) {
+        } else if ((arg === '--mode' || arg === '-m') && args[i + 1]) {
             result.options.mode = args[++i];
-        } else if (arg === '--fps' && args[i + 1]) {
+        } else if ((arg === '--fps') && args[i + 1]) {
             result.options.fps = parseInt(args[++i]);
         } else if (arg === '--no-headless') {
             result.options.headless = false;
@@ -136,7 +136,7 @@ async function render(scriptPath, outputPath, options) {
         outputPath = `${outputPath}.${options.format}`;
     }
 
-    // Resolve output path — place in code-to-video/output/
+    // Resolve output path — place in html-static/output/
     const outputDir = path.join(__dirname, 'output');
     if (!path.isAbsolute(outputPath)) {
         // If user passed a relative path like 'output/file.mp4',

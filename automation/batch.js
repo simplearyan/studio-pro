@@ -145,7 +145,7 @@ async function batch(inputDir, options) {
       // Always use .mp4 extension (FTRT/mediabunny all output mp4)
       const outputPath = resolve(outputDir, `${scriptName}.mp4`);
       const scriptPath = resolve(inputDir, script);
-      const renderJs = resolve(__dirname, 'render.js');
+      const renderJs = resolve(__dirname, 'md-render/render.js');
 
       try {
         const args = [renderJs, scriptPath, '-o', outputPath, '-r', resolution, '--fps', String(fps), '-f', format, '-q', quality];

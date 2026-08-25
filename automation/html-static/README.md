@@ -1,7 +1,7 @@
-# Code-to-Video Automation
+# HTML Static — Code to Video
 
 > Write JavaScript → Get video. No React, no build steps, no accounts.
-> Designed for AI agents to create videos programmatically.
+> Designed for AI agents to create videos with HTML clip compositions.
 
 ---
 
@@ -12,7 +12,7 @@
 cd ../.. && npm run dev
 
 # 2. Render a composition
-node automation/code-to-video/render.js automation/code-to-video/examples/product-launch.js
+node html-static/render.js html-static/examples/product-launch.js
 
 # 3. Output: product-launch_ultra_30fps_ftrt_mp4.mp4
 ```
@@ -43,7 +43,7 @@ JS Composition File
 
 ### Step 1: Read AGENTS.md
 
-Always read `skills/AGENTS.md` first. It contains:
+Always read `shared/skills/AGENTS.md` first. It contains:
 - Full API reference
 - Rules and constraints
 - Workflow steps
@@ -63,9 +63,9 @@ Read the appropriate skill based on the request:
 
 | Request | Skill File |
 |---|---|
-| "Create a product launch video" | `skills/product-launch.md` |
-| "Create a social media reel" | `skills/social-reel.md` |
-| "Create kinetic typography" | `skills/kinetic-text.md` |
+| "Create a product launch video" | `shared/skills/product-launch.md` |
+| "Create a social media reel" | `shared/skills/social-reel.md` |
+| "Create kinetic typography" | `shared/skills/kinetic-text.md` |
 | "Create a [specific type]" | Write your own using the API |
 
 ### Step 4: Write the Composition
@@ -105,7 +105,7 @@ module.exports = function(StudioPro, State) {
 ### Step 5: Export
 
 ```bash
-node render.js my-video.js
+node html-static/render.js my-video.js
 # Output: my-video_ultra_30fps_ftrt_mp4.mp4
 ```
 
@@ -190,7 +190,7 @@ StudioPro.fonts.linkTag('Poppins');   // <link rel="stylesheet" ...>
 ## CLI Options
 
 ```bash
-node render.js <script.js> [output] [options]
+node html-static/render.js <script.js> [output] [options]
 
 Options:
   --quality <draft|standard|ultra>  Video quality (default: ultra)
@@ -222,19 +222,19 @@ Options:
 
 ### Product Launch (15s)
 ```bash
-node render.js examples/product-launch.js
+node html-static/render.js html-static/examples/product-launch.js
 ```
 Creates a 15-second product launch video with gradient cards, animated text, and CTA.
 
 ### Social Reel (10s, 9:16)
 ```bash
-node render.js examples/social-reel.js reel.mp4 --format webm
+node html-static/render.js html-static/examples/social-reel.js reel.mp4 --format webm
 ```
 Creates a 10-second vertical social media reel with quick cuts and bold text.
 
 ### Kinetic Text (12s)
 ```bash
-node render.js examples/kinetic-text.js kinetic.mp4 --quality standard
+node html-static/render.js html-static/examples/kinetic-text.js kinetic.mp4 --quality standard
 ```
 Creates a 12-second kinetic typography video with spring animations.
 
@@ -242,13 +242,13 @@ Creates a 12-second kinetic typography video with spring animations.
 
 ## Skills
 
-Step-by-step workflows for specific video types:
+Step-by-step workflows for specific video types (in `shared/skills/`):
 
 | Skill | File | Duration | Style |
 |---|---|---|---|
-| Product Launch | `skills/product-launch.md` | 10-15s | Professional, gradient |
-| Social Reel | `skills/social-reel.md` | 8-12s | Bold, fast-paced |
-| Kinetic Text | `skills/kinetic-text.md` | 10-15s | Animated typography |
+| Product Launch | `shared/skills/product-launch.md` | 10-15s | Professional, gradient |
+| Social Reel | `shared/skills/social-reel.md` | 8-12s | Bold, fast-paced |
+| Kinetic Text | `shared/skills/kinetic-text.md` | 10-15s | Animated typography |
 
 Each skill contains:
 - Overview of the video type
@@ -305,16 +305,10 @@ Frame.md-style visual brand tokens:
 ## File Structure
 
 ```
-code-to-video/
+html-static/
 ├── README.md              # This file
 ├── api.js                 # Node.js API wrapper (Puppeteer)
 ├── render.js              # CLI entry point
-│
-├── skills/                # AI agent workflows
-│   ├── AGENTS.md          # Agent contract (read FIRST)
-│   ├── product-launch.md  # Skill: marketing videos
-│   ├── social-reel.md     # Skill: short-form social
-│   └── kinetic-text.md    # Skill: kinetic typography
 │
 ├── templates/             # Reusable assets
 │   ├── design-tokens.md   # frame.md-style visual tokens
@@ -323,12 +317,19 @@ code-to-video/
 │   └── premium-gradient.html # Wisteria mesh gradient
 │
 ├── examples/              # Example compositions
+│   ├── india-pollution.js # India pollution presentation (9 scenes)
 │   ├── product-launch.js  # Product launch video
 │   ├── social-reel.js     # Vertical social reel
-│   └── kinetic-text.js    # Kinetic typography
+│   ├── kinetic-text.js    # Kinetic typography
+│   └── simple-test.js     # Minimal test composition
 │
 └── output/                # Rendered videos (gitignored)
 ```
+
+**Shared resources** (in `automation/shared/`):
+- `shared/skills/` — AI agent workflows (AGENTS.md, skill docs)
+- `shared/tests/` — Test scripts
+- `shared/skills/html2canvas-gotchas.md` — Known rendering limitations
 
 ---
 
@@ -336,11 +337,11 @@ code-to-video/
 
 This API is designed for AI agents to write videos programmatically:
 
-1. **Read AGENTS.md** — Learn the API
-2. **Read design tokens** — Know the visual style
-3. **Read a skill doc** — Follow the workflow
+1. **Read AGENTS.md** — Learn the API (`shared/skills/AGENTS.md`)
+2. **Read design tokens** — Know the visual style (`templates/design-tokens.md`)
+3. **Read a skill doc** — Follow the workflow (`shared/skills/product-launch.md`)
 4. **Write a JS file** — Using `StudioPro.createComposition()` and `StudioPro.keyframes()`
-5. **Execute it** — `node render.js my-video.js`
+5. **Execute it** — `node html-static/render.js my-video.js`
 6. **Get the output** — MP4 file ready to share
 
 The agent doesn't need to know about:

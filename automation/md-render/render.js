@@ -8,7 +8,7 @@
  *
  * Prerequisites:
  *   1. Run "npm run dev" in studio-pro-editor/ (starts Vite on port 3000)
- *   2. Run "node automation/render.js scripts/product-launch.md"
+ *   2. Run "node automation/md-render/render.js scripts/product-launch.md"
  */
 
 import puppeteer from 'puppeteer-core';

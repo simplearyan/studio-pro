@@ -1,7 +1,7 @@
 # Studio Pro — Automation Layer
 
-> Render videos from the terminal using **Markdown → Video** or **Code → Video**.
-> Two tracks: write Markdown for simple videos, or write JavaScript for complex compositions.
+> Render videos from the terminal using **Markdown → Video**, **HTML Static → Video**, or **HTML Animated → Video**.
+> Three pipelines: write Markdown for simple videos, HTML clips for static content, or WAAPI-animated clips for motion graphics.
 
 ## Quick Start
 
@@ -12,420 +12,185 @@ cd studio-pro-editor && npm run dev
 # 2. Run automation (in another terminal)
 cd automation
 npm install
-node render.js scripts/product-launch.md
+
+# Markdown → Video
+node md-render/render.js md-render/scripts/product-launch.md
+
+# HTML Static → Video
+node html-static/render.js html-static/examples/product-launch.js
+
+# HTML Animated → Video (future)
+node html-waapi/render.js html-waapi/examples/animated-slide.js
 ```
 
-## Two Automation Tracks
+## Three Automation Pipelines
 
-| Track | Input | Command | Best For |
+| Pipeline | Input | Command | Best For |
 |---|---|---|---|
-| **Markdown → Video** | `.md` files | `node render.js scripts/file.md` | Simple videos, explainers, social posts |
-| **Code → Video** | `.js` files | `node code-to-video/render.js examples/file.js` | Complex compositions, AI agents, animations |
+| **md-render** | `.md` files | `node md-render/render.js scripts/file.md` | Simple videos, explainers, social posts |
+| **html-static** | `.js` files | `node html-static/render.js examples/file.js` | Complex HTML clip compositions, AI agents |
+| **html-waapi** | `.js` files | `node html-waapi/render.js examples/file.js` | Animated HTML clips with WAAPI, motion graphics |
 
 ## Folder Structure
 
 ```
 automation/
-├── render.js           # MD → Video render script
-├── batch.js            # Batch render (multiple videos)
-├── config.json         # Chrome path, dev server port, defaults
-├── package.json        # puppeteer-core dependency
+├── README.md                    # This file
+├── batch.js                     # Batch render (multiple videos)
+├── package.json                 # puppeteer-core dependency
 │
-├── scripts/            # Markdown video scripts
-│   ├── animal-test.md      # 60s with 3 images
-│   ├── explainer.md        # 24s explainer video
-│   ├── product-launch.md   # 15s product launch
-│   ├── short-test.md       # 10s quick test
-│   └── social-short.md     # 18s social media
+├── md-render/                   # Pipeline 1: Markdown → Video
+│   ├── render.js                # Headless Chrome renderer
+│   ├── config.json              # Chrome path, dev server port
+│   ├── scripts/                 # Markdown video scripts
+│   │   ├── animal-test.md
+│   │   ├── explainer.md
+│   │   ├── product-launch.md
+│   │   ├── short-test.md
+│   │   └── social-short.md
+│   └── output/                  # Rendered videos
 │
-├── assets/             # Local assets (fonts, images, videos)
+├── html-static/                 # Pipeline 2: HTML Clips → Video (static)
+│   ├── api.js                   # Node.js Puppeteer API
+│   ├── render.js                # CLI entry point
+│   ├── examples/                # Composition scripts
+│   │   ├── india-pollution.js
+│   │   ├── kinetic-text.js
+│   │   ├── product-launch.js
+│   │   ├── simple-test.js
+│   │   └── social-reel.js
+│   ├── templates/               # Reusable HTML/CSS/JS
+│   │   ├── design-tokens.md
+│   │   ├── glassmorphism.html
+│   │   ├── gradient-card.html
+│   │   └── premium-gradient.html
+│   ├── skills/                  # (moved to shared/skills/)
+│   └── output/                  # Rendered videos
+│
+├── html-waapi/                  # Pipeline 3: HTML Clips → Video (animated)
+│   ├── lib/
+│   │   ├── waapi-seek.js        # WAAPI seek engine (deterministic)
+│   │   ├── data-animate-adapter.js  # data-animate → WAAPI
+│   │   └── svg-renderer.js      # SVG foreignObject capture
+│   ├── templates/               # Animated HTML templates
+│   │   ├── animated-slide.html
+│   │   └── data-animate-slide.html
+│   ├── examples/                # Animated compositions
+│   ├── skills/                  # Agent skills for animated clips
+│   └── output/                  # Rendered videos
+│
+├── shared/                      # Shared across all pipelines
+│   ├── skills/                  # AI agent workflows
+│   │   ├── AGENTS.md            # Agent contract (read FIRST)
+│   │   ├── html2canvas-gotchas.md
+│   │   ├── kinetic-text.md
+│   │   ├── product-launch.md
+│   │   └── social-reel.md
+│   └── tests/                   # Test scripts
+│       ├── test-headless.js
+│       ├── test-export.js
+│       ├── test-debug.js
+│       └── test-quick.js
+│
+├── assets/                      # Shared assets
 │   ├── fonts/
 │   ├── images/
 │   ├── videos/
 │   ├── audio/
 │   └── templates/
 │
-├── output/             # Rendered videos (gitignored)
-│   └── *.mp4 / *.webm
-│
-├── tests/              # Test scripts
-│   ├── test-headless.js    # Headless vs visible comparison
-│   ├── test-export.js      # Export debug tool
-│   ├── test-debug.js       # App loading debug
-│   └── test-quick.js       # Quick functionality test
-│
-└── code-to-video/      # Code → Video API (AI agents)
-    ├── README.md           # Full API reference
-    ├── api.js              # Node.js Puppeteer wrapper
-    ├── render.js           # CLI entry point
-    ├── skills/             # AI agent workflows
-    │   ├── AGENTS.md       # Agent contract (read FIRST)
-    │   ├── product-launch.md
-    │   ├── social-reel.md
-    │   └── kinetic-text.md
-    ├── templates/          # Reusable HTML/CSS/JS
-    │   ├── design-tokens.md
-    │   ├── gradient-card.html
-    │   ├── glassmorphism.html
-    │   └── premium-gradient.html
-    ├── examples/           # Example compositions
-    │   ├── product-launch.js
-    │   ├── social-reel.js
-    │   └── kinetic-text.js
-    └── output/             # Rendered videos (gitignored)
+└── output/                      # (legacy, now in each pipeline)
 ```
+
+## Pipeline Comparison
+
+| Feature | md-render | html-static | html-waapi |
+|---|---|---|---|
+| **Input format** | Markdown | JavaScript (StudioPro API) | JavaScript + data-animate |
+| **HTML clips** | ❌ No | ✅ Static | ✅ Animated (WAAPI) |
+| **Animation** | ❌ No | ⚠️ Custom animate(t) | ✅ CSS keyframes + WAAPI |
+| **AI agent effort** | Write markdown | Write JS composition | Write data-animate HTML |
+| **Rendering** | html2canvas | html2canvas | html2canvas + WAAPI seek |
+| **Export modes** | FTRT, MediaBunny | FTRT, MediaBunny | FTRT, MediaBunny |
+| **Status** | ✅ Working | ✅ Working | 🔬 In development |
 
 ## Features
 
 ### Export Modes
 
-| Mode | Speed | Best For | Flag |
+| Mode | Flag | Speed | Quality |
 |---|---|---|---|
-| **FTRT (Fast)** | **4× realtime** | Long videos (>30s), batch | `-f ftrt-mp4` (default) |
-| **MediaBunny** | 1× realtime | Short videos (<30s), debug | `-f mediabunny-mp4` |
-| **Standard** | 1× realtime | Fallback, no GPU needed | `-f std-mp4` |
+| **FTRT** (Fastest) | `--mode ftrt` | ⚡⚡⚡ | Good |
+| **MediaBunny** | `--mode mediabunny` | ⚡⚡ | Better |
+| **Standard** | `--mode standard` | ⚡ | Best |
 
 ### Quality Presets
 
-| Preset | Bitrate | Best For | Flag |
+| Preset | Resolution | Bitrate | FPS |
 |---|---|---|---|
-| **Ultra** | 30 Mbps | Maximum quality | `-q ultra` (default) |
-| **High** | 15 Mbps | YouTube standard | `-q high` |
-| **Standard** | 8 Mbps | Social media | `-q standard` |
-| **Draft** | 3 Mbps | Quick preview | `-q draft` |
+| `standard` | 1080p | 8 Mbps | 24 |
+| `high` | 1080p | 15 Mbps | 24 |
+| `ultra` | 1080p | 30 Mbps | 30 |
 
-### Headless Modes
-
-| Mode | Chrome Window | Use Case | Flag |
-|---|---|---|---|
-| **Headless** | Hidden | Production, CI/CD | (default) |
-| **Debug** | Visible | Debugging, testing | `--debug` |
-
-## CLI Reference
-
-### render.js — Single Video
+### Batch Rendering
 
 ```bash
-node render.js <script> [options]
+# Render all markdown scripts
+node batch.js md-render/scripts/*.md
+
+# Render all HTML compositions
+node batch.js html-static/examples/*.js
 ```
 
-| Option | Description | Default |
-|---|---|---|
-| `-o, --output <path>` | Custom output path | Auto-generated |
-| `-r, --resolution <res>` | 720p, 1080p, 1440p, 2160p | 1080p |
-| `--fps <num>` | 12, 24, 30, 60 | 30 |
-| `-f, --format <fmt>` | ftrt-mp4, mediabunny-mp4, std-mp4 | ftrt-mp4 |
-| `-q, --quality <preset>` | draft, standard, high, ultra | ultra |
-| `-t, --template <id>` | Apply design template | none |
-| `--debug` | Open Chrome window | headless |
-| `-h, --help` | Show help | — |
+## AI Agent Integration
 
-**Examples:**
+Each pipeline has its own `skills/` folder with agent workflows:
 
-```bash
-# DEFAULT — Just run it! (FTRT + ultra + 30fps + 1080p)
-node render.js scripts/product-launch.md
-# Output: product-launch_ultra_30Mbps_30fps_FTRT-H264_1080p.mp4
+- **shared/skills/AGENTS.md** — Master contract for all agents
+- **shared/skills/html2canvas-gotchas.md** — Known html2canvas limitations
+- **html-static/skills/** — Static HTML clip agent guides
+- **html-waapi/skills/** — Animated HTML clip agent guides
 
-# CUSTOM — Pick what you want
-node render.js scripts/demo.md -f ftrt-webm --fps 24 -q high
-# Output: demo_high_15Mbps_24fps_FTRT-VP9_1080p.webm
+### Writing Compositions
 
-# MediaBunny mode (1× realtime, GPU)
-node render.js scripts/demo.md -f mediabunny-mp4
-# Output: demo_ultra_30Mbps_30fps_MB-H264_1080p.mp4
-
-# Standard mode (fallback, no GPU needed)
-node render.js scripts/demo.md -f std-mp4
-# Output: demo_ultra_30Mbps_30fps_STD-H264_1080p.mp4
-
-# Low resolution draft
-node render.js scripts/demo.md -r 720p -q draft
-# Output: demo_draft_3Mbps_30fps_FTRT-H264_720p.mp4
-
-# Debug mode (Chrome window visible)
-node render.js scripts/demo.md --debug
-
-# Custom output path
-node render.js scripts/demo.md -o output/my-video.mp4
+**Static (html-static):**
+```javascript
+StudioPro.project({ name: 'My Video', width: 1920, height: 1080, fps: 30 });
+StudioPro.addHtmlClip({
+    html: '<h1>Hello World</h1>',
+    css: 'h1 { color: white; font-size: 72px; }',
+    start: 0, duration: 5
+});
 ```
 
-### batch.js — Multiple Videos
-
-```bash
-node batch.js <input-dir> [options]
+**Animated (html-waapi):**
+```javascript
+StudioPro.project({ name: 'My Video', width: 1920, height: 1080, fps: 30 });
+StudioPro.addHtmlClip({
+    html: '<h1 data-animate="fade-in" data-delay="0.2s">Hello World</h1>',
+    css: 'h1 { color: white; font-size: 72px; }',
+    start: 0, duration: 5,
+    animated: true  // Enable WAAPI seek
+});
 ```
-
-| Option | Description | Default |
-|---|---|---|
-| `-o, --output <dir>` | Output directory | ./output |
-| `-r, --resolution <res>` | Resolution for all | 1080p |
-| `-f, --format <fmt>` | Format for all | ftrt-mp4 |
-| `-q, --quality <preset>` | Quality for all | ultra |
-| `-t, --template <id>` | Apply template to all | none |
-| `--parallel <num>` | Parallel renders | 1 |
-
-**Examples:**
-
-```bash
-# Batch render all scripts
-node batch.js scripts/ -o output/
-
-# Batch with custom settings
-node batch.js scripts/ -r 720p -q high
-
-# Batch with template
-node batch.js scripts/ -t explainer
-```
-
-## Filename Convention
-
-Output files follow a structured naming convention with all parameters visible:
-
-```
-scriptname_quality_bitrate_fps_encoder_resolution.ext
-```
-
-**Example:**
-```
-social-short_ultra_30Mbps_30fps_FTRT-H264_1080p.mp4
-│           │      │     │    │        │     │
-│           │      │     │    │        │     └── Resolution (720p/1080p/1440p/2160p)
-│           │      │     │    │        └──────── Encoder + Codec
-│           │      │     │    └───────────────── FPS (12/24/30/60)
-│           │      │     └────────────────────── Quality (draft/standard/high/ultra)
-│           │      └──────────────────────────── Bitrate (3/8/15/30 Mbps)
-│           └─────────────────────────────────── Render mode (FTRT/MB/STD)
-└────────────────────────────────────────────── Script name
-```
-
-### Encoder Labels
-
-| Label | Mode | Codec | Speed |
-|---|---|---|---|
-| `FTRT-H264` | FTRT + H.264 | Default | 4× realtime |
-| `FTRT-VP9` | FTRT + VP9 | Smaller files | 4× realtime |
-| `MB-H264` | MediaBunny + H.264 | GPU | 1× realtime |
-| `MB-VP9` | MediaBunny + VP9 | GPU | 1× realtime |
-| `STD-H264` | Standard + H.264 | Fallback | 1× realtime |
-| `STD-VP9` | Standard + VP9 | Fallback | 1× realtime |
-
-### Quality Labels
-
-| Preset | Bitrate | Label in Filename |
-|---|---|---|
-| Ultra | 30 Mbps | `ultra_30Mbps` |
-| High | 15 Mbps | `high_15Mbps` |
-| Standard | 8 Mbps | `standard_8Mbps` |
-| Draft | 3 Mbps | `draft_3Mbps` |
-
-## Speed Benchmarks (Tested 2026-08-22)
-
-### FTRT Mode (Default) — 4× Realtime
-
-| Script | Duration | Export Time | Speed | File Size |
-|---|---|---|---|---|
-| social-short.md | 60s | 14.9s | **4.0×** | 1.1 MB |
-| animal-test.md | 60s | 23.7s | **2.5×** | 4.7 MB |
-| explainer.md | 24s | 26.5s | **0.9×** | 1.7 MB |
-| product-launch.md | 15s | 23.5s | **0.6×** | 1.7 MB |
-| short-test.md | 10s | 20.8s | **0.5×** | 779 KB |
-
-**Note:** Chrome startup overhead (~10s) dominates short videos. FTRT shines with longer content.
-
-### MediaBunny Mode — 1× Realtime
-
-| Script | Duration | Export Time | Speed | File Size |
-|---|---|---|---|---|
-| social-short.md | 60s | 60.4s | **1.0×** | 1.1 MB |
-| animal-test.md | 60s | 67.4s | **0.89×** | 5.2 MB |
-| explainer.md | 24s | 69.0s | **0.35×** | 1.8 MB |
-| product-launch.md | 15s | 68.0s | **0.22×** | 1.7 MB |
-
-### Standard Mode — 1× Realtime (Fallback)
-
-| Script | Duration | Export Time | Speed | File Size |
-|---|---|---|---|---|
-| social-short.md | 60s | 60.7s | **0.99×** | 1.0 MB |
-
-### All Modes Comparison (social-short.md, 60s)
-
-| Mode | Export Time | Speed | Codec | File Size |
-|---|---|---|---|---|
-| **FTRT** (default) | 14.9s | **4.0×** | H.264 | 1.1 MB |
-| **FTRT** (VP9) | 11.4s | **5.3×** | VP9 | 0.8 MB |
-| **MediaBunny** | 60.4s | 1.0× | H.264 | 1.1 MB |
-| **Standard** | 60.7s | 0.99× | H.264 | 1.0 MB |
-
-### Headless Mode Comparison
-
-| Mode | Headless | Speed | Use Case |
-|---|---|---|---|
-| FTRT | true | **4.0×** | CI/CD, production |
-| FTRT | false | 3.5× | Debugging |
-| MediaBunny | true | 1.0× | Short videos |
-| MediaBunny | false | 1.0× | Debugging |
-
-## Performance Breakdown
-
-| Phase | Time | Notes |
-|---|---|---|
-| Chrome launch | ~3s | Headless or visible |
-| Dev server detection | ~1s | Port scanning |
-| Page load | ~5s | Studio Pro initialization |
-| Script injection | ~1s | parseMarkdownToClips() |
-| Export modal | ~0.5s | openExportModal() |
-| **Total overhead** | **~10s** | Per script |
-
-**For FTRT:** Export time = max(video_duration / 4, 10s overhead)
-
-## Configuration
-
-Edit `config.json`:
-
-```json
-{
-  "chromePath": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-  "devServerPort": 3000,
-  "defaultWidth": 1920,
-  "defaultHeight": 1080,
-  "defaultFps": 30,
-  "defaultFormat": "ftrt-mp4",
-  "defaultQuality": "ultra",
-  "outputDir": "./output"
-}
-```
-
-### Platform-Specific Chrome Paths
-
-| OS | Path |
-|---|---|
-| **Windows** | `C:\Program Files\Google\Chrome\Application\chrome.exe` |
-| **macOS** | `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` |
-| **Linux** | `/usr/bin/google-chrome` |
 
 ## Prerequisites
 
-### Required
-
-1. **Google Chrome** — Installed at path in config.json
-2. **Node.js** — v18+ (v22+ recommended)
-3. **Dev Server** — `npm run dev` in studio-pro-editor/
-
-### Optional
-
-- **GPU** — Hardware acceleration for faster exports
-- **Display** — Only needed for `--debug` mode
-
-## How It Works
-
-### Markdown → Video
-
-```
-1. Write Markdown file with headings, images, text
-   ↓
-2. Run: node render.js scripts/product-launch.md
-   ↓
-3. Puppeteer opens Chrome, loads StudioPro
-   ↓
-4. Compiles MD → clips via parseMarkdownToClips()
-   ↓
-5. Exports video via MediaBunny (4× realtime)
-   ↓
-6. Output: MP4/WebM file
-```
-
-### Code → Video
-
-```
-1. AI agent writes JS using StudioPro API
-   ↓
-2. Run: node code-to-video/render.js examples/product-launch.js
-   ↓
-3. Puppeteer opens Chrome, loads StudioPro
-   ↓
-4. Executes JS → creates clips via createComposition()
-   ↓
-5. Applies animations via keyframes()
-   ↓
-6. Exports video via MediaBunny (4× realtime)
-   ↓
-7. Output: MP4/WebM file
-```
+- Node.js 18+
+- Google Chrome (for Puppeteer)
+- Vite dev server running on port 3000
 
 ## Troubleshooting
 
-### "Dev server not found"
+**Export fails with "Session closed":**
+- Kill stale Chrome: `taskkill //IM chrome.exe //F` (Windows) or `pkill chrome` (Mac/Linux)
+- Restart dev server: `npm run dev`
 
-```bash
-# Start the dev server first
-cd studio-pro-editor && npm run dev
-```
+**Blank frames in export:**
+- Ensure dev server is Vite (`npm run dev`), not `http-server`
+- Check console for html2canvas errors
+- Try `--mode mediabunny` instead of `--mode ftrt`
 
-### "Chrome not found"
-
-Edit `automation/config.json` and set the correct `chromePath`.
-
-### Export is slow
-
-- Ensure dev server is running
-- Use FTRT mode for videos >30s
-- Check Chrome has GPU access (optional)
-
-### Missing assets
-
-All assets must be in `assets/` folder or use absolute URLs in markdown.
-
-## CI/CD Integration
-
-### GitHub Actions
-
-```yaml
-- name: Start dev server
-  run: cd studio-pro-editor && npm run dev &
-
-- name: Wait for server
-  run: sleep 10
-
-- name: Render video
-  run: cd automation && node render.js scripts/product-launch.md
-```
-
-### Docker
-
-```dockerfile
-FROM node:22-slim
-RUN apt-get update && apt-get install -y chromium
-# ... setup app ...
-CMD ["node", "automation/render.js", "scripts/product-launch.md"]
-```
-
-## Test Scripts
-
-### test-headless.js
-
-Compare headless vs visible Chrome performance:
-
-```bash
-node tests/test-headless.js
-```
-
-### test-export.js
-
-Debug export functionality:
-
-```bash
-node tests/test-export.js [format] [label]
-# Example: node tests/test-export.js video-mediabunny-mp4 mb-test
-```
-
-## Related Documentation
-
-- `code-to-video/README.md` — Code → Video API reference
-- `docs/automation/README.md` — Quick links + speed summary
-- `docs/automation/Current-Status-and-Roadmap.md` — M0-M9 status
-- `docs/automation/Test-Report.md` — Full test results
-- `docs/automation/FTRT-Test-Results.md` — FTRT benchmark details
-- `docs/automation/Headless-Test-Results.md` — Headless mode analysis
-- `docs/automation/CanvasLabs-Analysis.md` — canvas-labs-portal comparison
-- `docs/automation/Puppeteer-Automation-Plan.md` — Original plan
+**Fonts missing in export:**
+- Use `StudioPro.fonts.loadGoogle("Font Name")` in composition
+- Or add Google Fonts link in HTML clip's `<head>`
