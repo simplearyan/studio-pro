@@ -53,7 +53,7 @@ async function checkPort(port) {
 
 async function findDevServer() {
   // Check configured port first, then common Vite ports
-  const ports = [config.devServerPort || 3000, 3001, 3002, 5173, 5174];
+  const ports = [config.devServerPort || 7000, 3000, 3001, 5173, 5174];
   for (const port of ports) {
     if (await checkPort(port)) {
       return `http://localhost:${port}`;

@@ -38,21 +38,51 @@ function findChrome() {
 }
 
 const CHROME_PATH = findChrome();
-const STUDIO_PRO_URL = process.env.STUDIO_PRO_URL || 'http://localhost:3000';
+
+// Port priority: 7000 (automation) → 3000 (personal) → 3001 (backup)
+const PORT_PRIORITY = [7000, 3000, 3001];
+const USER_DATA_DIR = path.join(__dirname, '.chrome-profile');
 
 class StudioPro {
     constructor(options = {}) {
         this.browser = null;
         this.page = null;
-        this.url = options.url || STUDIO_PRO_URL;
+        this.url = options.url || process.env.STUDIO_PRO_URL || null; // null = auto-detect
         this.headless = options.headless !== false;
         this.timeout = options.timeout || 120000;
+    }
+
+    /** Auto-detect available dev server port */
+    async _detectPort() {
+        if (this.url) return; // User specified a URL
+        const http = await import('http');
+        for (const port of PORT_PRIORITY) {
+            const url = `http://localhost:${port}`;
+            const ok = await new Promise((resolve) => {
+                http.default.get(url, (res) => { res.resume(); resolve(true); })
+                    .on('error', () => resolve(false))
+                    .setTimeout(1500, function() { this.destroy(); resolve(false); });
+            });
+            if (ok) {
+                this.url = url;
+                console.log(`[StudioPro] Auto-detected dev server on port ${port}`);
+                return;
+            }
+        }
+        throw new Error(
+            `❌ No dev server found on ports ${PORT_PRIORITY.join(', ')}\n` +
+            `   Run: npm run dev          (personal, port 3000)\n` +
+            `   Run: npm run dev:automation (dedicated, port 7000)`
+        );
     }
 
     async launch() {
         if (!CHROME_PATH) {
             throw new Error('Chrome not found. Set CHROME_PATH or check config.json');
         }
+
+        // Auto-detect dev server port if not specified
+        await this._detectPort();
 
         // Check dev server is running and is Vite (not http-server)
         const http = await import('http');
@@ -80,12 +110,13 @@ class StudioPro {
                 `   NEVER use: npx http-server, npx serve, python -m http.server`
             );
         }
-        console.log('[StudioPro] Dev server verified (Vite)');
+        console.log(`[StudioPro] Dev server verified (Vite) at ${this.url}`);
 
         console.log('[StudioPro] Launching Chrome...');
         this.browser = await puppeteer.launch({
             headless: this.headless ? 'new' : false,
             executablePath: CHROME_PATH,
+            userDataDir: USER_DATA_DIR,
             args: ['--no-sandbox', '--disable-setuid-sandbox', '--enable-webcodecs']
         });
         this.page = await this.browser.newPage();
