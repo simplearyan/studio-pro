@@ -278,6 +278,13 @@ class StudioPro {
             this.page = null;
             console.log('[StudioPro] Browser closed');
         }
+        // Clean up Chrome profile (saves ~36MB disk per render)
+        try {
+            const fs = await import('fs');
+            if (fs.default.existsSync(USER_DATA_DIR)) {
+                fs.default.rmSync(USER_DATA_DIR, { recursive: true, force: true });
+            }
+        } catch(e) {}
     }
 }
 
