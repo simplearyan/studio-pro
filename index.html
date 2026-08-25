@@ -23844,9 +23844,14 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             clip.html = tmpl.html;
             clip.css = tmpl.css;
             clip._htmlSig = '';
+            clip._htmlReady = false;
+            clip._htmlNeedsRefresh = true;
+            delete clip._htmlCanvas;
             
             updateSidebarPanel();
             drawCanvas();
+            // Pre-render in background
+            setTimeout(() => window.preRenderHtmlClip(clip), 100);
         };
 
         // ── HTML Code Editor Modal ────────────────────────────────────────────
