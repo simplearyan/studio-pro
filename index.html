@@ -6338,7 +6338,9 @@
                                             `@font-face{font-family:'${fn}';src:local('${fn}');}`
                                         ).join('\n');
                                         doc.open();
-                                        doc.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">${fontLinks}<style>*{margin:0;padding:0;box-sizing:border-box;}${sysFontRules}body{width:${w}px;height:${h}px;overflow:hidden;background:transparent;}${safeCss}</style></head><body>${clip.html || ''}${clip.js ? '<script>' + clip.js + '<\/script>' : ''}</body></html>`);
+                                        // WAAPI adapter — inject before clip content for CSS animation seeking
+                                        const _waapiAdapter = '<script>(function(){window.seekToFrame=function(f,fps){var ms=(f/(fps||30))*1000;try{document.getAnimations({subtree:true}).forEach(function(a){a.pause();a.currentTime=ms});}catch(e){}try{document.documentElement.style.setProperty("--frame",f);document.documentElement.style.setProperty("--progress",(ms/1000).toFixed(4));}catch(e){}try{if(typeof window.animate==="function")window.animate(ms/1000);}catch(e){}};})();<\/script>';
+                                        doc.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">${fontLinks}<style>*{margin:0;padding:0;box-sizing:border-box;}${sysFontRules}body{width:${w}px;height:${h}px;overflow:hidden;background:transparent;}${safeCss}</style></head><body>${_waapiAdapter}${clip.html || ''}${clip.js ? '<script>' + clip.js + '<\/script>' : ''}</body></html>`);
                                         doc.close();
                                         setTimeout(() => {
                                         clip._htmlReady = true;
@@ -6358,6 +6360,8 @@
                             if (clip._htmlReady && !clip._htmlRendering && clip._htmlNeedsRefresh) {
                                 try {
                                     clip._htmlRendering = true;
+                                    // WAAPI: Seek CSS animations to current frame before capture
+                                    try { clip._htmlIframe.contentWindow.seekToFrame(clipTime, 30); } catch(_waapiErr) {}
                                     const capturePromise = html2canvas(clip._htmlIframe.contentDocument.body, {
                                         width: w,
                                         height: h,
@@ -23903,9 +23907,14 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 const fl = allFonts2.map(function(f) { return '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=' + f.replace(/\s+/g, '+') + ':wght@400;600;700;900&display=swap">'; }).join('\n');
                 const sf = (State.importedSystemFonts || []).map(function(f) { return '@font-face{font-family:\'' + f + '\';src:local(\'' + f + '\');}'; }).join('\n');
                 doc.open();
-                doc.write('<!DOCTYPE html><html><head><meta charset="UTF-8">' + fl + '<style>*{margin:0;padding:0;box-sizing:border-box;}' + sf + 'body{width:' + w + 'px;height:' + h + 'px;overflow:hidden;background:transparent;}' + (clip.css || '') + '</style></head><body>' + (clip.html || '') + (clip.js ? '<script>' + clip.js + '<\/script>' : '') + '</body></html>');
+                // WAAPI adapter — inject before clip content for CSS animation seeking
+                var _waapiAdapter2 = '<script>(function(){window.seekToFrame=function(f,fps){var ms=(f/(fps||30))*1000;try{document.getAnimations({subtree:true}).forEach(function(a){a.pause();a.currentTime=ms});}catch(e){}try{document.documentElement.style.setProperty("--frame",f);document.documentElement.style.setProperty("--progress",(ms/1000).toFixed(4));}catch(e){}try{if(typeof window.animate==="function")window.animate(ms/1000);}catch(e){}};})();<\/script>';
+                doc.write('<!DOCTYPE html><html><head><meta charset="UTF-8">' + fl + '<style>*{margin:0;padding:0;box-sizing:border-box;}' + sf + 'body{width:' + w + 'px;height:' + h + 'px;overflow:hidden;background:transparent;}' + (clip.css || '') + '</style></head><body>' + _waapiAdapter2 + (clip.html || '') + (clip.js ? '<script>' + clip.js + '<\/script>' : '') + '</body></html>');
                 doc.close();
                 await new Promise(function(r) { setTimeout(r, 80); });
+                // WAAPI: Seek CSS animations to frame 0 for initial capture
+                try { clip._htmlIframe.contentWindow.seekToFrame(0, 30); } catch(_waapiErr) {}
+                await new Promise(function(r) { setTimeout(r, 50); });
                 const canvas = await html2canvas(doc.body, { width: w, height: h, backgroundColor: null, scale: 1, logging: false, allowTaint: true, useCORS: false });
                 clip._htmlCanvas = canvas;
                 clip._htmlReady = true;
