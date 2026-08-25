@@ -89,7 +89,7 @@ html2canvas(iframe.body, {
 
 ---
 
-## Phase 3: Pass clipTime to iframe (3-4 hours) 🔴
+## Phase 3: Pass clipTime to iframe (3-4 hours) ✅ DONE
 
 **Problem:** HTML clips are static. No internal animations.
 
