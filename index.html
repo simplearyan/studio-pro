@@ -6402,8 +6402,23 @@
                                     clip._htmlRendering = true;
                                     // WAAPI: Seek CSS animations to current frame before capture
                                     // clipTime is in seconds, seekToFrame expects frames
-                                    try { clip._htmlIframe.contentWindow.seekToFrame(clipTime * 30, 30); } catch(_waapiErr) {}
-                                    const capturePromise = html2canvas(clip._htmlIframe.contentDocument.body, {
+                                    const _iframeWin = clip._htmlIframe.contentWindow;
+                                    const _iframeDoc = clip._htmlIframe.contentDocument;
+                                    try {
+                                        // Disable fill-mode temporarily so we see animation at exact frame
+                                        let _capStyle = _iframeDoc.getElementById('_waaapi_cap');
+                                        if (!_capStyle) {
+                                            _capStyle = _iframeDoc.createElement('style');
+                                            _capStyle.id = '_waaapi_cap';
+                                            _capStyle.textContent = '*{animation-fill-mode:none!important;transition:none!important;}';
+                                            _iframeDoc.head.appendChild(_capStyle);
+                                        }
+                                        _iframeWin.seekToFrame(clipTime * 30, 30);
+                                    } catch(_waapiErr) {}
+                                    // Double rAF: first applies style, second ensures paint
+                                    const capturePromise = new Promise(_r => {
+                                        try { _iframeWin.requestAnimationFrame(() => _iframeWin.requestAnimationFrame(_r)); } catch(_) { _r(); }
+                                    }).then(() => html2canvas(_iframeDoc.body, {
                                         width: w,
                                         height: h,
                                         backgroundColor: null,
@@ -6411,7 +6426,9 @@
                                         logging: false,
                                         allowTaint: true,
                                         useCORS: false,
-                                    }).then(canvas => {
+                                    })).then(canvas => {
+                                        // Remove temporary fill-mode override
+                                        try { const s = _iframeDoc.getElementById('_waaapi_cap'); if (s) s.remove(); } catch(_){}
                                         clip._htmlCanvas = canvas;
                                         clip._htmlRendering = false;
                                         clip._htmlNeedsRefresh = false;
