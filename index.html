@@ -6401,7 +6401,8 @@
                                 try {
                                     clip._htmlRendering = true;
                                     // WAAPI: Seek CSS animations to current frame before capture
-                                    try { clip._htmlIframe.contentWindow.seekToFrame(clipTime, 30); } catch(_waapiErr) {}
+                                    // clipTime is in seconds, seekToFrame expects frames
+                                    try { clip._htmlIframe.contentWindow.seekToFrame(clipTime * 30, 30); } catch(_waapiErr) {}
                                     const capturePromise = html2canvas(clip._htmlIframe.contentDocument.body, {
                                         width: w,
                                         height: h,
@@ -13391,6 +13392,18 @@
                 clip.keyframes = JSON.parse(JSON.stringify(preset.keyframes));
             } else {
                 delete clip.keyframes;
+            }
+
+            // WAAPI/HTML preset — update HTML/CSS and force iframe rebuild
+            if (preset._isWaaapi && preset.data?.html && clip.type === 'html') {
+                clip.html = preset.data.html;
+                clip.css = preset.data.css || '';
+                clip.js = '';
+                clip._htmlSig = '';  // Force iframe rebuild
+                clip._htmlNeedsRefresh = true;
+                clip._htmlReady = false;
+                delete clip._htmlCanvas;
+                window.preRenderHtmlClip(clip);
             }
 
             if (preset.type === 'text' && preset.text) {
