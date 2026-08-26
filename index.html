@@ -5476,14 +5476,22 @@
                     return idxB - idxA; 
                 });
 
-                // ═══ WAAPI: Hide all iframe overlays before redrawing ═══
-                // This ensures only the currently active WAAPI clip's overlay is visible.
+                // ═══ WAAPI: Manage iframe overlays (flicker-free) ═══
+                // Build set of active WAAPI clip IDs, only hide iframes that should NOT be visible.
                 var _allWaCont = document.getElementById('waapiOverlayContainer');
+                var _waapiActiveIds = {};
+                activeVisualClips.forEach(function(c) { if (c._isWaaapi) _waapiActiveIds[c.id] = 1; });
                 if (_allWaCont) {
                     for (var wi = 0; wi < _allWaCont.children.length; wi++) {
-                        _allWaCont.children[wi].style.display = 'none';
+                        var _ch = _allWaCont.children[wi];
+                        var _chClipId = _ch.getAttribute('data-clip-id');
+                        if (_chClipId && !_waapiActiveIds[_chClipId]) {
+                            if (_ch.style.display !== 'none') _ch.style.display = 'none';
+                        }
                     }
                 }
+                // Log WAAPI visibility for debugging
+                var _waapiDebugInfo = [];
 
                 activeVisualClips.forEach(clip => {
                     try {
@@ -6342,6 +6350,7 @@
                                 if (!clip._htmlIframe || !clip._htmlIframe.parentNode || clip._htmlIframe.parentNode !== _wCont) {
                                     var _iframe = document.createElement('iframe');
                                     _iframe.style.cssText = 'position:absolute;pointer-events:none;border:none;overflow:hidden;';
+                                    _iframe.setAttribute('data-clip-id', clip.id);
                                     _wCont.appendChild(_iframe);
                                     clip._htmlIframe = _iframe;
                                     clip._htmlReady = false;
@@ -6357,7 +6366,7 @@
                                 _wIframe.style.opacity = aState.animAlpha * (opacity / 100);
                                 _wIframe.style.borderRadius = (clip.effects.borderRadius || 0) * _scX + 'px';
                                 _wIframe.style.mixBlendMode = clip.effects.blendMode || 'normal';
-                                _wIframe.style.display = 'block';
+                                if (_wIframe.style.display !== 'block') _wIframe.style.display = 'block';
                                 var _sig = (clip.html || '') + '|||' + (clip.css || '') + '|||' + (clip.js || '');
                                 if (clip._htmlSig !== _sig) {
                                     clip._htmlReady = false;
@@ -6395,6 +6404,7 @@
                                         }
                                     } catch(e) {}
                                 }
+                                _waapiDebugInfo.push(clip.title + ':id=' + clip.id + ',vis=1,ready=' + clip._htmlReady + ',sig=' + (clip._htmlSig ? 'ok' : 'none'));
                                 ctx.clearRect(-w / 2, -h / 2, w, h);
                             }
                         } else {
@@ -7433,13 +7443,16 @@
                         console.error('Error drawing clip', clip.id, err);
                     }
             });
+                if (_waapiDebugInfo && _waapiDebugInfo.length > 0) console.debug('[WAAPI] render: ' + _waapiDebugInfo.length + ' active: ' + _waapiDebugInfo.join(' | '));
             } else {
                 // Hide all WAAPI overlays when no clip is active
                 var _waCont2 = document.getElementById('waapiOverlayContainer');
                 if (_waCont2) {
+                    var _hiddenByEmpty = 0;
                     for (var wi2 = 0; wi2 < _waCont2.children.length; wi2++) {
-                        _waCont2.children[wi2].style.display = 'none';
+                        if (_waCont2.children[wi2].style.display !== 'none') { _waCont2.children[wi2].style.display = 'none'; _hiddenByEmpty++; }
                     }
+                    if (_hiddenByEmpty > 0) console.debug('[WAAPI] empty: hid ' + _hiddenByEmpty + ' overlay(s)');
                 }
                 placeholder.classList.remove('hidden');
                 canvas.classList.add('hidden');
