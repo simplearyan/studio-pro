@@ -77,21 +77,34 @@ const WAAPI_ADAPTER = `
 (function() {
     'use strict';
     
-    // Seek CSS keyframe animations to exact frame
-    window.seekToFrame = function(frame, framesPerSec) {
-        var fps = framesPerSec || 30;
+    // Seek CSS keyframe animations using animation-delay (negative value)
+    // This freezes animations at exact frames without Web Animations API
+    window.seekToFrame = function(frame, fps) {
+        fps = fps || 30;
         var ms = (frame / fps) * 1000;
         
         try {
-            document.getAnimations({ subtree: true }).forEach(function(anim) {
-                anim.pause();
-                anim.currentTime = ms;
-            });
+            var els = document.querySelectorAll("*");
+            for (var i = 0; i < els.length; i++) {
+                var el = els[i];
+                var cs = getComputedStyle(el);
+                var dur = parseFloat(cs.animationDuration) || 1000;
+                var ad = parseFloat(cs.animationDelay) || 0;
+                var it = cs.animationIterationCount;
+                var ti = parseFloat(it);
+                if (isNaN(ti)) ti = 999999;
+                var td = dur * ti;
+                var em = ms + ad * 1000;
+                if (em < 0) em = 0;
+                if (td > 0 && em > td) em = td;
+                el.style.animationDelay = (-em) + "s";
+                el.style.animationPlayState = "paused";
+            }
         } catch(e) {}
         
         try {
-            document.documentElement.style.setProperty('--frame', frame);
-            document.documentElement.style.setProperty('--progress', (ms / 1000).toFixed(4));
+            document.documentElement.style.setProperty("--frame", frame);
+            document.documentElement.style.setProperty("--progress", (ms / 1000).toFixed(4));
         } catch(e) {}
         
         try {
@@ -99,7 +112,7 @@ const WAAPI_ADAPTER = `
         } catch(e) {}
     };
     
-    // Convert data-animate attributes to WAAPI
+    // Convert data-animate attributes to CSS animations
     var ANIMATIONS = {
         'fade-in': { from: { opacity: '0' }, to: { opacity: '1' } },
         'slide-up': { from: { opacity: '0', transform: 'translateY(30px)' }, to: { opacity: '1', transform: 'translateY(0)' } },
@@ -107,16 +120,28 @@ const WAAPI_ADAPTER = `
         'bounce-in': { from: { opacity: '0', transform: 'scale(0.3)' }, to: { opacity: '1', transform: 'scale(1)' } }
     };
     
-    document.querySelectorAll('[data-animate]').forEach(function(el) {
+    // Convert data-animate to CSS keyframes
+    var style = document.createElement('style');
+    var css = '';
+    document.querySelectorAll('[data-animate]').forEach(function(el, i) {
         var type = el.dataset.animate;
-        var delay = parseFloat(el.dataset.delay || '0') * 1000;
-        var duration = parseFloat(el.dataset.duration || '0.5') * 1000;
+        var delay = el.dataset.delay || '0s';
+        var duration = el.dataset.duration || '0.5s';
         var animDef = ANIMATIONS[type];
         if (!animDef) return;
-        el.animate([animDef.from, animDef.to], {
-            duration: duration, delay: delay, easing: 'ease-out', fill: 'forwards'
-        });
+        var animName = 'anim_' + i;
+        css += '@keyframes ' + animName + ' { from {';
+        for (var k in animDef.from) css += k + ':' + animDef.from[k] + ';';
+        css += '} to {';
+        for (var k in animDef.to) css += k + ':' + animDef.to[k] + ';';
+        css += '} }\n';
+        el.style.animation = animName + ' ' + duration + ' ease-out ' + delay + ' forwards';
+        el.style.opacity = '0';
     });
+    if (css) {
+        style.textContent = css;
+        document.head.appendChild(style);
+    }
 })();
 </script>`;
 
