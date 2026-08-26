@@ -5476,21 +5476,7 @@
                     return idxB - idxA; 
                 });
 
-                // ═══ WAAPI: Manage iframe overlays (flicker-free) ═══
-                // Build set of active WAAPI clip IDs, only hide iframes that should NOT be visible.
-                var _allWaCont = document.getElementById('waapiOverlayContainer');
-                var _waapiActiveIds = {};
-                activeVisualClips.forEach(function(c) { if (c._isWaaapi) _waapiActiveIds[c.id] = 1; });
-                if (_allWaCont) {
-                    for (var wi = 0; wi < _allWaCont.children.length; wi++) {
-                        var _ch = _allWaCont.children[wi];
-                        var _chClipId = _ch.getAttribute('data-clip-id');
-                        if (_chClipId && !_waapiActiveIds[_chClipId]) {
-                            if (_ch.style.display !== 'none') _ch.style.display = 'none';
-                        }
-                    }
-                }
-                // Log WAAPI visibility for debugging
+
                 var _waapiDebugInfo = [];
 
                 activeVisualClips.forEach(clip => {
@@ -6334,80 +6320,8 @@
                             ctx.shadowBlur = clip.effects.shadowBlur || 20;
                             ctx.shadowOffsetX = clip.effects.shadowX || 0;
                             ctx.shadowOffsetY = clip.effects.shadowY || 10;
-                        }                        // ═══ WAAPI: Live iframe overlay (preview only) ═══
-                        if (clip._isWaaapi && !State.isExporting && !targetCtx) {
-                            var _wCont = document.getElementById('waapiOverlayContainer');
-                            if (!_wCont) { _wCont = document.createElement('div'); _wCont.id = 'waapiOverlayContainer'; _wCont.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:10000;overflow:visible;'; document.body.appendChild(_wCont); }
-                            var _ww = document.getElementById('canvasAspectWrapper');
-                            if (_ww) {
-                                var _cRect = canvas.getBoundingClientRect();
-                                var _scX = _cRect.width / canvas.width;
-                                var _scY = _cRect.height / canvas.height;
-                                var _wScr = Math.abs(w * _scX * finalScale);
-                                var _hScr = Math.abs(h * _scY * finalScale);
-                                var _cxScr = _cRect.left + _cRect.width / 2 + (offsetX * w * _scX / 100) + aState.animX * _scX;
-                                var _cyScr = _cRect.top + _cRect.height / 2 + (offsetY * h * _scY / 100) + aState.animY * _scY;
-                                if (!clip._htmlIframe || !clip._htmlIframe.parentNode || clip._htmlIframe.parentNode !== _wCont) {
-                                    var _iframe = document.createElement('iframe');
-                                    _iframe.style.cssText = 'position:absolute;pointer-events:none;border:none;overflow:hidden;';
-                                    _iframe.setAttribute('data-clip-id', clip.id);
-                                    _wCont.appendChild(_iframe);
-                                    clip._htmlIframe = _iframe;
-                                    clip._htmlReady = false;
-                                    clip._htmlSig = '';
-                                }
-                                var _wIframe = clip._htmlIframe;
-                                _wIframe.style.width = w + 'px';
-                                _wIframe.style.height = h + 'px';
-                                _wIframe.style.left = (_cxScr - w / 2) + 'px';
-                                _wIframe.style.top = (_cyScr - h / 2) + 'px';
-                                _wIframe.style.transformOrigin = '50% 50%';
-                                _wIframe.style.transform = 'scale(' + (_wScr / w) + ',' + (_hScr / h) + ')';
-                                _wIframe.style.opacity = aState.animAlpha * (opacity / 100);
-                                _wIframe.style.borderRadius = (clip.effects.borderRadius || 0) * _scX + 'px';
-                                _wIframe.style.mixBlendMode = clip.effects.blendMode || 'normal';
-                                if (_wIframe.style.display !== 'block') _wIframe.style.display = 'block';
-                                var _sig = (clip.html || '') + '|||' + (clip.css || '') + '|||' + (clip.js || '');
-                                if (clip._htmlSig !== _sig) {
-                                    clip._htmlReady = false;
-                                    var _wIframeRef = _wIframe;
-                                    var _clipRef = clip;
-                                    var _sigRef = _sig;
-                                    var _cw = w, _ch = h;
-                                    var _writeWaaapi = function(_attempts) {
-                                        try {
-                                            var _doc = _wIframeRef.contentDocument;
-                                            if (_doc) {
-                                                var _cf = _clipRef.fonts || [];
-                                                var _af = [...new Set([...(State.googleFonts || []), ..._cf])];
-                                                var _fl = _af.map(function(fn) { return '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=' + fn.replace(/\s+/g, '+') + ':wght@400;600;700;900&display=swap">'; }).join('\n');
-                                                var _sf = (State.importedSystemFonts || []).map(function(fn) { return '@font-face{font-family:\'' + fn + '\';src:local(\'' + fn + '\');}'; }).join('\n');
-                                                var _wAd = '<script>(function(){window._waaapiFrame=0;window.seekToFrame=function(f,fps){window._waaapiFrame=f;var ms=(f/(fps||30))*1000;try{var els=document.querySelectorAll("*");for(var i=0;i<els.length;i++){var el=els[i];var cs=getComputedStyle(el);var dur=parseFloat(cs.animationDuration)||1000;var ad=parseFloat(cs.animationDelay)||0;var it=cs.animationIterationCount;var ti=parseFloat(it);if(isNaN(ti))ti=999999;var td=dur*ti;var em=ms+ad*1000;if(em<0)em=0;if(td>0&&em>td)em=td;el.style.animationDelay=(-em)+"s";el.style.animationPlayState="paused";}}catch(e){}try{document.documentElement.style.setProperty("\u2013frame",f);document.documentElement.style.setProperty("\u2013progress",(ms/1000).toFixed(4));}catch(e){}window._waaapiReady=true;};window._waaapiReady=false;})();<\/script>';
-                                                _doc.open();
-                                                var _cssStr = '*{margin:0;padding:0;box-sizing:border-box;}' + _sf + 'body{width:' + _cw + 'px;height:' + _ch + 'px;overflow:hidden;background:transparent;}' + (_clipRef.css || '');
-                                                var _htmlStr = '<div xmlns="http://www.w3.org/1999/xhtml"><style>' + _cssStr + '</style></div>';
-                                                _doc.write('<!DOCTYPE html><html><head><meta charset="UTF-8">' + _fl + _htmlStr + '</head><body>' + _wAd + (_clipRef.html || '') + (_clipRef.js ? '<script>' + _clipRef.js + '<\/script>' : '') + '<script>window.seekToFrame && window.seekToFrame(0,30);<\/script></body></html>');
-                                                _doc.close();
-                                                setTimeout(function() { _clipRef._htmlSig = _sigRef; _clipRef._htmlReady = true; }, 100);
-                                            } else if (_attempts < 15) {
-                                                setTimeout(function() { _writeWaaapi(_attempts + 1); }, 50);
-                                            }
-                                        } catch(e) { console.warn('[WAAPI] iframe error:', e.message); }
-                                    };
-                                    _writeWaaapi(0);
-                                }
-                                if (clip._htmlReady) {
-                                    try {
-                                        var _wWin = _wIframe.contentWindow;
-                                        if (_wWin && typeof _wWin.seekToFrame === 'function') {
-                                            _wWin.seekToFrame(Math.floor(clipTime * 30), 30);
-                                        }
-                                    } catch(e) {}
-                                }
-                                _waapiDebugInfo.push(clip.title + ':id=' + clip.id + ',vis=1,ready=' + clip._htmlReady + ',sig=' + (clip._htmlSig ? 'ok' : 'none'));
-                                ctx.clearRect(-w / 2, -h / 2, w, h);
-                            }
-                        } else {
+                        }
+                        {
                         // ── html2canvas rendering ────────────────────────────────────────────
                         // FAST PATH: Draw cached canvas immediately (instant seek/playback)
                         if (clip._htmlCanvas && !clip._htmlNeedsRefresh) {
@@ -7445,16 +7359,7 @@
             });
                 if (_waapiDebugInfo && _waapiDebugInfo.length > 0) console.debug('[WAAPI] render: ' + _waapiDebugInfo.length + ' active: ' + _waapiDebugInfo.join(' | '));
             } else {
-                // Hide all WAAPI overlays when no clip is active
-                var _waCont2 = document.getElementById('waapiOverlayContainer');
-                if (_waCont2) {
-                    var _hiddenByEmpty = 0;
-                    for (var wi2 = 0; wi2 < _waCont2.children.length; wi2++) {
-                        if (_waCont2.children[wi2].style.display !== 'none') { _waCont2.children[wi2].style.display = 'none'; _hiddenByEmpty++; }
-                    }
-                    if (_hiddenByEmpty > 0) console.debug('[WAAPI] empty: hid ' + _hiddenByEmpty + ' overlay(s)');
-                }
-                placeholder.classList.remove('hidden');
+
                 canvas.classList.add('hidden');
             }
 
