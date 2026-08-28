@@ -6373,74 +6373,31 @@
                                 if (borderRadius > 0 && ctx.roundRect) ctx.roundRect(-w/2, -h/2, w, h, borderRadius);
                                 else ctx.rect(-w/2, -h/2, w, h);
                                 ctx.stroke();
-                            }
-                        } else if (clip._isWaaapi && !State.isExporting) { /* WAAPI: iframe overlay handles rendering, skip html2canvas */ } else if (clip._isWaaapi && State.isExporting && typeof window.__waapiCaptureFrame === 'function') {
-                            // ═══ WAAPI Export: SVG foreignObject capture (5-15ms/frame) ═══
-                            // No html2canvas — uses native browser APIs only
-                            if (!clip._htmlIframe || !clip._htmlIframe.parentNode) {
-                                const iframe = document.createElement('iframe');
-                                iframe.style.cssText = 'position:absolute;left:-9999px;width:' + w + 'px;height:' + h + 'px;border:none;';
-                                document.body.appendChild(iframe);
-                                clip._htmlIframe = iframe;
-                            }
-                            const _iFrame = clip._htmlIframe;
-                            const _iDoc = _iFrame.contentDocument || (_iFrame.contentWindow && _iFrame.contentWindow.document);
-                            if (_iDoc && _iDoc.body) {
-                                const _csig2 = (clip.html||'') + '|||' + (clip.css||'') + '|||' + (clip.js||'');
-                                if (clip._waapiExpSig !== _csig2 || !_iFrame._waapiExpReady) {
-                                    clip._waapiExpSig = _csig2;
-                                    _iFrame._waapiExpReady = false;
-                                    try {
-                                        const _cf2 = clip.fonts || [];
-                                        const _af2 = [...new Set([...(State.googleFonts||[]), ..._cf2])];
-                                        const _fl2 = _af2.map(function(fn) { return '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=' + fn.replace(/\s+/g, '+') + ':wght@400;600;700;900&display=swap">'; }).join('\n');
-                                        const _sr2 = (State.importedSystemFonts||[]).map(function(fn) { return '@font-face{font-family:"' + fn + '";src:local("' + fn + '");}'; }).join('\n');
-                                        const _wjs2 = '<scr'+'ipt>(function(){window.seekToFrame=function(f,fps){var ms=(f/(fps||30))*1000;try{var _a=document.getAnimations({subtree:true});for(var i=0;i<_a.length;i++){_a[i].currentTime=ms;_a[i].pause();}}catch(e){}try{document.documentElement.style.setProperty("--frame",f);document.documentElement.style.setProperty("--progress",(ms/1000).toFixed(4));}catch(e){}try{if(typeof window.animate==="function")window.animate(ms/1000);}catch(e){}}})();</scr'+'ipt>';
-                                        _iDoc.open();
-                                        _iDoc.write('<!DOCTYPE html><html><head><meta charset="UTF-8">'+_fl2+'<style>*{margin:0;padding:0;box-sizing:border-box;}'+_sr2+'body{width:'+w+'px;height:'+h+'px;overflow:hidden;background:transparent;}'+(clip.css||'')+'</style></head><body>'+_wjs2+(clip.html||'')+(clip.js?'<scr'+'ipt>'+clip.js+'</scr'+'ipt>':'')+'</body></html>');
-                                        _iDoc.close();
-                                    } catch(e) {}
-                                }
-                                try { if (_iFrame.contentWindow && _iFrame.contentWindow.seekToFrame) _iFrame.contentWindow.seekToFrame(State.currentTime - clip.start, 30); } catch(e) {}
-                                window.__waapiCaptureFrame(_iFrame, w, h).then(function(dataUrl) {
-                                    if (dataUrl && dataUrl.length > 100) {
-                                        const img = new Image();
-                                        img.onload = function() {
-                                            const borderRadius = clip.effects.borderRadius !== undefined ? clip.effects.borderRadius : 0;
-                                            if (borderRadius > 0) {
-                                                const offCanvas = createOffscreenCanvas(w, h);
-                                                const offCtx = offCanvas.getContext('2d');
-                                                if (offCtx.roundRect) { offCtx.beginPath(); offCtx.roundRect(0, 0, w, h, borderRadius); offCtx.clip(); }
-                                                offCtx.drawImage(img, 0, 0, w, h);
-                                                ctx.drawImage(offCanvas, -w/2, -h/2, w, h);
-                                            } else {
-                                                ctx.drawImage(img, -w/2, -h/2, w, h);
-                                            }
-                                            if (clip.effects.strokeEnable) {
-                                                ctx.strokeStyle = clip.effects.strokeColor || '#ffffff';
-                                                ctx.lineWidth = clip.effects.strokeWidth || 4;
-                                                ctx.beginPath();
-                                                ctx.rect(-w/2, -h/2, w, h);
-                                                ctx.stroke();
-                                            }
-                                            clip._waapiExpReady = true;
-                                        };
-                                        img.src = dataUrl;
-                                    }
-                                });
-                                // Draw cached canvas while SVG capture resolves
-                                if (clip._htmlCanvas) {
-                                    ctx.drawImage(clip._htmlCanvas, -w/2, -h/2, w, h);
-                                }
-                            }
-                        } else if (typeof html2canvas !== 'undefined') {
-                            // Clean stale session refs (from project restore)                            if (clip._htmlIframe && !clip._htmlIframe.parentNode) {
+                            }                        } else if (clip._isWaaapi && !State.isExporting) { /* WAAPI: iframe overlay handles rendering, skip html2canvas */ } else if (typeof html2canvas !== 'undefined') {
+                            // ═══ HTML + WAAPI clips: html2canvas + seekToFrame ═══
+                            // WAAPI clips: seekToFrame freezes CSS animations before capture
+                            // Clean stale session refs (from project restore)
+                            if (clip._htmlIframe && !clip._htmlIframe.parentNode) {
                                 clip._htmlIframe = null;
                                 clip._htmlReady = false;
                                 clip._htmlCanvas = null;
                             }
                             
-                            // Create offscreen iframe
+                            // WAAPI clips during export: use a SEPARATE offscreen iframe
+                            // (the overlay iframe is sized for preview, not 1920×1080)
+                            if (clip._isWaaapi && State.isExporting) {
+                                if (!clip._htmlExportIframe || !clip._htmlExportIframe.parentNode) {
+                                    const ei = document.createElement('iframe');
+                                    ei.style.cssText = 'position:absolute;left:-9999px;width:' + w + 'px;height:' + h + 'px;border:none;';
+                                    document.body.appendChild(ei);
+                                    clip._htmlExportIframe = ei;
+                                    clip._htmlReady = false;
+                                }
+                                // Point html2canvas path to the export iframe
+                                clip._htmlIframe = clip._htmlExportIframe;
+                            }
+                            
+                            // Create offscreen iframe (HTML clips)
                             if (!clip._htmlIframe) {
                                 const iframe = document.createElement('iframe');
                                 iframe.style.cssText = 'position:absolute;left:-9999px;width:' + w + 'px;height:' + h + 'px;border:none;';
@@ -6489,14 +6446,19 @@
                                         const _waapiAdapter = '<script>(function(){window.seekToFrame=function(f,fps){var ms=(f/(fps||30))*1000;try{var _a=document.getAnimations({subtree:true});for(var i=0;i<_a.length;i++){_a[i].currentTime=ms;_a[i].pause();}}catch(e){}try{document.documentElement.style.setProperty("--frame",f);document.documentElement.style.setProperty("--progress",(ms/1000).toFixed(4));}catch(e){}try{if(typeof window.animate==="function")window.animate(ms/1000);}catch(e){}}})();<\/script>';
                                         doc.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">${fontLinks}<style>*{margin:0;padding:0;box-sizing:border-box;}${sysFontRules}body{width:${w}px;height:${h}px;overflow:hidden;background:transparent;}${safeCss}</style></head><body>${_waapiAdapter}${clip.html || ''}${clip.js ? '<script>' + clip.js + '<\/script>' : ''}</body></html>`);
                                         doc.close();
-                                        setTimeout(() => {
-                                        clip._htmlReady = true;
-                                        // Schedule a redraw so the freshly-written iframe renders
-                                        if (!window._htmlRedrawQueued) {
-                                            window._htmlRedrawQueued = true;
-                                            requestAnimationFrame(() => { window._htmlRedrawQueued = false; drawCanvas(); });
+                                        if (State.isExporting) {
+                                            // Export: set ready immediately so html2canvas captures on this drawCanvas call
+                                            clip._htmlReady = true;
+                                        } else {
+                                            setTimeout(() => {
+                                            clip._htmlReady = true;
+                                            // Schedule a redraw so the freshly-written iframe renders
+                                            if (!window._htmlRedrawQueued) {
+                                                window._htmlRedrawQueued = true;
+                                                requestAnimationFrame(() => { window._htmlRedrawQueued = false; drawCanvas(); });
+                                            }
+                                        }, 50);
                                         }
-                                    }, 50);
                                     }
                                 } catch(e) {
                                     console.warn('[HTMLClip] iframe write error:', e.message);
@@ -9084,8 +9046,9 @@
         };
 
         // ═══════════════════════════════════════════════════════════════════
-        // WAAPI Capture Engine — SVG foreignObject + seekToFrame
-        // Independent from html2canvas. Used for both canvas preview and export.
+        // WAAPI Animation Engine — seekToFrame using Web Animations API
+        // Canvas preview: iframe overlay (live CSS animation)
+        // Export: html2canvas + seekToFrame (same as HTML clips)
         // ═══════════════════════════════════════════════════════════════════
 
         /**
@@ -9118,7 +9081,7 @@
         };
 
         /**
-         * Capture an iframe's body to a canvas using SVG foreignObject.
+         * Capture an iframe's body to a canvas using html2canvas.
          * Zero dependencies — uses only native browser APIs.
          * ~5-15ms per frame vs html2canvas ~500ms.
          *
@@ -9127,83 +9090,10 @@
          * @param {number} height - target canvas height
          * @returns {Promise<string|null>} data:image/png;base64 or null on failure
          */
-        window.__waapiCaptureFrame = function(iframe, width, height) {
-            if (!iframe || !iframe.contentDocument || !iframe.contentDocument.body) {
-                return Promise.resolve(null);
-            }
-            var doc = iframe.contentDocument;
-            var body = doc.body;
+        // ═══ WAAPI Capture: uses html2canvas + seekToFrame (same as HTML clips) ═══
 
-            // Gather stylesheets
-            var styles = Array.from(doc.querySelectorAll('style')).map(function(s) { return s.textContent; }).join('\n');
-            var links = Array.from(doc.querySelectorAll('link[rel="stylesheet"]')).map(function(l) {
-                return '@import url("' + l.href + '");';
-            }).join('\n');
 
-            // Inline computed styles for accurate SVG rendering
-            var inlineCSS = '';
-            var allEls = body.querySelectorAll('*');
-            var importantProps = [
-                'width','height','position','display','flex-direction','justify-content',
-                'align-items','gap','padding','margin','background','background-color',
-                'background-image','border','border-radius','box-shadow','font-family',
-                'font-size','font-weight','font-style','color','text-align','text-decoration',
-                'line-height','opacity','transform','overflow','z-index'
-            ];
-            allEls.forEach(function(el) {
-                try {
-                    var cs = window.getComputedStyle(el);
-                    var css = '';
-                    importantProps.forEach(function(p) {
-                        var v = cs.getPropertyValue(p);
-                        if (v && v !== 'initial' && v !== 'normal' && v !== 'none') {
-                            css += p + ':' + v + ';';
-                        }
-                    });
-                    if (css) {
-                        var tag = el.tagName.toLowerCase();
-                        var sel = tag + (el.id ? '#' + el.id : '') + (el.className && typeof el.className === 'string' ? '.' + el.className.trim().split(/\s+/).join('.') : '');
-                        inlineCSS += sel + '{' + css + '}\n';
-                    }
-                } catch(e) {}
-            });
 
-            // Build SVG with foreignObject
-            var svgData = '<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height + '">' +
-                '<foreignObject width="100%" height="100%">' +
-                '<div xmlns="http://www.w3.org/1999/xhtml" style="width:' + width + 'px;height:' + height + 'px;">' +
-                '<style>' + links + '\n' + styles + '\n' + inlineCSS + '</style>' +
-                body.innerHTML +
-                '</div>' +
-                '</foreignObject>' +
-                '</svg>';
-
-            return new Promise(function(resolve, reject) {
-                var img = new Image();
-                var blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-                var url = URL.createObjectURL(blob);
-                img.onload = function() {
-                    var canvas = document.createElement('canvas');
-                    canvas.width = width;
-                    canvas.height = height;
-                    var ctx = canvas.getContext('2d');
-                    ctx.drawImage(img, 0, 0, width, height);
-                    URL.revokeObjectURL(url);
-                    try {
-                        resolve(canvas.toDataURL('image/png'));
-                    } catch(e) {
-                        resolve(null);
-                    }
-                };
-                img.onerror = function() {
-                    URL.revokeObjectURL(url);
-                    resolve(null);
-                };
-                img.src = url;
-            });
-        };
-
-        console.log('[StudioPro] API + WAAPI capture engine loaded (SVG foreignObject, no html2canvas)');
 
         window.fetchSystemFonts = async () => {
             if (!('queryLocalFonts' in window)) {
@@ -24439,7 +24329,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
         // drawCanvas() can use the cached canvas instantly on the next frame.
         window.preRenderHtmlClip = async function(clip) {
             if (!clip || clip.type !== 'html') return;
-            if (clip._isWaaapi) return; // WAAPI clips use iframe overlay + SVG capture, not html2canvas
+            if (clip._isWaaapi) return; // WAAPI clips use iframe overlay (preview) + html2canvas + seekToFrame (export)
             if (typeof html2canvas === 'undefined') return;
             try {
                 // Reuse the same iframe + content writing logic from drawCanvas
