@@ -313,7 +313,7 @@ class StudioProWAAPI {
      * Uses SVG foreignObject for frame capture (NOT html2canvas).
      */
     async preloadWaaapiClips() {
-        console.log('[WAAPI] Pre-loading WAAPI clips (SVG foreignObject)...');
+        console.log('[WAAPI] Pre-loading WAAPI clips (CDP screenshots — no html2canvas)...');
         const startTime = Date.now();
 
         const clipInfo = await this.page.evaluate(async () => {

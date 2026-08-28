@@ -1,35 +1,46 @@
 #!/usr/bin/env node
 
 /**
- * StudioPro WAAPI Renderer (Independent)
+ * StudioPro WAAPI Renderer (CDP Screenshots)
  * 
- * Uses SVG foreignObject for frame capture — no html2canvas dependency.
- * Standalone pipeline: WAAPI adapter + seekToFrame + SVG capture → MediaBunny.
+ * Uses Chrome DevTools Protocol screenshots for frame capture —
+ * the same technique used by HyperFrames and Replit.
+ * 
+ * Flow:
+ *   1. Launch headless Chrome → connect to StudioPro dev server
+ *   2. Execute composition script to create WAAPI clips
+ *   3. Extract clip data (HTML/CSS/JS/fonts/duration)
+ *   4. For each clip: generate standalone HTML → CDP screenshot each frame
+ *   5. Encode frames to MP4/WebM with FFmpeg
  * 
  * Usage:
  *   node html-waapi/render.js examples/animated-pollution.js
- *   node html-waapi/render.js examples/animated-pollution.js -m mediabunny -q ultra
+ *   node html-waapi/render.js examples/animated-pollution.js -m cdp -q ultra
  */
 
 import path from 'path';
-import { readFileSync, mkdirSync } from 'fs';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import { captureClipFrames, encodeFrames, cleanupFrames } from './cdp-capture.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-
-// Independent WAAPI API — NO dependency on html-static
-import { StudioProWAAPI } from './api.js';
 
 // ── Default settings ───────────────────────────────────────────────────────
 
 const DEFAULTS = {
     quality: 'ultra',
     format: 'mp4',
-    mode: 'mediabunny',
+    mode: 'cdp',          // 'cdp' = CDP screenshots (fast, perfect), 'gui' = editor export (slow)
     fps: 30,
     headless: true
+};
+
+const QUALITY_PRESETS = {
+    draft:  { crf: 28, scale: 0.5 },
+    standard: { crf: 23, scale: 1 },
+    ultra:  { crf: 18, scale: 1 }
 };
 
 // ── Parse args ─────────────────────────────────────────────────────────────
@@ -44,7 +55,6 @@ function parseArgs(args) {
         else if ((arg === '--mode' || arg === '-m') && args[i + 1]) result.options.mode = args[++i];
         else if (arg === '--fps' && args[i + 1]) result.options.fps = parseInt(args[++i]);
         else if (arg === '--no-headless') result.options.headless = false;
-        else if (arg === '--url' && args[i + 1]) result.options.url = args[++i];
         else if (!arg.startsWith('-') && !result.script) result.script = arg;
         else if (!arg.startsWith('-') && !result.output) result.output = arg;
     }
@@ -54,9 +64,10 @@ function parseArgs(args) {
 function printHelp() {
     console.log(`
 ╔══════════════════════════════════════════════════════════════╗
-║  StudioPro WAAPI Renderer (Independent)                     ║
+║  StudioPro WAAPI Renderer (CDP Screenshots)                 ║
 ╠══════════════════════════════════════════════════════════════╣
-║  Uses SVG foreignObject for frame capture (no html2canvas)  ║
+║  Uses headless Chrome screenshots for perfect frame capture ║
+║  Same technique as HyperFrames + Replit video export        ║
 ║                                                              ║
 ║  Usage:                                                      ║
 ║    node html-waapi/render.js <script.js> [output] [options] ║
@@ -64,63 +75,226 @@ function printHelp() {
 ║  Options:                                                    ║
 ║    -q, --quality <draft|standard|ultra>                     ║
 ║    -f, --format <mp4|webm>                                  ║
-║    -m, --mode <mediabunny|ftrt>                            ║
+║    -m, --mode <cdp|gui>                                     ║
 ║    --fps <30>                                                ║
 ║    --no-headless     Show Chrome window                      ║
-║    --url <url>       Override dev server URL                 ║
 ╚══════════════════════════════════════════════════════════════╝
     `);
 }
 
-// ── Main render function ───────────────────────────────────────────────────
+// ── Extract clip data from editor ──────────────────────────────────────────
 
-async function render(scriptPath, outputPath, options) {
+async function extractClipData(page) {
+    return await page.evaluate(() => {
+        // Capture ALL HTML clips (both WAAPI and regular)
+        const clips = State.clips.filter(c => c.type === 'html' && !c.hidden);
+        return clips.map(c => ({
+            id: c.id,
+            html: c.html || '',
+            css: c.css || '',
+            js: c.js || '',
+            fonts: c.fonts || [],
+            systemFonts: State.importedSystemFonts || [],
+            duration: c.duration,
+            start: c.start,
+            width: 1920,
+            height: 1080,
+            effects: c.effects || {}
+        }));
+    });
+}
+
+// ── Main render function (CDP mode) ─────────────────────────────────────
+
+async function renderCDP(scriptPath, outputPath, options) {
+    // Dynamic import to avoid issues when not using ESM
+    const puppeteer = await import('puppeteer-core');
+    
+    const findChrome = () => {
+        if (process.env.CHROME_PATH) return process.env.CHROME_PATH;
+        const commonPaths = [
+            'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+            '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+            '/usr/bin/google-chrome'
+        ];
+        for (const p of commonPaths) { if (fs.existsSync(p)) return p; }
+        return null;
+    };
+
+    const chrome = findChrome();
+    if (!chrome) throw new Error('Chrome not found');
+
+    // Detect dev server
+    const http = await import('http');
+    let serverUrl = null;
+    for (const port of [7000, 3000, 3001]) {
+        const ok = await new Promise(r => {
+            http.default.get(`http://localhost:${port}`, res => { res.resume(); r(true); })
+                .on('error', () => r(false)).setTimeout(1500, function() { this.destroy(); r(false); });
+        });
+        if (ok) { serverUrl = `http://localhost:${port}`; break; }
+    }
+    if (!serverUrl) throw new Error('No dev server found. Run: npm run dev');
+
+    console.log(`\n╔══════════════════════════════════════════════════════════════╗`);
+    console.log(`║  StudioPro WAAPI Renderer (CDP Screenshots)                 ║`);
+    console.log(`╠══════════════════════════════════════════════════════════════╣`);
+    console.log(`║  Script:  ${path.basename(scriptPath).padEnd(48)}║`);
+    console.log(`║  Mode:    CDP screenshots (perfect rendering)              ║`);
+    console.log(`║  Capture: page.screenshot() — full browser rendering       ║`);
+    console.log(`╚══════════════════════════════════════════════════════════════╝\n`);
+
+    // Launch Chrome and connect to editor
+    const browser = await puppeteer.default.launch({
+        headless: options.headless ? 'new' : false,
+        executablePath: chrome,
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--enable-webcodecs']
+    });
+
+    try {
+        const page = await browser.newPage();
+        await page.setViewport({ width: 1920, height: 1080 });
+
+        console.log(`[CDP] Connecting to ${serverUrl}...`);
+        await page.goto(serverUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+        await page.waitForFunction('window.StudioPro !== undefined', { timeout: 30000 });
+        console.log('[CDP] Connected to StudioPro');
+
+        // Execute composition script
+        console.log('[CDP] Executing composition...');
+        const scriptContent = fs.readFileSync(scriptPath, 'utf-8');
+        await page.evaluate((code) => {
+            let fnBody = code.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+                .replace(/\s*module\.exports\s*=\s*/g, '').replace(/\s*export\s+default\s+/g, '')
+                .replace(/;\s*$/, '').trim();
+            let fnStr;
+            if (fnBody.startsWith('function')) {
+                const firstBrace = fnBody.indexOf('{');
+                const lastBrace = fnBody.lastIndexOf('}');
+                if (firstBrace !== -1 && lastBrace !== -1) {
+                    const params = fnBody.substring(fnBody.indexOf('('), fnBody.indexOf(')') + 1);
+                    const body = fnBody.substring(firstBrace, lastBrace + 1);
+                    fnStr = `${params} => ${body}`;
+                } else { fnStr = fnBody; }
+            } else { fnStr = fnBody; }
+            const scriptFn = new Function('return ' + fnStr)();
+            scriptFn(window.StudioPro, window.State);
+        }, scriptContent);
+
+        const clipCount = await page.evaluate(() => State.clips.filter(c => c.type === 'html').length);
+        console.log(`[CDP] Composition loaded: ${clipCount} HTML clips`);
+
+        // Extract clip data
+        console.log('[CDP] Extracting clip data...');
+        const clips = await extractClipData(page);
+        console.log(`[CDP] Extracted ${clips.length} clips`);
+
+        // Close browser — we don't need it for CDP capture
+        await browser.close();
+
+        // Capture frames for each clip using standalone CDP capture
+        const quality = QUALITY_PRESETS[options.quality] || QUALITY_PRESETS.ultra;
+        const allFrameDirs = [];
+        let clipIndex = 0;
+
+        for (const clip of clips) {
+            clipIndex++;
+            console.log(`\n[CDP] Capturing clip ${clipIndex}/${clips.length}: ${clip.id} (${clip.duration}s)`);
+
+            const result = await captureClipFrames(clip, {
+                fps: options.fps,
+                width: clip.width,
+                height: clip.height,
+                chromePath: chrome,
+                headless: options.headless,
+                verbose: true
+            });
+
+            allFrameDirs.push(result);
+        }
+
+        // Encode to video
+        if (!outputPath) {
+            const scriptName = path.basename(scriptPath, '.js');
+            outputPath = path.join(__dirname, 'output', `${scriptName}_${options.quality}_${options.fps}fps_cdp.${options.format}`);
+        }
+        try { fs.mkdirSync(path.dirname(outputPath), { recursive: true }); } catch(e) {}
+
+        // If multiple clips, concatenate frame directories
+        if (allFrameDirs.length === 1) {
+            await encodeFrames(allFrameDirs[0].outputDir, outputPath, {
+                fps: options.fps,
+                format: options.format,
+                crf: quality.crf
+            });
+        } else {
+            // Concatenate all frames in timeline order
+            console.log(`\n[CDP] Concatenating ${allFrameDirs.length} clip frame sequences...`);
+            const concatDir = path.join(__dirname, '.frames', 'concat');
+            fs.mkdirSync(concatDir, { recursive: true });
+            
+            let frameIndex = 0;
+            for (const result of allFrameDirs) {
+                for (const framePath of result.frames) {
+                    const dest = path.join(concatDir, `frame_${String(frameIndex).padStart(6, '0')}.png`);
+                    fs.copyFileSync(framePath, dest);
+                    frameIndex++;
+                }
+            }
+            
+            await encodeFrames(concatDir, outputPath, {
+                fps: options.fps,
+                format: options.format,
+                crf: quality.crf
+            });
+            
+            cleanupFrames(concatDir);
+        }
+
+        // Cleanup
+        for (const result of allFrameDirs) {
+            cleanupFrames(result.outputDir);
+        }
+
+        console.log(`\n✅ WAAPI render complete! (CDP screenshots — perfect quality)`);
+        console.log(`   Output: ${outputPath}`);
+
+    } catch (err) {
+        // Make sure browser is closed
+        try { await browser.close(); } catch(e) {}
+        throw err;
+    }
+}
+
+// ── Main render function (GUI mode — fallback) ──────────────────────────
+
+async function renderGUI(scriptPath, outputPath, options) {
+    // Use the old approach: editor export via MediaBunny worker
+    const { StudioProWAAPI } = await import('./api.js');
     const studio = new StudioProWAAPI({
         headless: options.headless,
-        url: options.url || null,
         timeout: 300000
     });
 
     try {
-        // 1. Launch Chrome + connect to dev server
-        console.log('\n╔══════════════════════════════════════════════════════════════╗');
-        console.log('║  StudioPro WAAPI Renderer (Independent)                     ║');
-        console.log('╠══════════════════════════════════════════════════════════════╣');
-        console.log(`║  Script:  ${path.basename(scriptPath).padEnd(48)}║`);
-        console.log(`║  Mode:    ${options.mode.padEnd(48)}║`);
-        console.log(`║  Capture: SVG foreignObject (5-15ms/frame)                 ║`);
-        console.log('╚══════════════════════════════════════════════════════════════╝\n');
-
         await studio.launch();
-
-        // 2. Execute composition script
-        console.log('📝 Executing composition...');
         await studio.execute(scriptPath);
-
-        const clipCount = await studio.page.evaluate(() => State.clips.length);
-        console.log(`✅ Composition loaded: ${clipCount} clips`);
-
-        // 3. Pre-load WAAPI clips with SVG foreignObject capture
         await studio.preloadWaaapiClips();
-
-        // 4. Export via MediaBunny/FTRT
-        console.log('🎬 Starting export...');
+        
         if (!outputPath) {
             const scriptName = path.basename(scriptPath, '.js');
-            outputPath = path.join(__dirname, 'output', `${scriptName}_${options.quality}_${options.fps}fps_${options.mode}.${options.format}`);
+            outputPath = path.join(__dirname, 'output', `${scriptName}_${options.quality}_${options.fps}fps_gui.${options.format}`);
         }
-        try { mkdirSync(path.dirname(outputPath), { recursive: true }); } catch(e) {}
-
+        try { fs.mkdirSync(path.dirname(outputPath), { recursive: true }); } catch(e) {}
+        
         await studio.export(outputPath, options);
-
-        console.log('\n✅ WAAPI render complete! (SVG foreignObject capture)');
-
+        console.log(`\n✅ WAAPI render complete! (GUI export)`);
     } finally {
         await studio.close();
     }
 }
 
-// ── CLI ────────────────────────────────────────────────────────────────────
+// ── CLI Entry Point ──────────────────────────────────────────────────────
 
 if (process.argv[1] && process.argv[1].endsWith('render.js')) {
     const args = process.argv.slice(2);
@@ -132,10 +306,11 @@ if (process.argv[1] && process.argv[1].endsWith('render.js')) {
         process.exit(1);
     }
     
-    render(parsed.script, parsed.output, parsed.options).catch(err => {
+    const renderFn = parsed.options.mode === 'gui' ? renderGUI : renderCDP;
+    renderFn(parsed.script, parsed.output, parsed.options).catch(err => {
         console.error(`\n❌ Render failed: ${err.message}`);
         process.exit(1);
     });
 }
 
-export { render };
+export { renderCDP, renderGUI };

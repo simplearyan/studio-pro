@@ -18,6 +18,9 @@ module.exports = function(StudioPro, State) {
     // Load fonts
     StudioPro.fonts.loadGoogleBatch(['Inter', 'Space Grotesk']);
 
+    // Collect all clip definitions
+    const clips = [];
+
     // ── Scene 1: Title (0-5s) ──────────────────────────────────────────────
     const titleHtml = `
         <div style="width:1920px;height:1080px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#0f172a,#1e293b);font-family:'Space Grotesk',sans-serif;">
@@ -47,9 +50,9 @@ module.exports = function(StudioPro, State) {
         .subtitle { animation: fadeSlideUp 0.6s ease-out 0.8s forwards; opacity: 0; }
     `;
 
-    StudioPro.html(titleHtml, titleCss, '', {
+    clips.push(StudioPro.html(titleHtml, titleCss, '', {
         start: 0, duration: 5, fonts: ['Space Grotesk']
-    });
+    }));
 
     // ── Scene 2: Stats (5-10s) ─────────────────────────────────────────────
     const statsHtml = `
@@ -88,9 +91,9 @@ module.exports = function(StudioPro, State) {
         .stat-card:nth-child(3) { animation: popIn 0.5s ease-out 0.7s forwards; opacity: 0; }
     `;
 
-    StudioPro.html(statsHtml, statsCss, '', {
+    clips.push(StudioPro.html(statsHtml, statsCss, '', {
         start: 5, duration: 5, fonts: ['Inter']
-    });
+    }));
 
     // ── Scene 3: Bar Chart (10-15s) ────────────────────────────────────────
     const chartHtml = `
@@ -145,9 +148,9 @@ module.exports = function(StudioPro, State) {
         .bar-4 { --target-width: 30%; animation: growRight 0.8s ease-out 0.9s forwards; width: 0%; }
     `;
 
-    StudioPro.html(chartHtml, chartCss, '', {
+    clips.push(StudioPro.html(chartHtml, chartCss, '', {
         start: 10, duration: 5, fonts: ['Inter']
-    });
+    }));
 
     // ── Scene 4: CTA (15-20s) ──────────────────────────────────────────────
     const ctaHtml = `
@@ -178,7 +181,15 @@ module.exports = function(StudioPro, State) {
         .cta-button { animation: fadeSlideUp 0.5s ease-out 0.6s forwards, pulse 2s ease-in-out 1.2s infinite; opacity: 0; }
     `;
 
-    StudioPro.html(ctaHtml, ctaCss, '', {
+    clips.push(StudioPro.html(ctaHtml, ctaCss, '', {
         start: 15, duration: 5, fonts: ['Space Grotesk']
+    }));
+
+    // Create composition with all clips
+    StudioPro.createComposition({
+        duration: 20,
+        fps: 30,
+        clearExisting: true,
+        clips: clips
     });
 };
