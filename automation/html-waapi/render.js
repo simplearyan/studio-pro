@@ -22,7 +22,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
-import { captureClipFrames, encodeFrames, cleanupFrames } from './cdp-capture.js';
+import { launchBrowser, preloadFonts, captureClipFrames, encodeFrames, cleanupFrames } from './cdp-capture.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -107,22 +107,12 @@ async function extractClipData(page) {
 // ── Main render function (CDP mode) ─────────────────────────────────────
 
 async function renderCDP(scriptPath, outputPath, options) {
-    // Dynamic import to avoid issues when not using ESM
-    const puppeteer = await import('puppeteer-core');
-    
-    const findChrome = () => {
-        if (process.env.CHROME_PATH) return process.env.CHROME_PATH;
-        const commonPaths = [
-            'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-            '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-            '/usr/bin/google-chrome'
-        ];
-        for (const p of commonPaths) { if (fs.existsSync(p)) return p; }
-        return null;
-    };
-
-    const chrome = findChrome();
-    if (!chrome) throw new Error('Chrome not found');
+    // Launch Chrome using shared launcher (optimized args)
+    const browser = await launchBrowser({
+        headless: options.headless,
+        width: 1920,
+        height: 1080
+    });
 
     // Detect dev server
     const http = await import('http');
@@ -143,13 +133,6 @@ async function renderCDP(scriptPath, outputPath, options) {
     console.log(`║  Mode:    CDP screenshots (perfect rendering)              ║`);
     console.log(`║  Capture: page.screenshot() — full browser rendering       ║`);
     console.log(`╚══════════════════════════════════════════════════════════════╝\n`);
-
-    // Launch Chrome and connect to editor
-    const browser = await puppeteer.default.launch({
-        headless: options.headless ? 'new' : false,
-        executablePath: chrome,
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--enable-webcodecs']
-    });
 
     try {
         const page = await browser.newPage();
@@ -189,10 +172,18 @@ async function renderCDP(scriptPath, outputPath, options) {
         const clips = await extractClipData(page);
         console.log(`[CDP] Extracted ${clips.length} clips`);
 
-        // Close browser — we don't need it for CDP capture
-        await browser.close();
+        // Close editor tab (not browser — reuse for capture)
+        await page.close();
 
-        // Capture frames for each clip using standalone CDP capture
+        // ── Font preloading (KEY OPTIMIZATION) ──
+        // Collect all unique fonts across all clips
+        const allFonts = [...new Set(clips.flatMap(c => c.fonts || []))];
+        if (allFonts.length > 0) {
+            console.log(`[CDP] Preloading ${allFonts.length} fonts: ${allFonts.join(', ')}...`);
+            await preloadFonts(browser, allFonts, { verbose: true });
+        }
+
+        // Capture frames for each clip using the SAME browser instance
         const quality = QUALITY_PRESETS[options.quality] || QUALITY_PRESETS.ultra;
         const allFrameDirs = [];
         let clipIndex = 0;
@@ -205,7 +196,7 @@ async function renderCDP(scriptPath, outputPath, options) {
                 fps: options.fps,
                 width: clip.width,
                 height: clip.height,
-                chromePath: chrome,
+                browser: browser,  // Reuse same browser instance!
                 headless: options.headless,
                 verbose: true
             });
