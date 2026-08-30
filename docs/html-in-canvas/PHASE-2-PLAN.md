@@ -1,7 +1,7 @@
 # Phase 2: HTML-in-Canvas Clip Type — Integration Plan
 
-> **Date:** August 2026
-> **Goal:** Add HTML-in-Canvas as a new independent clip type in Studio Pro, with its own presets, code editor, timeline rendering, and canvas preview.
+> **Date:** August 2026 (Updated)
+> **Goal:** Add HTML-in-Canvas as a new independent clip type in Studio Pro, with proper canvas preview rendering, timeline playhead seeking, and MediaBunny/FTRT export.
 
 ---
 
@@ -20,41 +20,33 @@ Studio Pro has 6 clip types, each with its own rendering path in `drawCanvas()`:
 | `scene` | Container for other clips | opaqueBg, backgroundColor |
 | `html` | **iframe + html2canvas** | html, css, js, fonts |
 
-### How HTML Clips Currently Work
-
-1. **Add:** `addHtmlClipToTimeline()` creates a clip with `type: 'html'`
-2. **Preview:** Offscreen iframe renders HTML/CSS/JS, html2canvas captures to `_htmlCanvas`
-3. **Canvas:** `drawCanvas()` calls `ctx.drawImage(clip._htmlCanvas, ...)` 
-4. **Export:** Same html2canvas path, but with export-resolution iframe
-5. **WAAPI:** Special `_isWaaapi: true` flag → uses iframe overlay for live preview, html2canvas for export
-
-### Problems with Current HTML Clip Rendering
-
-| Issue | Impact |
-|-------|--------|
-| html2canvas can't do flexbox/grid | Layout breaks in complex designs |
-| html2canvas can't do backdrop-filter | Glassmorphism effects fail |
-| External fonts not loaded | Google Fonts show fallback |
-| External images CORS | Unsplash images don't render |
-| 200-500ms per frame | Slow export, laggy preview |
-| CSS @keyframes don't capture | Animated clips show static frame |
-
-### HyperFrames Reference Architecture
-
-HyperFrames (HeyGen) uses a fundamentally different approach:
+### How drawCanvas() Works
 
 ```javascript
-// The ONE contract: seek, don't play
-window.__hf = {
-    duration: 10,
-    seek: (timeSeconds) => { /* position everything */ }
-};
-
-// Renderer: seek(0) → screenshot, seek(1/30) → screenshot, ...
-// Same code path for preview and export
+function drawCanvas(targetCtx, targetW, targetH, opts) {
+    // 1. Clear canvas
+    // 2. Draw background
+    // 3. Filter active clips (visible + in time range)
+    // 4. Sort by track order (top track draws last)
+    // 5. For each clip:
+    //    - Calculate transform (scale, rotate, offset, opacity)
+    //    - Apply animation state (enter/exit/loop)
+    //    - Draw to canvas based on clip type
+}
 ```
 
-**Key insight:** HyperFrames uses GSAP timelines (paused + seekable) instead of CSS @keyframes. This makes rendering deterministic.
+### How Timeline Seek Works
+
+```javascript
+// User moves playhead → State.currentTime updates → drawCanvas() called
+function seekTo(time) {
+    State.currentTime = time;
+    drawCanvas();  // Re-renders all visible clips at current time
+    updateTimelinePlayhead();  // Moves playhead indicator
+}
+```
+
+**Key insight:** Every clip type must render correctly at any `State.currentTime`. The renderer must be able to seek to any frame instantly.
 
 ### Our SVG foreignObject Renderer (Phase 1 Complete)
 
@@ -117,9 +109,9 @@ A completely independent element type that renders HTML/CSS/JS using SVG foreign
 1. **New toolbar button** — "HIC" (HTML-in-Canvas) with sparkle icon
 2. **Preset browser** — Grid of animated presets (from Phase 1)
 3. **Code editor modal** — CodeMirror with HTML/CSS/JS tabs + live preview
-4. **Timeline rendering** — SVG foreignObject in drawCanvas()
-5. **Canvas preview** — Real-time animation preview
-6. **Export** — MediaRecorder captureStream or CDP screenshots
+4. **Canvas preview** — Real-time animation with playhead seeking
+5. **Timeline rendering** — Proper clip display with color/icon
+6. **Export** — MediaBunny (html2canvas + WebCodecs) or FTRT
 
 ---
 
@@ -192,7 +184,8 @@ case 'hic':
         await renderer.setClip(clip.html, clip.css, clip.js);
     }
     
-    // Render frame at current time
+    // Render frame at current time (PLAYHEAD SEEK)
+    // clipTime is in seconds, renderFrame expects milliseconds
     await renderer.renderFrame(clipTime * 1000);
     
     // Draw to canvas
@@ -280,7 +273,134 @@ window.addHicClipToTimeline = function(presetKey) {
 
 ---
 
-### Phase 2.2: Sidebar Panel (1-2 days)
+### Phase 2.2: Canvas Preview with Playhead Seeking (2-3 days)
+
+**Goal:** When user moves playhead, HIC clip animation updates to correct frame.
+
+#### How Playhead Seeking Works
+
+```
+User drags playhead
+  → State.currentTime = newTime
+  → drawCanvas() called
+  → For each HIC clip:
+      clipTime = State.currentTime - clip.start
+      renderer.renderFrame(clipTime * 1000)
+      → onFrame(clipTime * 1000) updates DOM
+      → SVG foreignObject captures frame
+      → canvas.drawImage() paints to preview
+```
+
+#### Key Implementation Details
+
+1. **Deterministic rendering:** `onFrame(time)` must produce the same output for the same time value. No `Math.random()`, no `Date.now()`, no network requests.
+
+2. **Instant seeking:** The renderer must be able to jump to any frame without playing through previous frames. This is why we use `onFrame(time)` instead of CSS @keyframes.
+
+3. **Frame caching:** Cache rendered frames to avoid re-rendering when seeking back to a previously rendered time.
+
+```javascript
+// Renderer with frame caching
+class HTMLCanvasRenderer {
+    constructor(width, height) {
+        this.width = width;
+        this.height = height;
+        this.canvas = document.createElement('canvas');
+        this.ctx = this.canvas.getContext('2d');
+        this.sandbox = document.createElement('div');
+        this.sandbox.style.cssText = 'position:absolute;top:-9999px;left:-9999px;width:' + width + 'px;height:' + height + 'px;overflow:hidden;pointer-events:none;';
+        document.body.appendChild(this.sandbox);
+        
+        // Frame cache: timeMs → ImageBitmap
+        this._frameCache = new Map();
+        this._cacheMaxSize = 30;  // Keep last 30 frames
+    }
+    
+    async renderFrame(timeMs) {
+        // Check cache first
+        const cacheKey = Math.round(timeMs);  // Quantize to nearest ms
+        if (this._frameCache.has(cacheKey)) {
+            const cached = this._frameCache.get(cacheKey);
+            this.ctx.clearRect(0, 0, this.width, this.height);
+            this.ctx.drawImage(cached, 0, 0);
+            return true;
+        }
+        
+        // Render new frame
+        if (this._onFrame) {
+            try { this._onFrame(timeMs); } catch (e) { console.error('[HIC] onFrame error:', e); }
+        }
+        
+        // Serialize DOM to SVG
+        const clone = this.sandbox.cloneNode(true);
+        clone.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
+        clone.setAttribute('style', 'width:100%;height:100%;margin:0;padding:0;overflow:hidden;');
+        const domString = new XMLSerializer().serializeToString(clone);
+        
+        const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + this.width + '" height="' + this.height + '">' +
+            '<foreignObject width="100%" height="100%">' +
+            '<style xmlns="http://www.w3.org/1999/xhtml">' + this.css + '</style>' +
+            '<div xmlns="http://www.w3.org/1999/xhtml" style="width:' + this.width + 'px;height:' + this.height + 'px;overflow:hidden;">' +
+            domString +
+            '</div></foreignObject></svg>';
+        
+        return new Promise((resolve) => {
+            const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+            const img = new Image();
+            img.onload = () => {
+                this.ctx.clearRect(0, 0, this.width, this.height);
+                this.ctx.drawImage(img, 0, 0);
+                
+                // Cache the frame
+                if (this._frameCache.size >= this._cacheMaxSize) {
+                    const firstKey = this._frameCache.keys().next().value;
+                    this._frameCache.delete(firstKey);
+                }
+                this._frameCache.set(cacheKey, this.canvas);
+                
+                resolve(true);
+            };
+            img.onerror = () => {
+                this.ctx.fillStyle = '#1e293b';
+                this.ctx.fillRect(0, 0, this.width, this.height);
+                this.ctx.fillStyle = '#ef4444';
+                this.ctx.font = '24px sans-serif';
+                this.ctx.fillText('Render Error', 40, 60);
+                resolve(false);
+            };
+            img.src = url;
+        });
+    }
+    
+    // Clear cache when clip changes
+    clearCache() {
+        this._frameCache.clear();
+    }
+}
+```
+
+#### Playhead Interaction Flow
+
+```
+1. User clicks on timeline at 2.5s
+   → State.currentTime = 2.5
+   → drawCanvas() called
+
+2. drawCanvas() finds HIC clip at start=1.0, duration=5.0
+   → clipTime = 2.5 - 1.0 = 1.5s
+   → renderer.renderFrame(1500)  // 1500ms
+
+3. renderer.renderFrame(1500):
+   → onFrame(1500) updates DOM to show animation at 1.5s
+   → SVG foreignObject captures frame
+   → canvas.drawImage() paints to preview
+
+4. User sees correct animation frame at 1.5s into the clip
+```
+
+---
+
+### Phase 2.3: Sidebar Panel (1-2 days)
 
 **Goal:** Properties panel for HIC clips with preset browser and code access.
 
@@ -354,6 +474,9 @@ window.applyHicPreset = function(clipId, presetKey) {
     clip.presetId = presetKey;
     clip._hicSig = '';  // Force re-render
     
+    // Clear renderer cache
+    if (window._hicRenderer) window._hicRenderer.clearCache();
+    
     updateSidebarPanel();
     drawCanvas();
 };
@@ -361,7 +484,7 @@ window.applyHicPreset = function(clipId, presetKey) {
 
 ---
 
-### Phase 2.3: Code Editor Modal (2-3 days)
+### Phase 2.4: Code Editor Modal (2-3 days)
 
 **Goal:** Full-featured code editor with CodeMirror, live preview, and apply/reset.
 
@@ -538,6 +661,7 @@ window.closeHicEditor = function(apply) {
             clip.css = hicCssCM.getValue();
             clip.js = hicJsCM.getValue();
             clip._hicSig = '';  // Force re-render
+            if (window._hicRenderer) window._hicRenderer.clearCache();
             drawCanvas();
         }
     }
@@ -601,7 +725,7 @@ window.updateHicPreview = function() {
 
 ---
 
-### Phase 2.4: Preset Templates (1-2 days)
+### Phase 2.5: Preset Templates (1-2 days)
 
 **Goal:** Import all 12 Phase 1 presets into the sidebar and editor.
 
@@ -639,7 +763,7 @@ Copy presets from `src/html-in-canvas/presets/index.js` into `HIC_PRESETS` in `i
 
 ---
 
-### Phase 2.5: Timeline Rendering (1 day)
+### Phase 2.6: Timeline Rendering (1 day)
 
 **Goal:** Show HIC clips on the timeline with proper colors and labels.
 
@@ -668,41 +792,9 @@ PALETTES.push({ bg: '#7c3aed', border: '#6d28d9', text: '#ffffff' });  // Violet
 
 ---
 
-### Phase 2.6: Export Integration (2-3 days)
+### Phase 2.7: Export Integration (2-3 days)
 
-**Goal:** Export HIC clips to video using MediaRecorder or CDP.
-
-#### Option A: MediaRecorder (GUI Export)
-
-```javascript
-// In drawCanvas() HIC rendering path — capture canvas stream
-if (State.isExporting && clip.type === 'hic') {
-    // Render frame at export time
-    await renderer.renderFrame(clipTime * 1000);
-    ctx.drawImage(renderer.canvas, -w/2, -h/2, w, h);
-}
-```
-
-This works because `drawCanvas()` is called for every frame during export, and the SVG foreignObject renderer is fast enough (5-15ms/frame).
-
-#### Option B: CDP Screenshots (Automation Export)
-
-```javascript
-// automation/html-to-canvas/render.js
-const renderer = new HTMLCanvasRenderer(1920, 1080);
-await renderer.setClip(clip.html, clip.css, clip.js);
-
-for (let frame = 0; frame < totalFrames; frame++) {
-    const time = frame / fps;
-    await renderer.renderFrame(time * 1000);
-    
-    // Take CDP screenshot of the canvas
-    const screenshot = await page.screenshot({ 
-        clip: { x: 0, y: 0, width: 1920, height: 1080 } 
-    });
-    writeFileSync(`frame_${frame}.jpg`, screenshot);
-}
-```
+**Goal:** Export HIC clips to video using MediaBunny or FTRT.
 
 #### Export Flow
 
@@ -717,6 +809,36 @@ User clicks Export
       5. Frame captured to video stream
   → Video encoded and downloaded
 ```
+
+#### MediaBunny Export (Primary)
+
+```javascript
+// In drawCanvas() HIC rendering path — capture canvas stream
+if (State.isExporting && clip.type === 'hic') {
+    // Render frame at export time
+    await renderer.renderFrame(clipTime * 1000);
+    ctx.drawImage(renderer.canvas, -w/2, -h/2, w, h);
+}
+```
+
+This works because `drawCanvas()` is called for every frame during export, and the SVG foreignObject renderer is fast enough (5-15ms/frame).
+
+#### FTRT Export (Alternative)
+
+```javascript
+// FTRT uses the same drawCanvas() path
+// Just different encoding (WebCodecs vs MediaRecorder)
+window.startFTRTExport(exportW, exportH, fps, startTime, endTime, format);
+```
+
+#### Why No CDP Export
+
+| Reason | Impact |
+|--------|--------|
+| CDP export caused PC hangs/black screens | Critical — breaks user workflow |
+| MediaBunny already handles HIC clips | CDP export is redundant |
+| Adds complexity for no benefit | Maintenance burden |
+| HIC clips render in 5-15ms/frame | Fast enough for real-time export |
 
 ---
 
@@ -736,7 +858,7 @@ studio-pro-editor/
 ├── docs/
 │   └── html-in-canvas/
 │       ├── PLAN.md              # Phase 1 plan (EXISTS)
-│       ├── PHASE-2-PLAN.md      # This file (NEW)
+│       ├── PHASE-2-PLAN.md      # This file (UPDATED)
 │       └── test-renderer.html   # Interactive test site (EXISTS)
 │
 └── index.html                   # Main editor — MODIFIED
@@ -782,13 +904,14 @@ studio-pro-editor/
 | Task | Difficulty | Days |
 |------|-----------|------|
 | Add `hic` type to State + drawCanvas | Medium | 1-2 |
+| Canvas preview with playhead seeking | Medium | 2-3 |
 | Sidebar panel with preset browser | Easy | 1 |
 | Code editor modal with CodeMirror | Medium | 2-3 |
 | Import 12 presets into HIC_PRESETS | Easy | 0.5 |
 | Timeline clip rendering (color, icon) | Easy | 0.5 |
-| Export integration (MediaRecorder) | Medium | 1-2 |
+| Export integration (MediaBunny/FTRT) | Medium | 1-2 |
 | Testing + bug fixes | Medium | 1-2 |
-| **Total** | | **7-11 days** |
+| **Total** | | **9-14 days** |
 
 ### Risk Assessment
 
@@ -810,7 +933,9 @@ studio-pro-editor/
 - [ ] User can edit code → preview updates in real-time
 - [ ] User can apply changes → canvas preview updates
 - [ ] HIC clips render correctly in canvas preview (SVG foreignObject)
-- [ ] HIC clips export to video (MediaRecorder captureStream)
+- [ ] **Playhead seeking works** — moving playhead shows correct animation frame
+- [ ] HIC clips export to video (MediaBunny captureStream)
+- [ ] HIC clips export to video (FTRT WebCodecs)
 - [ ] All 12 presets render and animate correctly
 - [ ] No console errors during preview or export
 
@@ -824,17 +949,12 @@ studio-pro-editor/
 - Custom preset saving/loading
 - Animation timeline scrubber in editor
 
-### Phase 4: CDP Automation Pipeline
-- Puppeteer-based frame capture for HIC clips
-- Deterministic rendering with `--deterministic-mode`
-- Parallel frame capture for speed
-
-### Phase 5: AI Integration
+### Phase 4: AI Integration
 - AI generates HIC presets from prompts
 - Natural language → HTML/CSS/JS conversion
 - Style transfer between presets
 
-### Phase 6: Performance Optimization
+### Phase 5: Performance Optimization
 - WebWorker rendering (off-main-thread)
 - Canvas OffscreenCanvas for parallel rendering
 - Frame caching with LRU eviction
