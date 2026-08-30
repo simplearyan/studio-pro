@@ -3263,8 +3263,6 @@
             `;
         };
 
-
-
         window.setPropGroup = (key) => {
             State.ui = State.ui || {};
             State.ui.activePropGroup = key;
@@ -6647,8 +6645,6 @@
                         State.currentTime = prevTime;
                         State.activeSceneId = prevSceneId;
 
-
-
                         const clipTime = State.currentTime - clip.start;
                         const timeLeft = clip.duration - clipTime;
                         const aState = calculateAnimationState(clip, clipTime, timeLeft, w, h);
@@ -9108,8 +9104,6 @@
          * @returns {Promise<string|null>} data:image/png;base64 or null on failure
          */
         // ═══ WAAPI Capture: uses html2canvas + seekToFrame (same as HTML clips) ═══
-
-
 
 
         window.fetchSystemFonts = async () => {
@@ -12677,8 +12671,6 @@
                     </div>
                 </div>
             `;
-
-
 
             // Use a clean layout for the sidebar items
             if (clip.type === 'audio') {
@@ -33420,122 +33412,7 @@ Output ONLY the markdown script. No explanation. No code fences.`;
             startExport(format, startT, endT);
         }
 
-        // ═══ CDP Export Server Client ═══════════════════════════════════════════
-        // Connects to local WebSocket server for perfect CDP frame capture.
-        // Falls back to html2canvas (MediaBunny) on deployed sites.
-        window._cdpExportAvailable = false;
-        window._cdpExportSocket = null;
-        
-        function _checkCdpServer() {
-            return new Promise((resolve) => {
-                try {
-                    const ws = new WebSocket('ws://localhost:7001');
-                    const timeout = setTimeout(() => { ws.close(); resolve(false); }, 2000);
-                    ws.onopen = () => { clearTimeout(timeout); ws.close(); resolve(true); };
-                    ws.onerror = () => { clearTimeout(timeout); resolve(false); };
-                } catch (e) { resolve(false); }
-            });
-        }
-        
-        async function _connectCdpExport(clips, fps, width, height, format) {
-            return new Promise((resolve, reject) => {
-                const ws = new WebSocket('ws://localhost:7001');
-                const chunks = [];
-                const startTime = performance.now();
-                const totalClips = clips.length;
-                
-                // Update progress UI
-                function _updateProgress(pct, msg) {
-                    const bar = document.getElementById('exportProgressBar');
-                    const text = document.getElementById('exportProgressText');
-                    const timer = document.getElementById('exportTimerDisplay');
-                    if (bar) bar.style.width = pct + '%';
-                    if (text) text.textContent = msg;
-                    if (timer) {
-                        const elapsed = (performance.now() - startTime) / 1000;
-                        const mins = Math.floor(elapsed / 60);
-                        const secs = Math.floor(elapsed % 60);
-                        timer.textContent = mins + ':' + secs.toString().padStart(2, '0');
-                    }
-                }
-                
-                ws.onopen = () => {
-                    console.log('[CDP Export] Connected to export server');
-                    _updateProgress(5, 'Starting CDP export...');
-                    ws.send(JSON.stringify({
-                        type: 'export',
-                        clips: clips.map(c => ({
-                            id: c.id,
-                            html: c.html || '',
-                            css: c.css || '',
-                            js: c.js || '',
-                            fonts: c.fonts || [],
-                            duration: c.duration || 5
-                        })),
-                        fps, width, height, format: format || 'mp4'
-                    }));
-                };
-                
-                ws.onmessage = (event) => {
-                    if (typeof event.data === 'string') {
-                        const msg = JSON.parse(event.data);
-                        if (msg.type === 'progress') {
-                            console.log('[CDP Export]', msg.message);
-                            // Calculate progress from clip info
-                            const clipPct = msg.clipIndex !== undefined ? ((msg.clipIndex) / msg.clipTotal) * 80 : 0;
-                            _updateProgress(10 + clipPct, msg.message);
-                        } else if (msg.type === 'complete') {
-                            console.log('[CDP Export] Video ready:', msg.filename, msg.size, 'bytes');
-                            _updateProgress(90, 'Receiving video data...');
-                        } else if (msg.type === 'error') {
-                            reject(new Error(msg.error));
-                        }
-                    } else {
-                        // Binary data (video chunk) — collect safely
-                        try {
-                            chunks.push(event.data);
-                            // Update progress based on chunks received
-                            const totalReceived = chunks.reduce((acc, c) => acc + (c.byteLength || c.size || 0), 0);
-                            if (totalReceived > 0) {
-                                _updateProgress(90 + Math.min(9, Math.round(totalReceived / 10000)), 'Receiving video data...');
-                            }
-                        } catch (e) {
-                            console.error('[CDP Export] Error collecting chunk:', e);
-                        }
-                    }
-                };
-                
-                // Store resolve/reject for use in onmessage complete handler
-                var _resolve = resolve;
-                var _reject = reject;
-                var _completed = false;
-                
-                ws.onclose = () => {
-                    if (_completed) return; // Already handled
-                    _completed = true;
-                    console.log('[CDP Export] WebSocket closed, chunks:', chunks.length);
-                    if (chunks.length > 0) {
-                        // Use setTimeout to avoid blocking main thread during blob creation
-                        setTimeout(() => {
-                            try {
-                                console.log('[CDP Export] Creating blob from', chunks.length, 'chunks');
-                                const blob = new Blob(chunks, { type: 'video/mp4' });
-                                console.log('[CDP Export] Blob created:', blob.size, 'bytes');
-                                _resolve(blob);
-                            } catch (e) {
-                                console.error('[CDP Export] Blob creation failed:', e);
-                                _reject(e);
-                            }
-                        }, 50);
-                    } else {
-                        _reject(new Error('Connection closed without data'));
-                    }
-                };
-                
-                ws.onerror = (err) => { if (!_completed) _reject(err); };
-            });
-        }
-        
+
         function startExport(format, startTime, endTime) {
             if (State.isExporting) return;
             ensureAudioContext();
@@ -33561,72 +33438,7 @@ Output ONLY the markdown script. No explanation. No code fences.`;
                 const fps = State.exportFps || 30;
                 const mbFormat = format === 'video-mediabunny-mp4' ? 'mp4' : 'webm';
                 
-                // ═══ CDP Export: try server first for WAAPI clips ═══
-                // If on localhost and export server is running, use CDP for perfect capture
-                const hasWaaapiClips = State.clips.some(c => c.type === 'html' && (c._isWaaapi || (c.css && c.css.includes('@keyframes'))));
-                if (window.location.hostname === 'localhost' && hasWaaapiClips) {
-                    console.log('[Export] WAAPI clips detected — trying CDP export server...');
-                    _checkCdpServer().then(available => {
-                        if (available) {
-                            console.log('[Export] CDP server available — using CDP capture');
-                            // Collect clips in export time range
-                            const exportClips = State.clips.filter(c => c.type === 'html' && c.start < endTime && (c.start + c.duration) > startTime);
-                            if (exportClips.length === 0) { alert('No HTML clips in export range'); return; }
-                            _connectCdpExport(exportClips, fps, exportW, exportH, mbFormat)
-                                .then(blob => {
-                                    console.log('[Export] CDP blob received:', blob.size, 'bytes');
-                                    // Wrap in setTimeout to avoid GPU/driver hang on blob processing
-                                    setTimeout(() => {
-                                        try {
-                                            const url = URL.createObjectURL(blob);
-                                            const exportTime = ((performance.now() - startTime) / 1000).toFixed(1);
-                                            const sizeKB = (blob.size / 1024).toFixed(1);
-                                            
-                                            // Auto-download the video
-                                            const a = document.createElement('a');
-                                            a.href = url; a.download = 'StudioPro_CDP_Export.mp4';
-                                            document.body.appendChild(a); a.click(); document.body.removeChild(a);
-                                            
-                                            // Show success modal
-                                            const progressEl = document.getElementById('exportProgress');
-                                            const settingsEl = document.getElementById('exportSettings');
-                                            if (settingsEl) settingsEl.classList.add('hidden');
-                                            if (progressEl) {
-                                                progressEl.innerHTML = '<div class="bg-white dark:bg-surface-800 p-6 sm:p-8 rounded-2xl shadow-2xl flex flex-col max-w-md w-full m-auto border border-surface-200 dark:border-surface-700"><div class="text-center mb-4"><div class="text-green-400 text-5xl mb-3">\u2705</div><h3 class="text-lg font-bold text-surface-900 dark:text-white mb-1">Export Complete!</h3><p class="text-sm text-surface-500 dark:text-surface-400">CDP capture \u2022 perfect quality</p></div><div class="bg-surface-100 dark:bg-surface-700 rounded-xl p-4 mb-4"><div class="grid grid-cols-3 gap-3 text-center text-xs"><div><div class="font-bold text-surface-900 dark:text-white">' + exportTime + 's</div><div class="text-surface-500">Duration</div></div><div><div class="font-bold text-surface-900 dark:text-white">' + exportW + 'x' + exportH + '</div><div class="text-surface-500">Resolution</div></div><div><div class="font-bold text-surface-900 dark:text-white">' + fps + ' fps</div><div class="text-surface-500">Frame Rate</div></div><div><div class="font-bold text-surface-900 dark:text-white">MP4</div><div class="text-surface-500">Format</div></div><div><div class="font-bold text-surface-900 dark:text-white">' + sizeKB + ' KB</div><div class="text-surface-500">File Size</div></div><div><div class="font-bold text-surface-900 dark:text-white">' + exportTime + 's</div><div class="text-surface-500">Export Time</div></div></div></div><div class="flex gap-3"><a href="' + url + '" download="StudioPro_CDP_Export.mp4" class="flex-1 px-4 py-2.5 bg-brand-600 hover:bg-brand-500 text-white rounded-lg font-bold text-center shadow-md">Download</a><button onclick="document.getElementById(\'exportOverlay\').classList.add(\'hidden\');" class="px-4 py-2.5 bg-surface-200 dark:bg-surface-700 hover:bg-surface-300 dark:hover:bg-surface-600 rounded-lg font-bold">Done</button></div></div>';
-                                            }
-                                            State.isExporting = false;
-                                            console.log('[Export] CDP export complete!');
-                                        } catch (e) {
-                                            console.error('[Export] Success handler error:', e);
-                                            State.isExporting = false;
-                                        }
-                                    }, 200); // 200ms delay to let GPU settle
-                                })
-                                .catch(err => {
-                                    console.warn('[Export] CDP export failed, falling back to MediaBunny:', err.message);
-                                    // Reset progress UI
-                                    const progressEl = document.getElementById('exportProgress');
-                                    if (progressEl) {
-                                        progressEl.innerHTML = '<div class="text-center"><p class="text-sm text-surface-500">CDP unavailable, using MediaBunny...</p></div>';
-                                    }
-                                    // Fallback to MediaBunny
-                                    State.isExporting = true;
-                                    State.cancelExport = false;
-                                    stopMedia();
-                                    window.startMediaBunnyExport(exportW, exportH, fps, startTime, endTime, mbFormat);
-                                });
-                        } else {
-                            console.log('[Export] CDP server not available — using MediaBunny');
-                            State.isExporting = true;
-                            State.cancelExport = false;
-                            stopMedia();
-                            window.startMediaBunnyExport(exportW, exportH, fps, startTime, endTime, mbFormat);
-                        }
-                    });
-                    return;
-                }
-                
-                // Default: MediaBunny export (deployed sites or no WAAPI clips)
+                // MediaBunny export
                 State.isExporting = true;
                 State.cancelExport = false;
                 
