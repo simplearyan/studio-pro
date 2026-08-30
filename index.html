@@ -6646,75 +6646,104 @@
                         ctx.scale(finalScale * (clip.effects.flipH ? -1 : 1), 
                                   finalScale * (clip.effects.flipV ? -1 : 1));
                         
-                        // Lazy-init singleton renderer (self-contained, no ES module imports)
-                        if (!window._hicRenderer) {
-                            window._hicRenderer = {
-                                canvas: document.createElement('canvas'),
-                                ctx: null,
-                                sandbox: null,
+                        // ── Per-clip renderer (double-buffered, no singleton sharing) ──
+                        if (!clip._hicR) {
+                            // Create per-clip renderer with its own sandbox + double-buffer
+                            var _hCvs = document.createElement('canvas');
+                            _hCvs.width = 800; _hCvs.height = 450;
+                            var _hSb = document.createElement('div');
+                            _hSb.style.cssText = 'position:absolute;top:-9999px;left:-9999px;width:800px;height:450px;overflow:hidden;pointer-events:none;';
+                            document.body.appendChild(_hSb);
+                            clip._hicR = {
+                                render: _hCvs,
+                                rCtx: _hCvs.getContext('2d'),
+                                display: document.createElement('canvas'),
+                                dCtx: null,
+                                sandbox: _hSb,
                                 css: '',
                                 _onFrame: null,
                                 _ready: false,
-                                _lastSig: '',
-                                init: function(w, h) {
-                                    this.canvas.width = w;
-                                    this.canvas.height = h;
-                                    this.ctx = this.canvas.getContext('2d');
-                                    this.sandbox = document.createElement('div');
-                                    this.sandbox.style.cssText = 'position:absolute;top:-9999px;left:-9999px;width:'+w+'px;height:'+h+'px;overflow:hidden;pointer-events:none;';
-                                    document.body.appendChild(this.sandbox);
-                                },
-                                setClip: function(html, css, js) {
-                                    this.css = css || '';
-                                    this.sandbox.innerHTML = html || '';
-                                    this._onFrame = null;
-                                    if (js) {
-                                        try {
-                                            this._onFrame = new Function('time', js + '\n;return typeof onFrame === "function" ? onFrame : null;')();
-                                        } catch(e) { console.error('[HIC] JS error:', e); }
-                                    }
-                                    this._ready = true;
-                                },
-                                renderFrame: function(timeMs) {
-                                    if (!this._ready) return;
-                                    if (this._onFrame) { try { this._onFrame(timeMs); } catch(e) {} }
-                                    try {
-                                        var clone = this.sandbox.cloneNode(true);
-                                        clone.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
-                                        clone.setAttribute('style', 'width:100%;height:100%;margin:0;padding:0;overflow:hidden;');
-                                        var dom = new XMLSerializer().serializeToString(clone);
-                                        var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="'+this.canvas.width+'" height="'+this.canvas.height+'">'
-                                            +'<foreignObject width="100%" height="100%">'
-                                            +'<style xmlns="http://www.w3.org/1999/xhtml">'+this.css+'</style>'
-                                            +'<div xmlns="http://www.w3.org/1999/xhtml" style="width:'+this.canvas.width+'px;height:'+this.canvas.height+'px;overflow:hidden;">'
-                                            +dom+'</div></foreignObject></svg>';
-                                        var url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
-                                        var img = new Image();
-                                        var self = this;
-                                        img.onload = function() { self.ctx.clearRect(0,0,self.canvas.width,self.canvas.height); self.ctx.drawImage(img,0,0); };
-                                        img.onerror = function() { self.ctx.fillStyle='#1e293b'; self.ctx.fillRect(0,0,self.canvas.width,self.canvas.height); };
-                                        img.src = url;
-                                    } catch(e) { console.error('[HIC] render error:', e); }
-                                }
+                                _rendering: false
                             };
-                            window._hicRenderer.init(w, h);
+                            clip._hicR.display.width = 800;
+                            clip._hicR.display.height = 450;
+                            clip._hicR.dCtx = clip._hicR.display.getContext('2d');
                         }
-                        const renderer = window._hicRenderer;
-                        
-                        // Set clip if changed
-                        const sig = (clip.html || '') + '|||' + (clip.css || '') + '|||' + (clip.js || '');
+                        var _hr = clip._hicR;
+
+                        // Set clip code if changed
+                        var sig = (clip.html || '') + '|||' + (clip.css || '') + '|||' + (clip.js || '');
                         if (clip._hicSig !== sig) {
                             clip._hicSig = sig;
-                            renderer.setClip(clip.html, clip.css, clip.js);
+                            _hr.css = clip.css || '';
+                            _hr._onFrame = null;
+                            if (clip.js) {
+                                try { _hr._onFrame = new Function('time', clip.js + '\n;return typeof onFrame === "function" ? onFrame : null;')(); } catch(e) { console.error('[HIC] JS error:', e); }
+                            }
+                            _hr._ready = true;
+                            _hr._rendering = false;
+                            _hr._preloadedHtml = null;
+                            _hr.sandbox.innerHTML = clip.html || '';
+                            // Async preload external images to base64 for SVG foreignObject
+                            (function(_r, _html) {
+                                var parser = new DOMParser();
+                                var doc = parser.parseFromString(_html || '', 'text/html');
+                                var imgs = doc.querySelectorAll('img');
+                                if (imgs.length === 0) return;
+                                var promises = Array.from(imgs).map(function(imgEl) {
+                                    var src = imgEl.getAttribute('src');
+                                    if (src && (src.startsWith('http://') || src.startsWith('https://'))) {
+                                        return fetch(src, {mode:'cors'}).then(function(r) {
+                                            if (!r.ok) throw new Error('fail');
+                                            return r.blob();
+                                        }).then(function(blob) {
+                                            return new Promise(function(res) {
+                                                var reader = new FileReader();
+                                                reader.onloadend = function() { imgEl.setAttribute('src', reader.result); res(); };
+                                                reader.readAsDataURL(blob);
+                                            });
+                                        }).catch(function() {});
+                                    }
+                                });
+                                Promise.allSettled(promises).then(function() {
+                                    _r._preloadedHtml = doc.body.innerHTML;
+                                    _r.sandbox.innerHTML = _r._preloadedHtml;
+                                    _r._rendering = false;
+                                });
+                            })(_hr, clip.html);
                         }
-                        
+
                         // Render frame at current time (PLAYHEAD SEEK)
-                        renderer.renderFrame(clipTime * 1000);
-                        
-                        // Draw rendered frame to canvas
-                        if (renderer._ready && renderer.canvas) {
-                            ctx.drawImage(renderer.canvas, -w/2, -h/2, w, h);
+                        if (_hr._ready) {
+                            if (_hr._onFrame) { try { _hr._onFrame(clipTime * 1000); } catch(e) {} }
+                            try {
+                                var clone = _hr.sandbox.cloneNode(true);
+                                clone.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
+                                clone.setAttribute('style', 'width:100%;height:100%;margin:0;padding:0;overflow:hidden;');
+                                var dom = new XMLSerializer().serializeToString(clone);
+                                var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450">'
+                                    +'<foreignObject width="800" height="450">'
+                                    +'<style xmlns="http://www.w3.org/1999/xhtml">'+_hr.css+'</style>'
+                                    +'<div xmlns="http://www.w3.org/1999/xhtml" style="width:800px;height:450px;overflow:hidden;">'
+                                    +dom+'</div></foreignObject></svg>';
+                                var url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+                                var img = new Image();
+                                var self = _hr;
+                                _hr._rendering = true;
+                                img.onload = function() {
+                                    self.rCtx.clearRect(0,0,800,450);
+                                    self.rCtx.drawImage(img,0,0);
+                                    self.dCtx.clearRect(0,0,800,450);
+                                    self.dCtx.drawImage(self.render,0,0);
+                                    self._rendering = false;
+                                };
+                                img.onerror = function() { self._rendering = false; };
+                                img.src = url;
+                            } catch(e) { console.error('[HIC] render error:', e); }
                         }
+
+                        // Draw display canvas (always has last good frame)
+                        ctx.drawImage(_hr.display, -w/2, -h/2, w, h);
                         
                         // Stroke/border
                         if (clip.effects.strokeEnable) {
@@ -24883,8 +24912,8 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             clip.js = preset.js;
             clip.presetId = presetKey;
             clip._hicSig = '';
+            clip._hicR = null;
             clip.duration = preset.dur || 5;
-            if (window._hicRenderer) window._hicRenderer._ready = false;
             updateSidebarPanel();
             renderClips();
             drawCanvas();
@@ -30186,6 +30215,13 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 delete clip._htmlSig;
                 delete clip._htmlRendering;
                 delete clip._htmlNeedsRefresh;
+            }
+            if (clip.type === 'hic') {
+                if (clip._hicR) {
+                    if (clip._hicR.sandbox && clip._hicR.sandbox.parentNode) clip._hicR.sandbox.parentNode.removeChild(clip._hicR.sandbox);
+                    delete clip._hicR;
+                }
+                delete clip._hicSig;
             }
             // URL-based media needs no re-import: rebuild the element from the
             // persisted source URL and keep the clip live. data: URLs (pasted
