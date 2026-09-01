@@ -35213,6 +35213,32 @@ Output ONLY the markdown script. No explanation. No code fences.`;
                 console.log('[FTRT] queued all audio up-front: ' + audioBuffer.duration.toFixed(1) + 's');
             }
 
+            // ── Phase 2: Pre-render all HIC frames before pumping ──────────────
+            var hicClips = State.clips.filter(function(c) { return c.type === 'hic' && !c.hidden; });
+            if (hicClips.length > 0) {
+                var _preStart = performance.now();
+                var _hicFrameCount = 0;
+                console.log('[FTRT] Pre-rendering HIC frames for ' + hicClips.length + ' clip(s)...');
+                for (var fi = 0; fi < totalFrames; fi++) {
+                    var _ft = startTime + fi * timeStep;
+                    State.currentTime = _ft;
+                    // Only render if an HIC clip is active at this time
+                    var _anyHic = false;
+                    for (var _hci = 0; _hci < hicClips.length; _hci++) {
+                        if (_ft >= hicClips[_hci].start && _ft < hicClips[_hci].start + hicClips[_hci].duration) {
+                            _anyHic = true;
+                            break;
+                        }
+                    }
+                    if (_anyHic) {
+                        drawCanvas(exportCtx, exportW, exportH);
+                        await waitForHicRenders(100);                        _hicFrameCount++;
+                    }
+                }
+                var _preMs = performance.now() - _preStart;
+                console.log('[FTRT] HIC pre-render done: ' + _hicFrameCount + ' frames in ' + (_preMs/1000).toFixed(1) + 's (' + (_hicFrameCount / (_preMs/1000)).toFixed(1) + ' fps)');
+            }
+
             let lastCapturedFrame = -1;
             let lastAckAt = performance.now();
             let workerError = null;
