@@ -6738,7 +6738,11 @@
                         }
 
                         // Render frame at current time (PLAYHEAD SEEK)
-                        if (_hr._ready) {
+                        // Static frame dedup: skip SVG pipeline if frame hasn't changed
+                        var _frameSig = (clipTime * 1000).toFixed(3) + '|' + sig;
+                        var _isDuplicate = (clip._lastHicFrameSig === _frameSig && _hr.display.width === w && _hr.display.height === h);
+                        clip._lastHicFrameSig = _frameSig;
+                        if (!_isDuplicate && _hr._ready) {
                             if (_hr._onFrame) {
                                 // Scope document.getElementById to this clip's sandbox
                                 // so multiple clips with same IDs don't conflict
@@ -6771,8 +6775,10 @@
                                     self.dCtx.clearRect(0,0,self._w,self._h);
                                     self.dCtx.drawImage(self.render,0,0);
                                     self._rendering = false;
+                                    // Resolve any pending export waiters
+                                    if (self._renderResolve) { self._renderResolve(); self._renderResolve = null; }
                                 };
-                                img.onerror = function() { self._rendering = false; };
+                                img.onerror = function() { self._rendering = false; if (self._renderResolve) { self._renderResolve(); self._renderResolve = null; } };
                                 img.src = url;
                             } catch(e) { console.error('[HIC] render error:', e); }
                         }
@@ -24662,8 +24668,31 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 clip._hicSig = '';
             }
             // Trigger drawCanvas to initialize renderers
-            drawCanvas();
-            console.log('[HIC] All clips queued for render');
+            drawCanvas();            console.log('[HIC] All clips queued for render');
+        };
+
+        // ── Wait for all HIC async SVG renders to complete ──────────────────────
+        window.waitForHicRenders = function(timeoutMs) {
+            timeoutMs = timeoutMs || 80;
+            return new Promise(function(resolve) {
+                var start = performance.now();
+                var poll = function() {
+                    var anyRendering = false;
+                    for (var i = 0; i < State.clips.length; i++) {
+                        var c = State.clips[i];
+                        if (c.type === 'hic' && c._hicR && c._hicR._rendering) {
+                            anyRendering = true;
+                            break;
+                        }
+                    }
+                    if (!anyRendering || performance.now() - start > timeoutMs) {
+                        resolve(!anyRendering);
+                    } else {
+                        setTimeout(poll, 2);
+                    }
+                };
+                poll();
+            });
         };
 
         // ── Add HTML Clip Button ──────────────────────────────────────────────
@@ -35319,6 +35348,9 @@ Output ONLY the markdown script. No explanation. No code fences.`;
                     window._pendingHtmlCaptures = [];
                     drawCanvas(exportCtx, exportW, exportH);
                 }
+                // Wait for HIC async SVG renders to complete before capturing
+                var _hicReady = await waitForHicRenders(80);
+                if (_hicReady) drawCanvas(exportCtx, exportW, exportH);
                 const bitmap = await createImageBitmap(exportCanvas);
                 sendFrame(bitmap, targetFrame);
                 const acked = await ackForFrame(targetFrame);
