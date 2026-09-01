@@ -24674,6 +24674,16 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
         // ── Wait for all HIC async SVG renders to complete ──────────────────────
         window.waitForHicRenders = function(timeoutMs) {
             timeoutMs = timeoutMs || 80;
+            // Fast path: skip entirely if no HIC clips are active at current time
+            var _anyHicActive = false;
+            for (var i = 0; i < State.clips.length; i++) {
+                var c = State.clips[i];
+                if (c.type === 'hic' && !c.hidden && State.currentTime >= c.start && State.currentTime < c.start + c.duration) {
+                    _anyHicActive = true;
+                    break;
+                }
+            }
+            if (!_anyHicActive) return Promise.resolve(true);
             return new Promise(function(resolve) {
                 var start = performance.now();
                 var poll = function() {

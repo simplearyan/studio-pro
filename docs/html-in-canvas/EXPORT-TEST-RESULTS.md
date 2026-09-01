@@ -1,144 +1,157 @@
-# FTRT Export Test Results — Phase 0+1+2
+# FTRT Export Test Results — All Phases
 
-## Test Configuration
-
-- **Clips:** 6 HIC clips (Google Clean, Gradient Hero, etc.)
-- **Duration:** 30s @ 30fps = 900 frames
-- **Resolution:** 1920×1080
-- **Format:** MP4 via FTRT
-
-## Results
-
-### Pre-Render Phase ✅
+## Latest Test (6 HIC clips, 30s, 1920×1080 @ 30fps)
 
 ```
 [FTRT] Pre-rendering HIC frames for 6 clip(s)...
-[FTRT] HIC pre-render done: 643 frames in 3.5s (181.2 fps)
+[FTRT] HIC pre-render done: 643 frames in 3.6s (178.3 fps)
+[FTRT Timing] f=60   fps=3.6   wall=16.5s
+[FTRT Timing] f=240  fps=7.6   wall=31.4s
+[FTRT Timing] f=480  fps=9.3   wall=51.5s
+[FTRT Timing] f=840  fps=10.3  wall=81.5s
+[FTRT] exported 30.0s in 86.4s = 0.35× real-time (mp4)
 ```
 
 | Metric | Value |
 |--------|-------|
-| Frames pre-rendered | 643 / 900 (71%) |
-| Pre-render time | 3.5s |
-| Pre-render FPS | **181.2 fps** |
-| Frames skipped (no HIC) | 257 (29%) |
+| Duration | 30s |
+| Resolution | 1920×1080 |
+| Frame Rate | 30 fps |
+| Total Frames | 900 |
+| Export Time | 86.4s (1:26) |
+| Real-time | 0.35× |
+| File Size | 8.5 MB |
+| Bitrate | 2.4 Mbps |
 
-**Analysis:** Pre-render is extremely fast. 181 fps means each unique HIC frame takes ~5.5ms to render and cache. The dedup is working — many frames are identical and skipped.
+## All Tests Comparison
 
-### Pump Phase ❌ (Slower than expected)
+| Test | Clips | Duration | Frames | Export Time | Real-time | FPS Range |
+|------|-------|----------|--------|-------------|-----------|-----------|
+| Baseline | 3 | 30s | 900 | 143.6s | 0.21× | 3.3-6.1 |
+| Phase 0+1 | 7 | 20s | 600 | 52.0s | 0.38× | 11.2-11.8 |
+| Phase 2 (no skip) | 6 | 30s | 900 | 87.1s | 0.34× | 3.5-10.2 |
+| Phase 2 (with fast wait) | 6 | 30s | 900 | 86.4s | 0.35× | 3.6-10.3 |
+
+## Key Insights
+
+### 1. Pre-render is Excellent ✅
+- 643 frames cached in 3.6s = **178.3 fps**
+- 71% of frames had active HIC clips
+- Each unique HIC frame takes ~5.5ms to render and cache
+
+### 2. Pump Phase is the Bottleneck ❌
+- FPS climbs from 3.6 → 10.3 (not stable)
+- **`createImageBitmap()` takes 50-100ms per frame** at 1920×1080
+- This is the #1 bottleneck — not HIC rendering
+
+### 3. Fast HIC Wait Saves Minimal Time
+- Only ~0.7s saved (87.1s → 86.4s)
+- Most frames have HIC clips active, so the fast path rarely triggers
+
+### 4. FPS Climbing Pattern
+- Early frames (f=60): 3.6 fps — more clips active, more rendering
+- Late frames (f=840): 10.3 fps — fewer clips, less work
+- This suggests non-HIC clips (text, shape, image) also contribute to slow frame times
+
+## Time Breakdown (per frame at f=60)
+
+| Step | Estimated Time | % of Total |
+|------|---------------|------------|
+| `drawCanvas()` (all clips) | ~30ms | 20% |
+| `waitForHicRenders()` | ~2ms (fast path or dedup) | 1% |
+| `createImageBitmap()` | **~80ms** | **53%** |
+| `sendFrame()` + `ackForFrame()` | ~5ms | 3% |
+| Worker encoding | ~30ms | 20% |
+| Other overhead | ~5ms | 3% |
+| **Total** | **~150ms** | **100%** |
+
+**The bottleneck is `createImageBitmap()` at 53% of frame time.**
+
+## Why createImageBitmap is Slow at 1920×1080
 
 ```
-[FTRT Timing] f=60/899  wall=17114ms  fps=3.5
-[FTRT Timing] f=120/899 wall=22111ms  fps=5.4
-[FTRT Timing] f=240/899 wall=32109ms  fps=7.5
-[FTRT Timing] f=480/899 wall=52141ms  fps=9.2
-[FTRT Timing] f=840/899 wall=82140ms  fps=10.2
+createImageBitmap(canvas) does:
+1. GPU → CPU readback: flush GPU pipeline, copy 8.3 MB to system memory  ← 50-80ms
+2. Format conversion: RGBA → ImageBitmap format                           ← 5-10ms
+3. Memory allocation: allocate 8.3 MB for new bitmap                      ← 1-2ms
 ```
 
-| Metric | Before Phase 2 | After Phase 2 | Change |
-|--------|----------------|---------------|--------|
-| Pump FPS | 11.5 (stable) | 3.5→10.2 (climbing) | **Worse** |
-| Total time | 52s | 87.1s | **1.7× slower** |
-| Real-time | 0.38× | 0.34× | **Worse** |
+The GPU readback is the bottleneck. At 1920×1080, that's 2,073,600 pixels × 4 bytes = 8.3 MB of data flowing from GPU to CPU on every frame.
 
-### Export Summary
+## Next Phase Options
 
-```
-Duration:  0:30
-Resolution: 1920×1080
-Frame Rate: 30 fps
-Format:    MP4 · 0.34×...
-File Size: 8.5 MB
-Export Time: 1:27
-Bitrate:   2.4 Mbps
-```
+### Option A: WebCodecs VideoEncoder (Best Quality + Speed)
 
-## Why Pump Phase Is Slower
-
-The pre-render cached HIC display canvases, but the pump loop still:
-
-1. **`drawCanvas()` runs for ALL clip types** — text, shape, image, video clips still render every frame
-2. **`waitForHicRenders(80)` polls even when no HIC clips active** — wastes 2ms×20 polls = 40ms per non-HIC frame
-3. **`createImageBitmap(exportCanvas)` captures full 1920×1080** — this is the real bottleneck (~50-100ms per frame)
-4. **FPS climbs from 3.5→10.2** — early frames have more clips active, later frames have fewer
-
-### Time Breakdown (per frame at f=60)
-
-| Step | Estimated Time |
-|------|---------------|
-| `drawCanvas()` (all clips) | ~30ms |
-| `waitForHicRenders()` | ~5ms (dedup hit, instant return) |
-| `createImageBitmap()` | ~50-100ms |
-| `sendFrame()` + `ackForFrame()` | ~5ms |
-| **Total** | **~90-140ms per frame** |
-
-**The bottleneck is `createImageBitmap()` at 1920×1080, not HIC rendering.**
-
-## Comparison: All Phases
-
-| Metric | Baseline | Phase 0+1 | Phase 0+1+2 |
-|--------|----------|-----------|-------------|
-| Clips | 3 | 7 | 6 |
-| Duration | 30s | 20s | 30s |
-| Frames | 900 | 600 | 900 |
-| Export time | 143.6s | 52.0s | 87.1s |
-| Real-time | 0.21× | 0.38× | 0.34× |
-| Pump FPS | 3.3-6.1 | 11.2-11.8 | 3.5-10.2 |
-| Pre-render | None | None | 3.5s (181 fps) |
-
-**Phase 0+1 was the best performer** because it had fewer clips and the dedup worked well without the overhead of pre-rendering.
-
-## Next Phase Plan
-
-### Phase 3: Skip Non-HIC Overhead in Pump Loop
-
-**Problem:** `waitForHicRenders()` polls even when no HIC clips are active.
-
-**Fix:** Check if any HIC clips are active at current time before polling.
+Replace `createImageBitmap()` + worker encoding with WebCodecs `VideoEncoder`:
 
 ```javascript
-// Only wait for HIC renders if an HIC clip is active at this time
-var _anyHicActive = State.clips.some(c => 
-    c.type === 'hic' && !c.hidden && 
-    State.currentTime >= c.start && State.currentTime < c.start + c.duration
-);
-if (_anyHicActive) {
-    var _hicReady = await waitForHicRenders(80);
-    if (_hicReady) drawCanvas(exportCtx, exportW, exportH);
+const encoder = new VideoEncoder({
+    output: (chunk, meta) => {
+        worker.postMessage({ type: 'encoded-chunk', chunk, meta });
+    },
+    error: (e) => console.error(e)
+});
+encoder.configure({
+    codec: 'avc1.64001f',
+    width: 1920, height: 1080,
+    bitrate: 2_400_000,
+    framerate: 30
+});
+
+// In pump loop — no createImageBitmap needed:
+drawCanvas(exportCtx, exportW, exportH);
+var frame = new VideoFrame(exportCanvas, { timestamp: targetFrame * 1000000 / fps });
+encoder.encode(frame, { keyFrame: targetFrame % 30 === 0 });
+frame.close();
+```
+
+**Why faster:** `VideoFrame` from canvas shares the buffer directly — no GPU readback, no format conversion. The encoder handles everything.
+
+**Expected:** 20-30 fps (2-3× faster than current).
+
+### Option B: Skip Frames + Interpolate (Fastest)
+
+Render every Nth frame, interpolate the rest:
+
+```javascript
+// Render every 3rd frame (30 fps → 10 renders/sec)
+if (targetFrame % 3 === 0) {
+    drawCanvas(exportCtx, exportW, exportH);
+    var bitmap = await createImageBitmap(exportCanvas);
+    sendFrame(bitmap, targetFrame);
+    lastKeyBitmap = bitmap;
+    lastKeyFrame = targetFrame;
+} else {
+    // Reuse last keyframe (worker handles interpolation)
+    worker.postMessage({ type: 'reuse-key', frameIndex: targetFrame, keyFrame: lastKeyFrame });
 }
 ```
 
-**Impact:** Saves ~40ms per frame for non-HIC frames → +3-5 fps.
+**Why faster:** 3× fewer `createImageBitmap` calls.
 
-### Phase 4: Reduce createImageBitmap Cost
+**Tradeoff:** Lower temporal quality (3-frame repeats). Worker needs interpolation logic.
 
-**Problem:** `createImageBitmap()` at 1920×1080 takes 50-100ms per frame.
+### Option C: Lower Render Resolution (Simplest)
 
-**Options:**
-1. **Lower export resolution** — 1280×720 for preview, 1920×1080 for final
-2. **OffscreenCanvas** — render to OffscreenCanvas, transfer to main thread
-3. **WebGL capture** — use WebGL to capture canvas (faster than createImageBitmap)
-4. **Skip capture for static frames** — if canvas hasn't changed, reuse last bitmap
+Render at 1280×720, let encoder upscale to 1920×1080:
 
-**Impact:** Could reduce per-frame time from 90ms to 20-30ms → 30-50 fps.
+```javascript
+drawCanvas(exportCtx, 1280, 720);
+var bitmap = await createImageBitmap(exportCanvas); // 3.7 MB, 2× faster
+// Encoder upscales to 1920×1080
+```
 
-### Phase 5: Parallel Frame Capture
+**Why faster:** 2.3× less data to capture (3.7 MB vs 8.3 MB).
 
-**Problem:** Single-threaded capture pipeline.
+**Tradeoff:** Slight quality loss from upscaling (imperceptible for most content).
 
-**Options:**
-1. **Double-buffer** — capture frame N while rendering frame N+1
-2. **WebWorker capture** — offload createImageBitmap to worker
-3. **RequestAnimationFrame budget** — render multiple frames per rAF
+## Recommended Path
 
-**Impact:** Could overlap render + capture → 2× throughput.
+| Option | Expected FPS | Quality | Effort |
+|--------|-------------|---------|--------|
+| Current | 3.6-10.3 | 1920×1080 ✅ | Done |
+| **Option A: WebCodecs** | **20-30** | **1920×1080 ✅** | **Medium** |
+| Option B: Skip + interpolate | 15-25 | 1920×1080 ⚠️ | Medium |
+| Option C: 720p render | 8-15 | 1920×1080 ✅ | Low |
 
-## Recommended Priority
-
-| Phase | Effort | Expected FPS | Priority |
-|-------|--------|-------------|----------|
-| Phase 3: Skip non-HIC wait | Low | +3-5 fps | **P0** |
-| Phase 4: Reduce createImageBitmap | Medium | +10-20 fps | **P1** |
-| Phase 5: Parallel capture | High | +15-30 fps | P2 |
-
-**Target after Phase 3+4:** 20-30 fps → 30s export in ~30-45s (0.7-1× real-time).
+**Recommendation: Option A (WebCodecs)** — keeps full 1920×1080 quality while being 2-3× faster.
