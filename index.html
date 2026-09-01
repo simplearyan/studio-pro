@@ -2293,7 +2293,20 @@
                     html: '<div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;background:#0a0a0a;color:#a78bfa;font-size:32px;font-weight:700;font-family:Inter,sans-serif;gap:12px;">\u25B6 Load WAAPI Example</div>',
                     css: ''
                 }
-            }
+            },
+            // ── HTML-in-Canvas Presets ───────────────────────────────
+            { id: 'hic_googleClean', name: 'Google Clean', type: 'text', category: 'HTML in Canvas', _isHic: true, _hicKey: 'googleClean' },
+            { id: 'hic_gradientHero', name: 'Gradient Hero', type: 'text', category: 'HTML in Canvas', _isHic: true, _hicKey: 'gradientHero' },
+            { id: 'hic_neoBrutal', name: 'Neo-Brutal', type: 'text', category: 'HTML in Canvas', _isHic: true, _hicKey: 'neoBrutal' },
+            { id: 'hic_iosGlass', name: 'iOS Glass', type: 'text', category: 'HTML in Canvas', _isHic: true, _hicKey: 'iosGlass' },
+            { id: 'hic_dataChart', name: 'Data Chart', type: 'text', category: 'HTML in Canvas', _isHic: true, _hicKey: 'dataChart' },
+            { id: 'hic_stagger', name: 'Stagger Grid', type: 'text', category: 'HTML in Canvas', _isHic: true, _hicKey: 'stagger' },
+            { id: 'hic_fireship', name: 'Fireship Terminal', type: 'text', category: 'HTML in Canvas', _isHic: true, _hicKey: 'fireship' },
+            { id: 'hic_materialYou', name: 'Material You', type: 'text', category: 'HTML in Canvas', _isHic: true, _hicKey: 'materialYou' },
+            { id: 'hic_iosGradient', name: 'iOS Gradient', type: 'text', category: 'HTML in Canvas', _isHic: true, _hicKey: 'iosGradient' },
+            { id: 'hic_voxTitle', name: 'Vox Title', type: 'text', category: 'HTML in Canvas', _isHic: true, _hicKey: 'voxTitle' },
+            { id: 'hic_textReveal', name: 'Text Reveal', type: 'text', category: 'HTML in Canvas', _isHic: true, _hicKey: 'textReveal' },
+            { id: 'hic_gsearch', name: 'Google Search', type: 'text', category: 'HTML in Canvas', _isHic: true, _hicKey: 'gsearch' }
         ];
 
         function loadCustomPresets() {
@@ -6649,8 +6662,9 @@
                         // ── Per-clip renderer (double-buffered, no singleton sharing) ──
                         if (!clip._hicR) {
                             // Create per-clip renderer with its own sandbox + double-buffer
+                            // Sandbox stays 800×450 (design space) — SVG renders at canvas resolution
                             var _hCvs = document.createElement('canvas');
-                            _hCvs.width = 800; _hCvs.height = 450;
+                            _hCvs.width = w; _hCvs.height = h;
                             var _hSb = document.createElement('div');
                             _hSb.style.cssText = 'position:absolute;top:-9999px;left:-9999px;width:800px;height:450px;overflow:hidden;pointer-events:none;';
                             document.body.appendChild(_hSb);
@@ -6663,13 +6677,23 @@
                                 css: '',
                                 _onFrame: null,
                                 _ready: false,
-                                _rendering: false
+                                _rendering: false,
+                                _w: w,
+                                _h: h
                             };
-                            clip._hicR.display.width = 800;
-                            clip._hicR.display.height = 450;
+                            clip._hicR.display.width = w;
+                            clip._hicR.display.height = h;
                             clip._hicR.dCtx = clip._hicR.display.getContext('2d');
                         }
                         var _hr = clip._hicR;
+
+                        // Resize canvases if canvas dimensions changed (e.g. aspect ratio switch)
+                        if (_hr._w !== w || _hr._h !== h) {
+                            _hr._w = w; _hr._h = h;
+                            _hr.render.width = w; _hr.render.height = h;
+                            _hr.display.width = w; _hr.display.height = h;
+                            clip._hicSig = ''; // force re-render at new resolution
+                        }
 
                         // Set clip code if changed
                         var sig = (clip.html || '') + '|||' + (clip.css || '') + '|||' + (clip.js || '');
@@ -6715,25 +6739,36 @@
 
                         // Render frame at current time (PLAYHEAD SEEK)
                         if (_hr._ready) {
-                            if (_hr._onFrame) { try { _hr._onFrame(clipTime * 1000); } catch(e) {} }
+                            if (_hr._onFrame) {
+                                // Scope document.getElementById to this clip's sandbox
+                                // so multiple clips with same IDs don't conflict
+                                var _origGbi = document.getElementById;
+                                var _sb = _hr.sandbox;
+                                document.getElementById = function(id) {
+                                    return _sb.querySelector('[id="'+id+'"]') || _origGbi.call(document, id);
+                                };
+                                try { _hr._onFrame(clipTime * 1000); } catch(e) {}
+                                document.getElementById = _origGbi;
+                            }
                             try {
                                 var clone = _hr.sandbox.cloneNode(true);
                                 clone.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
                                 clone.setAttribute('style', 'width:100%;height:100%;margin:0;padding:0;overflow:hidden;');
                                 var dom = new XMLSerializer().serializeToString(clone);
-                                var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450">'
-                                    +'<foreignObject width="800" height="450">'
+                                var _sx = w / 800, _sy = h / 450;
+                                var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="'+w+'" height="'+h+'">'
+                                    +'<foreignObject width="'+w+'" height="'+h+'">'
                                     +'<style xmlns="http://www.w3.org/1999/xhtml">'+_hr.css+'</style>'
-                                    +'<div xmlns="http://www.w3.org/1999/xhtml" style="width:800px;height:450px;overflow:hidden;">'
+                                    +'<div xmlns="http://www.w3.org/1999/xhtml" style="width:800px;height:450px;overflow:hidden;transform:scale('+_sx+','+_sy+');transform-origin:0 0;">'
                                     +dom+'</div></foreignObject></svg>';
                                 var url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
                                 var img = new Image();
                                 var self = _hr;
                                 _hr._rendering = true;
                                 img.onload = function() {
-                                    self.rCtx.clearRect(0,0,800,450);
+                                    self.rCtx.clearRect(0,0,self._w,self._h);
                                     self.rCtx.drawImage(img,0,0);
-                                    self.dCtx.clearRect(0,0,800,450);
+                                    self.dCtx.clearRect(0,0,self._w,self._h);
                                     self.dCtx.drawImage(self.render,0,0);
                                     self._rendering = false;
                                 };
@@ -6742,7 +6777,7 @@
                             } catch(e) { console.error('[HIC] render error:', e); }
                         }
 
-                        // Draw display canvas (always has last good frame)
+                        // Draw display canvas (already full res — just draw at origin, centered)
                         ctx.drawImage(_hr.display, -w/2, -h/2, w, h);
                         
                         // Stroke/border
@@ -13606,13 +13641,15 @@
                 { id: 'shape', name: 'Shapes', icon: 'shapes' },
                 { id: 'media', name: 'Media', icon: 'image' },
                 { id: 'keyframes', name: 'Keyframes', icon: 'key' },
-                { id: 'waaapi', name: 'WAAPI', icon: 'play-circle' }
+                { id: 'waaapi', name: 'WAAPI', icon: 'play-circle' },
+                { id: 'hic', name: 'HTML in Canvas', icon: 'sparkles' }
             ];
             
             const filtered = activePresets.filter(p => {
                 if (State.activePresetFilter === 'all') return true;
                 if (State.activePresetFilter === 'keyframes') return p.category === 'Keyframe Path';
                 if (State.activePresetFilter === 'waaapi') return p._isWaaapi === true;
+                if (State.activePresetFilter === 'hic') return p._isHic === true;
                 if (State.activePresetFilter === 'media') return p.type === 'image' || p.type === 'video';
                 if (State.activePresetFilter === 'math') return p.category === 'Math';
                 return p.type === State.activePresetFilter;
@@ -13628,6 +13665,7 @@
                 if (p.type === 'shape') return { cat: 'Shapes', icon: 'shapes', color: '#bbf7d0', accent: '#16a34a' };
                 if (p.type === 'image') return { cat: 'Image', icon: 'image', color: '#fef08a', accent: '#ca8a04' };
                 if (p.type === 'video') return { cat: 'Video', icon: 'video', color: '#fecaca', accent: '#dc2626' };
+                if (p._isHic) return { cat: 'HTML in Canvas', icon: 'sparkles', color: '#ede9fe', accent: '#7c3aed' };
                 if (p.type === 'scene') return { cat: 'Scene', icon: 'clapperboard', color: '#e9d5ff', accent: '#9333ea' };
                 return { cat: p.type || 'Media', icon: 'film', color: '#e5e7eb', accent: '#4b5563' };
             };
@@ -13857,6 +13895,23 @@
                 newClip.renderHeight = 1080;
                 newClip.backgroundColor = 'transparent';
                 newClip._isWaaapi = true;
+            }
+            // HIC HTML-in-Canvas presets
+            if (preset._isHic && preset._hicKey && typeof HIC_PRESETS !== 'undefined' && HIC_PRESETS[preset._hicKey]) {
+                var _hp = HIC_PRESETS[preset._hicKey];
+                newClip.type = 'hic';
+                newClip.html = _hp.html || '';
+                newClip.css = _hp.css || '';
+                newClip.js = _hp.js || '';
+                newClip.presetId = preset._hicKey;
+                newClip.duration = _hp.dur || 5;
+                newClip.effects = JSON.parse(JSON.stringify({
+                    scale: 1, rotate: 0, offsetX: 0, offsetY: 0,
+                    opacity: 100, borderRadius: 0, blendMode: 'source-over',
+                    strokeEnable: false, strokeColor: '#ffffff', strokeWidth: 4,
+                    shadowEnable: false, shadowColor: '#000000', shadowBlur: 20,
+                    shadowX: 0, shadowY: 10
+                }));
             }
 
             State.clips.push(newClip);
@@ -24917,6 +24972,8 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             updateSidebarPanel();
             renderClips();
             drawCanvas();
+            // Delayed redraw picks up the async SVG render
+            setTimeout(function() { drawCanvas(); }, 120);
         };
 
         // ── Open HIC Code Editor (placeholder) ────────────────────────────────
