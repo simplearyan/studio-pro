@@ -34860,17 +34860,27 @@ Output ONLY the markdown script. No explanation. No code fences.`;
                     
                     drawCanvas(exportCtx, exportW, exportH);
                     
-                    // Wait for html2canvas captures to start (iframes need rAFs to parse DOM)
-                    for (let _wh = 0; _wh < 5; _wh++) {
-                        if (window._pendingHtmlCaptures && window._pendingHtmlCaptures.length > 0) break;
-                        await new Promise(r => requestAnimationFrame(r));
-                        drawCanvas(exportCtx, exportW, exportH);
+                    // Wait for html2canvas captures (iframes need rAFs to parse DOM) —
+                    // gated on an active iframe html clip. The 5×rAF poll costs ~83ms
+                    // per frame; _pendingHtmlCaptures is only filled by html clips, so
+                    // frames without one skip the wait entirely.
+                    var _needsHtmlWait = false;
+                    for (var _hwi = 0; _hwi < State.clips.length; _hwi++) {
+                        var _hwc = State.clips[_hwi];
+                        if (_hwc.type === 'html' && !_hwc.hidden && !_hwc._isWaaapi && exportTime >= _hwc.start && exportTime < _hwc.start + _hwc.duration) { _needsHtmlWait = true; break; }
                     }
-                    // Wait for pending captures to finish
-                    if (window._pendingHtmlCaptures && window._pendingHtmlCaptures.length > 0) {
-                        await Promise.all(window._pendingHtmlCaptures);
-                        window._pendingHtmlCaptures = [];
-                        drawCanvas(exportCtx, exportW, exportH);
+                    if (_needsHtmlWait) {
+                        for (let _wh = 0; _wh < 5; _wh++) {
+                            if (window._pendingHtmlCaptures && window._pendingHtmlCaptures.length > 0) break;
+                            await new Promise(r => requestAnimationFrame(r));
+                            drawCanvas(exportCtx, exportW, exportH);
+                        }
+                        // Wait for pending captures to finish
+                        if (window._pendingHtmlCaptures && window._pendingHtmlCaptures.length > 0) {
+                            await Promise.all(window._pendingHtmlCaptures);
+                            window._pendingHtmlCaptures = [];
+                            drawCanvas(exportCtx, exportW, exportH);
+                        }
                     }
                     
                     framesInFlight++;
@@ -35371,28 +35381,49 @@ Output ONLY the markdown script. No explanation. No code fences.`;
                 const targetFrame = lastCapturedFrame + 1;
                 State.currentTime = startTime + targetFrame * timeStep; // on the fps grid (M0)
 
-                await ensurePoolFrame(targetFrame);
                 drawCanvas(exportCtx, exportW, exportH);
-                // Wait for html2canvas captures to start and finish
-                for (let _wh2 = 0; _wh2 < 5; _wh2++) {
-                    if (window._pendingHtmlCaptures && window._pendingHtmlCaptures.length > 0) break;
-                    await new Promise(r => requestAnimationFrame(r));
-                    drawCanvas(exportCtx, exportW, exportH);
+                // Wait for html2canvas captures to start and finish — gated on an
+                // active iframe html clip. The 5×rAF poll costs ~83ms per frame and
+                // _pendingHtmlCaptures is only ever filled by html clips, so frames
+                // without one (HIC/text/shape-only) skip the wait entirely.
+                var _needsHtmlWait = false;
+                for (var _hwi = 0; _hwi < State.clips.length; _hwi++) {
+                    var _hwc = State.clips[_hwi];
+                    if (_hwc.type === 'html' && !_hwc.hidden && !_hwc._isWaaapi && State.currentTime >= _hwc.start && State.currentTime < _hwc.start + _hwc.duration) { _needsHtmlWait = true; break; }
                 }
-                if (window._pendingHtmlCaptures && window._pendingHtmlCaptures.length > 0) {
-                    await Promise.all(window._pendingHtmlCaptures);
-                    window._pendingHtmlCaptures = [];
-                    drawCanvas(exportCtx, exportW, exportH);
+                if (_needsHtmlWait) {
+                    for (let _wh2 = 0; _wh2 < 5; _wh2++) {
+                        if (window._pendingHtmlCaptures && window._pendingHtmlCaptures.length > 0) break;
+                        await new Promise(r => requestAnimationFrame(r));
+                        drawCanvas(exportCtx, exportW, exportH);
+                    }
+                    if (window._pendingHtmlCaptures && window._pendingHtmlCaptures.length > 0) {
+                        await Promise.all(window._pendingHtmlCaptures);
+                        window._pendingHtmlCaptures = [];
+                        drawCanvas(exportCtx, exportW, exportH);
+                    }
                 }
-                // Wait for HIC async SVG renders to complete before capturing
-                var _hicReady = await waitForHicRenders(80);
-                if (_hicReady) drawCanvas(exportCtx, exportW, exportH);
-                const bitmap = await createImageBitmap(exportCanvas);
-                sendFrame(bitmap, targetFrame);
+                // HIC renders are pre-cached — skip waitForHicRenders in pump loop
+                var _vf = null;
+                try {
+                    _vf = new VideoFrame(exportCanvas, { timestamp: Math.round(targetFrame * 1000000 / fps) });
+                } catch (_) {}
+                if (_vf) {
+                    sendFrame(_vf, targetFrame);
+                } else {
+                    var bitmap = await createImageBitmap(exportCanvas);
+                    sendFrame(bitmap, targetFrame);
+                }
                 const acked = await ackForFrame(targetFrame);
                 if (acked) lastAckAt = performance.now();
                 lastCapturedFrame = targetFrame;
-                updateProgress();
+                // Throttle progress updates to 100ms (same as MediaBunny)
+                var _now = performance.now();
+                if (!window._lastFtrtProgressUpdate) window._lastFtrtProgressUpdate = 0;
+                if (_now - window._lastFtrtProgressUpdate > 100 || lastCapturedFrame >= totalFrames - 1) {
+                    window._lastFtrtProgressUpdate = _now;
+                    updateProgress();
+                }
             }
 
             const restoreAndFinish = () => {

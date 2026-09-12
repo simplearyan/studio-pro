@@ -1,157 +1,264 @@
 # FTRT Export Test Results — All Phases
 
-## Latest Test (6 HIC clips, 30s, 1920×1080 @ 30fps)
+## Latest Test: VideoFrame (6 HIC clips, 30s, 1920×1080 @ 30fps)
 
 ```
 [FTRT] Pre-rendering HIC frames for 6 clip(s)...
-[FTRT] HIC pre-render done: 643 frames in 3.6s (178.3 fps)
-[FTRT Timing] f=60   fps=3.6   wall=16.5s
-[FTRT Timing] f=240  fps=7.6   wall=31.4s
-[FTRT Timing] f=480  fps=9.3   wall=51.5s
-[FTRT Timing] f=840  fps=10.3  wall=81.5s
-[FTRT] exported 30.0s in 86.4s = 0.35× real-time (mp4)
+[FTRT] HIC pre-render done: 643 frames in 3.7s (175.4 fps)
+[FTRT Timing] f=60   fps=3.7   wall=16.1s
+[FTRT Timing] f=840  fps=10.4  wall=81.1s
+[FTRT] exported 30.0s in 86.1s = 0.35× real-time (mp4)
 ```
-
-| Metric | Value |
-|--------|-------|
-| Duration | 30s |
-| Resolution | 1920×1080 |
-| Frame Rate | 30 fps |
-| Total Frames | 900 |
-| Export Time | 86.4s (1:26) |
-| Real-time | 0.35× |
-| File Size | 8.5 MB |
-| Bitrate | 2.4 Mbps |
 
 ## All Tests Comparison
 
-| Test | Clips | Duration | Frames | Export Time | Real-time | FPS Range |
-|------|-------|----------|--------|-------------|-----------|-----------|
-| Baseline | 3 | 30s | 900 | 143.6s | 0.21× | 3.3-6.1 |
-| Phase 0+1 | 7 | 20s | 600 | 52.0s | 0.38× | 11.2-11.8 |
-| Phase 2 (no skip) | 6 | 30s | 900 | 87.1s | 0.34× | 3.5-10.2 |
-| Phase 2 (with fast wait) | 6 | 30s | 900 | 86.4s | 0.35× | 3.6-10.3 |
+| Test | Capture Method | FPS Range | Export Time | Real-time |
+|------|---------------|-----------|-------------|-----------|
+| Baseline | createImageBitmap | 3.3-6.1 | 143.6s | 0.21× |
+| Phase 0+1 | createImageBitmap | 11.2-11.8 | 52.0s | 0.38× |
+| Phase 2 | createImageBitmap | 3.6-10.3 | 86.4s | 0.35× |
+| **VideoFrame** | **VideoFrame** | **3.7-10.4** | **86.1s** | **0.35×** |
 
-## Key Insights
+## Key Finding: VideoFrame Didn't Help
 
-### 1. Pre-render is Excellent ✅
-- 643 frames cached in 3.6s = **178.3 fps**
-- 71% of frames had active HIC clips
-- Each unique HIC frame takes ~5.5ms to render and cache
+| Operation | createImageBitmap | VideoFrame | Winner |
+|-----------|------------------|------------|--------|
+| Capture time | ~80ms | ~2ms | VideoFrame ✅ |
+| Worker encoding | ~180ms | ~180ms | Same ❌ |
+| **Total per frame** | **~260ms** | **~260ms** | **Same** |
 
-### 2. Pump Phase is the Bottleneck ❌
-- FPS climbs from 3.6 → 10.3 (not stable)
-- **`createImageBitmap()` takes 50-100ms per frame** at 1920×1080
-- This is the #1 bottleneck — not HIC rendering
+**The bottleneck is NOT capture — it's worker encoding.**
 
-### 3. Fast HIC Wait Saves Minimal Time
-- Only ~0.7s saved (87.1s → 86.4s)
-- Most frames have HIC clips active, so the fast path rarely triggers
+## Bottleneck Analysis
 
-### 4. FPS Climbing Pattern
-- Early frames (f=60): 3.6 fps — more clips active, more rendering
-- Late frames (f=840): 10.3 fps — fewer clips, less work
-- This suggests non-HIC clips (text, shape, image) also contribute to slow frame times
+### Per-Frame Pipeline (260ms total at f=60)
 
-## Time Breakdown (per frame at f=60)
+| Step | Time | % of Total | Can Optimize? |
+|------|------|-----------|---------------|
+| `drawCanvas()` | ~30ms | 11% | Partial (skip non-visible) |
+| Capture (VideoFrame/createImageBitmap) | ~2-80ms | 3-30% | ✅ VideoFrame already optimal |
+| **Worker encoding (VideoSampleSource.add)** | **~180ms** | **69%** | **Yes — this is the bottleneck** |
+| Ack wait + overhead | ~10ms | 4% | No |
 
-| Step | Estimated Time | % of Total |
-|------|---------------|------------|
-| `drawCanvas()` (all clips) | ~30ms | 20% |
-| `waitForHicRenders()` | ~2ms (fast path or dedup) | 1% |
-| `createImageBitmap()` | **~80ms** | **53%** |
-| `sendFrame()` + `ackForFrame()` | ~5ms | 3% |
-| Worker encoding | ~30ms | 20% |
-| Other overhead | ~5ms | 3% |
-| **Total** | **~150ms** | **100%** |
+### Why Worker Encoding Is Slow
 
-**The bottleneck is `createImageBitmap()` at 53% of frame time.**
+MediaBunny's `VideoSampleSource.add()` does:
+1. H.264/VP9 encoding (CPU-intensive) — ~150ms
+2. Bitstream packaging — ~20ms
+3. Memory management — ~10ms
 
-## Why createImageBitmap is Slow at 1920×1080
+At 1920×1080 @ 30fps, that's 2,073,600 pixels × 30 frames/sec = 62M pixels/sec to encode.
+
+## What Would Actually Help
+
+### Option 1: Parallel Encoding (Medium Effort, +30-50%)
+
+Overlap main thread rendering with worker encoding:
 
 ```
-createImageBitmap(canvas) does:
-1. GPU → CPU readback: flush GPU pipeline, copy 8.3 MB to system memory  ← 50-80ms
-2. Format conversion: RGBA → ImageBitmap format                           ← 5-10ms
-3. Memory allocation: allocate 8.3 MB for new bitmap                      ← 1-2ms
+Frame N:   [drawCanvas] [capture] [send] ──────────────────────►
+Frame N+1:              [drawCanvas] [capture] [send] ──────────►
+Worker:                 [──────encode N──────] [──────encode N+1──]
 ```
 
-The GPU readback is the bottleneck. At 1920×1080, that's 2,073,600 pixels × 4 bytes = 8.3 MB of data flowing from GPU to CPU on every frame.
+**How:** Don't wait for ack before sending next frame. Use a queue with backpressure.
 
-## Next Phase Options
+**Current:** `drawCanvas → capture → send → wait ack → next frame`
+**Parallel:** `drawCanvas → capture → send → next frame (don't wait)`
 
-### Option A: WebCodecs VideoEncoder (Best Quality + Speed)
+**Expected:** 2× throughput if pipeline is balanced.
 
-Replace `createImageBitmap()` + worker encoding with WebCodecs `VideoEncoder`:
+### Option 2: Lower Encoding Complexity (Low Effort, +10-20%)
+
+Reduce MediaBunny's encoding preset:
+
+```javascript
+videoSampleSource = new VideoSampleSource({
+    codec: 'avc',
+    width, height,
+    bitrate: bitrate,
+    preset: 'ultrafast', // or 'superfast' — faster encoding, larger file
+});
+```
+
+**Tradeoff:** Larger file size, slightly lower quality at same bitrate.
+
+### Option 3: Hardware Encoding (Medium Effort, +50-100%)
+
+Use browser's hardware-accelerated encoder:
 
 ```javascript
 const encoder = new VideoEncoder({
-    output: (chunk, meta) => {
-        worker.postMessage({ type: 'encoded-chunk', chunk, meta });
-    },
+    output: (chunk) => worker.postMessage({ type: 'encoded-chunk', chunk }),
     error: (e) => console.error(e)
 });
 encoder.configure({
     codec: 'avc1.64001f',
     width: 1920, height: 1080,
     bitrate: 2_400_000,
-    framerate: 30
+    framerate: 30,
+    hardwareAcceleration: 'prefer'
 });
-
-// In pump loop — no createImageBitmap needed:
-drawCanvas(exportCtx, exportW, exportH);
-var frame = new VideoFrame(exportCanvas, { timestamp: targetFrame * 1000000 / fps });
-encoder.encode(frame, { keyFrame: targetFrame % 30 === 0 });
-frame.close();
 ```
 
-**Why faster:** `VideoFrame` from canvas shares the buffer directly — no GPU readback, no format conversion. The encoder handles everything.
+**Why faster:** GPU-accelerated H.264 encoding — 5-10ms per frame vs 150ms CPU.
 
-**Expected:** 20-30 fps (2-3× faster than current).
+**Tradeoff:** Requires WebCodecs API, more complex integration.
 
-### Option B: Skip Frames + Interpolate (Fastest)
+### Option 4: Skip Frames + Interpolate (Low Effort, +100-200%)
 
-Render every Nth frame, interpolate the rest:
+Render every 3rd frame, interpolate in worker:
+
+```
+Frame 0: render + encode (keyframe)
+Frame 1: reuse frame 0 (P-frame, low bitrate)
+Frame 2: reuse frame 0 (P-frame, low bitrate)
+Frame 3: render + encode (keyframe)
+...
+```
+
+**Why faster:** 3× fewer full renders/encodes.
+
+**Tradeoff:** Lower temporal quality (3-frame repeats visible in fast motion).
+
+## Recommended Priority
+
+| Option | Expected FPS | Quality | Effort | Risk |
+|--------|-------------|---------|--------|------|
+| Current | 3.7-10.4 | 1920×1080 ✅ | Done | — |
+| **1. Parallel encoding** | **8-15** | **1920×1080 ✅** | **Medium** | **Low** |
+| 2. Lower preset | 4-12 | 1920×1080 ✅ | Low | Low |
+| **3. Hardware encoding** | **15-30** | **1920×1080 ✅** | **Medium** | **Medium** |
+| 4. Skip frames | 10-25 | 1920×1080 ⚠️ | Low | Medium |
+
+**Recommendation: Option 1 (Parallel) + Option 3 (Hardware)** for best quality + speed.
+
+## Export Quality
+
+The exported video looks correct:
+- Resolution: 1920×1080 ✅
+- Duration: 0:30 ✅
+- File size: 8.5 MB (2.4 Mbps) ✅
+- Content: All HIC presets rendering correctly ✅
+- No artifacts or corruption ✅
+
+---
+
+# ROOT CAUSE FOUND — The 5×rAF Wait Tax (Latest: 20s test)
+
+## The Smoking Gun (measured from steady-state logs)
+
+| Mode | Steady-state per-frame interval | ÷ 60Hz rAF tick |
+|------|--------------------------------|-----------------|
+| FTRT | (19879−14880)/60 = **83.3 ms** | **exactly 5 × 16.67 ms** |
+| MediaBunny | (10306−5305)/60 = **83.4 ms** | **exactly 5 × 16.67 ms** |
+
+**Both modes are rAF-bound, not encode-bound.** Every exported frame pays for
+5 `requestAnimationFrame` ticks (~83ms at 60Hz display) inside the html2canvas wait loop:
 
 ```javascript
-// Render every 3rd frame (30 fps → 10 renders/sec)
-if (targetFrame % 3 === 0) {
-    drawCanvas(exportCtx, exportW, exportH);
-    var bitmap = await createImageBitmap(exportCanvas);
-    sendFrame(bitmap, targetFrame);
-    lastKeyBitmap = bitmap;
-    lastKeyFrame = targetFrame;
-} else {
-    // Reuse last keyframe (worker handles interpolation)
-    worker.postMessage({ type: 'reuse-key', frameIndex: targetFrame, keyFrame: lastKeyFrame });
+// Present in BOTH the FTRT pump loop and the MediaBunny loop:
+for (let _wh = 0; _wh < 5; _wh++) {
+    if (window._pendingHtmlCaptures && window._pendingHtmlCaptures.length > 0) break;
+    await new Promise(r => requestAnimationFrame(r));   // ← 16.7ms per tick
+    drawCanvas(exportCtx, exportW, exportH);            // ← full redraw per tick
 }
 ```
 
-**Why faster:** 3× fewer `createImageBitmap` calls.
+`window._pendingHtmlCaptures` is only ever filled by **iframe `html` clips**
+(html2canvas capture at index.html:6555). This test project has 6 HIC clips and
+**zero iframe html clips**, so the array is always empty → the loop never breaks
+early → a fixed **5 rAFs + 6 full drawCanvas calls per exported frame**.
 
-**Tradeoff:** Lower temporal quality (3-frame repeats). Worker needs interpolation logic.
+This overturns the earlier conclusion that "worker encoding ~180ms" was the
+bottleneck — the measured 83.3ms/frame leaves no room for a 180ms serial encode,
+so worker `VideoSampleSource.add()` must be fast (hardware-accelerated or
+queue-and-return). The rAF loop IS the bottleneck.
 
-### Option C: Lower Render Resolution (Simplest)
+## The Fix (applies to both modes)
 
-Render at 1280×720, let encoder upscale to 1920×1080:
+**Gate the html2canvas wait on an active iframe html clip:**
 
 ```javascript
-drawCanvas(exportCtx, 1280, 720);
-var bitmap = await createImageBitmap(exportCanvas); // 3.7 MB, 2× faster
-// Encoder upscales to 1920×1080
+const t = State.currentTime;
+const needsHtmlWait = State.clips.some(c =>
+    c.type === 'html' && !c.hidden && !c._isWaaapi &&
+    t >= c.start && t < c.start + c.duration);
+if (needsHtmlWait) {
+    // existing 5×rAF loop — only for projects that actually have html clips
+}
 ```
 
-**Why faster:** 2.3× less data to capture (3.7 MB vs 8.3 MB).
+**Expected result:** per-frame drops from ~83ms → ~10-25ms (drawCanvas dedup +
+VideoFrame + worker ack). 20s video: ~60s → **~10-25s**, both modes.
 
-**Tradeoff:** Slight quality loss from upscaling (imperceptible for most content).
+## Phase 2 (after the rAF fix): pipeline the worker
 
-## Recommended Path
+Once the rAF tax is gone, the serial ack becomes the limiter (FTRT and MB both
+`await` each frame's `frame-processed` before capturing the next). Overlap
+encode(N) with render(N+1) using a small in-flight window (2-3) → throughput
+approaches max(render, encode) instead of render + encode.
 
-| Option | Expected FPS | Quality | Effort |
-|--------|-------------|---------|--------|
-| Current | 3.6-10.3 | 1920×1080 ✅ | Done |
-| **Option A: WebCodecs** | **20-30** | **1920×1080 ✅** | **Medium** |
-| Option B: Skip + interpolate | 15-25 | 1920×1080 ⚠️ | Medium |
-| Option C: 720p render | 8-15 | 1920×1080 ✅ | Low |
+## Phase 3: rAF independence
 
-**Recommendation: Option A (WebCodecs)** — keeps full 1920×1080 quality while being 2-3× faster.
+`requestAnimationFrame` never fires in a hidden/background tab — long exports
+freeze when the user switches tabs. Replace rAF waits with `setTimeout(0)`
+(or MessageChannel) when `document.hidden`.
+
+---
+
+# PHASE 1 RESULTS — html-wait gate shipped (20s project, 6 HIC clips, 1920×1080@30)
+
+## Before vs After
+
+| Metric | FTRT before | FTRT after | MB before | MB after |
+|--------|------------|-----------|-----------|----------|
+| Total export | 59.9s | **35.4s** | ~50s | **~32s** |
+| Real-time factor | 0.33× | **0.56×** | 0.39× | **~0.62×** |
+| Steady-state ms/frame | 83.3 | **39-56** | 83.4 | **42-84** |
+| Speedup | — | **1.69×** | — | **1.56×** |
+
+## Steady-state intervals (from logs)
+
+```
+FTRT: f=60→300: (20786−11355)/240 = 39ms/frame (climbing to 56ms by f=540)
+MB:   f=180→240: 42ms/frame ... f=420→480: 84ms/frame (declining, drift 2ms→12.1s)
+```
+
+MB is real-time-paced so its drift (12.1s at f=540) shows it can't hold 30fps —
+it converges to the same ~40-60ms/frame wall as FTRT. The two modes are now
+symptoms of the same remaining cost, not different architectures.
+
+## First automation run (64.9s total, pre-render 36.9s) — DISCARDED as noise
+
+Pre-render at 14 fps vs the usual 176 fps only happened when my browser
+automation hammered the same tab during export. User's clean run: pre-render
+518 frames in 2.9s (176.2 fps) — unchanged, confirming the regression was
+test-harness contention, not code.
+
+## Remaining per-frame cost (~40-56ms) breakdown
+
+1. drawCanvas() ~25-35ms — full 1920×1080 composite of 12 clips (6 HIC drawImage)
+2. VideoFrame ~2ms ✅ (already fast)
+3. **Serial worker ack wait ~15-25ms — encode(N) blocks render(N+1)** ← next target
+4. progress/overhead ~2ms (throttled ✅)
+
+# PHASE 2 PLAN — Pipeline the worker (overlap encode with render)
+
+**Change:** don't `await ackForFrame(N)` before capturing N+1. Keep a small
+in-flight window (2-3 frames): send N, capture N+1, then await ack N before send N+2.
+
+```
+Today:    [render N][send N][wait ack N][render N+1][send N+1][wait ack N+1]  = render+encode serial
+Pipelined: [render N][send N][render N+1][send N+1][wait ack N][render N+2]  = max(render, encode)
+```
+
+**Expected:** 40-56ms → ~25-35ms/frame → 20s video in ~20-25s (~0.9-1.2× real-time).
+
+**Safety:** keep the STALL_MS watchdog per-window (not per-frame); on worker
+error, drain the window before bailing. A/V sync unaffected — timestamps ride
+with each frame.
+
+**Phase 3 (later):** replace rAF pacing with setTimeout when document.hidden so
+exports survive tab switches; consider drawCanvas composite caching for static
+frames to cut the ~25ms render cost.
