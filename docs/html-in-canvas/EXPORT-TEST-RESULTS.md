@@ -262,3 +262,261 @@ with each frame.
 **Phase 3 (later):** replace rAF pacing with setTimeout when document.hidden so
 exports survive tab switches; consider drawCanvas composite caching for static
 frames to cut the ~25ms render cost.
+
+---
+
+# PHASE 2 FAILED — worker pipelining hangs the PC on GT 740 (REVERTED)
+
+## What was implemented
+
+Converted the FTRT pump loop from serial acks to a 3-frame in-flight window:
+central ack handler + `PIPE_WINDOW=3` queue, backpressure only when the window
+filled, drain before finalize, stall watchdog scoped to non-empty windows.
+
+## Failure signature (observed during 20s/600-frame test export)
+
+- Pre-render normal: 518 frames in 3.1s (165 fps)
+- Pump reached ~39% (~frame 234) in 21s, then progress + timer froze completely
+- No console errors, no worker error — the whole PC hung (GT 740, old GPU)
+- Watchdog never fired: the loop was stuck inside a synchronous GPU call
+  (`drawCanvas` / `new VideoFrame`), not awaiting an ack — a JS watchdog
+  cannot preempt a driver-level stall
+
+## Root cause: the serial ack WAS the GPU protection mechanism
+
+The original code's comment said it plainly: the FRAME_DONE serial pattern was
+adopted from Kenichi Studio specifically to "prevent GPU driver timeout/BSOD"
+on the GT 740. Serial execution guarantees at most ONE frame is being encoded
+while the main thread waits idle — GPU pressure never overlaps.
+
+Phase 2 removed that throttle. With a 3-frame window:
+
+- Up to 3 × 1920×1080 VideoFrames (~8 MB each) pinned in GPU memory (~24 MB)
+- Worker H.264 encode runs CONCURRENTLY with continuous drawCanvas composites
+- GT 740 (Fermi/Kepler era, ~80 GB/s DDR3, shallow command queues) saturates:
+  render + encode + compositor contend for the same GPU → driver queue backlog
+  → system-wide hang
+
+Conclusion: pipelining trades GPU headroom for throughput. Viable on modern
+GPUs with hardware encoders; dangerous on the GT 740. Do not re-attempt
+concurrency increases on this class of hardware.
+
+## Reverted to commit 02adaec (Phase 1 — verified stable)
+
+FTRT 35.4s / 0.56× real-time, MediaBunny ~32s / ~0.62× on the 20s project.
+No hangs, no stalls across repeated runs.
+
+# REVISED PLAN — go faster by doing LESS GPU work per frame, not more concurrently
+
+| Phase | Change | Why GT 740-safe | Expected |
+|-------|--------|-----------------|----------|
+| 3a | Static-layer caching in drawCanvas: render non-animating clips (shapes, static text, static HIC frames) into cached offscreen layers; composite per frame = 1 drawImage per layer | Strictly REDUCES GPU work per frame; no added concurrency | drawCanvas ~25-35ms → ~10-15ms → total ~25-30ms/frame |
+| 3b | Optional render-scale for weak GPUs: composite at 1280×720, upscale to 1920×1080 at VideoFrame creation | Cuts pixel throughput 2.25×; quality loss mostly invisible after encode | ~2× faster pump; flag-gated |
+| 4 | GPU tier detection (WebGL renderer string / encode benchmark): auto-enable pipelining window=2 ONLY on strong-GPU machines; keep serial on weak | Best of both per machine | 0.9-1.2× on strong GPUs, unchanged stability on weak |
+
+Priority: 3a first (pure win, no quality tradeoff), then evaluate 3b behind a
+setting, keep 4 as a future stretch. Phase 2 code exists only in git history
+and should be re-derived from this document if attempted.
+
+---
+
+# UX ISSUE — FTRT progress bar "0% pause" vs MediaBunny instant movement
+
+## Symptom (user-visible)
+
+- FTRT: progress sits at 0% for ~5-6s after clicking export, then crawls —
+  reaching 10% takes ~9s total. Feels frozen/broken.
+- MediaBunny: bar starts moving within ~1-2s and climbs smoothly.
+
+## Root cause — three stacked factors
+
+1. **FTRT does heavy work BEFORE the first frame is captured.** Timeline from
+   the log: worker spawn (~1s) + audio queue + HIC pre-render (518 frames,
+   3.8s) all happen while `lastCapturedFrame = -1` → progress formula
+   `(lastCapturedFrame+1)/totalFrames` = 0% the whole time.
+   MediaBunny has no pre-render phase — it starts capturing immediately and
+   paces to real time, so the bar moves at once (drift=2ms at f=60).
+
+2. **Pump crawl near 0%.** FTRT pumps at ~15fps (55ms/frame): frame 60 (10%)
+   lands ~3.3s after the pump starts. Combined with the 5-6s dead zone, 0→10%
+   ≈ 9s — perceived as a stall.
+
+3. **Throttled updateProgress skips exact-frame timing logs.** The
+   `[FTRT Timing]` log lives inside `updateProgress`, which is throttled to
+   100ms; it only fires when the throttle window happens to land exactly on
+   frame %60. That's why the user's log shows only f=420 and f=480 for a
+   600-frame export (f=60..360 were skipped by the throttle). Misleading logs,
+   and it hides the early-crawl shape of the curve.
+
+## New data point: MediaBunny is now FASTER than FTRT
+
+Same 20s project: **MB 26s (0.77×) vs FTRT 35.5s (0.56×)** after the html-wait
+gate. MB skips pre-render entirely (HIC renders inline with dedup) and its
+real-time pacing now tracks ~22-28fps early. FTRT pays 3.8s pre-render up
+front then pumps at 15fps. FTRT's remaining edge (frame-accuracy under load)
+may not justify its slower typical run — revisit default choice later.
+
+## THE PLAN — two-stage progress for FTRT (UX-only, no pipeline changes, GT 740-safe)
+
+| # | Change | Detail |
+|---|--------|--------|
+| 1 | **Progress during pre-render** | Add `updatePreRenderProgress(done, total)`: bar maps pre-render to 0→40% (`done/total*40`), status text "Pre-rendering HTML-in-Canvas 234/518…", timer keeps ticking from exportStartWall |
+| 2 | **Rebase pump progress to 40→100%** | Pump progress = `40 + captured/total*60`; reset `window._lastFtrtProgressUpdate = 0` after pre-render so the bar moves the instant pumping starts |
+| 3 | **Fix timing-log skip** | Move the `[FTRT Timing]` console.log out of `updateProgress` into the pump loop body (fires on exact %60 frames regardless of throttle) |
+| 4 | **ETA during pre-render** | Show "~pre-render Xs left" from pre-render rate (frames/sec so far) instead of hiding ETA until 5% |
+
+No GPU-concurrency changes — pure UI math, zero risk of the Phase 2 hang.
+
+# PHASE 3 EXPLAINED — cut per-frame GPU work (the safe speed lever)
+
+After Phase 2 (pipelining) was rejected for the GT 740, the only safe way to
+go faster is to make each frame CHEAPER, not to run more concurrently.
+
+## 3a — Static-layer caching in drawCanvas (the main event)
+
+Today every exported frame re-composites ALL ~12 clips from scratch (~25-35ms):
+background, shapes, text, HIC drawImages — even clips that haven't changed
+between frames.
+
+The idea: split the composite into **cached layers**.
+
+```
+Per frame today:   redraw clip1 + clip2 + ... + clipN        (~30ms)
+Per frame with 3a: drawImage(staticLayer) + redraw only ANIMATING clips (~10-15ms)
+```
+
+- A clip's layer is re-rendered only when its "dirty" (time-varying props
+  changed, HIC frame signature changed, transform/opacity animated).
+- Static shapes/text/backgrounds render once per contiguous static range.
+- HIC clips already have per-frame signatures (`_lastHicFrameSig`) — a HIC clip
+  whose signature is unchanged is a static layer hit too.
+- Invalidations: clip edit, selection change, track visibility, seek.
+
+Expected: drawCanvas ~30ms → ~10-15ms → FTRT total ~25-30ms/frame → 20s video
+in ~20s (0.9-1× real-time) WITHOUT any concurrency. Strictly less GPU work
+per frame — exactly what a GT 740 needs.
+
+## 3b — Render-scale for weak GPUs (flag-gated, optional)
+
+Composite at 1280×720 internally, upscale to 1920×1080 at VideoFrame creation.
+2.25× less pixel throughput; quality loss after H.264 encode is small but
+measurable on fine text. Ship behind an "Optimize for weak GPU" toggle, OFF by
+default.
+
+## 4 — GPU-tier adaptive pipelining (future stretch)
+
+Detect GPU via WebGL renderer string + a 30-frame encode benchmark at export
+start. Strong GPUs get window=2 pipelining (the reverted Phase 2, ~1.2×);
+weak GPUs keep the serial path. Never re-attempt pipelining unconditionally.
+
+## Priority order
+
+1. **FTRT two-stage progress (UX plan above)** — small, safe, immediate
+   perceived-speed win
+2. **3a static-layer caching** — the real speed win, no quality tradeoff
+3. 3b render-scale toggle — only if 3a isn't enough
+4. Phase 4 adaptive pipelining — stretch goal
+
+---
+
+# PHASE 3a SHIPPED — static-layer caching in drawCanvas ✅
+
+## Implementation
+
+Content-layer cache for text/shape clips (the two remaining uncached clip types):
+- `_layerSig(clip, kind)` — content-props signature (fill/stroke/extrude/shadow/texture/typography/text). Per-frame state (position/scale/rotation/alpha/blend, entrance/exit/loop/keyframe anims) deliberately EXCLUDED — the caller still applies those on the main ctx.
+- `getStaticLayer()` — bakes content into an offscreen canvas (dw+dh + 200px spill pad for stroke/extrude/shadow), keyed by clip.id + sig + dims. Max 64 entries.
+- `renderStaticTextContent()` — mirrors the static branch of drawText (extrude→shadow→stroke→fill→decoration→texture, letter/word overrides). drawText itself untouched — animated/mosaic/puzzle/word/letter paths render directly as before.
+- Selection frames bypass the cache (need exact local coords) in both paths.
+
+## Verification
+
+| Check | Result |
+|-------|--------|
+| Pixel identity cached vs uncached | ✅ identical (sampled pixel hash, stride 997) |
+| Cache repopulation after clear | ✅ |
+| App boot + timeline + playback | ✅ clean, no console errors |
+| Cache population on 20s project | ✅ 6 layers (4 text + 2 shape) |
+
+## Measured — 20s project, 6 HIC clips, 1920×1080@30, FTRT
+
+| Metric | Phase 1 | Phase 3a | Δ |
+|--------|---------|----------|---|
+| Export total | 35.5s | **25.3s** | **1.40× faster** |
+| Real-time factor | 0.56× | **0.79×** | +0.23 |
+| Pump ms/frame | ~51 | **~35** | 1.45× |
+| Pre-render | 3.8s | 3.1s | unchanged (HIC path untouched) |
+| vs MediaBunny (26s / 0.77×) | slower | **tied** | — |
+
+Progress hit 100% in 25s wall with no stalls, no hangs (GT 740 safe — strictly
+LESS GPU work per frame: drawImage of cached layers replaces full text/shape
+rasterization every frame).
+
+## Cumulative export speed journey (20s project, FTRT)
+
+| Phase | Total | Real-time |
+|-------|-------|-----------|
+| Baseline (pre-Phase-1) | 59.9s | 0.33× |
+| Phase 1 (html-wait gate) | 35.5s | 0.56× |
+| Phase 2 (pipelining) | REVERTED | GT 740 hang |
+| **Phase 3a (static layers)** | **25.3s** | **0.79×** |
+
+Remaining per-frame cost (~35ms): drawCanvas composite (now mostly drawImage
+calls) + VideoFrame + serial worker ack. Next levers if needed: 3b render-scale
+toggle, Phase 4 GPU-tier adaptive pipelining.
+
+## Phase 3a user verification run — FTRT 38.2s vs MediaBunny 26s (why?)
+
+User-tested both modes after Phase 3a (same 20s project, 1920×1080@30):
+
+| Metric | MediaBunny | FTRT | Δ |
+|--------|-----------|------|---|
+| Export total | 26s (0.77×) | 38.2s (0.52×) | +12.2s |
+| Startup before frame 0 | ~2s | ~2s + **2.9s pre-render** | +2.9s |
+| Pump ms/frame (steady) | ~47 | ~52 | +5ms |
+| First-frame fps | 29.4 | n/a (timing lines eaten) | — |
+
+### Cause 1 — FTRT pays a 2.9s pre-render tax MediaBunny never pays
+FTRT's Phase-2 pre-render redraws the full export canvas 518× (`drawCanvas` +
+`waitForHicRenders(100)` per frame) purely to warm the HIC SVG→image cache
+before frame 0. MB has no equivalent — its pump warms HIC renders as a side
+effect of drawing each frame. Pure +2.9s structural handicap.
+
+### Cause 2 — FTRT captures with a SYNC GPU readback; MB uses async
+- FTRT pump: `new VideoFrame(exportCanvas, {timestamp})` — synchronous canvas
+  readback that stalls the GPU pipeline.
+- MB pump: `await createImageBitmap(exportCanvas)` — async, non-blocking. Its
+  own code comment (line ~35021) warns sync readbacks cost 30-50ms stalls on
+  GT 740 and were swapped out for exactly this reason.
+- ≈ +3-5ms/frame × 600 frames ≈ +2-3s (smaller than worst case because
+  text/shape layers are now cached, shrinking the composite the readback
+  stalls on — but it is still on the critical path every frame).
+
+### Cause 3 (observability bug) — FTRT timing logs are eaten by the throttle
+The `[FTRT Timing]` log lives inside `updateProgress()`, which is throttled to
+100ms. At ~35-50ms/frame the throttle lands on a `frame % 60 === 0` boundary
+only occasionally — this run printed a single line (f=420) for a 600-frame
+export. Diagnosis is flying half-blind. MB logs from its loop body (unthrottled).
+
+Note: everything else is equal — both serialize on a per-frame worker ack
+(FTRT `ackForFrame`, MB inline handler), both use the same encoder worker,
+both finalize similarly. The 12.2s gap ≈ 2.9s pre-render + ~3s readback
++ ~2s startup delta + remainder in finalize/mux jitter.
+
+Correction to an earlier conclusion: the "createImageBitmap is slower" finding
+(from the revert) was based on a contaminated test — the export ran the full
+60s project (1800 frames) instead of the 20s range (600 frames), so the fps
+comparison was invalid. The revert's conclusion should not be trusted.
+
+### Phase 3c plan — close the gap (all low-risk, GT 740 safe)
+
+| # | Change | Expected | Risk |
+|---|--------|----------|------|
+| P0 | FTRT: drop `new VideoFrame(canvas)` fast-path; capture with `await createImageBitmap()` like MB | −2-3s, per-frame parity | Very low — MB proves this path on the same GPU |
+| P1 | Move `[FTRT Timing]` log into the pump loop body (every 60 frames, outside the 100ms throttle) | Full observability | Zero |
+| P2 | Skip pre-render frames whose HIC clips are static (sig unchanged) — animated presets still pre-warm, static ones cost ~0 | −0.5-2.9s depending on project | Low |
+| P3 (stretch) | Self-tuning capture: benchmark VideoFrame vs createImageBitmap on the first 10 frames, keep the faster | Removes guesswork on any GPU | Low |
+
+Expected after P0+P2: FTRT ≈ 31-33s vs MB 26s; remaining difference is the
+pre-render itself, which buys FTRT frame-accurate HIC timing (no one-frame
+lag) — the trade MB makes implicitly.

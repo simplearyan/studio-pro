@@ -5431,6 +5431,109 @@
             return canvas;
         }
 
+        // ── Phase 3a: static-layer cache for text/shape content ────────────────
+        // Rendering text/shape PIXELS is the same whenever content props are the
+        // same, so bake them once into an offscreen layer and drawImage per frame.
+        // Per-frame state (position/rotation/scale/alpha/blend from transforms,
+        // keyframes and entrance/exit/loop animations) is still applied on the main
+        // ctx — only the expensive content rasterization is cached.
+        const _layerCache = new Map(); // clip.id -> { sig, canvas, dw, dh }
+        function _layerSig(clip, extra) {
+            const e = clip.effects || {};
+            return [
+                extra || '', e.shapeType, e.shapeWidth, e.shapeHeight, e.sides, e.points, e.innerRadiusRatio,
+                e.fillColor, e.strokeEnable, e.strokeColor, e.strokeWidth,
+                e.extrudeEnable, e.extrudeColor, e.extrudeDepth, e.extrudeDir,
+                e.shadowEnable, e.shadowColor, e.shadowBlur, e.shadowX, e.shadowY,
+                e.textureEnable, e.textureSrc, e.borderRadius,
+                e.fontSize, e.fontWeight, e.fontStyle, e.fontFamily, e.letterSpacing,
+                e.lineHeight, e.textTransform, clip.text,
+                e.textDecoration, e.fillColor, e.letterOverrides ? JSON.stringify(e.letterOverrides) : '',
+                e.wordOverrides ? JSON.stringify(e.wordOverrides) : ''
+            ].join('|');
+        }
+        // Static text rasterization shared by the Phase 3a layer cache. Mirrors the
+        // plain (non-animated) branch of the inline drawText closure: extrude ->
+        // shadow -> stroke -> fill -> decoration -> texture. drawText itself is left
+        // untouched so animated paths keep their exact behavior.
+        function renderStaticTextContent(c, clip, lines, startY, lh, fontSize) {
+            const _lo = clip.effects.letterOverrides || {};
+            const _wo = clip.effects.wordOverrides || {};
+            if (Object.keys(_lo).length > 0 || Object.keys(_wo).length > 0) {
+                drawTextWithLetterOverrides(c, clip, lines, startY, lh, fontSize);
+                if (clip.effects.textureEnable) drawTextTextureOverlay(c, clip, lines, startY, lh, fontSize);
+                return;
+            }
+            // Extrude
+            if (clip.effects.extrudeEnable) {
+                c.fillStyle = clip.effects.extrudeColor || '#000000';
+                const depth = clip.effects.extrudeDepth || 5;
+                let dx = 1, dy = 1;
+                const ed = clip.effects.extrudeDir || 'br';
+                if (ed === 'bl') { dx = -1; dy = 1; }
+                else if (ed === 'b') { dx = 0; dy = 1; }
+                else if (ed === 'br') { dx = 1; dy = 1; }
+                else if (ed === 'tr') { dx = 1; dy = -1; }
+                else if (ed === 'tl') { dx = -1; dy = -1; }
+                else if (ed === 't') { dx = 0; dy = -1; }
+                else if (ed === 'r') { dx = 1; dy = 0; }
+                else if (ed === 'l') { dx = -1; dy = 0; }
+                for(let i = depth; i > 0; i -= 0.5) {
+                    lines.forEach((line, li) => {
+                        c.fillText(line, dx * i, startY + li * lh + dy * i);
+                    });
+                }
+            }
+            // Drop shadow
+            if (clip.effects.shadowEnable) {
+                c.shadowColor = clip.effects.shadowColor || '#000000';
+                c.shadowBlur = clip.effects.shadowBlur || 20;
+                c.shadowOffsetX = clip.effects.shadowX || 0;
+                c.shadowOffsetY = clip.effects.shadowY || 10;
+            } else {
+                c.shadowColor = 'transparent';
+                c.shadowBlur = 0;
+            }
+            // Stroke
+            if (clip.effects.strokeEnable) {
+                c.strokeStyle = clip.effects.strokeColor || '#ffffff';
+                c.lineWidth = clip.effects.strokeWidth || 4;
+                c.lineJoin = 'round';
+                lines.forEach((line, li) => {
+                    c.strokeText(line, 0, startY + li * lh);
+                });
+                c.shadowColor = 'transparent'; c.shadowBlur = 0; c.shadowOffsetX = 0; c.shadowOffsetY = 0;
+            }
+            // Fill + decoration
+            c.fillStyle = clip.effects.fillColor || '#ffffff';
+            lines.forEach((line, li) => {
+                c.fillText(line, 0, startY + li * lh);
+                if (clip.effects.textDecoration === 'underline' || clip.effects.textDecoration === 'line-through') {
+                    const lm = c.measureText(line);
+                    const tdw = lm.width;
+                    c.fillRect(-tdw/2, startY + li * lh + (clip.effects.textDecoration === 'underline' ? fontSize*0.4 : -fontSize*0.1), tdw, fontSize*0.08);
+                }
+            });
+            // Texture overlay masked to the glyphs
+            if (clip.effects.textureEnable) drawTextTextureOverlay(c, clip, lines, startY, lh, fontSize);
+            c.shadowColor = 'transparent';
+            c.shadowBlur = 0;
+        }
+        function getStaticLayer(clip, dw, dh, sig, renderContent) {
+            let entry = _layerCache.get(clip.id);
+            if (entry && entry.sig === sig && entry.dw === dw && entry.dh === dh) return entry;
+            const pad = 200; // room for stroke/extrude/shadow spill
+            const cw = Math.max(4, Math.ceil(dw) + pad * 2);
+            const ch = Math.max(4, Math.ceil(dh) + pad * 2);
+            const off = createOffscreenCanvas(cw, ch);
+            const octx = off.getContext('2d');
+            octx.translate(cw / 2, ch / 2);
+            renderContent(octx);
+            entry = { sig, canvas: off, dw, dh, pad };
+            if (_layerCache.size > 64) _layerCache.clear(); // simple bound
+            _layerCache.set(clip.id, entry);
+            return entry;
+        }
         function drawCanvas(targetCtx, targetW, targetH, opts) {
             const skipSubtitles = !!(opts && opts.skipSubtitles);
             const skipBg = !!(opts && opts.skipBg);
@@ -6069,8 +6172,27 @@
                                 ctx.drawImage(smallCanvas, -offCanvas.width/2, -offCanvas.height/2, offCanvas.width, offCanvas.height);
                                 ctx.imageSmoothingEnabled = true;
                             }
-                        } else {
+                        } else if (!State.isExporting && (State.selectedClipId === clip.id || (State.multiSelectedClipIds && State.multiSelectedClipIds.includes(clip.id)))) {
                             drawText();
+                        } else {
+                            // Phase 3a: cached static-text layer (plain path only —
+                            // mosaic/puzzle/word/letter anims keep direct rendering)
+                            const _canCacheText = (animTextIn === 'none' && animTextOut === 'none' && animTextLoop === 'none') &&
+                                (!clip.effects.animIn || clip.effects.animIn === 'none') && (!clip.effects.animOut || clip.effects.animOut === 'none') && (!clip.effects.animLoop || clip.effects.animLoop === 'none');
+                            if (_canCacheText && !isMath) {
+                                const _sig = _layerSig(clip, 'text');
+                                const _layer = getStaticLayer(clip, Math.max(dw, 50), Math.max(dh, 50), _sig, (c) => {
+                                    c.font = ctx.font;
+                                    c.letterSpacing = ctx.letterSpacing;
+                                    c.textBaseline = 'middle';
+                                    c.textAlign = 'center';
+                                    drawTextBackground(c, clip, lines, startY, lh, fontSize);
+                                    renderStaticTextContent(c, clip, lines, startY, lh, fontSize);
+                                });
+                                ctx.drawImage(_layer.canvas, -_layer.pad - dw / 2, -_layer.pad - dh / 2, _layer.canvas.width, _layer.canvas.height);
+                            } else {
+                                drawText();
+                            }
                         }
 
                         
@@ -6279,8 +6401,15 @@
                             pCtx.translate(pCanvas.width / 2, pCanvas.height / 2);
                             renderShapeContent(pCtx);
                             drawPuzzleBlocks(ctx, pCanvas, puzzleLevel, puzzleDir, clip.effects.animPuzzleSize || 8, puzzleSeedFromId(clip.id), !!clip.effects.animPuzzleSnap);
-                        } else {
+                        } else if (!State.isExporting && (State.selectedClipId === clip.id || (State.multiSelectedClipIds && State.multiSelectedClipIds.includes(clip.id)))) {
+                            // Selection frame needs exact local coords — render directly
                             renderShapeContent(ctx);
+                        } else {
+                            // Phase 3a: cached content layer, transform applied by caller
+                            const _sig = _layerSig(clip, 'shape');
+                            const _layer = getStaticLayer(clip, sw, sh, _sig, (c) => renderShapeContent(c));
+                            ctx.imageSmoothingEnabled = true;
+                            ctx.drawImage(_layer.canvas, -_layer.pad - sw / 2, -_layer.pad - sh / 2, _layer.canvas.width, _layer.canvas.height);
                         }
 
                         // Draw selection box in layout editor
