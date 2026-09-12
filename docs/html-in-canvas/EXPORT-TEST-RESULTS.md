@@ -620,3 +620,263 @@ spot-check: scrub both outputs to 0:01 and 4:00 and compare content.
 Phase 3c achieved pump parity. Mode choice is now purely about features:
 - **FTRT**: pre-rendered frame-accurate HIC, video frame pool, stall watchdog
 - **MediaBunny**: no pre-render wait, element-resync machinery, 3.2s head start
+
+# FUTURE WORK (deferred)
+
+## Smooth progress bar — velocity-projection display (planned, not implemented)
+
+Status: planned. Current behavior is correct but the 40→41% transition can
+feel sticky after Phase 3c's two-stage bar. Root cause: stage 2 is
+frame-count-based and 1% = 10 pump frames; FTRT's first frames are its
+slowest (cold worker encoder, ~119ms/frame), so the first visible step lands
+~1.2s after 40%. MediaBunny doesn't show this because it starts capturing
+real frames instantly (no pre-render) and its pump is real-time paced.
+
+Plan (pure UI, ~25 lines, zero pipeline risk, both modes):
+1. Sub-integer bar widths — set style.width with decimals ("40.3%"); keep
+   the big % text integer. Bar can then move on every update.
+2. Velocity-projection display ticker — a 100ms UI ticker advances the
+   displayed % using measured rolling fps, projecting where the pump should
+   be between acked frames, clamped to [lastAcked%, lastAcked% + small
+   lead]. On a true stall it freezes honestly at the last acked frame.
+3. Shared ticker drives MediaBunny's target too (one code path).
+
+Honesty guarantee: projection is anchored to actually-acked frames — a real
+stall stops the bar (stall watchdog covers that case).
+
+## Why FTRT has the 40% stage and MediaBunny doesn't (decision record)
+
+FTRT has ~3.2s of invisible work before frame 0 (HIC pre-render, 518 canvas
+renders + worker spawn + audio). The old formula (frames/total) cannot show
+anything but 0% during it — the original "0% pause" complaint. MediaBunny
+has no pre-render, so its bar moves from frame 1; nothing to visualize.
+
+The pre-render IS FTRT's frame-accuracy guarantee (without it, HIC frames
+capture before their async SVG render finishes — the one-frame-lag bug).
+So: keep the pre-render, keep the two-stage bar, fix the 40→41 plateau with
+the projection plan above.
+
+# BUG PLAN — HIC clips can't be dragged between timeline tracks
+
+## Symptom
+Dragging an HTML-in-Canvas clip vertically to another video track: the clip
+visually follows the cursor during the drag, but snaps back to its original
+track on mouseup. Other clip types (text/shape/html/video) move fine.
+
+## Root cause (confirmed by code trace)
+
+Every HIC clip drag goes through the MULTI-SELECT drag path, and that path's
+per-clip track targeting is missing the 'hic' type:
+
+1. `addHicClipToTimeline` (line ~25108) sets `multiSelectedClipIds = [clip.id]`,
+   and `handleMouseDown` (~28655) builds `drag.initialMulti` from the selected
+   set (or the linked group) — so `initialMulti` is ALWAYS non-empty for HIC
+   drags. The mousemove handler takes the multi branch.
+2. Shared `typedDelta` calc (line 28879) DOES include 'hic' in its visual-type
+   list — so the vertical direction is computed correctly.
+3. But the per-clip target assignment (line 28948, multi path) omits it:
+   `const mcIsVisual = mcClip.type === 'video' || 'image' || 'text' ||
+   'shape' || 'scene' || 'html'` — NO 'hic'.
+4. So for a HIC clip: `mcIsVisual` = false → `mcTypedTracks` = AUDIO tracks →
+   `mcInitialIndex` = -1 (its trackId is a video track) → `mc.targetTrackId`
+   is never assigned.
+5. Mouseup (line ~29253): `if (mc.targetTrackId) mcClip.trackId = ...` —
+   undefined → trackId unchanged → renderClips() snaps the clip back.
+
+## Fix plan
+
+| # | Change | Scope |
+|---|--------|-------|
+| 1 | **Line 28948: add `|| mcClip.type === 'hic'`** to `mcIsVisual` | 1-line fix — the bug |
+| 2 | Extract a shared `isVisualTimelineClip(type)` helper and use it at both type-list sites (28879 + 28948) so the lists can't drift apart again | Small refactor, prevents recurrence |
+| 3 | Sweep the other duplicated clip-type lists (5573, 27846, 8772, 11683...) for other missing-'hic' occurrences and consolidate where identical in meaning | Hardening follow-up |
+
+## Verification plan
+1. Drag a HIC clip one track down/up → sticks after mouseup, renders on new track
+2. Drag across 2+ tracks in one gesture → lands on the hovered track
+3. Multi-select HIC + text clip → drag both vertically → both move tracks
+4. Drag HIC clip horizontally only → no accidental track change
+5. Regression: text/shape/video/audio clips still move between tracks
+
+# BUG PLAN 2 — No selection bounding box for HIC clips on canvas
+
+## Symptom
+Selecting an HTML-in-Canvas clip shows the Properties panel but NO bounding
+box on the canvas preview. Every other visual type (html, image, video,
+text, shape, scene, WAAPI) draws an indigo selection box with corner
+handles + rotate stem via `domBoundingBoxContainer`.
+
+## Root cause (code trace)
+
+`drawCanvas` renders a DOM bounding box per clip type at 6 sites:
+- html clip: line ~6745 ✅
+- image/video: ~6984 ✅
+- text/shape/etc: ~7326 ✅
+- WAAPI: ~7670 ✅
+- **hic branch (~6778-6928): MISSING entirely** — goes stroke → shadow →
+  ctx.restore() with no box block.
+
+The HIC branch computes all the same variables the box needs (`cx`, `cy`,
+`finalScale`, `rotate`, `aState.animRot`, `w`, `h`, `flipH/flipV`) — the
+block was simply never copied into this branch when HIC rendering was
+built.
+
+## Fix plan
+
+| # | Change | Scope |
+|---|--------|-------|
+| 1 | Insert the same DOM bounding-box block into the `clip.type === 'hic'` branch right before `ctx.restore()` (after the shadow block), using the branch's identical variable names | ~10-line copy, mirrors html-clip site |
+| 2 | Longer-term (with the drag-fix refactor): extract `drawDomBoundingBox(clip, ctx, canvas, {cx, cy, w, h, rotate, animRot, finalScale})` helper and call it from all 6 sites — the block is copy-pasted 4× already, each with drift risk | Hardening follow-up |
+
+Note: the HIC box must NOT draw when `clip._hicR` is missing/unready —
+actually safe by default: the box only needs transform vars, which exist
+regardless of render state.
+
+## Verification plan
+1. Select HIC clip → indigo box with 4 corner handles + rotate stem appears
+2. Box tracks live while: playing (entrance anims), scaling/rotating in
+   Transform card, flipping, changing opacity
+3. Deselect → box disappears; select other clip type → box moves to it
+4. During export → no box (guarded by !State.isExporting && !targetCtx)
+5. Multi-select HIC + text → both get boxes
+
+# BUG PLAN 3 — Drop shadow & border radius not applying to HIC clips
+
+## Symptom
+With a HIC clip selected: setting Border Radius (e.g. 59px) or enabling
+Drop Shadow in the properties panel does nothing on the canvas preview.
+Other clip types apply both correctly.
+
+## Root cause (code trace, HIC branch ~6903-6928)
+
+1. **Border radius: zero references.** The HIC branch never reads
+   `clip.effects.borderRadius` — `ctx.drawImage(_hr.display, ...)` draws a
+   hard-cornered rectangle. Every other visual type round-clips via
+   `roundRect(...)` + `ctx.clip()` (html: 6694+6701, video: 7089, text/shape:
+   6724, image: 6494). The HIC stroke block also uses `ctx.rect` (square),
+   unlike the html branch which uses `roundRect` for stroke.
+2. **Drop shadow: dead code.** The branch sets `ctx.shadowColor/Blur/Offset`
+   AFTER the `ctx.drawImage` call. Canvas shadow properties only affect
+   drawing operations executed AFTER they are set — so the block changes
+   nothing. (Stroke also runs before it, so the shadow affects nothing at
+   all.) Correct order everywhere else: set shadow props → drawImage →
+   reset shadow to transparent.
+
+## Fix plan
+
+Mirror the html-clip branch pattern (it already solved the tricky part):
+clip-vs-shadow interaction — a rounded `ctx.clip()` would also clip away
+the shadow. The html branch avoids this by rasterizing rounded content
+offscreen, then drawing that offscreen canvas with shadow enabled, so the
+shadow follows the rounded alpha silhouette.
+
+| Combo | Draw sequence for HIC |
+|-------|----------------------|
+| radius + shadow | round-clip into a cached per-clip temp canvas → draw temp with shadow props set → reset shadow |
+| radius only | `roundRect` + `clip()` on main ctx → drawImage |
+| shadow only | set shadow props → drawImage → reset shadow |
+| neither | plain drawImage (current path) |
+
+Details:
+- Cache the rounded temp canvas on the renderer (`_hr._rounded`, keyed by
+  w/h/borderRadius sig) to avoid per-frame allocation
+- Stroke block: switch `ctx.rect` → `roundRect` when radius > 0 (parity
+  with html branch)
+- Combo logic into a small helper or inline if/else — 4 branches, ~30 lines
+- Same fix automatically applies to export (same code path, targetCtx
+  included)
+
+## Verification plan
+1. Radius 59px on HIC → corners visibly rounded on canvas preview
+2. Drop shadow on → shadow appears offset/blur as configured
+3. Radius + shadow together → shadow follows the rounded silhouette
+   (not clipped away, not square)
+4. Stroke + radius → rounded outline
+5. Export (FTRT + MediaBunny) → same appearance as preview
+6. Regression: html/image/video/text clips unchanged
+
+# FEATURE PLAN — Standalone HIC Code Editor modal + AI prompt integration
+
+## Current state
+- Properties panel has 3 cramped textareas (4/3/3 rows) that live-edit
+  clip.html/css/js — fine for tweaks, painful for real coding
+- `openHicEditor(clipId)` is a placeholder stub logging "Phase 2.3 will add
+  CodeMirror modal" — the button exists, the modal doesn't
+- `htmlEditorModal` (for WAAPI html clips) is the proven pattern to mirror:
+  full-screen z-[110] overlay, HTML/CSS/JS textareas, live iframe preview,
+  preset buttons, Apply/Cancel
+- AI infra already exists: aiPanelOverlay with openai/anthropic/custom
+  providers, `studiopro_ai_key_*` localStorage, callOpenAIAPI/callAnthropicAPI
+  helpers, system-prompt pattern (AI_SYSTEM_PROMPT for the script generator)
+- No CodeMirror/Monaco in the project — keep styled textareas (consistent,
+  zero deps), add Tab-key insertion + error surface
+
+## Phase E1 — Editor modal (core)
+
+| Element | Design |
+|---------|--------|
+| Shell | Mirror htmlEditorModal: `fixed inset-0 z-[110]` overlay, max-w-6xl, 90dvh, dark surface |
+| Code panes | Left half, 3 stacked sections HTML/CSS/JS with colored labels (reuse the green/blue/yellow mono styling); Tab inserts 2 spaces; Ctrl+Enter = Apply |
+| Live preview | Right half: iframe sandbox at 800×450 design space, scaled to fit; rAF loop drives `onFrame(t)` exactly like the HIC sandbox so what you see = what renders on canvas; play/restart button + time readout |
+| Apply | Writes clip.html/css/js, resets `_hicSig` + `_lastHicFrameSig`, drawCanvas(), keeps modal open (toggle in header: "Close on apply") |
+| Cancel | Reverts to entry snapshot; confirm if dirty |
+| Entry points | `openHicEditor(clipId)` (existing button) + a "Code" button on HIC timeline clips' context menu |
+
+## Phase E2 — AI generation + copy/paste workflow
+
+| Element | Design |
+|---------|--------|
+| Prompt bar | Top of modal: textarea + Generate button; quick-chips (Lower third, Counter, Chart, Terminal, Logo sting, Kinetic text) |
+| System prompt | HIC-specific contract baked in: single onFrame(time) function receiving ms; 800×450 design space scaled to canvas; no external JS libs; CSS animations allowed; must be deterministic per time (no requestAnimationFrame of its own, no setTimeout-driven state); images must be CORS-safe data-URLs or unsplash |
+| Generate | Uses existing provider helpers + stored key; streams into the 3 panes (parse ```html/css/js fenced blocks); error toast on failure |
+| Copy prompt (external AI) | "Copy AI Prompt" button → copies the full system contract + user prompt to clipboard for ChatGPT/Claude web; "Paste code" buttons per pane accept whatever the user pasted back |
+| Copy per pane | Small copy icon on each pane label — fast path to paste into the properties-panel textareas instead |
+| Properties fast-path | Also add a paste-from-clipboard button next to the 3 properties textareas so generated code can land there without opening the modal |
+
+## Phase E3 — Polish (later)
+- JS error surface: catch onFrame exceptions in preview, show inline status bar with line hint
+- Draft autosave per clip id (sessionStorage) so accidental Cancel loses nothing
+- Prompt history dropdown (last 10)
+- Optional: line numbers gutter
+
+## Verification plan
+1. Open editor from properties button + timeline context menu
+2. Edit HTML → preview updates live; onFrame time advances; Apply updates
+   canvas clip in real time (seek playhead to verify)
+3. Cancel reverts; dirty-confirm shows
+4. AI Generate with stored key → panes fill → Apply → clip animates on canvas
+5. Copy AI Prompt → paste into external chat → paste result back → works
+6. Copy pane → paste into properties textarea → identical behavior
+
+# BUG FIXES 1-3 IMPLEMENTED + VERIFIED ✅
+
+## What shipped
+
+| Fix | Change |
+|-----|--------|
+| **1. Track drag** | `mcIsVisual` in the multi-select drag path now includes `'hic'` — HIC clips can move between video tracks |
+| **2. Selection box** | DOM bounding-box block (indigo, 4 corner handles + rotate stem) inserted into the HIC branch before `ctx.restore()`, using the branch's own cx/cy/finalScale/rotate/animRot/flip vars |
+| **3. Radius + shadow** | 4-combo draw path: radius+shadow → round-clip into `_hr._rounded` cached temp, drawn WITH shadow props (shadow follows rounded silhouette); radius-only → roundRect+clip in place; shadow-only → shadow props BEFORE drawImage (the old code set them after — dead code); neither → plain. Stroke uses roundRect when radius>0 |
+
+## Critical bug caught during verification (and fixed)
+
+First pixel check failed: `_hr._rounded` captured a BLANK frame. Root cause:
+the HIC display canvas fills asynchronously (SVG image onload) but the
+rounded cache built synchronously on first draw — caching transparency
+forever. Fix: `_hr._contentRev` counter bumped in img.onload; the rounded
+cache key includes it (`1920x1080r40v2`), so the cache rebuilds whenever
+new content actually lands. This also means the radius+shadow path stays
+correct as the preset animates.
+
+## Verification results (live preview, pixel-level)
+
+| Check | Result |
+|-------|--------|
+| Fix 1: mcIsVisual true for HIC; typed-track lookup finds video tracks; drop lands +1 track | ✅ (applied, verified, reverted) |
+| Fix 2: box in domBoundingBoxContainer, `2px solid #6366f1`, handles visible in screenshot | ✅ |
+| Fix 3: rounded cache center α=255, corner α=0 (radius works); display syncs via rev-bump | ✅ |
+| Screenshot: stagger preset with red stroke + indigo selection box + handles | ✅ |
+| Radius+shadow+stroke coexist (screenshot) | ✅ |
+
+Not yet verified by user: real mouse-drag across tracks (code path
+simulated), export appearance (same code path — low risk).

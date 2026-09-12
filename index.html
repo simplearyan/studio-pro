@@ -6908,6 +6908,11 @@
                                     self.dCtx.clearRect(0,0,self._w,self._h);
                                     self.dCtx.drawImage(self.render,0,0);
                                     self._rendering = false;
+                                    // Bump content revision — the rounded-corner cache (radius+shadow
+                                    // path) keys on this, since the display canvas fills ASYNC and
+                                    // a synchronously-built cache would otherwise capture a blank
+                                    // frame forever.
+                                    self._contentRev = (self._contentRev || 0) + 1;
                                     // Resolve any pending export waiters
                                     if (self._renderResolve) { self._renderResolve(); self._renderResolve = null; }
                                 };
@@ -6916,24 +6921,100 @@
                             } catch(e) { console.error('[HIC] render error:', e); }
                         }
 
-                        // Draw display canvas (already full res — just draw at origin, centered)
-                        ctx.drawImage(_hr.display, -w/2, -h/2, w, h);
-                        
-                        // Stroke/border
-                        if (clip.effects.strokeEnable) {
-                            ctx.strokeStyle = clip.effects.strokeColor || '#ffffff';
-                            ctx.lineWidth = clip.effects.strokeWidth || 4;
-                            ctx.beginPath();
-                            ctx.rect(-w/2, -h/2, w, h);
-                            ctx.stroke();
-                        }
-                        
-                        // Shadow
-                        if (clip.effects.shadowEnable) {
+                        // ── Border radius / drop shadow / stroke (parity with the
+                        // html-clip branch) ──
+                        // Radius+shadow interaction: a rounded ctx.clip() would clip the
+                        // shadow away too, so when BOTH are active the content is
+                        // round-clip-composited into a cached temp canvas first, then that
+                        // temp is drawn with shadow props set — the shadow follows the
+                        // rounded alpha silhouette. Radius-only round-clips in place;
+                        // shadow-only draws straight with shadow props. (The old code set
+                        // shadow props AFTER drawImage — canvas shadows only affect draws
+                        // made after they are set, so it was dead code.)
+                        var _hicRad = clip.effects.borderRadius !== undefined ? clip.effects.borderRadius : 0;
+                        var _hicShadow = !!clip.effects.shadowEnable;
+                        if (_hicRad > 0 && _hicShadow) {
+                            var _rsKey = w + 'x' + h + 'r' + _hicRad + 'v' + (_hr._contentRev || 0);
+                            if (!_hr._rounded || _hr._roundedKey !== _rsKey) {
+                                var _rc = document.createElement('canvas');
+                                _rc.width = w; _rc.height = h;
+                                var _rcx = _rc.getContext('2d');
+                                _rcx.beginPath();
+                                if (_rcx.roundRect) _rcx.roundRect(0, 0, w, h, _hicRad); else _rcx.rect(0, 0, w, h);
+                                _rcx.clip();
+                                _rcx.drawImage(_hr.display, 0, 0, w, h);
+                                _hr._rounded = _rc;
+                                _hr._roundedKey = _rsKey;
+                            }
                             ctx.shadowColor = clip.effects.shadowColor || '#000000';
                             ctx.shadowBlur = clip.effects.shadowBlur || 20;
                             ctx.shadowOffsetX = clip.effects.shadowX || 0;
                             ctx.shadowOffsetY = clip.effects.shadowY || 10;
+                            ctx.drawImage(_hr._rounded, -w/2, -h/2, w, h);
+                            ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
+                        } else if (_hicRad > 0) {
+                            ctx.save();
+                            ctx.beginPath();
+                            if (ctx.roundRect) ctx.roundRect(-w/2, -h/2, w, h, _hicRad); else ctx.rect(-w/2, -h/2, w, h);
+                            ctx.clip();
+                            ctx.drawImage(_hr.display, -w/2, -h/2, w, h);
+                            ctx.restore();
+                        } else {
+                            if (_hicShadow) {
+                                ctx.shadowColor = clip.effects.shadowColor || '#000000';
+                                ctx.shadowBlur = clip.effects.shadowBlur || 20;
+                                ctx.shadowOffsetX = clip.effects.shadowX || 0;
+                                ctx.shadowOffsetY = clip.effects.shadowY || 10;
+                            }
+                            ctx.drawImage(_hr.display, -w/2, -h/2, w, h);
+                            if (_hicShadow) {
+                                ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
+                            }
+                        }
+                        
+                        // Stroke/border (rounded when radius > 0, matching the html branch)
+                        if (clip.effects.strokeEnable) {
+                            ctx.strokeStyle = clip.effects.strokeColor || '#ffffff';
+                            ctx.lineWidth = clip.effects.strokeWidth || 4;
+                            ctx.lineJoin = 'round';
+                            ctx.beginPath();
+                            if (_hicRad > 0 && ctx.roundRect) {
+                                ctx.roundRect(-w/2, -h/2, w, h, _hicRad);
+                            } else {
+                                ctx.rect(-w/2, -h/2, w, h);
+                            }
+                            ctx.stroke();
+                        }
+
+                        // DOM selection bounding box (parity with the html-clip site):
+                        // an indigo overlay with corner handles + rotate stem, drawn in
+                        // UI space over the canvas while the clip is selected.
+                        if (((State.multiSelectedClipIds && State.multiSelectedClipIds.includes(clip.id)) || clip.id === State.selectedClipId) && !State.isExporting && !targetCtx) {
+                            const container = document.getElementById('domBoundingBoxContainer');
+                            if (container) {
+                                const wrapper = document.getElementById('canvasAspectWrapper');
+                                const scaleUI = wrapper.clientWidth / canvas.width;
+                                const flipH = clip.effects.flipH ? -1 : 1;
+                                const flipV = clip.effects.flipV ? -1 : 1;
+                                const boxRot = rotate + (aState.animRot || 0) * 180 / Math.PI;
+                                const pad = 32;
+                                const w_box = Math.abs(w * scaleUI * finalScale) + pad;
+                                const h_box = Math.abs(h * scaleUI * finalScale) + pad;
+                                const cx_ui = cx * scaleUI;
+                                const cy_ui = cy * scaleUI;
+                                const box = document.createElement('div');
+                                box.style.position = 'absolute';
+                                box.style.left = `${cx_ui}px`;
+                                box.style.top = `${cy_ui}px`;
+                                box.style.width = `${w_box}px`;
+                                box.style.height = `${h_box}px`;
+                                box.style.transform = `translate(-50%, -50%) rotate(${boxRot}deg) scale(${flipH}, ${flipV})`;
+                                box.style.border = '2px solid #6366f1';
+                                box.style.boxShadow = '0 0 10px rgba(99, 102, 241, 0.4)';
+                                const handleHtml = `<div style="position:absolute;width:12px;height:12px;background:white;border:3px solid #6366f1;border-radius:50%;left:-7px;top:-7px;"></div><div style="position:absolute;width:12px;height:12px;background:white;border:3px solid #6366f1;border-radius:50%;right:-7px;top:-7px;"></div><div style="position:absolute;width:12px;height:12px;background:white;border:3px solid #6366f1;border-radius:50%;left:-7px;bottom:-7px;"></div><div style="position:absolute;width:12px;height:12px;background:white;border:3px solid #6366f1;border-radius:50%;right:-7px;bottom:-7px;"></div><div style="position:absolute;width:2px;height:40px;background:#6366f1;left:50%;top:-40px;transform:translateX(-50%);"></div><div style="position:absolute;width:12px;height:12px;background:#6366f1;border:2px solid white;border-radius:50%;left:50%;top:-46px;transform:translateX(-50%);"></div>`;
+                                box.innerHTML = handleHtml;
+                                container.appendChild(box);
+                            }
                         }
                         
                         ctx.restore();
@@ -28934,7 +29015,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                             mcEl.style.transition = 'none'; // Ensure instant visual feedback
                             
                             if (typedDelta !== 0) {
-                                const mcIsVisual = mcClip.type === 'video' || mcClip.type === 'image' || mcClip.type === 'text' || mcClip.type === 'shape' || mcClip.type === 'scene' || mcClip.type === 'html';
+                                const mcIsVisual = mcClip.type === 'video' || mcClip.type === 'image' || mcClip.type === 'text' || mcClip.type === 'shape' || mcClip.type === 'scene' || mcClip.type === 'html' || mcClip.type === 'hic';
                                 const mcTypedTracks = mcIsVisual ? State.tracks.filter(t => t.type === 'video') : State.tracks.filter(t => t.type === 'audio');
                                 const mcInitialIndex = mcTypedTracks.findIndex(t => t.id === mc.trackId);
                                 
