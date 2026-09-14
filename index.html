@@ -250,8 +250,9 @@
                         <label class="px-3 py-1.5 text-[10px] font-bold text-surface-400 uppercase tracking-widest bg-surface-800 border-b border-surface-700 shrink-0">AI Assist · works with Gemini, ChatGPT, Claude — no API key needed</label>
                         <div class="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
                             <div>
-                                <label class="block text-[10px] font-bold text-surface-500 uppercase tracking-widest mb-1">1 · What do you want? (added to the prompt)</label>
-                                <textarea id="hicAiPrompt" class="w-full h-20 bg-surface-900 border border-surface-700 rounded-lg p-2 text-xs text-surface-200 outline-none focus:border-violet-500 resize-none" placeholder="e.g. A kinetic-typography intro: the word STUDIO slams in letter by letter with a screen shake, then a violet underline sweeps across."></textarea>
+                                <label class="block text-[10px] font-bold text-surface-500 uppercase tracking-widest mb-1">1 · Pick a ready-made prompt (or write your own)</label>
+                                <div id="hicAiPromptChips" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5 mb-2"></div>
+                                <textarea id="hicAiPrompt" class="w-full h-20 bg-surface-900 border border-surface-700 rounded-lg p-2 text-xs text-surface-200 outline-none focus:border-violet-500 resize-none" placeholder="Pick a prompt above, or describe it yourself — e.g. A kinetic-typography intro: the word STUDIO slams in letter by letter."></textarea>
                             </div>
                             <div class="flex flex-wrap items-center gap-2">
                                 <button onclick="_hicAiCopyPrompt()" class="px-3 py-1.5 text-[11px] font-bold bg-violet-600 hover:bg-violet-500 text-white rounded-lg transition-colors flex items-center gap-1.5">
@@ -25742,6 +25743,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             const opening = !modal.classList.contains('hic-ai-open');
             _hicAiSetOpen(opening);
             if (opening) {
+                _hicAiRenderChips();
                 _hicMobileState.pane = 'ai';
                 document.querySelectorAll('#hicEditorModal .hic-pane').forEach(el => {
                     el.classList.toggle('hic-pane-active', el.getAttribute('data-pane') === 'ai');
@@ -25759,15 +25761,39 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             if (el) el.innerHTML = html || '';
         }
 
-        // The contract prompt: everything an AI needs to return code that drops
-        // straight into the HIC render pipeline (deterministic onFrame, 800×450,
-        // no rAF/setTimeout/CSS-keyframes, no libraries, CORS-safe images).
-        window._hicAiCopyPrompt = function() {
-            if (!_hicEditor) return;
-            const clip = State.clips.find(c => c.id === _hicEditor.clipId);
-            const dur = Math.round(((clip && clip.duration) || 5) * 1000);
-            const want = (document.getElementById('hicAiPrompt').value || '').trim() || '(no extra description — propose something tasteful)';
-            const prompt = [
+        // ── Ready-made AI prompt library ────────────────────────────────────
+        // Curated design briefs so users never have to word a prompt themselves.
+        // Click = load into the description box (editable before copying); the
+        // ⧉ icon copies the FULL prompt (brief + technical contract) directly.
+        const HIC_AI_PROMPTS = [
+            { t: 'Google Clean Sting', d: 'White stage, five colored dots assemble a wordmark',
+              p: 'Design a clean Google-style logo sting. White stage, generous whitespace, Product Sans-like geometric letterforms (use Arial with tight letter-spacing). Five dots (blue #4285F4, red #EA4335, yellow #FBBC05, green #34A853, one neutral gray) bounce in one by one with a soft overshoot, then settle into a horizontal row and morph-scale into the brand word "STUDIO" letter by letter. Below it, a thin gray subtitle "Animation Engine" fades up with letter-spacing easing from wide to normal. Everything completes by 2200ms with a calm, confident feel.' },
+            { t: 'Gradient Mesh Hero', d: 'Dark stage, drifting blurred color blobs, glass title card',
+              p: 'Design a premium dark hero intro. Near-black stage (#050508) with four large blurred color blobs (magenta #ff0080, violet #7928ca, blue #0070f3, coral #ff4d4d) drifting slowly on independent sine paths with screen blend. Center: a frosted-glass card (rgba white 5%, 1px light border, backdrop blur look via layered rgba) containing a 72px bold title "Aura Pro" and a light 20px subtitle. The card scales from 0.9 and fades up in the first 500ms; blobs keep drifting forever so the clip never looks frozen.' },
+            { t: 'Kinetic Type Slam', d: 'Word slams in letter by letter with shake + underline sweep',
+              p: 'Design a kinetic typography opener. The word "STUDIO" slams in letter by letter (90ms apart): each letter drops from above with heavy ease-out overshoot and a tiny 2px screen shake on landing. After the last letter (by 1100ms), a bold violet (#8b5cf6) underline sweeps left-to-right under the word in 400ms, then a small uppercase kicker "DESIGN FASTER" fades in above. Dark charcoal background (#111), white Helvetica-ish type, tight tracking, oversized scale.' },
+            { t: 'Social Lower Third', d: 'Avatar pops, name bar wipes in, handle fades',
+              p: 'Design a broadcast lower-third. Bottom-left composition: a circular avatar (CORS-safe https image, white 4px ring) pops in with overshoot; a white rounded bar wipes out from behind it (clip-path left to right) carrying the name "ALEX WRIGHT" in bold dark slate; underneath, a blue "@alexwright" handle fades and slides up 10px. Sequence finishes by 1800ms and holds steady; subtle drop shadows, no background full-screen.' },
+            { t: 'Data Bars Reveal', d: 'Chart bars grow staggered with count-up % labels',
+              p: 'Design a data-chart reveal on white. Header: tiny red uppercase eyebrow "THE NUMBERS" and a bold 27px two-line title. Six horizontal rows (Coal 35, Gas 23, Hydro 14, Nuclear 9, Wind 8, Solar 6) — each with a right-aligned label, a light-gray track and a colored bar (dark grays, teal, indigo, green, amber) that grows from 0 to its value with cubic ease-out, staggered 80ms apart, while a white % label inside each bar counts up in sync. All bars settled by 2000ms. Clean system-ui typography, 40/50px padding.' },
+            { t: 'Terminal Typing', d: 'Fireship-style dark terminal types a command',
+              p: 'Design a developer-terminal intro. Dark #0d1117 terminal card with a traffic-light header, monospace green-on-dark text. A prompt "~/studio ❯" appears, then the command "npx create-app@latest" types character by character (28ms/char) with a blinking block cursor. After typing (by ~1600ms) three output lines pop in staggered — "✓ deps installed", "✓ build passed", "➜ ready in 214ms" — each with a quick fade-slide. Subtle scanline texture optional; keep it crisp.' },
+            { t: 'Product Promo', d: 'E-commerce: product floats in, price chip pops, CTA pulses',
+              p: 'Design an e-commerce product promo. Bold single-color stage (#e11d48), a large CORS-safe product image (a sneaker photo from images.unsplash.com) flies in from the right with rotation settling at -25°, then floats gently forever on a slow sine. Left side: huge condensed uppercase two-line headline slides in, a 24px subline fades after it, and a white pill price-chip "$189" pops with overshoot near the product. Finish the entrance by 1700ms; the float loop keeps it alive.' },
+            { t: 'Counter Stats', d: 'Big number counts up with eased roll, label slides',
+              p: 'Design a minimalist stat counter. Near-white stage, centered composition: a small uppercase tracking-widest gray label "MONTHLY VISITORS" slides up and fades in first (300ms), then a giant 120px font-weight-800 number counts from 0 to 1,248,500 over 1400ms with strong ease-out (fast start, slow settle), using locale comma formatting. Beneath it a thin 4px indigo progress underline draws left-to-right in sync with the count. Ends clean and still.' },
+            { t: 'Quote Reveal', d: 'Serif quote fades in word by word with accent mark',
+              p: 'Design an elegant quote card. Warm paper background (#faf7f2), a huge decorative serif quotation mark (Playfair-like fallback Georgia) in soft terracotta fades in first, then the quote "Simplicity is the ultimate sophistication." reveals word by word (120ms apart) with gentle opacity and 8px rise, set in 34px Georgia italic dark slate. Attribution "— Leonardo da Vinci" fades in last with a short 40px rule line drawing beside it. Total 2200ms, museum-calm pacing.' },
+            { t: 'Neon Glitch Intro', d: 'RGB-split glitch text with flicker and scanlines',
+              p: 'Design a cyberpunk glitch intro. Black stage with faint scanlines (repeating-linear-gradient). The word "SYSTEM" in big monospace white flickers on, then runs three glitch bursts (at ~500ms, 900ms, 1300ms): each burst briefly offsets a red copy -6px left and a cyan copy 6px right (two absolutely-positioned clones) with clip-path slices jumping for 120ms, then snaps back. A small blinking cursor block and a corner tag "v2.0.1" complete it. All deterministic from time.' },
+            { t: 'Subscribe Outro', d: 'Subscribe button pops, cursor clicks, bell shakes',
+              p: 'Design a YouTube-style outro. Soft dark gradient stage. Center: a white rounded "Subscribe" pill with red text pops in with overshoot; a hand-drawn-style cursor arrow (simple SVG) glides in and clicks it at 900ms — the pill squashes once (scaleY 0.85) and flips to "Subscribed ✓" in gray. A bell icon beside it rings (rotation wiggle 3 times) right after. Keep the cursor motion smooth with slight arc; finish by 2000ms and hold.' },
+            { t: 'Particle Constellation', d: 'Drifting dots linked by lines, logo fades center',
+              p: 'Design a tech constellation intro. Deep navy (#0a0f1e) stage with ~40 small white dots (deterministic pseudo-random positions from index-based sines — no Math.random at module scope) drifting slowly; dots within 110px of each other connect with 1px rgba-white lines whose opacity scales with distance (compute pairs in onFrame). At 800ms a centered wordmark "CONSTELLATION" letter-spaced wide fades up with a soft glow (text-shadow). Loops gracefully forever.' }
+        ];
+
+        function _hicAiBuildPrompt(want, dur) {
+            return [
                 'You are generating an HTML-in-Canvas animation for a video editor.',
                 '',
                 'WHAT I WANT:',
@@ -25794,6 +25820,15 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 'function onFrame(time) { /* deterministic animation */ }',
                 '```'
             ].join('\n');
+        }
+
+        // Copy straight from a library chip (or the description box) with zero typing
+        window._hicAiCopyPrompt = function() {
+            if (!_hicEditor) return;
+            const clip = State.clips.find(c => c.id === _hicEditor.clipId);
+            const dur = Math.round(((clip && clip.duration) || 5) * 1000);
+            const want = (document.getElementById('hicAiPrompt').value || '').trim() || '(no extra description — propose something tasteful)';
+            const prompt = _hicAiBuildPrompt(want, dur);
             navigator.clipboard.writeText(prompt).then(() => {
                 _hicAiMsg('<span class="text-emerald-400 font-bold">Prompt copied — paste it into Gemini / ChatGPT / Claude, then paste the reply below.</span>');
             }).catch(() => {
@@ -25802,6 +25837,49 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 ta.value = prompt; document.body.appendChild(ta); ta.select();
                 try { document.execCommand('copy'); _hicAiMsg('<span class="text-emerald-400 font-bold">Prompt copied.</span>'); }
                 catch(e) { _hicAiMsg('<span class="text-amber-400">Copy failed — prompt shown in console.</span>'); console.log(prompt); }
+                ta.remove();
+            });
+        };
+
+        // Render the prompt-library chips into the AI pane
+        window._hicAiRenderChips = function() {
+            const host = document.getElementById('hicAiPromptChips');
+            if (!host) return;
+            host.innerHTML = HIC_AI_PROMPTS.map((pr, i) =>
+                '<div class="flex items-center gap-1 bg-surface-800 hover:bg-surface-700 border border-surface-700 rounded-lg pl-2 pr-1 py-1 transition-colors">'
+                + '<button onclick="_hicAiUseChip(' + i + ')" class="text-left" title="' + pr.d.replace(/"/g, '&quot;') + '">'
+                + '<span class="block text-[11px] font-bold text-surface-200 leading-tight">' + pr.t + '</span>'
+                + '<span class="block text-[9px] text-surface-500 leading-tight">' + pr.d + '</span>'
+                + '</button>'
+                + '<button onclick="_hicAiCopyChip(' + i + ')" class="shrink-0 p-1 rounded hover:bg-surface-600 text-surface-400 hover:text-white transition-colors" title="Copy the full prompt (brief + contract) straight to clipboard">'
+                + '<i data-lucide="clipboard-copy" class="w-3.5 h-3.5"></i>'
+                + '</button></div>'
+            ).join('');
+            if (window.lucide) lucide.createIcons();
+        };
+
+        // Chip click: load the brief into the description box (user can tweak,
+        // then hits Copy AI Prompt). Copy icon: bypass editing entirely.
+        window._hicAiUseChip = function(i) {
+            const pr = HIC_AI_PROMPTS[i];
+            if (!pr) return;
+            document.getElementById('hicAiPrompt').value = pr.p;
+            _hicAiMsg('<span class="text-violet-300">Loaded "' + pr.t + '" — tweak it or hit Copy AI Prompt.</span>');
+        };
+
+        window._hicAiCopyChip = function(i) {
+            const pr = HIC_AI_PROMPTS[i];
+            if (!pr || !_hicEditor) return;
+            const clip = State.clips.find(c => c.id === _hicEditor.clipId);
+            const dur = Math.round(((clip && clip.duration) || 5) * 1000);
+            const prompt = _hicAiBuildPrompt(pr.p, dur);
+            navigator.clipboard.writeText(prompt).then(() => {
+                _hicAiMsg('<span class="text-emerald-400 font-bold">"' + pr.t + '" prompt copied — paste it into your AI, bring back the reply.</span>');
+            }).catch(() => {
+                const ta = document.createElement('textarea');
+                ta.value = prompt; document.body.appendChild(ta); ta.select();
+                try { document.execCommand('copy'); _hicAiMsg('<span class="text-emerald-400 font-bold">"' + pr.t + '" prompt copied.</span>'); }
+                catch(e) { _hicAiMsg('<span class="text-amber-400">Copy failed — prompt in console.</span>'); console.log(prompt); }
                 ta.remove();
             });
         };
