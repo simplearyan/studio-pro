@@ -284,7 +284,12 @@ class Renderer {
                 await new Promise(res => {
                     const s = document.createElement('script');
                     s.id = 'tw-browser-runtime';
-                    s.src = '/vendor/tailwind-browser/index.global.js';
+                    /* Site base derived from this page's own URL: '/studio-pro/' on
+                       GitHub Pages, '/' locally (page lives at <base>docs/...). An
+                       absolute '/vendor/...' would 404 under the Pages base. */
+                    var _slashDocs = location.pathname.indexOf('/docs/');
+                    var _siteBase = _slashDocs > 0 ? location.pathname.slice(0, _slashDocs + 1) : '/';
+                    s.src = _siteBase + 'vendor/tailwind-browser/index.global.js';
                     s.onload = res; s.onerror = res;
                     document.head.appendChild(s);
                     setTimeout(res, 3000); /* don't hang offline */
