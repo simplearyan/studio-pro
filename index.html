@@ -175,6 +175,16 @@
         </div>
     </div>
 
+    <!-- HIC editor: mobile Preview/Code tabs (active below the sm breakpoint) -->
+    <style>
+    @media (max-width: 639.98px) {
+        #hicEditorModal[data-mview="code"] #hicPreviewPanel { display: none; }
+        #hicEditorModal[data-mview="preview"] #hicCodePanel { display: none; }
+        #hicEditorModal .hic-pane { display: none; }
+        #hicEditorModal .hic-pane.hic-pane-active { display: flex; flex: 1 1 0; min-height: 0; }
+    }
+    </style>
+
     <!-- HIC Code Editor Modal (Phase E1) -->
     <div id="hicEditorModal" class="fixed inset-0 bg-surface-950/80 backdrop-blur-sm z-[110] hidden flex-col p-3 sm:p-4 transition-all duration-300">
         <div class="bg-surface-900 rounded-xl shadow-2xl flex flex-col w-full max-w-6xl h-[90dvh] m-auto border border-surface-700 overflow-hidden">
@@ -192,25 +202,36 @@
                     <button onclick="closeHicEditor(true)" class="px-3 py-1.5 text-xs font-bold bg-violet-600 hover:bg-violet-500 rounded text-white transition-colors">Apply</button>
                 </div>
             </div>
+            <!-- Mobile view tabs: Preview | Code (hidden on sm+) -->
+            <div class="flex sm:hidden gap-1 p-1.5 bg-surface-800 border-b border-surface-700 shrink-0">
+                <button id="hicMtabCode" onclick="_hicMobileView('code')" class="flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all">Code</button>
+                <button id="hicMtabPreview" onclick="_hicMobileView('preview')" class="flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all">Preview</button>
+            </div>
             <!-- Body: editors + preview -->
             <div class="flex-1 flex min-h-0 flex-col sm:flex-row">
                 <!-- Code panels -->
-                <div class="flex flex-col w-full sm:w-1/2 border-r border-surface-700 min-h-0">
-                    <div class="flex flex-col flex-1 min-h-[90px]">
+                <div id="hicCodePanel" class="flex flex-col w-full sm:w-1/2 border-r border-surface-700 min-h-0">
+                    <!-- Mobile sub-tabs: HTML | CSS | JS (hidden on sm+) -->
+                    <div class="flex sm:hidden gap-1 p-1.5 bg-surface-800 border-b border-surface-700 shrink-0">
+                        <button data-hicsub="html" onclick="_hicMobilePane('html')" class="flex-1 py-1 text-[10px] font-bold rounded-md transition-all">HTML</button>
+                        <button data-hicsub="css" onclick="_hicMobilePane('css')" class="flex-1 py-1 text-[10px] font-bold rounded-md transition-all">CSS</button>
+                        <button data-hicsub="js" onclick="_hicMobilePane('js')" class="flex-1 py-1 text-[10px] font-bold rounded-md transition-all">JS</button>
+                    </div>
+                    <div class="hic-pane flex flex-col flex-1 min-h-[90px]" data-pane="html">
                         <label class="px-3 py-1.5 text-[10px] font-bold text-surface-400 uppercase tracking-widest bg-surface-800 border-b border-surface-700 shrink-0">HTML</label>
                         <textarea id="hicEditorHTML" class="flex-1 w-full bg-surface-900 p-3 text-xs font-mono text-green-300 outline-none resize-none min-h-0" spellcheck="false" placeholder="<div>Your HTML here</div>"></textarea>
                     </div>
-                    <div class="flex flex-col flex-1 min-h-[90px] border-t border-surface-700">
+                    <div class="hic-pane flex flex-col flex-1 min-h-[90px] border-t border-surface-700" data-pane="css">
                         <label class="px-3 py-1.5 text-[10px] font-bold text-surface-400 uppercase tracking-widest bg-surface-800 border-b border-surface-700 shrink-0">CSS</label>
                         <textarea id="hicEditorCSS" class="flex-1 w-full bg-surface-900 p-3 text-xs font-mono text-blue-300 outline-none resize-none min-h-0" spellcheck="false" placeholder=".class { color: red; }"></textarea>
                     </div>
-                    <div class="flex flex-col flex-1 min-h-[90px] border-t border-surface-700">
+                    <div class="hic-pane flex flex-col flex-1 min-h-[90px] border-t border-surface-700" data-pane="js">
                         <label class="px-3 py-1.5 text-[10px] font-bold text-surface-400 uppercase tracking-widest bg-surface-800 border-b border-surface-700 shrink-0">JavaScript <span class="text-surface-600">(onFrame — deterministic, no rAF)</span></label>
                         <textarea id="hicEditorJS" class="flex-1 w-full bg-surface-900 p-3 text-xs font-mono text-yellow-300 outline-none resize-none min-h-0" spellcheck="false" placeholder="function onFrame(time) { /* time in ms */ }"></textarea>
                     </div>
                 </div>
                 <!-- Live preview -->
-                <div class="flex flex-col w-full sm:w-1/2 min-h-0">
+                <div id="hicPreviewPanel" class="flex flex-col w-full sm:w-1/2 min-h-0">
                     <label class="px-3 py-1.5 text-[10px] font-bold text-surface-400 uppercase tracking-widest bg-surface-800 border-b border-surface-700 shrink-0 flex items-center gap-2">
                         <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse shrink-0"></span> Live Preview · 800×450 design space
                     </label>
@@ -25460,6 +25481,11 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             modal.classList.remove('hidden');
             modal.classList.add('flex');
             if (window.lucide) lucide.createIcons();
+            // Reset mobile tab state + button styles each open (visibility is
+            // CSS-driven; on desktop these are no-ops visually)
+            _hicMobileState = { view: 'code', pane: 'html' };
+            _hicMobileView('code');
+            _hicMobilePane('html');
             // Build sandbox + start preview
             _updateHicEditorPreview();
             _updateHicEditorDuration();
@@ -25624,6 +25650,33 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             const dur = Math.max(1, Math.round(((clip && clip.duration) || 5) * 1000));
             slider.max = String(dur);
             document.getElementById('hicEditorTimeLabel').textContent = 't=' + Math.round(_hicEditor.t) + 'ms / ' + dur;
+        };
+
+        // Mobile (below sm breakpoint): Preview | Code view tabs + HTML/CSS/JS
+        // sub-tabs. Desktop (sm+) ignores all of this - CSS keeps both panels
+        // and all three panes visible side-by-side regardless of state.
+        let _hicMobileState = { view: 'code', pane: 'html' };
+        window._hicMobileView = function(v) {
+            _hicMobileState.view = v;
+            const modal = document.getElementById('hicEditorModal');
+            if (modal) modal.setAttribute('data-mview', v);
+            const on = 'bg-surface-900 text-white ring-1 ring-inset ring-surface-600';
+            const off = 'text-surface-400 hover:text-surface-200';
+            const c = document.getElementById('hicMtabCode'), p = document.getElementById('hicMtabPreview');
+            c.className = 'flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all ' + (v === 'code' ? on : off);
+            p.className = 'flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all ' + (v === 'preview' ? on : off);
+            if (v === 'preview') _updateHicEditorDuration();  // panel just became measurable
+        };
+        window._hicMobilePane = function(pn) {
+            _hicMobileState.pane = pn;
+            document.querySelectorAll('#hicEditorModal .hic-pane').forEach(el => {
+                el.classList.toggle('hic-pane-active', el.getAttribute('data-pane') === pn);
+            });
+            const on = 'bg-surface-900 text-white ring-1 ring-inset ring-surface-600';
+            const off = 'text-surface-400 hover:text-surface-200';
+            document.querySelectorAll('#hicEditorModal [data-hicsub]').forEach(b => {
+                b.className = 'flex-1 py-1 text-[10px] font-bold rounded-md transition-all ' + (b.getAttribute('data-hicsub') === pn ? on : off);
+            });
         };
 
         function _updateHicEditorDuration() {
