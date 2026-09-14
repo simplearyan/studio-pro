@@ -179,7 +179,7 @@
     <div id="hicEditorModal" class="fixed inset-0 bg-surface-950/80 backdrop-blur-sm z-[110] hidden flex-col p-3 sm:p-4 transition-all duration-300">
         <div class="bg-surface-900 rounded-xl shadow-2xl flex flex-col w-full max-w-6xl h-[90dvh] m-auto border border-surface-700 overflow-hidden">
             <!-- Header -->
-            <div class="flex items-center justify-between px-4 py-2.5 bg-surface-800 border-b border-surface-700 shrink-0">
+            <div class="flex flex-wrap items-center justify-between gap-y-1.5 px-4 py-2.5 bg-surface-800 border-b border-surface-700 shrink-0">
                 <div class="flex items-center gap-2">
                     <i data-lucide="code" class="w-4 h-4 text-violet-400"></i>
                     <span class="text-sm font-bold text-white">HTML in Canvas — Code Editor</span>
@@ -195,15 +195,15 @@
             <div class="flex-1 flex min-h-0 flex-col sm:flex-row">
                 <!-- Code panels -->
                 <div class="flex flex-col w-full sm:w-1/2 border-r border-surface-700 min-h-0">
-                    <div class="flex flex-col flex-1 min-h-0">
+                    <div class="flex flex-col flex-1 min-h-[90px]">
                         <label class="px-3 py-1.5 text-[10px] font-bold text-surface-400 uppercase tracking-widest bg-surface-800 border-b border-surface-700 shrink-0">HTML</label>
                         <textarea id="hicEditorHTML" class="flex-1 w-full bg-surface-900 p-3 text-xs font-mono text-green-300 outline-none resize-none min-h-0" spellcheck="false" placeholder="<div>Your HTML here</div>"></textarea>
                     </div>
-                    <div class="flex flex-col flex-1 min-h-0 border-t border-surface-700">
+                    <div class="flex flex-col flex-1 min-h-[90px] border-t border-surface-700">
                         <label class="px-3 py-1.5 text-[10px] font-bold text-surface-400 uppercase tracking-widest bg-surface-800 border-b border-surface-700 shrink-0">CSS</label>
                         <textarea id="hicEditorCSS" class="flex-1 w-full bg-surface-900 p-3 text-xs font-mono text-blue-300 outline-none resize-none min-h-0" spellcheck="false" placeholder=".class { color: red; }"></textarea>
                     </div>
-                    <div class="flex flex-col flex-1 min-h-0 border-t border-surface-700">
+                    <div class="flex flex-col flex-1 min-h-[90px] border-t border-surface-700">
                         <label class="px-3 py-1.5 text-[10px] font-bold text-surface-400 uppercase tracking-widest bg-surface-800 border-b border-surface-700 shrink-0">JavaScript <span class="text-surface-600">(onFrame — deterministic, no rAF)</span></label>
                         <textarea id="hicEditorJS" class="flex-1 w-full bg-surface-900 p-3 text-xs font-mono text-yellow-300 outline-none resize-none min-h-0" spellcheck="false" placeholder="function onFrame(time) { /* time in ms */ }"></textarea>
                     </div>
@@ -211,15 +211,15 @@
                 <!-- Live preview -->
                 <div class="flex flex-col w-full sm:w-1/2 min-h-0">
                     <label class="px-3 py-1.5 text-[10px] font-bold text-surface-400 uppercase tracking-widest bg-surface-800 border-b border-surface-700 shrink-0 flex items-center gap-2">
-                        <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> Live Preview · 800×450 design space · plays exactly like the canvas render
+                        <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse shrink-0"></span> Live Preview · 800×450 design space
                     </label>
-                    <div id="hicEditorPreviewWrap" class="flex-1 bg-surface-950 p-3 min-h-0 flex items-center justify-center overflow-hidden relative">
+                    <div id="hicEditorPreviewWrap" class="flex-1 bg-surface-950 p-3 min-h-[200px] flex items-center justify-center overflow-hidden relative">
                         <div id="hicEditorPreviewScaler" class="relative">
-                            <div id="hicEditorSandbox" class="absolute inset-0 overflow-hidden"></div>
+                            <iframe id="hicEditorPreview" class="border border-surface-700 rounded bg-white block" title="HIC live preview"></iframe>
                         </div>
                     </div>
                     <!-- Time transport -->
-                    <div class="flex items-center gap-3 px-3 py-2 bg-surface-800 border-t border-surface-700 shrink-0">
+                    <div class="flex flex-wrap items-center gap-3 gap-y-2 px-3 py-2 bg-surface-800 border-t border-surface-700 shrink-0">
                         <button id="hicEditorPlayBtn" onclick="_hicEditorTogglePlay()" class="p-1.5 bg-surface-700 hover:bg-surface-600 rounded text-surface-200 transition-colors" title="Play / Pause (Space)">
                             <i data-lucide="play" class="w-3.5 h-3.5"></i>
                         </button>
@@ -227,7 +227,7 @@
                             <i data-lucide="skip-back" class="w-3.5 h-3.5"></i>
                         </button>
                         <input id="hicEditorTime" type="range" min="0" max="5000" step="10" value="0" class="flex-1 accent-violet-500" oninput="_hicEditorSeek(Number(this.value))">
-                        <span id="hicEditorTimeLabel" class="text-[11px] font-mono text-surface-300 w-24 text-right">t=0ms / 5000</span>
+                        <span id="hicEditorTimeLabel" class="text-[11px] font-mono text-surface-300 whitespace-nowrap text-right">t=0ms / 5000</span>
                         <button onclick="_hicEditorSetDuration()" class="px-2 py-1 text-[10px] font-bold bg-surface-700 hover:bg-surface-600 rounded text-surface-300 transition-colors" title="Match scrubber max to the clip's duration">Fit</button>
                     </div>
                 </div>
@@ -25325,7 +25325,6 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 baseTime: 0,
                 baseWall: 0,
                 t: 0,
-                onFrame: null,
                 handlers: []
             };
             const modal = document.getElementById('hicEditorModal');
@@ -25390,10 +25389,10 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             }
             modal.classList.add('hidden');
             modal.classList.remove('flex');
-            // Remove the sandbox-scoped <style> so preset selectors (span{...}
-            // etc.) can't bleed into app UI while the modal is hidden
-            const _hStyle = document.getElementById('hicEditorPreviewStyle');
-            if (_hStyle) _hStyle.remove();
+            // Park the preview iframe on a blank doc so preset animations and
+            // any timers stop while the modal is hidden
+            const _hp = document.getElementById('hicEditorPreview');
+            if (_hp) _hp.srcdoc = '';
             _hicEditor = null;
         };
 
@@ -25408,52 +25407,60 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             document.getElementById('hicEditorDirtyBadge').classList.toggle('hidden', !dirty);
         };
 
-        // Rebuild sandbox + recompile onFrame when pane content changes
+        // Rebuild the preview when pane content changes.
+        // The preview is a TRUE 800x450 document (the exact design space the
+        // SVG foreignObject pipeline scales from) inside an isolated iframe —
+        // preset CSS like bare `span { ... }` rules can never bleed into app
+        // UI, and font metrics match the canvas render exactly. The user's
+        // onFrame is compiled once here in the parent (same new Function
+        // contract as the canvas pipeline) and seeks drive it into the iframe
+        // document; the doc also paints t=0 once at load so the first frame
+        // is never blank.
+        // Rebuild the preview when pane content changes.
+        // The preview is a TRUE 800x450 document (the exact design space the
+        // SVG foreignObject pipeline scales from) inside an isolated iframe —
+        // preset CSS like bare `span { ... }` rules can never bleed into app
+        // UI, and font metrics match the canvas render exactly. The user's JS
+        // is compiled INSIDE the iframe (its free `document` then resolves to
+        // the iframe's own global — the same scope the real HIC sandbox has)
+        // and exposes window.__seek(t); the doc also paints t=0 once at load
+        // so the first frame is never blank.
         window._updateHicEditorPreview = function() {
             if (!_hicEditor) return;
-            const sb = document.getElementById('hicEditorSandbox');
-            if (!sb) return;
+            const preview = document.getElementById('hicEditorPreview');
+            if (!preview) return;
             const ed = _hicEditor;
-            // Compile JS exactly like the canvas render pipeline does:
-            // user code + return onFrame, called with time in ms.
-            ed.onFrame = null;
-            const jsSrc = document.getElementById('hicEditorJS').value || '';
-            if (jsSrc) {
-                try { ed.onFrame = new Function('time', jsSrc + '\n;return typeof onFrame === "function" ? onFrame : null;')(); }
-                catch(e) { console.error('[HIC Editor] JS error:', e); }
-            }
-            // Rebuild sandbox DOM when HTML changed (preserving live state is
-            // meaningless across edits — animations are seek-driven anyway)
-            sb.innerHTML = document.getElementById('hicEditorHTML').value || '';
-            // Inject CSS once, scoped to the sandbox, exactly like the SVG
-            // foreignObject pipeline does (same <style> blob inside the stage)
-            let style = document.getElementById('hicEditorPreviewStyle');
-            if (!style) {
-                style = document.createElement('style');
-                style.id = 'hicEditorPreviewStyle';
-                document.head.appendChild(style);
-            }
-            style.textContent = document.getElementById('hicEditorCSS').value || '';
+            const css = document.getElementById('hicEditorCSS').value || '';
+            const html = document.getElementById('hicEditorHTML').value || '';
+            const js = document.getElementById('hicEditorJS').value || '';
+            const boot =
+                'try{' +
+                'var __mk=new Function(' + JSON.stringify(js + '\n;return typeof onFrame === "function" ? onFrame : null;') + ');' +
+                'window.__onFrame=__mk();' +
+                '}catch(e){console.error("[HIC Editor] JS error:",e);}' +
+                'window.__seek=function(t){try{if(window.__onFrame)window.__onFrame(t);}catch(e){}};';
+            preview.srcdoc = '<!DOCTYPE html><html><head><meta charset="UTF-8">'
+                + '<style>*{margin:0;padding:0;box-sizing:border-box;}html,body{width:800px;height:450px;overflow:hidden;background:#fff;}</style>'
+                + '<style>' + css + '</style></head><body>' + html
+                + '<scr' + 'ipt>' + boot + '</scr' + 'ipt>'
+                + '</body></html>';
+            // Once the doc paints its own t=0, snap to the current transport
+            // time (covers play/scrub before the iframe finished loading)
+            preview.onload = () => { if (_hicEditor === ed) _hicEditorSeek(ed.t); };
         };
 
-        // Seek the sandbox to an exact time (ms) — the core of HIC's
-        // deterministic model: same t in, same frame out. Uses the same scoped
-        // getElementById as the canvas render so multi-clip ID collisions
-        // cannot leak into the editor.
+        // Seek the preview to an exact time (ms) — the core of HIC's
+        // deterministic model: same t in, same frame out. The iframe's own
+        // compiled onFrame (window.__seek) drives its document — the exact
+        // scope the real HIC sandbox guarantees.
         window._hicEditorSeek = function(t) {
             if (!_hicEditor) return;
             const ed = _hicEditor;
             ed.t = t;
             ed.baseTime = t;
             ed.baseWall = performance.now();
-            const sb = document.getElementById('hicEditorSandbox');
-            if (!sb) return;
-            const _origGbi = document.getElementById;
-            document.getElementById = function(id) {
-                return sb.querySelector('[id="' + id + '"]') || _origGbi.call(document, id);
-            };
-            try { if (ed.onFrame) ed.onFrame(t); } catch(e) { /* user-code errors logged on compile */ }
-            document.getElementById = _origGbi;
+            const win = document.getElementById('hicEditorPreview').contentWindow;
+            try { if (win && win.__seek) win.__seek(t); } catch(e) { /* user-code errors logged on compile */ }
             const slider = document.getElementById('hicEditorTime');
             if (document.activeElement !== slider) slider.value = String(Math.min(t, Number(slider.max) || 0));
             document.getElementById('hicEditorTimeLabel').textContent = 't=' + Math.round(t) + 'ms / ' + slider.max;
@@ -25506,15 +25513,22 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             slider.max = String(dur);
             slider.value = '0';
             document.getElementById('hicEditorTimeLabel').textContent = 't=0ms / ' + dur;
-            // Fit the 800×450 stage into the preview panel (same CSS-scale trick
-            // the HTML editor modal uses for its iframe)
+            // The iframe hosts a TRUE 800×450 document and is CSS-scaled to fit
+            // the panel — identical to how the canvas pipeline treats the design
+            // space, so font sizes/layout match the canvas render exactly
+            // (same trick the HTML editor modal uses).
             requestAnimationFrame(() => {
                 const wrap = document.getElementById('hicEditorPreviewWrap');
                 const scaler = document.getElementById('hicEditorPreviewScaler');
-                if (!wrap || !scaler) return;
-                const scale = Math.min((wrap.clientWidth - 24) / 800, (wrap.clientHeight - 24) / 450);
+                const preview = document.getElementById('hicEditorPreview');
+                if (!wrap || !scaler || !preview) return;
+                const scale = Math.max(0.05, Math.min((wrap.clientWidth - 24) / 800, (wrap.clientHeight - 24) / 450));
                 scaler.style.width = Math.floor(800 * scale) + 'px';
                 scaler.style.height = Math.floor(450 * scale) + 'px';
+                preview.style.width = '800px';
+                preview.style.height = '450px';
+                preview.style.transformOrigin = 'top left';
+                preview.style.transform = 'scale(' + scale + ')';
             });
         }
 
