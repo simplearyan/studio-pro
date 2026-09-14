@@ -175,6 +175,66 @@
         </div>
     </div>
 
+    <!-- HIC Code Editor Modal (Phase E1) -->
+    <div id="hicEditorModal" class="fixed inset-0 bg-surface-950/80 backdrop-blur-sm z-[110] hidden flex-col p-3 sm:p-4 transition-all duration-300">
+        <div class="bg-surface-900 rounded-xl shadow-2xl flex flex-col w-full max-w-6xl h-[90dvh] m-auto border border-surface-700 overflow-hidden">
+            <!-- Header -->
+            <div class="flex items-center justify-between px-4 py-2.5 bg-surface-800 border-b border-surface-700 shrink-0">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="code" class="w-4 h-4 text-violet-400"></i>
+                    <span class="text-sm font-bold text-white">HTML in Canvas — Code Editor</span>
+                    <span id="hicEditorClipName" class="text-xs text-surface-400"></span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span id="hicEditorDirtyBadge" class="hidden px-2 py-0.5 text-[10px] font-bold bg-amber-900 text-amber-300 rounded">UNSAVED</span>
+                    <button onclick="closeHicEditor(false)" class="px-3 py-1.5 text-xs font-bold bg-surface-700 hover:bg-surface-600 rounded text-surface-300 transition-colors">Cancel</button>
+                    <button onclick="closeHicEditor(true)" class="px-3 py-1.5 text-xs font-bold bg-violet-600 hover:bg-violet-500 rounded text-white transition-colors">Apply</button>
+                </div>
+            </div>
+            <!-- Body: editors + preview -->
+            <div class="flex-1 flex min-h-0 flex-col sm:flex-row">
+                <!-- Code panels -->
+                <div class="flex flex-col w-full sm:w-1/2 border-r border-surface-700 min-h-0">
+                    <div class="flex flex-col flex-1 min-h-0">
+                        <label class="px-3 py-1.5 text-[10px] font-bold text-surface-400 uppercase tracking-widest bg-surface-800 border-b border-surface-700 shrink-0">HTML</label>
+                        <textarea id="hicEditorHTML" class="flex-1 w-full bg-surface-900 p-3 text-xs font-mono text-green-300 outline-none resize-none min-h-0" spellcheck="false" placeholder="<div>Your HTML here</div>"></textarea>
+                    </div>
+                    <div class="flex flex-col flex-1 min-h-0 border-t border-surface-700">
+                        <label class="px-3 py-1.5 text-[10px] font-bold text-surface-400 uppercase tracking-widest bg-surface-800 border-b border-surface-700 shrink-0">CSS</label>
+                        <textarea id="hicEditorCSS" class="flex-1 w-full bg-surface-900 p-3 text-xs font-mono text-blue-300 outline-none resize-none min-h-0" spellcheck="false" placeholder=".class { color: red; }"></textarea>
+                    </div>
+                    <div class="flex flex-col flex-1 min-h-0 border-t border-surface-700">
+                        <label class="px-3 py-1.5 text-[10px] font-bold text-surface-400 uppercase tracking-widest bg-surface-800 border-b border-surface-700 shrink-0">JavaScript <span class="text-surface-600">(onFrame — deterministic, no rAF)</span></label>
+                        <textarea id="hicEditorJS" class="flex-1 w-full bg-surface-900 p-3 text-xs font-mono text-yellow-300 outline-none resize-none min-h-0" spellcheck="false" placeholder="function onFrame(time) { /* time in ms */ }"></textarea>
+                    </div>
+                </div>
+                <!-- Live preview -->
+                <div class="flex flex-col w-full sm:w-1/2 min-h-0">
+                    <label class="px-3 py-1.5 text-[10px] font-bold text-surface-400 uppercase tracking-widest bg-surface-800 border-b border-surface-700 shrink-0 flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> Live Preview · 800×450 design space · plays exactly like the canvas render
+                    </label>
+                    <div id="hicEditorPreviewWrap" class="flex-1 bg-surface-950 p-3 min-h-0 flex items-center justify-center overflow-hidden relative">
+                        <div id="hicEditorPreviewScaler" class="relative">
+                            <div id="hicEditorSandbox" class="absolute inset-0 overflow-hidden"></div>
+                        </div>
+                    </div>
+                    <!-- Time transport -->
+                    <div class="flex items-center gap-3 px-3 py-2 bg-surface-800 border-t border-surface-700 shrink-0">
+                        <button id="hicEditorPlayBtn" onclick="_hicEditorTogglePlay()" class="p-1.5 bg-surface-700 hover:bg-surface-600 rounded text-surface-200 transition-colors" title="Play / Pause (Space)">
+                            <i data-lucide="play" class="w-3.5 h-3.5"></i>
+                        </button>
+                        <button onclick="_hicEditorSeek(0)" class="p-1.5 bg-surface-700 hover:bg-surface-600 rounded text-surface-200 transition-colors" title="Back to start">
+                            <i data-lucide="skip-back" class="w-3.5 h-3.5"></i>
+                        </button>
+                        <input id="hicEditorTime" type="range" min="0" max="5000" step="10" value="0" class="flex-1 accent-violet-500" oninput="_hicEditorSeek(Number(this.value))">
+                        <span id="hicEditorTimeLabel" class="text-[11px] font-mono text-surface-300 w-24 text-right">t=0ms / 5000</span>
+                        <button onclick="_hicEditorSetDuration()" class="px-2 py-1 text-[10px] font-bold bg-surface-700 hover:bg-surface-600 rounded text-surface-300 transition-colors" title="Match scrubber max to the clip's duration">Fit</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Export Overlay -->
     <div id="exportOverlay" class="fixed inset-0 bg-surface-950/80 backdrop-blur-sm z-[100] hidden flex-col items-center overflow-y-auto p-4 py-6 transition-all duration-300">
         
@@ -25247,10 +25307,216 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             setTimeout(function() { drawCanvas(); }, 120);
         };
 
-        // ── Open HIC Code Editor (placeholder) ────────────────────────────────
+        // ── HIC Code Editor Modal (Phase E1) ─────────────────────────────────
+        // Mirrors htmlEditorModal (WAAPI html clips) but reproduces the REAL HIC
+        // render mechanics: 800×450 sandbox div + compile-once onFrame(time) driven
+        // by a rAF clock — so what you see here is what renders on the canvas.
+        let _hicEditor = null;
+
         window.openHicEditor = function(clipId) {
-            console.log('[HIC] Open editor for', clipId, '- Phase 2.3 will add CodeMirror modal');
+            const clip = State.clips.find(c => c.id === clipId);
+            if (!clip || clip.type !== 'hic') return;
+            _hicEditor = {
+                clipId: clipId,
+                original: { html: clip.html || '', css: clip.css || '', js: clip.js || '' },
+                dirty: false,
+                playing: false,
+                rafId: 0,
+                baseTime: 0,
+                baseWall: 0,
+                t: 0,
+                onFrame: null,
+                handlers: []
+            };
+            const modal = document.getElementById('hicEditorModal');
+            const htmlTA = document.getElementById('hicEditorHTML');
+            const cssTA = document.getElementById('hicEditorCSS');
+            const jsTA = document.getElementById('hicEditorJS');
+            document.getElementById('hicEditorClipName').textContent = clip.title || 'HTML in Canvas Clip';
+            htmlTA.value = clip.html || '';
+            cssTA.value = clip.css || '';
+            jsTA.value = clip.js || '';
+            // Show modal
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            if (window.lucide) lucide.createIcons();
+            // Build sandbox + start preview
+            _updateHicEditorPreview();
+            _updateHicEditorDuration();
+            _hicEditorSeek(0);
+            // Live preview on input
+            const liveUpdate = () => {
+                _updateHicEditorDirty();
+                _updateHicEditorPreview();
+            };
+            const bind = (el, ev) => { el.addEventListener(ev, liveUpdate); _hicEditor.handlers.push([el, ev, liveUpdate]); };
+            bind(htmlTA, 'input'); bind(cssTA, 'input'); bind(jsTA, 'input');
+            // Esc = cancel, Space = play/pause (when not typing in a textarea)
+            const onKey = (e) => {
+                if (e.key === 'Escape') { e.preventDefault(); closeHicEditor(false); }
+                else if (e.key === ' ' && !['TEXTAREA', 'INPUT'].includes(document.activeElement.tagName)) { e.preventDefault(); _hicEditorTogglePlay(); }
+            };
+            document.addEventListener('keydown', onKey);
+            _hicEditor.handlers.push([document, 'keydown', onKey]);
         };
+
+        window.closeHicEditor = function(apply) {
+            const ed = _hicEditor;
+            if (!ed) return;
+            const modal = document.getElementById('hicEditorModal');
+            const htmlTA = document.getElementById('hicEditorHTML');
+            const cssTA = document.getElementById('hicEditorCSS');
+            const jsTA = document.getElementById('hicEditorJS');
+            if (!apply && ed.dirty) {
+                // Unsaved changes — confirm before discarding
+                if (!confirm('You have unsaved changes. Discard them?')) return;
+            }
+            // Tear down listeners + animation clock
+            ed.handlers.forEach(([el, ev, fn]) => el.removeEventListener(ev, fn));
+            if (ed.rafId) cancelAnimationFrame(ed.rafId);
+            if (apply) {
+                const clip = State.clips.find(c => c.id === ed.clipId);
+                if (clip) {
+                    clip.html = htmlTA.value;
+                    clip.css = cssTA.value;
+                    clip.js = jsTA.value;
+                    clip._hicSig = '';   // force drawCanvas to rebuild renderer + recompile onFrame
+                    updateSidebarPanel();
+                    renderClips();
+                    drawCanvas();
+                    // Delayed redraw picks up the async SVG render
+                    setTimeout(function() { drawCanvas(); }, 120);
+                }
+            }
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            // Remove the sandbox-scoped <style> so preset selectors (span{...}
+            // etc.) can't bleed into app UI while the modal is hidden
+            const _hStyle = document.getElementById('hicEditorPreviewStyle');
+            if (_hStyle) _hStyle.remove();
+            _hicEditor = null;
+        };
+
+        window._updateHicEditorDirty = function() {
+            if (!_hicEditor) return;
+            const htmlTA = document.getElementById('hicEditorHTML');
+            const cssTA = document.getElementById('hicEditorCSS');
+            const jsTA = document.getElementById('hicEditorJS');
+            const o = _hicEditor.original;
+            const dirty = htmlTA.value !== o.html || cssTA.value !== o.css || jsTA.value !== o.js;
+            _hicEditor.dirty = dirty;
+            document.getElementById('hicEditorDirtyBadge').classList.toggle('hidden', !dirty);
+        };
+
+        // Rebuild sandbox + recompile onFrame when pane content changes
+        window._updateHicEditorPreview = function() {
+            if (!_hicEditor) return;
+            const sb = document.getElementById('hicEditorSandbox');
+            if (!sb) return;
+            const ed = _hicEditor;
+            // Compile JS exactly like the canvas render pipeline does:
+            // user code + return onFrame, called with time in ms.
+            ed.onFrame = null;
+            const jsSrc = document.getElementById('hicEditorJS').value || '';
+            if (jsSrc) {
+                try { ed.onFrame = new Function('time', jsSrc + '\n;return typeof onFrame === "function" ? onFrame : null;')(); }
+                catch(e) { console.error('[HIC Editor] JS error:', e); }
+            }
+            // Rebuild sandbox DOM when HTML changed (preserving live state is
+            // meaningless across edits — animations are seek-driven anyway)
+            sb.innerHTML = document.getElementById('hicEditorHTML').value || '';
+            // Inject CSS once, scoped to the sandbox, exactly like the SVG
+            // foreignObject pipeline does (same <style> blob inside the stage)
+            let style = document.getElementById('hicEditorPreviewStyle');
+            if (!style) {
+                style = document.createElement('style');
+                style.id = 'hicEditorPreviewStyle';
+                document.head.appendChild(style);
+            }
+            style.textContent = document.getElementById('hicEditorCSS').value || '';
+        };
+
+        // Seek the sandbox to an exact time (ms) — the core of HIC's
+        // deterministic model: same t in, same frame out. Uses the same scoped
+        // getElementById as the canvas render so multi-clip ID collisions
+        // cannot leak into the editor.
+        window._hicEditorSeek = function(t) {
+            if (!_hicEditor) return;
+            const ed = _hicEditor;
+            ed.t = t;
+            ed.baseTime = t;
+            ed.baseWall = performance.now();
+            const sb = document.getElementById('hicEditorSandbox');
+            if (!sb) return;
+            const _origGbi = document.getElementById;
+            document.getElementById = function(id) {
+                return sb.querySelector('[id="' + id + '"]') || _origGbi.call(document, id);
+            };
+            try { if (ed.onFrame) ed.onFrame(t); } catch(e) { /* user-code errors logged on compile */ }
+            document.getElementById = _origGbi;
+            const slider = document.getElementById('hicEditorTime');
+            if (document.activeElement !== slider) slider.value = String(Math.min(t, Number(slider.max) || 0));
+            document.getElementById('hicEditorTimeLabel').textContent = 't=' + Math.round(t) + 'ms / ' + slider.max;
+        };
+
+        // rAF clock: advances t and seeks — the same frame model the canvas
+        // preview plays at (onFrame driven by a monotonic wall clock)
+        function _hicEditorTick() {
+            if (!_hicEditor || !_hicEditor.playing) return;
+            const max = Number(document.getElementById('hicEditorTime').max) || 5000;
+            let t = _hicEditor.baseTime + (performance.now() - _hicEditor.baseWall);
+            if (t >= max) { t = 0; _hicEditor.baseTime = 0; _hicEditor.baseWall = performance.now(); }
+            _hicEditorSeek(t);
+            _hicEditor.rafId = requestAnimationFrame(_hicEditorTick);
+        }
+
+        window._hicEditorTogglePlay = function() {
+            if (!_hicEditor) return;
+            const ed = _hicEditor;
+            const btn = document.getElementById('hicEditorPlayBtn');
+            if (!ed.playing) {
+                ed.playing = true;
+                ed.baseTime = ed.t;
+                ed.baseWall = performance.now();
+                btn.innerHTML = '<i data-lucide="pause" class="w-3.5 h-3.5"></i>';
+                if (window.lucide) lucide.createIcons();
+                _hicEditor.rafId = requestAnimationFrame(_hicEditorTick);
+            } else {
+                ed.playing = false;
+                if (ed.rafId) cancelAnimationFrame(ed.rafId);
+                btn.innerHTML = '<i data-lucide="play" class="w-3.5 h-3.5"></i>';
+                if (window.lucide) lucide.createIcons();
+            }
+        };
+
+        window._hicEditorSetDuration = function() {
+            if (!_hicEditor) return;
+            const clip = State.clips.find(c => c.id === _hicEditor.clipId);
+            const slider = document.getElementById('hicEditorTime');
+            const dur = Math.max(1, Math.round(((clip && clip.duration) || 5) * 1000));
+            slider.max = String(dur);
+            document.getElementById('hicEditorTimeLabel').textContent = 't=' + Math.round(_hicEditor.t) + 'ms / ' + dur;
+        };
+
+        function _updateHicEditorDuration() {
+            if (!_hicEditor) return;
+            const clip = State.clips.find(c => c.id === _hicEditor.clipId);
+            const dur = Math.max(1, Math.round(((clip && clip.duration) || 5) * 1000));
+            const slider = document.getElementById('hicEditorTime');
+            slider.max = String(dur);
+            slider.value = '0';
+            document.getElementById('hicEditorTimeLabel').textContent = 't=0ms / ' + dur;
+            // Fit the 800×450 stage into the preview panel (same CSS-scale trick
+            // the HTML editor modal uses for its iframe)
+            requestAnimationFrame(() => {
+                const wrap = document.getElementById('hicEditorPreviewWrap');
+                const scaler = document.getElementById('hicEditorPreviewScaler');
+                if (!wrap || !scaler) return;
+                const scale = Math.min((wrap.clientWidth - 24) / 800, (wrap.clientHeight - 24) / 450);
+                scaler.style.width = Math.floor(800 * scale) + 'px';
+                scaler.style.height = Math.floor(450 * scale) + 'px';
+            });
+        }
 
         mediaInput.addEventListener('change', async (e) => {
             const files = Array.from(e.target.files);
