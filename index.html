@@ -187,6 +187,7 @@
                 </div>
                 <div class="flex items-center gap-2">
                     <span id="hicEditorDirtyBadge" class="hidden px-2 py-0.5 text-[10px] font-bold bg-amber-900 text-amber-300 rounded">UNSAVED</span>
+                    <button onclick="_formatHicEditorPanes()" class="px-2 py-1 text-[10px] font-bold bg-surface-700 hover:bg-surface-600 rounded text-surface-300 transition-colors" title="Pretty-print all three panes">Format</button>
                     <button onclick="closeHicEditor(false)" class="px-3 py-1.5 text-xs font-bold bg-surface-700 hover:bg-surface-600 rounded text-surface-300 transition-colors">Cancel</button>
                     <button onclick="closeHicEditor(true)" class="px-3 py-1.5 text-xs font-bold bg-violet-600 hover:bg-violet-500 rounded text-white transition-colors">Apply</button>
                 </div>
@@ -25307,6 +25308,119 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             setTimeout(function() { drawCanvas(); }, 120);
         };
 
+        // ── HIC Code Editor: built-in formatters (no third-party libs) ────────
+        // The presets are stored minified for compact project files; these
+        // pretty-print each pane for editing. Whitespace inserted between tags
+        // is render-safe: the canvas pipeline collapses inter-tag whitespace
+        // (flex containers ignore whitespace-only text nodes).
+        function _hicFormatHtml(src) {
+            const VOID_TAGS = ['area','base','br','col','embed','hr','img','input','link','meta','param','source','track','wbr'];
+            src = (src || '').replace(/\r\n?/g, '\n').replace(/>\s+</g, '><').trim();
+            if (!src) return '';
+            const tokens = src.replace(/></g, '>@<').split('@');  // split BETWEEN adjacent tags, not inside them
+            let depth = 0;
+            const pad = () => '  '.repeat(Math.max(0, depth));
+            const lines = [];
+            tokens.forEach(raw => {
+                const t = raw.trim();
+                if (!t) return;
+                if (t.startsWith('<!--') || t.startsWith('<!')) { lines.push(pad() + t); return; }
+                if (t.startsWith('</')) { depth = Math.max(0, depth - 1); lines.push(pad() + t); return; }
+                if (t.startsWith('<')) {
+                    lines.push(pad() + t);
+                    // Net depth delta across the WHOLE token — handles compound
+                    // tokens like <h1>text<br>more</h1> or <div>x</div> (zero
+                    // delta) so indentation never drifts
+                    const opens = (t.match(/<([a-zA-Z][^\s/>]*)/g) || [])
+                        .filter(m => !VOID_TAGS.includes(m.slice(1).toLowerCase())).length;
+                    const closes = (t.match(/<\//g) || []).length;
+                    const selfClosed = (t.match(/\/>/g) || []).length;
+                    depth = Math.max(0, depth + opens - closes - selfClosed);
+                } else {
+                    lines.push(pad() + t);            // text run stays on its own line
+                }
+            });
+            return lines.join('\n');
+        }
+
+        function _hicFormatCss(src) {
+            let s = (src || '').replace(/\r\n?/g, '\n').trim();
+            s = s.replace(/\s*;\s*/g, ';\n').replace(/\s*\{\s*/g, ' {\n').replace(/\s*\}\s*/g, '\n}\n');
+            let depth = 0;
+            const out = [];
+            s.split('\n').forEach(rawLine => {
+                const line = rawLine.trim();
+                if (!line) return;
+                if (line.startsWith('}')) depth = Math.max(0, depth - 1);
+                out.push('  '.repeat(depth) + line);
+                const opens = (line.match(/\{/g) || []).length;
+                const closes = (line.match(/\}/g) || []).length;
+                depth += opens - closes;
+                if (depth < 0) depth = 0;
+            });
+            return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+        }
+
+        function _hicFormatJs(src) {
+            let s = (src || '').replace(/\r\n?/g, '\n').trim();
+            if (!s) return '';
+            let out = '';
+            let depth = 0;      // brace nesting -> indentation
+            let paren = 0;      // ( ) [ ] nesting -> suppresses ; and , newlines
+            let i = 0;
+            let needNL = false;
+            const NL = () => { needNL = true; };
+            const flush = () => { if (needNL) { out += '\n' + '  '.repeat(Math.max(0, depth)); needNL = false; } };
+            while (i < s.length) {
+                const c = s[i], n = s[i + 1];
+                if (c === '\n') { NL(); i++; continue; }
+                if (c === ' ' || c === '\t') { if (!needNL && out && !/[\s]$/.test(out)) out += ' '; i++; continue; }
+                flush();
+                if (c === '/' && n === '/') {
+                    let j = s.indexOf('\n', i); if (j < 0) j = s.length;
+                    out += s.slice(i, j).replace(/[ \t]+$/, ''); i = j; continue;
+                }
+                if (c === '/' && n === '*') {
+                    let j = s.indexOf('*/', i); j = j < 0 ? s.length : j + 2;
+                    out += s.slice(i, j); i = j; continue;
+                }
+                if (c === "'" || c === '"' || c === '`') {
+                    out += c; i++;
+                    while (i < s.length) {
+                        out += s[i];
+                        if (s[i] === '\\') { out += s[i + 1] || ''; i += 2; continue; }
+                        if (s[i] === c) { i++; break; }
+                        i++;
+                    }
+                    continue;
+                }
+                if (c === '{') { out += ' {'; depth++; NL(); i++; continue; }
+                if (c === '}') {
+                    depth = Math.max(0, depth - 1); NL(); flush(); out += '}'; NL();
+                    i++; continue;
+                }
+                if (c === '(' || c === '[') { out += c; paren++; i++; continue; }
+                if (c === ')' || c === ']') { out += c; paren = Math.max(0, paren - 1); i++; continue; }
+                if (c === ';') { out += ';'; if (paren === 0) NL(); i++; continue; }
+                if (c === ',') { out += ','; if (paren === 0) NL(); i++; continue; }
+                out += c; i++;
+            }
+            return out.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+        }
+
+        // Format all three panes (marks dirty — Apply bakes the pretty version in)
+        window._formatHicEditorPanes = function() {
+            if (!_hicEditor) return;
+            const h = document.getElementById('hicEditorHTML');
+            const c = document.getElementById('hicEditorCSS');
+            const j = document.getElementById('hicEditorJS');
+            h.value = _hicFormatHtml(h.value);
+            c.value = _hicFormatCss(c.value);
+            j.value = _hicFormatJs(j.value);
+            _updateHicEditorDirty();
+            _updateHicEditorPreview();
+        };
+
         // ── HIC Code Editor Modal (Phase E1) ─────────────────────────────────
         // Mirrors htmlEditorModal (WAAPI html clips) but reproduces the REAL HIC
         // render mechanics: 800×450 sandbox div + compile-once onFrame(time) driven
@@ -25332,9 +25446,16 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             const cssTA = document.getElementById('hicEditorCSS');
             const jsTA = document.getElementById('hicEditorJS');
             document.getElementById('hicEditorClipName').textContent = clip.title || 'HTML in Canvas Clip';
-            htmlTA.value = clip.html || '';
-            cssTA.value = clip.css || '';
-            jsTA.value = clip.js || '';
+            // Pretty-print for editing; `original` snapshots the FORMATTED text
+            // so reopening a saved clip doesn't false-flag the dirty badge
+            // (Apply bakes the formatted version back into the clip)
+            const fHtml = _hicFormatHtml(clip.html || '');
+            const fCss = _hicFormatCss(clip.css || '');
+            const fJs = _hicFormatJs(clip.js || '');
+            _hicEditor.original = { html: fHtml, css: fCss, js: fJs };
+            htmlTA.value = fHtml;
+            cssTA.value = fCss;
+            jsTA.value = fJs;
             // Show modal
             modal.classList.remove('hidden');
             modal.classList.add('flex');
