@@ -218,11 +218,18 @@ class Renderer {
               etc. after the preset's own CSS and collapse its typography. */
         this.sandbox.innerHTML = html;
         var _usesTw = /class="[^"]*\b(bg-|text-|flex|grid-|p[xytblr]?-|m[xytblr]?-|rounded|shadow|font-|border|min-h-|max-w-|w-|h-|gap-|mt-|mb-|tracking-|from-|to-)/.test(html) || html.indexOf('tailwindcss') !== -1;
-        if (window.tailwind && _usesTw) {
-            await new Promise(r => setTimeout(r, 140));
-            const twStyle = [...document.querySelectorAll('style')]
-                .filter(s => (s.textContent || '').indexOf('--tw-') !== -1)
-                .pop();
+        if (_usesTw) {
+            /* v4 browser build compiles async on MutationObserver (no window global).
+               Poll for its managed <style> (identifiable by --tw- markers), then
+               capture it for the SVG. Gated on _usesTw so the preflight reset it
+               emits for every DOM change never pollutes non-Tailwind presets. */
+            var twStyle = null;
+            for (var _twWait = 0; _twWait < 20 && !twStyle; _twWait++) {
+                await new Promise(r => setTimeout(r, 50));
+                twStyle = [...document.querySelectorAll('head style')]
+                    .filter(s => (s.textContent || '').indexOf('--tw-') !== -1)
+                    .pop();
+            }
             if (twStyle) this.css = (css || '') + '\n' + twStyle.textContent;
         }
         /* 4. Embed remote stylesheets (Google Fonts, KaTeX CSS) + their fonts as data URIs.
@@ -267,14 +274,20 @@ class Renderer {
             });
         }
         html = doc.querySelector('div').innerHTML;
-        /* Tailwind CDN runtime loaded once globally; classes extracted in setClip */
+        /* Tailwind runtime loaded once globally from the locally installed
+           @tailwindcss/browser (same 4.3.3 version as the app's PostCSS toolchain) —
+           no CDN, works offline, and no "should not be used in production" warning.
+           v4 sets no window global; it appends a managed <style> to <head> and
+           compiles on MutationObserver — capture happens in setClip. */
         if (html.indexOf('tailwindcss') !== -1 || /class="[^"]*\b(bg-|text-|flex|grid-|p[xytblr]?-|m[xytblr]?-|rounded|shadow|font-|border)/.test(html)) {
-            if (!window.tailwind) {
+            if (!document.getElementById('tw-browser-runtime')) {
                 await new Promise(res => {
                     const s = document.createElement('script');
-                    s.src = 'https://cdn.tailwindcss.com';
+                    s.id = 'tw-browser-runtime';
+                    s.src = '/vendor/tailwind-browser/index.global.js';
                     s.onload = res; s.onerror = res;
                     document.head.appendChild(s);
+                    setTimeout(res, 3000); /* don't hang offline */
                 });
             }
         }
