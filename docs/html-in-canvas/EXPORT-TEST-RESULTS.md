@@ -880,3 +880,69 @@ correct as the preset animates.
 
 Not yet verified by user: real mouse-drag across tracks (code path
 simulated), export appearance (same code path — low risk).
+
+---
+
+# Hardening Sweep: Clip-Type List Consolidation (post HIC bug-fixes)
+
+**Date:** post c9223ff · Goal: eliminate the copy-pasted clip-type lists that caused
+the HIC track-drag bug class ("one list had 'hic', its twin didn't").
+
+## What shipped
+
+**1. Single source of truth** (top of main script, after PALETTES):
+- `VISUAL_CLIP_TYPES = ['video','image','text','scene','shape','html','hic']`
+- `AUDIO_CLIP_TYPES = ['audio']`
+- `isVisualTimelineClip(clipOrType)` / `isAudioTimelineClip(clipOrType)` — accept
+  clip object or type string.
+
+**2. Converted 7 call sites** that had drifted or could drift:
+| Site | Before | Why it mattered |
+|------|--------|-----------------|
+| ~5590 active-visual-clips filter (canvas mouse hit-test) | inline 7-type list (already had hic) | consistency |
+| ~8869 effects change → needsCanvasRedraw | inline 7-type list | consistency |
+| ~11780 Opacity & Blending card | inline list (already had hic) | consistency |
+| ~11935 Transform card | inline list | consistency |
+| ~27943 canvas mousedown hit-test | inline list missing scene | **fixed: scene clips now canvas-selectable** |
+| ~28976 single-select drag target validation | inline 7-type list | consistency |
+| ~29034 multi-select drag mcIsVisual | **the original bug site** (had been patched) | now drift-proof |
+
+**3. Two real bugs found beyond the lists:**
+- **Trim-left `isProcedural`** (line ~29107) was
+  `text||shape||image||scene` — html/hic clips were treated as *media*:
+  left-trim hit the `newSourceOffset < 0` clamp and refused to stretch.
+  Now: `isVisualTimelineClip(clip) && clip.type !== 'video'` (identical
+  treatment for the original four, adds html/hic).
+- **html/hic factories lacked `maxDuration: 3600`** — right-trim cap
+  `(clip.maxDuration || clip.duration)` froze them at their saved length
+  (can't stretch at all). Fixed in `addHtmlClipToTimeline` +
+  `addHicClipToTimeline`, **and** backfilled in `restoreClip` for legacy
+  saved projects.
+
+**4. Intentionally NOT converted (genuinely media-specific):**
+- 11827 Stroke card (text/shape/image/video/html/hic — shape-specific stroke UI)
+- 13224 SFX attach (text/shape/image only — feature scope)
+- 11761 Extrude 3D card (text/shape only — feature scope)
+- 13206/26825/30590 speed-badge & media handling (video/audio/image only)
+
+**5. Pre-existing latent bug noted, not fixed (out of scope):**
+`createClipBase('html')` at line 9074 references a function that is never
+defined in the codebase — the automation-API `Clip.add` path would throw if
+exercised. Flagged for a future fix.
+
+## Verification (live preview, project: 12 clips / 6 HIC)
+
+| Check | Result |
+|-------|--------|
+| Main script parses clean | ✅ 2,195,908 chars |
+| Helper classification: hic/html/text/video = true, audio = false | ✅ |
+| All 6 existing HIC clips + legacy backfill (maxDuration present) | ✅ 6/6 |
+| Drag path: mcIsVisual=true → video-track lookup finds track (idx 4), up/down targets resolve | ✅ |
+| Trim-right: HIC maxAllowedDuration now 3600s (was capped at 5s) | ✅ |
+| Trim-left: image stays procedural (unchanged), html/hic now procedural | ✅ |
+| App boots clean, canvas renders, no console errors | ✅ |
+| 9 helper call sites live in served source | ✅ |
+
+**Net effect:** HIC and HTML clips can now be freely dragged between tracks,
+left-trimmed, and right-trim stretched — same as text/shape/image. Future clip
+types only need one list updated.

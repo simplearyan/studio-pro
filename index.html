@@ -1620,6 +1620,23 @@
             { bg: '#e5e7eb', border: '#9ca3af', wave: '#4b5563', text: '#1f2937' }  // Vivid Gray
         ];
 
+        // --- Shared clip-type classification (single source of truth) ---
+        // These lists were copy-pasted across ~10 call sites and drifted apart
+        // repeatedly (the HIC track-drag bug was exactly this: one list had
+        // 'hic', its twin didn't). Always consume the helpers — never inline a
+        // new visual-type list. Types render into video tracks; audio types go
+        // to audio tracks; every listed visual type draws on the main canvas.
+        const VISUAL_CLIP_TYPES = ['video', 'image', 'text', 'scene', 'shape', 'html', 'hic'];
+        const AUDIO_CLIP_TYPES = ['audio'];
+        function isVisualTimelineClip(clipOrType) {
+            const t = typeof clipOrType === 'string' ? clipOrType : (clipOrType && clipOrType.type);
+            return VISUAL_CLIP_TYPES.includes(t);
+        }
+        function isAudioTimelineClip(clipOrType) {
+            const t = typeof clipOrType === 'string' ? clipOrType : (clipOrType && clipOrType.type);
+            return AUDIO_CLIP_TYPES.includes(t);
+        }
+
         // Clamp any colorIndex into the PALETTES range. Legacy or foreign project
         // files can carry an out-of-range/NaN index; an unguarded PALETTES[x]
         // access (renderClips, track headers, timeline rows) then hits undefined
@@ -5570,8 +5587,7 @@
                 const track = State.tracks.find(t => t.id === c.trackId);
                 return !c.hidden &&
                     (track && !track.hidden) &&
-                    (c.type === 'video' || c.type === 'image' || c.type === 'text' || c.type === 'scene' || c.type === 'shape' || c.type === 'html' || c.type === 'hic') &&
-                    (c.sceneId === State.activeSceneId || (!c.sceneId && !State.activeSceneId)) &&
+                    isVisualTimelineClip(c) &&
                     State.currentTime >= c.start &&
                     State.currentTime < c.start + c.duration;
             });
@@ -8850,7 +8866,7 @@
                         clip.effects[effectName] = parseFloat(value);
                     }
                     
-                    if (clip.type === 'image' || clip.type === 'video' || clip.type === 'text' || clip.type === 'shape' || clip.type === 'scene' || clip.type === 'html' || clip.type === 'hic') needsCanvasRedraw = true;
+                    if (isVisualTimelineClip(clip)) needsCanvasRedraw = true;
                     if (clip.type === 'text' || clip.type === 'shape') needsClipsRedraw = true;
                     if (clip.audioNodes) applyAudioEffects(clip);
 
@@ -11761,7 +11777,7 @@
                     `, { rightSlot: propSwitch('extrudeEnable', fx.extrudeEnable, `setClipEffect('${clip.id}', 'extrudeEnable', this.checked); updateSidebarPanel();`), bodyClass: !fx.extrudeEnable ? 'opacity-50 pointer-events-none' : '' }) : '';
 
             const blendOpacity = fx.opacity !== undefined ? fx.opacity : 100;
-            const blendingHTML = (clip.type === 'image' || clip.type === 'video' || clip.type === 'text' || clip.type === 'shape' || clip.type === 'scene' || clip.type === 'html' || clip.type === 'hic') ? propCard('cardOpacity', 'layers', 'Opacity & Blending', `
+            const blendingHTML = isVisualTimelineClip(clip) ? propCard('cardOpacity', 'layers', 'Opacity & Blending', `
                         ${propRow('Opacity', propSlider('opacity', blendOpacity, 0, 100, 1, "this.value + '%'"), blendOpacity + '%', { reset: propReset('opacity', blendOpacity, 100) })}
                         <div>
                             <label for="${clip.id}_blendMode" class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1">Blend Mode</label>
@@ -11916,7 +11932,7 @@
             const rotateVal = fx.rotate !== undefined ? fx.rotate : 0;
             const radiusVal = fx.borderRadius !== undefined ? fx.borderRadius : 0;
 
-            const transformHTML = (clip.type === 'image' || clip.type === 'video' || clip.type === 'text' || clip.type === 'shape' || clip.type === 'scene' || clip.type === 'html' || clip.type === 'hic') ? propCard('cardTransform', 'maximize', 'Transform', `
+            const transformHTML = isVisualTimelineClip(clip) ? propCard('cardTransform', 'maximize', 'Transform', `
                         ${propRow('Scale', propSlider('scale', scaleVal, 0, 3, 0.05, "Number(this.value).toFixed(2) + 'x'"), Number(scaleVal).toFixed(2) + 'x', { reset: propReset('scale', scaleVal, 1) })}
                         ${propRow('Rotate', propSlider('rotate', rotateVal, 0, 360, 1, "this.value + '°'"), rotateVal + '°', { reset: propReset('rotate', rotateVal, 0) })}
                         ${((clip.type === 'shape' && fx.shapeType === 'rect') || (clip.type !== 'text' && clip.type !== 'shape')) ? propRow('Border Radius', propSlider('borderRadius', radiusVal, 0, 200, 1, "this.value + 'px'"), radiusVal + 'px', { reset: propReset('borderRadius', radiusVal, 0) }) : ''}
@@ -24962,6 +24978,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 title: 'HTML Clip',
                 start: State.currentTime,
                 duration: 5,
+                maxDuration: 3600,
                 html: defaultHtml,
                 css: defaultCss,
                 js: '',
@@ -25174,6 +25191,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 title: preset.name,
                 start: State.currentTime,
                 duration: preset.dur || 5,
+                maxDuration: 3600,
                 html: preset.html,
                 css: preset.css,
                 js: preset.js,
@@ -27924,7 +27942,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             canvasAspectWrapper.addEventListener('mousedown', (e) => {
                 const pos = getCanvasMousePos(e);                let activeVisualClips = State.clips.filter(c =>
                     !c.hidden &&
-                    (c.type === 'video' || c.type === 'image' || c.type === 'text' || c.type === 'shape' || c.type === 'html' || c.type === 'hic') &&
+                    isVisualTimelineClip(c) &&
                     State.currentTime >= c.start && State.currentTime < c.start + c.duration
                 );
 
@@ -28957,7 +28975,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 if (hoveredTrackId && hoveredTrackId !== clip.trackId) {
                     const tgtTrack = State.tracks.find(t=>t.id===hoveredTrackId);
                     if (tgtTrack) {
-                        const isVisual = clip.type === 'video' || clip.type === 'image' || clip.type === 'text' || clip.type === 'scene' || clip.type === 'shape' || clip.type === 'html' || clip.type === 'hic';
+                        const isVisual = isVisualTimelineClip(clip);
                         const isTgtVisual = tgtTrack.type === 'video';
                         const isAudio = clip.type === 'audio';
                         const isTgtAudio = tgtTrack.type === 'audio';
@@ -29015,7 +29033,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                             mcEl.style.transition = 'none'; // Ensure instant visual feedback
                             
                             if (typedDelta !== 0) {
-                                const mcIsVisual = mcClip.type === 'video' || mcClip.type === 'image' || mcClip.type === 'text' || mcClip.type === 'shape' || mcClip.type === 'scene' || mcClip.type === 'html' || mcClip.type === 'hic';
+                                const mcIsVisual = isVisualTimelineClip(mcClip);
                                 const mcTypedTracks = mcIsVisual ? State.tracks.filter(t => t.type === 'video') : State.tracks.filter(t => t.type === 'audio');
                                 const mcInitialIndex = mcTypedTracks.findIndex(t => t.id === mc.trackId);
                                 
@@ -29088,7 +29106,11 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 // into — sourceOffset stays 0 and they stretch freely from the front (up to
                 // maxDuration). Only media clips (video/audio) are bounded by the start of
                 // their source file, so the newSourceOffset clamp applies to them only.
-                const isProcedural = clip.type === 'text' || clip.type === 'shape' || clip.type === 'image' || clip.type === 'scene';
+                // Procedural = no finite source window: text/scene/shape (drawn content),
+                // image (still frame), html/hic (live HTML render). sourceOffset stays 0
+                // and the left edge stretches freely up to maxDuration. Only media clips
+                // (video/audio) are bounded by their source file's start.
+                const isProcedural = isVisualTimelineClip(clip) && clip.type !== 'video';
 
                 if (isProcedural) {
                     if (newStart < 0) {
@@ -30532,6 +30554,13 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     delete clip._hicR;
                 }
                 delete clip._hicSig;
+            }
+            // Legacy projects saved before html/hic clips got maxDuration: backfill it
+            // so trim-right can stretch them like text/shape/image (which always had
+            // maxDuration: 3600). Without it the right-trim cap
+            // (clip.maxDuration || clip.duration) freezes the clip at its saved length.
+            if ((clip.type === 'html' || clip.type === 'hic') && clip.maxDuration === undefined) {
+                clip.maxDuration = 3600;
             }
             // URL-based media needs no re-import: rebuild the element from the
             // persisted source URL and keep the clip live. data: URLs (pasted
