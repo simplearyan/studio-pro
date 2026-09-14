@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>HTML-in-Canvas Renderer — SVG foreignObject Animation Engine</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧪</text></svg>">
-<meta name="description" content="Render HTML/CSS/JS animations to canvas using SVG foreignObject. Zero dependencies, full CSS support, 12 animated presets with live preview and WebM export.">
+<meta name="description" content="Render HTML/CSS/JS animations to canvas using SVG foreignObject. Zero dependencies, full CSS support, 16 animated presets with live preview and WebM export.">
 <meta name="keywords" content="html to canvas, svg foreignObject, animation renderer, css animations, webm export, motion graphics">
 <meta property="og:title" content="HTML-in-Canvas Renderer">
 <meta property="og:description" content="SVG foreignObject engine — render HTML/CSS/JS to canvas with full CSS support and zero dependencies.">
@@ -97,7 +97,7 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
 
 <div class="header">
     <h1>HTML-in-Canvas Renderer</h1>
-    <p>SVG foreignObject — zero dependencies, full CSS support, 12 animated presets with live preview & WebM export.</p>
+    <p>SVG foreignObject — zero dependencies, full CSS support, 16 animated presets (incl. LaTeX/MDX/Custom-Font/Tailwind) with live preview & WebM export.</p>
 </div>
 
 <div class="grid" id="presetGrid"></div>
@@ -174,8 +174,29 @@ class Renderer {
 
     async setClip(html, css, js) {
         this.css = css || '';
-        const processed = await this._preloadImages(html);
-        this.sandbox.innerHTML = processed;
+        this.sandbox.innerHTML = '<div style="width:800px;height:450px;"></div>';
+        /* 1. Load external scripts (KaTeX, marked, Tailwind CDN) in page context */
+        html = await this._loadExternalScripts(html);
+        /* 2. Inline external images as data URIs */
+        html = await this._preloadImages(html);
+        /* 3. Mount the html so the Tailwind Play CDN's MutationObserver sees the classes
+              and generates its utilities <style> — then capture that CSS for the SVG */
+        this.sandbox.innerHTML = html;
+        if (window.tailwind) {
+            await new Promise(r => setTimeout(r, 140));
+            const twStyle = [...document.querySelectorAll('style')]
+                .filter(s => (s.textContent || '').indexOf('--tw-') !== -1)
+                .pop();
+            if (twStyle) this.css = (css || '') + '\n' + twStyle.textContent;
+        }
+        /* 4. Embed remote stylesheets (Google Fonts, KaTeX CSS) + their fonts as data URIs.
+              SVG rasterization can't load external resources, so this is what makes them work. */
+        const processed = await this._embedAssets(html, this.css);
+        html = processed.html;
+        this.css = processed.css;
+        this.sandbox.innerHTML = html;
+        /* 5. Wait for fonts to be ready so first raster isn't fallback-font */
+        try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch(e) {}
         this._onFrame = null;
         if (js) {
             try {
@@ -187,9 +208,106 @@ class Renderer {
         this._ready = true;
     }
 
+    /* External <script src> / <link rel=stylesheet> inside preset HTML — hoist into <head>.
+       Scripts load SEQUENTIALLY (dynamically inserted scripts don't honor defer order,
+       and auto-render must never beat katex.min.js to the global scope). */
+    async _loadExternalScripts(html) {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString('<div>' + html + '</div>', 'text/html');
+        /* Stylesheets: left untouched — _embedAssets (next step in setClip) strips them from the
+           html and inlines their content + fonts as data URIs. Rewriting or hoisting them here
+           would lose the URL before the embed step can fetch it. */
+        /* Scripts: sequential chain, each waits for the previous */
+        const srcs = [...doc.querySelectorAll('script[src]')].map(s => { const v = s.getAttribute('src'); s.remove(); return v; }).filter(Boolean);
+        for (const src of srcs) {
+            if (src.indexOf('tailwind') !== -1) continue; /* CDN runtime handled separately */
+            if (document.querySelector('script[src="' + src + '"]')) continue;
+            await new Promise(res => {
+                const s = document.createElement('script');
+                s.src = src;
+                if (src.indexOf('jsdelivr') !== -1 || src.indexOf('crossorigin') !== -1) s.crossOrigin = 'anonymous';
+                s.onload = res; s.onerror = res;
+                document.head.appendChild(s);
+            });
+        }
+        html = doc.querySelector('div').innerHTML;
+        /* Tailwind CDN runtime loaded once globally; classes extracted in setClip */
+        if (html.indexOf('tailwindcss') !== -1 || /class="[^"]*\b(bg-|text-|flex|grid-|p[xytblr]?-|m[xytblr]?-|rounded|shadow|font-|border)/.test(html)) {
+            if (!window.tailwind) {
+                await new Promise(res => {
+                    const s = document.createElement('script');
+                    s.src = 'https://cdn.tailwindcss.com';
+                    s.onload = res; s.onerror = res;
+                    document.head.appendChild(s);
+                });
+            }
+        }
+        return html;
+    }
+
+    /* Fetch remote stylesheets (Google Fonts, KaTeX CDN, any https <link rel=stylesheet>)
+       + their font files, inline everything as @font-face / url data URIs. The SVG
+       rasterizer can't load external resources, so this is what makes web fonts work. */
+    async _embedAssets(html, css) {
+        const urls = [];
+        const linkRe = /<link[^>]*href=["'](https:\/\/fonts\.googleapis\.com[^"']*)["'][^>]*>/gi;
+        html = html.replace(linkRe, (_, url) => { urls.push(url.replace(/&amp;/g, '&')); return ''; });
+        /* Any other remote stylesheet (KaTeX CSS, Tailwind builds, etc.) */
+        const cdnLinkRe = /<link[^>]*rel=["']stylesheet["'][^>]*href=["'](https?:\/\/[^"']+)["'][^>]*>/gi;
+        const cdnLinkRe2 = /<link[^>]*href=["'](https?:\/\/[^"']+)["'][^>]*rel=["']stylesheet["'][^>]*>/gi;
+        html = html.replace(cdnLinkRe, (_, url) => { urls.push(url.replace(/&amp;/g, '&')); return ''; });
+        html = html.replace(cdnLinkRe2, (_, url) => { urls.push(url.replace(/&amp;/g, '&')); return ''; });
+        const importRe = /@import\s+(?:url\()?["']?(https:\/\/fonts\.googleapis\.com[^"')\s]*)["']?\)?\s*;/gi;
+        css = css.replace(importRe, (_, url) => { urls.push(url.replace(/&amp;/g, '&')); return ''; });
+        let fontCss = '';
+        for (const url of urls) {
+            if (_fontCssCache[url]) { fontCss += _fontCssCache[url] + '\n'; continue; }
+            try {
+                const res = await fetch(url);
+                if (!res.ok) continue;
+                let sheet = await res.text();
+                /* Collect every url(...) — absolute or relative (resolved against the sheet's base URL,
+                   e.g. KaTeX ships `url(fonts/KaTeX_AMS-Regular.woff2)`) */
+                const refs = [];
+                const urlRe = /url\(\s*['"]?([^'")]+?)['"]?\s*\)/g;
+                let mm;
+                while ((mm = urlRe.exec(sheet)) !== null) {
+                    const raw = mm[1];
+                    if (/^data:/i.test(raw)) continue;
+                    let abs = raw;
+                    if (!/^https?:\/\//i.test(raw)) {
+                        try { abs = new URL(raw, url).href; } catch(e) { continue; }
+                    }
+                    refs.push({ raw, abs });
+                }
+                /* Fetch unique absolute URLs once, then replace each ORIGINAL relative/absolute
+                   occurrence in the sheet — split() on the absolute URL would miss relative paths */
+                const uniqAbs = Array.from(new Set(refs.map(r => r.abs)));
+                const dataMap = {};
+                await Promise.all(uniqAbs.map(async abs => {
+                    try {
+                        const r = await fetch(abs);
+                        const blob = await r.blob();
+                        dataMap[abs] = await new Promise(resolve => {
+                            const reader = new FileReader();
+                            reader.onloadend = () => resolve(reader.result);
+                            reader.readAsDataURL(blob);
+                        });
+                    } catch(e) {}
+                }));
+                refs.forEach(ref => { const d = dataMap[ref.abs]; if (d) sheet = sheet.split(ref.raw).join(d); });
+                _fontCssCache[url] = sheet;
+                fontCss += sheet + '\n';
+            } catch(e) { console.warn('[Renderer] Font fetch failed:', url); }
+        }
+        return { html, css: fontCss + '\n' + css };
+    }
+
     async _preloadImages(htmlString) {
         const parser = new DOMParser();
-        const doc = parser.parseFromString(htmlString, 'text/html');
+        /* Wrap in a div: a bare parse hoists leading <link> into <head>, and body.innerHTML
+           would silently drop it before _embedAssets ever sees the URL */
+        const doc = parser.parseFromString('<div>' + htmlString + '</div>', 'text/html');
         const images = doc.querySelectorAll('img');
         const promises = Array.from(images).map(async (img) => {
             const src = img.getAttribute('src');
@@ -209,7 +327,7 @@ class Renderer {
             }
         });
         await Promise.allSettled(promises);
-        return doc.body.innerHTML;
+        return doc.querySelector('div').innerHTML;
     }
 
     renderFrame(timeMs) {
@@ -245,9 +363,13 @@ class Renderer {
     drawTo(targetCtx, x, y, w, h) { targetCtx.drawImage(this.canvas, 0, 0, this.w, this.h, x, y, w, h); }
 }
 
+/* Cache for embedded Google-Fonts stylesheets (keyed by css2 URL) — survives renderer rebuilds */
+const _fontCssCache = {};
+
 /* ═══════════════════════════════════════════════════════════════
  * PRESETS — all animations use onFrame(time) for SVG compatibility
  * ═══════════════════════════════════════════════════════════════ */
+
 const PRESETS = {
     'google-clean': {
         name: 'Google Clean', cat: 'motion', dur: 5,
@@ -320,6 +442,29 @@ const PRESETS = {
         html: '<div class="gw"><div class="gb"><span class="gd" style="background:#4285F4"></span><span class="gd" style="background:#EA4335"></span><span class="gd" style="background:#FBBC05"></span><span class="gd" style="background:#34A853"></span><span class="gq" id="gq"></span><span class="gc3" id="gcaret">|</span></div><div class="ga" id="gans"><h1>Search, simplified.</h1><p>Instant answers, right where you need them.</p></div></div>',
         css: '.gw{width:100%;height:100%;background:#fff;display:flex;align-items:center;justify-content:center;font-family:system-ui,Arial,sans-serif;flex-direction:column;gap:24px}.gb{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #dfe1e5;border-radius:24px;padding:12px 20px;box-shadow:0 1px 6px rgba(32,33,36,.18)}.gd{width:9px;height:9px;border-radius:50%;flex-shrink:0}.gq{font-family:monospace;font-size:15px;color:#202124;white-space:nowrap}.gc3{color:#4285F4;font-weight:700}.ga{padding-left:6px;opacity:0;transform:translateY(10px)}.ga h1{font-size:24px;font-weight:500;color:#202124;margin:0 0 6px}.ga p{font-size:15px;color:#5f6368;margin:0}',
         js: 'var _gt="how does it feel to search less";function onFrame(t){var el=document.getElementById("gq"),ans=document.getElementById("gans"),c=document.getElementById("gcaret");if(el){var n=Math.min(_gt.length,Math.max(0,Math.floor((t-300)/45)));el.textContent=_gt.slice(0,n)}if(ans){var ap=Math.max(0,Math.min((t-2200)/600,1));ans.style.opacity=ap;ans.style.transform="translateY("+((1-ap)*10)+"px)"}if(c)c.style.opacity=Math.abs(Math.sin(t/500))}'
+    },
+    'latex-math': {
+        name: 'LaTeX Math', cat: 'code', dur: 5,
+        html: '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css" crossorigin="anonymous"><script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js" crossorigin="anonymous"><\/script><script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" crossorigin="anonymous"><\/script><div class="lm"><div class="lp" id="lmPaper"><h2>Navier–Stokes Equations</h2><p>The dynamics of an incompressible fluid are governed by:</p><div class="lmb">$$ \\frac{\\partial \\mathbf{u}}{\\partial t} + (\\mathbf{u} \\cdot \\nabla)\\mathbf{u} = -\\frac{1}{\\rho}\\nabla p + \\nu \\nabla^2\\mathbf{u} + \\mathbf{f} $$</div><p>Where $\\mathbf{u}$ is velocity and $\\rho$ the density.</p><div class="lth" id="lmTheorem"><strong>Theorem 1.</strong> Existence and smoothness in 3D remains a Millennium Prize Problem.</div></div></div>',
+        css: '.lm{width:100%;height:100%;background:#fbfaf8;font-family:Georgia,\'Times New Roman\',serif;display:flex;align-items:center;justify-content:center}.lp{width:640px;padding:36px 42px;background:#fff;border:1px solid #e2e0db;border-radius:6px;box-shadow:0 14px 34px rgba(30,25,15,.09)}.lp h2{font-size:28px;font-weight:700;color:#1a1a1a;margin:0 0 10px}.lp p{font-size:16px;color:#3a3a3a;line-height:1.55;margin:8px 0}.lmb{text-align:center;margin:18px 0;font-size:17px;color:#111}.lth{opacity:0;transform:translateY(14px);margin-top:18px;padding:14px 18px;background:#f4f1ea;border-left:4px solid #b8860b;font-size:15px;color:#2a2a2a;border-radius:0 6px 6px 0}.katex{font-size:1.06em}',
+        js: 'var _lmInit=false;function onFrame(t){if(!_lmInit){var p=document.getElementById("lmPaper");if(p&&window.renderMathInElement){try{renderMathInElement(p,{delimiters:[{left:"$$",right:"$$",display:true},{left:"$",right:"$",display:false}],throwOnError:false,output:"html"});_lmInit=true}catch(e){}}}var th=document.getElementById("lmTheorem");if(th){var pr=Math.max(0,Math.min((t-1800)/700,1));th.style.opacity=pr;th.style.transform="translateY("+((1-pr)*14)+"px)"}}'
+    },
+    'mdx-report': {
+        name: 'MDX Report', cat: 'code', dur: 5,
+        html: '<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"><\/script><div id="mdxSource" style="display:none"># Q4 Growth Metrics\n## Sustainable expansion\n\nEngagement surged after the latest release.\n\n- **DAU:** +24% YoY\n- **Retention:** 89%\n- **Revenue:** $4.2M\n</div><div class="mdx"><div class="mdxBar">Analytics Dashboard</div><div class="mdxBody" id="mdxOut"></div></div>',
+        css: '.mdx{width:100%;height:100%;background:#f8f9fa;font-family:Roboto,Arial,sans-serif;display:flex;flex-direction:column}.mdxBar{background:#fff;padding:18px 30px;font-size:20px;font-weight:500;color:#5f6368;box-shadow:0 1px 3px rgba(0,0,0,.12);z-index:2}.mdxBody{padding:36px 56px;flex:1;display:flex;flex-direction:column;justify-content:center}.mdxBody h1{font-size:34px;color:#202124;margin:0 0 6px}.mdxBody h2{font-size:19px;color:#1a73e8;margin:0 0 22px;font-weight:500}.mdxBody p{font-size:17px;color:#3c4043;line-height:1.6;margin:0 0 18px}.mdxBody ul{list-style:none;padding:0;display:flex;gap:14px;margin:0}.mdxBody li{background:#fff;padding:16px 22px;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.1);flex:1;font-size:15px;color:#3c4043;border-top:4px solid #34a853}.mdxBody li:nth-child(2){border-color:#4285f4}.mdxBody li:nth-child(3){border-color:#fbbc05}',js: 'var _mdxInit=false,_mdxItems=null;function onFrame(t){if(!_mdxInit){var src=document.getElementById("mdxSource"),out=document.getElementById("mdxOut");if(src&&out&&window.marked){var raw=src.innerHTML.replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">");out.innerHTML=marked.parse(raw);_mdxItems=Array.prototype.slice.call(out.children);_mdxItems.forEach(function(el){el.style.opacity=0;el.style.transform="translateY(36px)"});_mdxInit=true}}if(_mdxItems){for(var i=0;i<_mdxItems.length;i++){var delay=250+i*350,p=Math.max(0,Math.min((t-delay)/700,1)),e=1-Math.pow(1-p,4);_mdxItems[i].style.opacity=e;_mdxItems[i].style.transform="translateY("+((1-e)*36)+"px)"}}}'
+    },
+    'custom-font': {
+        name: 'Custom Font', cat: 'premium', dur: 5,
+        html: '<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,800;1,400&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet"><div class="cf"><div class="cfKick">CUSTOM TYPE TEST</div><h1 class="cfTitle">Elegant<br><em>Serifs</em></h1><p class="cfMono" id="cfMono">> rendering with embedded web fonts_</p></div>',
+        css: '.cf{width:100%;height:100%;background:#14100c;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:"Playfair Display",Georgia,serif;color:#f5efe4}.cfKick{font-family:"Space Mono",monospace;font-size:12px;letter-spacing:5px;color:#c9a227;margin-bottom:22px;opacity:0}.cfTitle{font-size:74px;font-weight:800;line-height:1.02;margin:0;text-align:center;letter-spacing:-1px;opacity:0;transform:translateY(26px)}.cfTitle em{font-style:italic;font-weight:400;color:#c9a227}.cfMono{font-family:"Space Mono",monospace;font-size:14px;color:#9c8f78;margin-top:26px;opacity:0}',
+        js: 'function onFrame(t){var k=document.querySelector(".cfKick"),h=document.querySelector(".cfTitle"),m=document.getElementById("cfMono");if(k)k.style.opacity=Math.max(0,Math.min((t-150)/400,1));if(h){var p=Math.max(0,Math.min((t-450)/800,1)),e=1-Math.pow(1-p,3);h.style.opacity=e;h.style.transform="translateY("+((1-e)*26)+"px)"}if(m){var cur=t>1600?Math.abs(Math.sin(t/400)):0;m.style.opacity=Math.max(0,Math.min((t-1400)/500,1))*(0.75+0.25*cur)}}'
+    },
+    'tailwind-cards': {
+        name: 'Tailwind Cards', cat: 'ui', dur: 5,
+        html: '<div class="min-h-full flex items-center justify-center bg-slate-900 p-10 font-sans"><div class="w-full max-w-2xl"><h1 class="text-3xl font-extrabold text-white mb-1 tracking-tight">Tailwind in Canvas</h1><p class="text-slate-400 text-sm mb-6">Utility classes compiled to a static stylesheet — no runtime needed.</p><div class="grid grid-cols-3 gap-4"><div class="twc bg-indigo-500" id="twc0"><span class="twi">⚡</span><span class="twl">Fast</span></div><div class="twc bg-rose-500" id="twc1"><span class="twi">🎯</span><span class="twl">Precise</span></div><div class="twc bg-emerald-500" id="twc2"><span class="twi">📦</span><span class="twl">Portable</span></div></div><div class="mt-6 bg-slate-800 rounded-xl p-5 border border-slate-700" id="twBar"><div class="h-2 bg-slate-700 rounded-full overflow-hidden"><div class="h-full bg-gradient-to-r from-indigo-500 to-rose-500 rounded-full" id="twFill" style="width:0%"></div></div></div></div></div>',
+        css: '.twc{border-radius:1rem;padding:22px 16px;color:#fff;display:flex;flex-direction:column;align-items:center;gap:8px;opacity:0;transform:translateY(30px) scale(.92);box-shadow:0 18px 40px -12px rgba(0,0,0,.5)}.twi{font-size:30px}.twl{font-weight:700;font-size:14px;letter-spacing:.3px}',
+        js: 'function onFrame(t){for(var i=0;i<3;i++){var el=document.getElementById("twc"+i);if(el){var d=200+i*180,p=Math.max(0,Math.min((t-d)/650,1)),e=1-Math.pow(1-p,4);el.style.opacity=e;el.style.transform="translateY("+((1-e)*30)+"px) scale("+(0.92+e*0.08)+")"}}var f=document.getElementById("twFill");if(f){var fp=Math.max(0,Math.min((t-800)/1400,1));f.style.width=(fp*100)+"%"}}'
     }
 };
 
