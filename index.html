@@ -178,11 +178,25 @@
     <!-- HIC editor: mobile Preview/Code tabs (active below the sm breakpoint) -->
     <style>
     @media (max-width: 639.98px) {
+        /* Column layout: the visible panel must GROW to fill the body height
+           (in row mode desktop stretch handles it; in column mode without
+           flex-grow the panel collapses to content height) */
+        #hicEditorModal #hicCodePanel,
+        #hicEditorModal #hicPreviewPanel { flex: 1 1 0; min-height: 0; }
         #hicEditorModal[data-mview="code"] #hicPreviewPanel { display: none; }
         #hicEditorModal[data-mview="preview"] #hicCodePanel { display: none; }
         #hicEditorModal .hic-pane { display: none; }
         #hicEditorModal .hic-pane.hic-pane-active { display: flex; flex: 1 1 0; min-height: 0; }
+        /* Pane fills the grown panel; textarea fills the pane */
+        #hicEditorModal .hic-pane.hic-pane-active > textarea { flex: 1 1 0; min-height: 0; }
     }
+    /* AI Assist pane (all widths): hidden unless opened; when open it replaces
+       the three code panes in the code column (desktop) / code view (mobile) */
+    #hicEditorModal:not(.hic-ai-open) .hic-pane[data-pane="ai"] { display: none; }
+    #hicEditorModal.hic-ai-open .hic-pane[data-pane="html"],
+    #hicEditorModal.hic-ai-open .hic-pane[data-pane="css"],
+    #hicEditorModal.hic-ai-open .hic-pane[data-pane="js"] { display: none; }
+    #hicEditorModal.hic-ai-open .hic-pane[data-pane="ai"] { display: flex; flex: 1 1 0; min-height: 0; flex-direction: column; }
     </style>
 
     <!-- HIC Code Editor Modal (Phase E1) -->
@@ -197,6 +211,7 @@
                 </div>
                 <div class="flex items-center gap-2">
                     <span id="hicEditorDirtyBadge" class="hidden px-2 py-0.5 text-[10px] font-bold bg-amber-900 text-amber-300 rounded">UNSAVED</span>
+                    <button id="hicAiToggleBtn" onclick="_hicAiToggle()" class="px-2 py-1 text-[10px] font-bold bg-surface-700 hover:bg-surface-600 rounded text-surface-300 transition-colors" title="Generate code with any AI: copy the prompt, paste the reply back">AI Assist</button>
                     <button onclick="_formatHicEditorPanes()" class="px-2 py-1 text-[10px] font-bold bg-surface-700 hover:bg-surface-600 rounded text-surface-300 transition-colors" title="Pretty-print all three panes">Format</button>
                     <button onclick="closeHicEditor(false)" class="px-3 py-1.5 text-xs font-bold bg-surface-700 hover:bg-surface-600 rounded text-surface-300 transition-colors">Cancel</button>
                     <button onclick="closeHicEditor(true)" class="px-3 py-1.5 text-xs font-bold bg-violet-600 hover:bg-violet-500 rounded text-white transition-colors">Apply</button>
@@ -216,6 +231,7 @@
                         <button data-hicsub="html" onclick="_hicMobilePane('html')" class="flex-1 py-1 text-[10px] font-bold rounded-md transition-all">HTML</button>
                         <button data-hicsub="css" onclick="_hicMobilePane('css')" class="flex-1 py-1 text-[10px] font-bold rounded-md transition-all">CSS</button>
                         <button data-hicsub="js" onclick="_hicMobilePane('js')" class="flex-1 py-1 text-[10px] font-bold rounded-md transition-all">JS</button>
+                        <button data-hicsub="ai" onclick="_hicMobilePane('ai')" class="flex-1 py-1 text-[10px] font-bold rounded-md transition-all">AI</button>
                     </div>
                     <div class="hic-pane flex flex-col flex-1 min-h-[90px]" data-pane="html">
                         <label class="px-3 py-1.5 text-[10px] font-bold text-surface-400 uppercase tracking-widest bg-surface-800 border-b border-surface-700 shrink-0">HTML</label>
@@ -228,6 +244,36 @@
                     <div class="hic-pane flex flex-col flex-1 min-h-[90px] border-t border-surface-700" data-pane="js">
                         <label class="px-3 py-1.5 text-[10px] font-bold text-surface-400 uppercase tracking-widest bg-surface-800 border-b border-surface-700 shrink-0">JavaScript <span class="text-surface-600">(onFrame — deterministic, no rAF)</span></label>
                         <textarea id="hicEditorJS" class="flex-1 w-full bg-surface-900 p-3 text-xs font-mono text-yellow-300 outline-none resize-none min-h-0" spellcheck="false" placeholder="function onFrame(time) { /* time in ms */ }"></textarea>
+                    </div>
+                    <!-- AI Assist pane: copy prompt → paste any AI's reply → parse -->
+                    <div class="hic-pane flex-col" data-pane="ai">
+                        <label class="px-3 py-1.5 text-[10px] font-bold text-surface-400 uppercase tracking-widest bg-surface-800 border-b border-surface-700 shrink-0">AI Assist · works with Gemini, ChatGPT, Claude — no API key needed</label>
+                        <div class="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
+                            <div>
+                                <label class="block text-[10px] font-bold text-surface-500 uppercase tracking-widest mb-1">1 · What do you want? (added to the prompt)</label>
+                                <textarea id="hicAiPrompt" class="w-full h-20 bg-surface-900 border border-surface-700 rounded-lg p-2 text-xs text-surface-200 outline-none focus:border-violet-500 resize-none" placeholder="e.g. A kinetic-typography intro: the word STUDIO slams in letter by letter with a screen shake, then a violet underline sweeps across."></textarea>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <button onclick="_hicAiCopyPrompt()" class="px-3 py-1.5 text-[11px] font-bold bg-violet-600 hover:bg-violet-500 text-white rounded-lg transition-colors flex items-center gap-1.5">
+                                    <i data-lucide="copy" class="w-3.5 h-3.5"></i> Copy AI Prompt
+                                </button>
+                                <a href="https://gemini.google.com/app" target="_blank" rel="noopener" class="px-3 py-1.5 text-[11px] font-bold bg-surface-700 hover:bg-surface-600 text-surface-200 rounded-lg transition-colors">Open Gemini ↗</a>
+                                <a href="https://chatgpt.com" target="_blank" rel="noopener" class="px-3 py-1.5 text-[11px] font-bold bg-surface-700 hover:bg-surface-600 text-surface-200 rounded-lg transition-colors">Open ChatGPT ↗</a>
+                                <a href="https://claude.ai/new" target="_blank" rel="noopener" class="px-3 py-1.5 text-[11px] font-bold bg-surface-700 hover:bg-surface-600 text-surface-200 rounded-lg transition-colors">Open Claude ↗</a>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-surface-500 uppercase tracking-widest mb-1">2 · Paste the AI's whole reply</label>
+                                <textarea id="hicAiReply" class="w-full h-40 bg-surface-900 border border-surface-700 rounded-lg p-2 text-xs font-mono text-surface-200 outline-none focus:border-violet-500 resize-none" placeholder="Paste everything the AI returned — fenced code blocks (```html / ```css / ```js), a full HTML document, or plain HTML/CSS/JS are all understood."></textarea>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <button onclick="_hicAiApply()" class="px-3 py-1.5 text-[11px] font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors flex items-center gap-1.5">
+                                    <i data-lucide="wand-2" class="w-3.5 h-3.5"></i> Parse &amp; Insert into Panes
+                                </button>
+                                <button onclick="document.getElementById('hicAiReply').value=''; if(window._hicAiMsg) _hicAiMsg('');" class="px-3 py-1.5 text-[11px] font-bold bg-surface-700 hover:bg-surface-600 text-surface-300 rounded-lg transition-colors">Clear</button>
+                                <span id="hicAiStatus" class="text-[11px] text-surface-400"></span>
+                            </div>
+                            <p class="text-[10px] leading-relaxed text-surface-500">The baked-in prompt enforces the canvas contract: deterministic onFrame(time-in-ms), 800×450 design space, no requestAnimationFrame/setTimeout, no CSS keyframes, no external libraries — so whatever Gemini/ChatGPT/Claude returns drops straight into the render pipeline.</p>
+                        </div>
                     </div>
                 </div>
                 <!-- Live preview -->
@@ -25677,6 +25723,152 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             document.querySelectorAll('#hicEditorModal [data-hicsub]').forEach(b => {
                 b.className = 'flex-1 py-1 text-[10px] font-bold rounded-md transition-all ' + (b.getAttribute('data-hicsub') === pn ? on : off);
             });
+            // Picking a code pane closes the AI view; desktop parity via the class
+            if (pn !== 'ai') _hicAiSetOpen(false);
+        };
+
+        // ── AI Assist (E2, keyless path): copy prompt → paste reply → parse ──
+        function _hicAiSetOpen(open) {
+            const modal = document.getElementById('hicEditorModal');
+            if (!modal) return;
+            modal.classList.toggle('hic-ai-open', open);
+            const btn = document.getElementById('hicAiToggleBtn');
+            if (btn) btn.className = 'px-2 py-1 text-[10px] font-bold rounded transition-colors ' +
+                (open ? 'bg-violet-600 hover:bg-violet-500 text-white' : 'bg-surface-700 hover:bg-surface-600 text-surface-300');
+        }
+
+        window._hicAiToggle = function() {
+            const modal = document.getElementById('hicEditorModal');
+            const opening = !modal.classList.contains('hic-ai-open');
+            _hicAiSetOpen(opening);
+            if (opening) {
+                _hicMobileState.pane = 'ai';
+                document.querySelectorAll('#hicEditorModal .hic-pane').forEach(el => {
+                    el.classList.toggle('hic-pane-active', el.getAttribute('data-pane') === 'ai');
+                });
+                const on = 'bg-surface-900 text-white ring-1 ring-inset ring-surface-600';
+                const off = 'text-surface-400 hover:text-surface-200';
+                document.querySelectorAll('#hicEditorModal [data-hicsub]').forEach(b => {
+                    b.className = 'flex-1 py-1 text-[10px] font-bold rounded-md transition-all ' + (b.getAttribute('data-hicsub') === 'ai' ? on : off);
+                });
+            }
+        };
+
+        function _hicAiMsg(html) {
+            const el = document.getElementById('hicAiStatus');
+            if (el) el.innerHTML = html || '';
+        }
+
+        // The contract prompt: everything an AI needs to return code that drops
+        // straight into the HIC render pipeline (deterministic onFrame, 800×450,
+        // no rAF/setTimeout/CSS-keyframes, no libraries, CORS-safe images).
+        window._hicAiCopyPrompt = function() {
+            if (!_hicEditor) return;
+            const clip = State.clips.find(c => c.id === _hicEditor.clipId);
+            const dur = Math.round(((clip && clip.duration) || 5) * 1000);
+            const want = (document.getElementById('hicAiPrompt').value || '').trim() || '(no extra description — propose something tasteful)';
+            const prompt = [
+                'You are generating an HTML-in-Canvas animation for a video editor.',
+                '',
+                'WHAT I WANT:',
+                want,
+                '',
+                'HARD CONTRACT (violations break the video render):',
+                '1. Deterministic time: ALL animation must be driven by a single global function onFrame(time) where time is milliseconds since the clip start (number). Same time in = same frame out, forever. The editor seeks to any time and re-renders.',
+                '2. No requestAnimationFrame, no setTimeout/setInterval, no CSS @keyframes or animation: properties, no transitions. You compute every element state inside onFrame from time only.',
+                '3. The design space is exactly 800 x 450 pixels (16:9). Use absolute sizes in px; the renderer scales the whole stage to any output resolution. Use width:100%;height:100% on your root container.',
+                '4. No external JS libraries, no imports, no network calls. Vanilla HTML/CSS/JS only.',
+                '5. Images must be CORS-safe https URLs (images.unsplash.com is fine) and animated via style properties (transform/opacity/filter/clip-path) inside onFrame.',
+                '6. Guard element lookups (if(el){...}) so a missing id never throws.',
+                '',
+                'CLIP DURATION: ' + dur + ' ms. Choreograph the animation to complete within that time.',
+                '',
+                'OUTPUT FORMAT — respond with EXACTLY three fenced code blocks and nothing else:',
+                '```html',
+                '<!-- full markup for the 800x450 stage -->',
+                '```',
+                '```css',
+                '/* all styles; root container fills 100% x 100% */',
+                '```',
+                '```js',
+                'function onFrame(time) { /* deterministic animation */ }',
+                '```'
+            ].join('\n');
+            navigator.clipboard.writeText(prompt).then(() => {
+                _hicAiMsg('<span class="text-emerald-400 font-bold">Prompt copied — paste it into Gemini / ChatGPT / Claude, then paste the reply below.</span>');
+            }).catch(() => {
+                // Clipboard API can be blocked — fall back to a select-all so the user can Ctrl+C
+                const ta = document.createElement('textarea');
+                ta.value = prompt; document.body.appendChild(ta); ta.select();
+                try { document.execCommand('copy'); _hicAiMsg('<span class="text-emerald-400 font-bold">Prompt copied.</span>'); }
+                catch(e) { _hicAiMsg('<span class="text-amber-400">Copy failed — prompt shown in console.</span>'); console.log(prompt); }
+                ta.remove();
+            });
+        };
+
+        // Parse an AI reply into { html, css, js }. Understands: labeled or
+        // unlabeled fenced blocks (sniffed by content), a full HTML document
+        // (<style>/<script> split out), or bare markup with embedded tags.
+        function _hicAiParseReply(text) {
+            const res = { html: '', css: '', js: '' };
+            text = (text || '').replace(/\r\n?/g, '\n').trim();
+            if (!text) return res;
+            const fenceRe = /```([a-zA-Z0-9]*)[ \t]*\n([\s\S]*?)```/g;
+            const blocks = [];
+            let m;
+            while ((m = fenceRe.exec(text)) !== null) blocks.push({ lang: (m[1] || '').toLowerCase(), code: m[2].trim() });
+            const looksCss = s => /(^|\n)\s*[.#@a-zA-Z\[][^{};]*\{[^}]*:/.test(s) && !/</.test(s);
+            const looksJs = s => /\b(function|onFrame|=>|var |let |const |document\.)/.test(s) && !/^\s*</.test(s);
+            const looksHtml = s => /^\s*<\/?[a-zA-Z!]/.test(s);
+            if (blocks.length) {
+                blocks.forEach(b => {
+                    if (b.lang === 'css' || (!b.lang && looksCss(b.code))) res.css += (res.css ? '\n\n' : '') + b.code;
+                    else if (b.lang === 'js' || b.lang === 'javascript' || (!b.lang && looksJs(b.code) && !looksHtml(b.code))) res.js += (res.js ? '\n\n' : '') + b.code;
+                    else res.html += (res.html ? '\n' : '') + b.code;
+                });
+            } else {
+                // Whole HTML document path: split <style>/<script>, rest = markup
+                let s = text;
+                s = s.replace(/<style[^>]*>([\s\S]*?)<\/style>/gi, (_, css) => { res.css += (res.css ? '\n\n' : '') + css.trim(); return ''; });
+                s = s.replace(/<script[^>]*>([\s\S]*?)<\/script>/gi, (_, js) => { res.js += (res.js ? '\n\n' : '') + js.trim(); return ''; });
+                s = s.replace(/<!DOCTYPE[^>]*>/i, '').replace(/<\/?html[^>]*>/gi, '').replace(/<head[\s\S]*?<\/head>/gi, '').replace(/<\/?body[^>]*>/gi, '').replace(/<meta[^>]*>/gi, '').replace(/<title[^>]*>[\s\S]*?<\/title>/gi, '');
+                res.html = s.trim();
+            }
+            // A single html block may still embed style/script tags
+            if (res.html && /<style|<script/i.test(res.html)) {
+                res.html = res.html.replace(/<style[^>]*>([\s\S]*?)<\/style>/gi, (_, css) => { res.css += (res.css ? '\n\n' : '') + css.trim(); return ''; });
+                res.html = res.html.replace(/<script[^>]*>([\s\S]*?)<\/script>/gi, (_, js) => { res.js += (res.js ? '\n\n' : '') + js.trim(); return ''; });
+                res.html = res.html.trim();
+            }
+            return res;
+        }
+
+        window._hicAiApply = function() {
+            if (!_hicEditor) return;
+            const raw = document.getElementById('hicAiReply').value || '';
+            const parsed = _hicAiParseReply(raw);
+            if (!parsed.html && !parsed.css && !parsed.js) {
+                _hicAiMsg('<span class="text-amber-400">Could not find any code in the pasted text. Paste the AI\'s full reply.</span>');
+                return;
+            }
+            const h = document.getElementById('hicEditorHTML');
+            const c = document.getElementById('hicEditorCSS');
+            const j = document.getElementById('hicEditorJS');
+            if (parsed.html) h.value = _hicFormatHtml(parsed.html);
+            if (parsed.css) c.value = _hicFormatCss(parsed.css);
+            if (parsed.js) j.value = _hicFormatJs(parsed.js);
+            _updateHicEditorDirty();
+            _updateHicEditorPreview();
+            _hicEditorSeek(0);
+            const parts = [];
+            if (parsed.html) parts.push('HTML ' + parsed.html.length + 'ch');
+            if (parsed.css) parts.push('CSS ' + parsed.css.length + 'ch');
+            if (parsed.js) parts.push('JS ' + parsed.js.length + 'ch');
+            _hicAiMsg('<span class="text-emerald-400 font-bold">Inserted: ' + parts.join(' · ') + ' — review the panes, then Apply.</span>');
+            // Jump to the code view so the user sees what landed
+            _hicAiSetOpen(false);
+            _hicMobilePane('html');
+            if (window.innerWidth < 640) _hicMobileView('code');
         };
 
         function _updateHicEditorDuration() {
