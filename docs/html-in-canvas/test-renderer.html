@@ -770,15 +770,14 @@ exportBtn.addEventListener('click', async function() {
     modalRenderer = new Renderer(expW, expH);
     await modalRenderer.setClip(p.html, p.css, p.js);
 
-    /* Wrap sandbox content with scale transform so fixed-pixel CSS scales up */
-    const inner = modalRenderer.sandbox.firstElementChild;
-    if (inner) {
-        inner.style.transformOrigin = '0 0';
-        inner.style.transform = 'scale(' + scaleX + ',' + scaleY + ')';
-        inner.style.width = W + 'px';
-        inner.style.height = H + 'px';
-        inner.style.overflow = 'hidden';
-    }
+    /* Dedicated 800x450 scale wrapper: move ALL sandbox children into it and scale up.
+       Styling the preset's own first element breaks when that element is display:none
+       (MDX's hidden markdown source -> unscaled output) or uses min-h-full (Tailwind —
+       min-height:100% then resolves against the 1920x1080 sandbox, not 450px). */
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'width:' + W + 'px;height:' + H + 'px;overflow:hidden;transform-origin:0 0;transform:scale(' + scaleX + ',' + scaleY + ');';
+    while (modalRenderer.sandbox.firstChild) { wrap.appendChild(modalRenderer.sandbox.firstChild); }
+    modalRenderer.sandbox.appendChild(wrap);
     modalRenderer.sandbox.style.width = expW + 'px';
     modalRenderer.sandbox.style.height = expH + 'px';
     modalRenderer.sandbox.style.overflow = 'hidden';
