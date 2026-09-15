@@ -70,6 +70,8 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
 .btn-export{background:#059669;color:#fff;box-shadow:0 1px 3px rgba(5,150,105,.35)}
 .btn-export:hover{background:#047857}
 .btn-export.recording{background:#dc2626;animation:pulse 1s infinite}
+.btn-frame{background:#1e2533;color:#cbd5e1;border:1px solid #2d3748}
+.btn-frame:hover{background:#2d3748;color:#f1f5f9;border-color:#3b82f6}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.7}}
 
 /* Tabs */
@@ -154,6 +156,15 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
                         <option value="720">720p</option>
                         <option value="1080" selected>1080p</option>
                         <option value="1440">1440p</option>
+                    </select>
+                    <button class="btn btn-frame" id="frameBtn" title="Save current frame at the selected resolution & format">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                        <span>Save Frame</span>
+                    </button>
+                    <select id="fmtSelect" class="res-select" title="Frame image format">
+                        <option value="png" selected>PNG</option>
+                        <option value="jpeg">JPG</option>
+                        <option value="webp">WebP</option>
                     </select>
                     <button class="btn btn-export" id="exportBtn">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -402,7 +413,7 @@ class Renderer {
         const domString = new XMLSerializer().serializeToString(clone);
         const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + this.w + '" height="' + this.h + '">' +
             '<foreignObject width="100%" height="100%">' +
-            '<style xmlns="http://www.w3.org/1999/xhtml">' + this.css + '</style>' +
+            '<style xmlns="http://www.w3.org/1999/xhtml"><![CDATA[' + this.css + ']]></style>' +
             '<div xmlns="http://www.w3.org/1999/xhtml" style="width:' + this.w + 'px;height:' + this.h + 'px;overflow:hidden;">' +
             domString + '</div></foreignObject></svg>';
         return new Promise(resolve => {
@@ -823,6 +834,61 @@ const RESOLUTIONS = {
     '1080': { w: 1920, h: 1080 },
     '1440': { w: 2560, h: 1440 }
 };
+
+/* ══════════════════════════════════════════════════════════════
+ * FRAME EXPORT — save the current playhead frame as PNG / JPG / WebP
+ * at the selected resolution. Uses the same dedicated scale-wrapper
+ * geometry as the WebM export, in a detached renderer, so the live
+ * modal state (playhead, playing flag, visible canvas) is untouched.
+ * ═══════════════════════════════════════════════════════════════ */
+const frameBtn = document.getElementById('frameBtn');
+const fmtSelect = document.getElementById('fmtSelect');
+const FMT_META = { png: { ext: 'png', mime: 'image/png' }, jpeg: { ext: 'jpg', mime: 'image/jpeg' }, webp: { ext: 'webp', mime: 'image/webp' } };
+
+frameBtn.addEventListener('click', async function() {
+    if (!currentPresetKey || !PRESETS[currentPresetKey] || exporting) return;
+    const p = PRESETS[currentPresetKey];
+    const res = RESOLUTIONS[resSelect.value] || RESOLUTIONS['1080'];
+    const fmt = FMT_META[fmtSelect.value] || FMT_META.png;
+    const t = parseInt(modalSlider.value); /* current playhead position, ms */
+
+    frameBtn.disabled = true;
+    frameBtn.querySelector('span').textContent = 'Rendering\u2026';
+    let fr = null;
+    try {
+        /* Detached renderer at export resolution (sandbox is offscreen) */
+        fr = new Renderer(res.w, res.h);
+        await fr.setClip(p.html, p.css, p.js);
+
+        /* Same wrapper fix as the WebM export: scale OUR 800x450 wrapper,
+           never the preset's own first element (min-h-full / display:none
+           preset roots would break the geometry otherwise). */
+        const scaleX = res.w / W, scaleY = res.h / H;
+        const wrap = document.createElement('div');
+        wrap.style.cssText = 'width:' + W + 'px;height:' + H + 'px;overflow:hidden;transform-origin:0 0;transform:scale(' + scaleX + ',' + scaleY + ');';
+        while (fr.sandbox.firstChild) { wrap.appendChild(fr.sandbox.firstChild); }
+        fr.sandbox.appendChild(wrap);
+        fr.sandbox.style.width = res.w + 'px';
+        fr.sandbox.style.height = res.h + 'px';
+        fr.sandbox.style.overflow = 'hidden';
+
+        const okFlag = await fr.renderFrame(t);
+        if (!okFlag) throw new Error('raster failed');
+
+        const url = fr.canvas.toDataURL(fmt.mime, 0.95);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = currentPresetKey + '_frame_' + t + 'ms_' + res.w + 'x' + res.h + '.' + fmt.ext;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    } catch (e) {
+        console.error('[FrameExport]', e);
+        alert('Frame export failed \u2014 try again');
+    } finally {
+        if (fr && fr.sandbox) fr.sandbox.remove();
+        frameBtn.disabled = false;
+        frameBtn.querySelector('span').textContent = 'Save Frame';
+    }
+});
 
 /* ═══════════════════════════════════════════════════════════════WEBM EXPORT — MediaRecorder API
  * ═══════════════════════════════════════════════════════════════ */
