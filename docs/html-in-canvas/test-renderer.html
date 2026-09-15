@@ -49,35 +49,64 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
 .modal-canvas-wrap{position:relative;background:#080b10;display:flex;align-items:center;justify-content:center}
 .modal-canvas-wrap canvas{width:100%;max-height:52vh;display:block}
 .modal-controls{padding:12px 20px;display:flex;gap:12px;align-items:center;border-top:1px solid #1e2533;background:#131a26;flex-wrap:wrap}
-.btn{padding:8px 16px;border-radius:8px;border:none;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;font-family:'Rubik',sans-serif;display:inline-flex;align-items:center;justify-content:center;gap:7px;line-height:1}
+.btn{padding:8px 14px;border-radius:8px;border:none;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;font-family:'Rubik',sans-serif;display:inline-flex;align-items:center;justify-content:center;gap:7px;line-height:1}
 .btn svg{display:block;flex-shrink:0}
-.btn-play{background:#2563eb;color:#fff;box-shadow:0 1px 3px rgba(37,99,235,.35)}
+.btn-play{background:#2563eb;color:#fff;box-shadow:0 1px 3px rgba(37,99,235,.3)}
 .btn-play:hover{background:#1d4ed8}
-.btn-play.playing{background:#dc2626;box-shadow:0 1px 3px rgba(220,38,38,.35)}
-.btn-play.playing:hover{background:#b91c1c}
-.btn-apply{background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;box-shadow:0 1px 4px rgba(124,58,237,.4);font-weight:700}
-.btn-apply:hover{background:linear-gradient(135deg,#6d28d9,#4338ca);box-shadow:0 2px 8px rgba(124,58,237,.5)}
+.btn-play.playing{background:#334155;box-shadow:none}
+.btn-play.playing:hover{background:#3f4a5f}
+.btn-apply{background:#4f46e5;color:#fff;box-shadow:0 1px 3px rgba(79,70,229,.35)}
+.btn-apply:hover{background:#4338ca;box-shadow:0 2px 6px rgba(79,70,229,.4)}
 .slider-wrap{flex:1;display:flex;align-items:center;gap:10px;min-width:180px}
 .slider-wrap input[type="range"]{flex:1;accent-color:#3b82f6;height:4px;min-width:80px}
-.time-label{font-size:12px;color:#cbd5e1;font-variant-numeric:tabular-nums;min-width:38px;text-align:right;font-weight:500}
+.time-label{font-size:12px;color:#94a3b8;font-variant-numeric:tabular-nums;min-width:38px;text-align:right;font-weight:500}
 .modal-info{display:flex;gap:10px;align-items:center;margin-left:auto}
-.res-meta{display:flex;align-items:center;gap:6px}
-.res-meta svg{color:#64748b}
-.res-meta span{font-size:11px;color:#94a3b8;font-weight:500;font-variant-numeric:tabular-nums;white-space:nowrap}
+.res-meta{display:inline-flex;align-items:center;gap:7px;background:#161d2b;border:1px solid #232b3b;border-radius:7px;padding:5px 10px}
+.res-meta svg{color:#64748b;flex-shrink:0}
+.res-meta span{font-size:11px;color:#94a3b8;font-weight:500;font-variant-numeric:tabular-nums;white-space:nowrap;letter-spacing:.2px}
 .res-select{background:#1e2533;color:#e2e8f0;border:1px solid #2d3748;border-radius:7px;padding:5px 8px;font-size:11px;font-weight:600;cursor:pointer;outline:none}
 .res-select:focus{border-color:#3b82f6}
 .res-select option{background:#1e2533;color:#e2e8f0}
-.btn-export{background:#059669;color:#fff;box-shadow:0 1px 3px rgba(5,150,105,.35)}
-.btn-export:hover{background:#047857}
-.btn-export.recording{background:#dc2626;animation:pulse 1s infinite}
-.btn-frame{background:#1e2533;color:#cbd5e1;border:1px solid #2d3748}
-.btn-frame:hover{background:#2d3748;color:#f1f5f9;border-color:#3b82f6}
+.export-cluster{display:flex;align-items:stretch;gap:8px}
+.btn-frame-main{background:#1e2533;color:#cbd5e1;border:1px solid #2d3748;border-radius:8px 0 0 8px}
+.btn-frame-main:hover{background:#2d3748;color:#f1f5f9;border-color:#3b82f6}
+.btn-frame-main:disabled{opacity:.65;cursor:default}
+.frame-caret{background:#1e2533;border:none;border-left:1px solid #2d3748;color:#cbd5e1;padding:0 8px;border-radius:0 8px 8px 0;cursor:pointer;display:flex;align-items:center;transition:all .15s}
+.frame-caret:hover{background:#2d3748;color:#f1f5f9;border-color:#3b82f6}
+.frame-caret:disabled{opacity:.65;cursor:default}
+.frame-caret svg{transition:transform .15s}
+.frame-caret.open svg{transform:rotate(180deg)}
+.export-split{position:relative;display:flex;align-items:stretch}
+.btn-export-main{background:#059669;color:#fff;border-radius:8px 0 0 8px;box-shadow:0 1px 3px rgba(5,150,105,.35)}
+.btn-export-main:hover{background:#047857}
+.btn-export-main:disabled{opacity:.65;cursor:default}
+.export-caret{background:#047857;border:none;border-left:1px solid rgba(255,255,255,.25);color:#fff;padding:0 8px;border-radius:0 8px 8px 0;cursor:pointer;display:flex;align-items:center;transition:background .15s}
+.export-caret:hover{background:#036852}
+.export-caret:disabled{opacity:.65;cursor:default}
+.export-caret svg{transition:transform .15s}
+.export-caret.open svg{transform:rotate(180deg)}
+.export-split.recording .btn-export-main{background:#dc2626;animation:pulse 1s infinite}
+.export-split.recording .export-caret{background:#b91c1c}
+.export-menu{position:absolute;right:0;bottom:calc(100% + 10px);background:#161d2b;border:1px solid #2d3748;border-radius:10px;min-width:210px;max-width:min(260px,calc(100vw - 64px));padding:6px;box-shadow:0 12px 32px rgba(0,0,0,.55);display:none;z-index:50}
+.export-menu.open{display:block}
+.export-menu-label{font-size:9.5px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#64748b;padding:6px 10px 4px;font-family:'Rubik',sans-serif}
+.export-item{display:flex;align-items:center;gap:8px;width:100%;background:none;border:none;color:#e2e8f0;font-size:12px;font-weight:600;padding:8px 10px;border-radius:7px;cursor:pointer;text-align:left;transition:background .12s;font-family:'Rubik',sans-serif}
+.export-item:hover{background:#1f2937}
+.export-item em{margin-left:auto;font-style:normal;font-size:10px;font-weight:500;color:#64748b}
+.export-item .fmt-check{visibility:hidden;color:#34d399;flex-shrink:0}
+.export-item.selected .fmt-check{visibility:visible}
+.export-item.selected{color:#f1f5f9}
+.export-item svg{color:#94a3b8;flex-shrink:0}
+.export-menu-sep{height:1px;background:#242e40;margin:5px 4px}
+.export-menu-res{padding:2px 10px 8px}
+.export-menu-res .res-select{width:100%}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.7}}
 
-/* Tabs */
-.tab-btn{padding:6px 14px;border-radius:7px;border:none;font-size:11px;font-weight:700;cursor:pointer;background:transparent;color:#7c8798;transition:all .15s;letter-spacing:.2px}
-.tab-btn:hover{color:#cbd5e1;background:#1e2533}
-.tab-btn.active{color:#fff;background:#2563eb}
+/* Tabs — segmented control for Preview/Code */
+.seg{display:flex;background:#161d2b;border:1px solid #2d3748;border-radius:8px;padding:2px;gap:2px}
+.tab-btn{padding:5px 14px;border-radius:6px;border:none;font-size:11px;font-weight:600;cursor:pointer;background:transparent;color:#7c8798;transition:all .15s;letter-spacing:.2px;font-family:'Rubik',sans-serif;line-height:1.4}
+.tab-btn:hover{color:#cbd5e1}
+.tab-btn.active{color:#f1f5f9;background:#334155}
 
 /* CodeMirror wrapper */
 .code-wrap{display:none;overflow:auto}
@@ -85,12 +114,17 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
 .code-wrap .CodeMirror{height:max(420px,52vh);border-radius:0 0 10px 10px}
 
 .code-tabs{padding:10px 16px 0;display:flex;gap:4px;align-items:center;border-bottom:1px solid #1e2533}
-.code-tab{padding:7px 16px;border-radius:7px 7px 0 0;border:none;font-size:11px;font-weight:700;cursor:pointer;background:transparent;color:#7c8798;transition:all .15s;letter-spacing:.2px}
+.code-tab{display:inline-flex;align-items:center;gap:7px;padding:8px 14px;border:none;border-bottom:2px solid transparent;background:none;font-size:11px;font-weight:600;cursor:pointer;color:#7c8798;transition:all .15s;letter-spacing:.2px;font-family:'Rubik',sans-serif;margin-bottom:-1px}
+.code-tab .lang-dot{width:6px;height:6px;border-radius:50%;background:#475569;transition:background .15s}
 .code-tab:hover{color:#cbd5e1}
-.code-tab.active{color:#e2e8f0;background:#1e293b}
-.code-tab.active[data-lang="html"]{color:#86efac}
-.code-tab.active[data-lang="css"]{color:#93c5fd}
-.code-tab.active[data-lang="js"]{color:#fde047}
+.code-tab.active{color:#f1f5f9;border-bottom-color:#64748b}
+.code-tab.active .lang-dot{background:#94a3b8}
+.code-tab.active[data-lang="html"]{border-bottom-color:#34d399}
+.code-tab.active[data-lang="html"] .lang-dot{background:#34d399}
+.code-tab.active[data-lang="css"]{border-bottom-color:#60a5fa}
+.code-tab.active[data-lang="css"] .lang-dot{background:#60a5fa}
+.code-tab.active[data-lang="js"]{border-bottom-color:#fbbf24}
+.code-tab.active[data-lang="js"] .lang-dot{background:#fbbf24}
 .unsaved-badge{display:none;align-items:center;gap:5px;margin-left:auto;font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#fbbf24;background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.3);padding:4px 10px;border-radius:20px}
 .unsaved-badge.on{display:inline-flex}
 .unsaved-badge .dot{width:6px;height:6px;border-radius:50%;background:#fbbf24}
@@ -125,7 +159,7 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
     <div class="modal">
         <div class="modal-header">
             <span class="modal-title" id="modalTitle">Preset</span>
-            <div style="display:flex;gap:4px;align-items:center">
+            <div class="seg">
                 <button class="tab-btn active" id="tabPreview">Preview</button>
                 <button class="tab-btn" id="tabCode">Code</button>
             </div>
@@ -138,46 +172,78 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
             </div>
             <div class="modal-controls">
                 <button class="btn btn-play" id="modalPlayBtn">
-                    <svg id="playIcon" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.14v13.72c0 .81.87 1.3 1.55.88l10.8-6.86a1.03 1.03 0 0 0 0-1.76L9.55 4.26A1.03 1.03 0 0 0 8 5.14z"/></svg>
-                    <svg id="pauseIcon" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style="display:none"><path d="M7 4h3.5v16H7zM13.5 4H17v16h-3.5z"/></svg>
-                    <span id="playLabel">Play</span>
+                    <svg id="playIcon" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.14v13.72c0 .81.87 1.3 1.55.88l10.8-6.86a1.03 1.03 0 0 0 0-1.76L9.55 4.26A1.03 1.03 0 0 0 8 5.14z"/></svg>
+                    <svg id="pauseIcon" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="display:none"><rect x="6" y="5" width="4" height="14" rx="1.2"/><rect x="14" y="5" width="4" height="14" rx="1.2"/></svg>
                 </button>
                 <div class="slider-wrap">
                     <input type="range" id="modalSlider" min="0" max="5000" value="0">
                     <span class="time-label" id="modalTime">0.0s</span>
                 </div>
                 <div class="modal-info">
-                    <div class="res-meta">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                    <div class="res-meta" title="Source duration and canvas size">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg>
                         <span id="modalDuration"></span>
                     </div>
-                    <select id="resSelect" class="res-select">
-                        <option value="480">480p</option>
-                        <option value="720">720p</option>
-                        <option value="1080" selected>1080p</option>
-                        <option value="1440">1440p</option>
-                    </select>
-                    <button class="btn btn-frame" id="frameBtn" title="Save current frame at the selected resolution & format">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-                        <span>Save Frame</span>
-                    </button>
-                    <select id="fmtSelect" class="res-select" title="Frame image format">
-                        <option value="png" selected>PNG</option>
-                        <option value="jpeg">JPG</option>
-                        <option value="webp">WebP</option>
-                    </select>
-                    <button class="btn btn-export" id="exportBtn">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                        <span>Export WebM</span>
-                    </button>
+                    <div class="export-cluster">
+                        <select id="resSelect" class="res-select" title="Export resolution (frame & video)">
+                            <option value="480">480p</option>
+                            <option value="720">720p</option>
+                            <option value="1080" selected>1080p</option>
+                            <option value="1440">1440p</option>
+                        </select>
+                        <div class="export-split" id="frameSplit">
+                            <button class="btn btn-frame-main" id="frameBtn" title="Save current frame (PNG)">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                                <span>Save Frame</span>
+                            </button>
+                            <button class="frame-caret" id="frameCaret" title="Frame format" aria-haspopup="true">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                            </button>
+                            <div class="export-menu" id="frameMenu">
+                                <div class="export-menu-label">Save current frame as</div>
+                                <button class="export-item fmt-opt selected" data-frame-fmt="png">
+                                    <svg class="fmt-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                    PNG<em>lossless</em>
+                                </button>
+                                <button class="export-item fmt-opt" data-frame-fmt="jpeg">
+                                    <svg class="fmt-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                    JPG<em>small</em>
+                                </button>
+                                <button class="export-item fmt-opt" data-frame-fmt="webp">
+                                    <svg class="fmt-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                    WebP<em>smallest</em>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="export-split" id="exportSplit">
+                            <button class="btn btn-export-main" id="exportBtn" title="Record video (WebM 30fps)">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+                                <span>Export WebM</span>
+                            </button>
+                            <button class="export-caret" id="videoCaret" title="Video options" aria-haspopup="true">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                            </button>
+                            <div class="export-menu" id="videoMenu">
+                                <div class="export-menu-label">Video settings</div>
+                                <button class="export-item fps-opt selected" data-fps="30">
+                                    <svg class="fmt-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                    30 fps<em>standard</em>
+                                </button>
+                                <button class="export-item fps-opt" data-fps="60">
+                                    <svg class="fmt-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                    60 fps<em>smoother</em>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
         <div id="codePanel" style="display:none">
             <div class="code-tabs">
-                <button class="code-tab active" data-lang="html">HTML</button>
-                <button class="code-tab" data-lang="css">CSS</button>
-                <button class="code-tab" data-lang="js">JS</button>
+                <button class="code-tab active" data-lang="html"><span class="lang-dot"></span>HTML</button>
+                <button class="code-tab" data-lang="css"><span class="lang-dot"></span>CSS</button>
+                <button class="code-tab" data-lang="js"><span class="lang-dot"></span>JS</button>
                 <span class="unsaved-badge" id="unsavedBadge"><span class="dot"></span>Unsaved</span>
                 <button class="btn btn-apply" id="applyCode" style="margin-left:8px">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
@@ -723,20 +789,19 @@ function prettifyJs(js) {
     return out.join('\n');
 }
 
-/* Play/pause button state — swap SVG icons + label instead of innerHTML text soup */
+/* Play/pause button state — swap SVG icons; icon-only button, title carries the hint */
 function setPlayState(playing) {
     const playIcon = document.getElementById('playIcon');
     const pauseIcon = document.getElementById('pauseIcon');
-    const label = document.getElementById('playLabel');
     if (playing) {
         playIcon.style.display = 'none';
         pauseIcon.style.display = '';
-        label.textContent = 'Pause';
+        modalPlayBtn.title = 'Pause';
         modalPlayBtn.classList.add('playing');
     } else {
         playIcon.style.display = '';
         pauseIcon.style.display = 'none';
-        label.textContent = 'Play';
+        modalPlayBtn.title = 'Play';
         modalPlayBtn.classList.remove('playing');
     }
 }
@@ -835,24 +900,89 @@ const RESOLUTIONS = {
     '1440': { w: 2560, h: 1440 }
 };
 
-/* ══════════════════════════════════════════════════════════════
- * FRAME EXPORT — save the current playhead frame as PNG / JPG / WebP
- * at the selected resolution. Uses the same dedicated scale-wrapper
- * geometry as the WebM export, in a detached renderer, so the live
- * modal state (playhead, playing flag, visible canvas) is untouched.
+/* ═══════════════════════════════════════════════════════════════
+ * EXPORT CONTROLS — two independent compact split buttons:
+ *   Save Frame (camera, ghost) — caret menu: PNG/JPG/WebP
+ *   Export WebM (video, green) — caret menu: 30/60 fps
+ * Both share the inline resolution select. Format, fps and resolution
+ * persist in localStorage. Frame export uses the same dedicated
+ * scale-wrapper geometry as the WebM export, in a detached renderer,
+ * so the live modal state (playhead, playing flag, canvas) is
+ * untouched. Each export locks the whole cluster while running.
  * ═══════════════════════════════════════════════════════════════ */
+const exportCluster = document.querySelector('.export-cluster');
 const frameBtn = document.getElementById('frameBtn');
-const fmtSelect = document.getElementById('fmtSelect');
-const FMT_META = { png: { ext: 'png', mime: 'image/png' }, jpeg: { ext: 'jpg', mime: 'image/jpeg' }, webp: { ext: 'webp', mime: 'image/webp' } };
+const frameCaret = document.getElementById('frameCaret');
+const frameMenu = document.getElementById('frameMenu');
+const frameSplit = document.getElementById('frameSplit');
+const exportBtn = document.getElementById('exportBtn');
+const videoCaret = document.getElementById('videoCaret');
+const videoMenu = document.getElementById('videoMenu');
+const exportSplit = document.getElementById('exportSplit');
+const FMT_META = { png: { ext: 'png', mime: 'image/png', label: 'PNG' }, jpeg: { ext: 'jpg', mime: 'image/jpeg', label: 'JPG' }, webp: { ext: 'webp', mime: 'image/webp', label: 'WebP' } };
 
-frameBtn.addEventListener('click', async function() {
+/* Persisted preferences */
+const EXP_PREFS_KEY = 'hicExportPrefs';
+let lastFrameFmt = 'png', lastFps = 30;
+try {
+    const saved = JSON.parse(localStorage.getItem(EXP_PREFS_KEY) || '{}');
+    if (FMT_META[saved.fmt]) lastFrameFmt = saved.fmt;
+    if (saved.fps === 30 || saved.fps === 60) lastFps = saved.fps;
+    if (RESOLUTIONS[saved.res]) resSelect.value = saved.res;
+} catch (e) { /* corrupted prefs — use defaults */ }
+function saveExpPrefs() {
+    try { localStorage.setItem(EXP_PREFS_KEY, JSON.stringify({ fmt: lastFrameFmt, fps: lastFps, res: resSelect.value })); } catch (e) { /* storage unavailable */ }
+}
+
+let exporting = false;
+
+/* Shared menu helpers — each button owns its menu; opening one closes the other */
+function anyMenuOpen() { return frameMenu.classList.contains('open') || videoMenu.classList.contains('open'); }
+function closeMenus() {
+    frameMenu.classList.remove('open'); frameCaret.classList.remove('open');
+    videoMenu.classList.remove('open'); videoCaret.classList.remove('open');
+}
+frameCaret.addEventListener('click', function(e) {
+    e.stopPropagation();
+    const open = frameMenu.classList.contains('open');
+    closeMenus();
+    if (!open) { frameMenu.classList.add('open'); frameCaret.classList.add('open'); }
+});
+videoCaret.addEventListener('click', function(e) {
+    e.stopPropagation();
+    const open = videoMenu.classList.contains('open');
+    closeMenus();
+    if (!open) { videoMenu.classList.add('open'); videoCaret.classList.add('open'); }
+});
+document.addEventListener('click', function(e) {
+    if (anyMenuOpen() && !exportCluster.contains(e.target)) closeMenus();
+});
+resSelect.addEventListener('change', function() { saveExpPrefs(); });
+
+/* Selection state (checkmarks + tooltips) */
+function refreshExportUI() {
+    frameMenu.querySelectorAll('.fmt-opt').forEach(function(el) {
+        el.classList.toggle('selected', el.getAttribute('data-frame-fmt') === lastFrameFmt);
+    });
+    videoMenu.querySelectorAll('.fps-opt').forEach(function(el) {
+        el.classList.toggle('selected', parseInt(el.getAttribute('data-fps')) === lastFps);
+    });
+    frameBtn.title = 'Save current frame (' + FMT_META[lastFrameFmt].label + ')';
+    exportBtn.title = 'Record video (WebM ' + lastFps + 'fps)';
+}
+
+/* Shared frame-render core: rasterizes the current playhead frame at
+   export resolution and triggers a download in the given format. */
+async function exportFrame(fmtKey) {
     if (!currentPresetKey || !PRESETS[currentPresetKey] || exporting) return;
     const p = PRESETS[currentPresetKey];
     const res = RESOLUTIONS[resSelect.value] || RESOLUTIONS['1080'];
-    const fmt = FMT_META[fmtSelect.value] || FMT_META.png;
+    const fmt = FMT_META[fmtKey] || FMT_META.png;
     const t = parseInt(modalSlider.value); /* current playhead position, ms */
 
-    frameBtn.disabled = true;
+    exporting = true;
+    closeMenus();
+    [frameBtn, frameCaret, exportBtn, videoCaret, resSelect].forEach(function(el) { el.disabled = true; });
     frameBtn.querySelector('span').textContent = 'Rendering\u2026';
     let fr = null;
     try {
@@ -880,27 +1010,52 @@ frameBtn.addEventListener('click', async function() {
         a.href = url;
         a.download = currentPresetKey + '_frame_' + t + 'ms_' + res.w + 'x' + res.h + '.' + fmt.ext;
         document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        lastFrameFmt = fmtKey;
+        saveExpPrefs();
     } catch (e) {
         console.error('[FrameExport]', e);
         alert('Frame export failed \u2014 try again');
     } finally {
         if (fr && fr.sandbox) fr.sandbox.remove();
-        frameBtn.disabled = false;
+        exporting = false;
+        [frameBtn, frameCaret, exportBtn, videoCaret, resSelect].forEach(function(el) { el.disabled = false; });
+        refreshExportUI();
         frameBtn.querySelector('span').textContent = 'Save Frame';
     }
+}
+
+/* Main click: quick frame save in the last-used format */
+frameBtn.addEventListener('click', function() { exportFrame(lastFrameFmt); });
+/* Menu: frame format items (also become the quick default) */
+frameMenu.querySelectorAll('.fmt-opt').forEach(function(item) {
+    item.addEventListener('click', function() {
+        closeMenus();
+        exportFrame(item.getAttribute('data-frame-fmt'));
+    });
 });
+/* Menu: fps items (preference only; next recording picks it up) */
+videoMenu.querySelectorAll('.fps-opt').forEach(function(item) {
+    item.addEventListener('click', function() {
+        lastFps = parseInt(item.getAttribute('data-fps'));
+        saveExpPrefs();
+        refreshExportUI();
+    });
+});
+
+/* Restore persisted prefs into the UI on load */
+refreshExportUI();
 
 /* ═══════════════════════════════════════════════════════════════WEBM EXPORT — MediaRecorder API
  * ═══════════════════════════════════════════════════════════════ */
-const exportBtn = document.getElementById('exportBtn');
-let exporting = false;
+/* WebM trigger: main button */
+exportBtn.addEventListener('click', startWebMExport);
 
-exportBtn.addEventListener('click', async function() {
+async function startWebMExport() {
     if (exporting) return;
     if (!currentPresetKey || !PRESETS[currentPresetKey]) return;
     const p = PRESETS[currentPresetKey];
     const dur = p.dur || 5;
-    const fps = 30;
+    const fps = lastFps;
 
     /* Get export resolution */
     const res = RESOLUTIONS[resSelect.value] || RESOLUTIONS['1080'];
@@ -910,8 +1065,10 @@ exportBtn.addEventListener('click', async function() {
     const scaleY = expH / H;
 
     exporting = true;
-    exportBtn.querySelector('span').textContent = 'Recording...';
-    exportBtn.classList.add('recording');
+    exportSplit.classList.add('recording');
+    closeMenus();
+    [frameBtn, frameCaret, exportBtn, videoCaret, resSelect].forEach(function(el) { el.disabled = true; });
+    exportBtn.querySelector('span').textContent = 'Recording\u2026';
     modalPlaying = false;
     setPlayState(false);
 
@@ -956,8 +1113,9 @@ exportBtn.addEventListener('click', async function() {
                 setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
             } else { alert('Export failed — try again'); }
             exporting = false;
+            exportSplit.classList.remove('recording');
+            [frameBtn, frameCaret, exportBtn, videoCaret, resSelect].forEach(function(el) { el.disabled = false; });
             exportBtn.querySelector('span').textContent = 'Export WebM';
-            exportBtn.classList.remove('recording');
             /* Restore preview canvas to 800x450 */
             modalCanvas.width = W;
             modalCanvas.height = H;
@@ -988,7 +1146,7 @@ exportBtn.addEventListener('click', async function() {
     await modalRenderer.setClip(p.html, p.css, p.js);
     const ok = await modalRenderer.renderFrame(0);
     if (ok) modalRenderer.drawTo(modalCtx, 0, 0, W, H);
-});
+}
 
 </script>
 </body>
