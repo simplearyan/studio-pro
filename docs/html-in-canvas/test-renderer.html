@@ -779,6 +779,9 @@ function openModal(key) {
     if (!p) return;
     modalKey = key;
     currentPresetKey = key;
+    /* Fresh modal = preset code on stage; clear any previously applied
+       (edited / AI-pasted) snapshot so the Code tab and exports agree */
+    _lastAppliedCode = { html: '', css: '', js: '' };
     tabPreview.click();
     modalTitle.textContent = p.name;
     modalDuration.textContent = p.dur + 's • ' + W + '×' + H;
@@ -989,10 +992,18 @@ tabCode.addEventListener('click', function() {
     showTab('code');
     if (currentPresetKey && PRESETS[currentPresetKey]) {
         var p = PRESETS[currentPresetKey];
-        cmHtml.setValue(prettifyHtml(p.html || ''));
-        cmCss.setValue(prettifyCss(p.css || ''));
-        cmJs.setValue(prettifyJs(p.js || ''));
-        _lastAppliedCode = { html: cmHtml.getValue(), css: cmCss.getValue(), js: cmJs.getValue() };
+        if (_lastAppliedCode.html || _lastAppliedCode.css || _lastAppliedCode.js) {
+            /* Something was applied (edited / AI-pasted / gallery-loaded) —
+               show the code that's actually on the stage, NOT the preset */
+            cmHtml.setValue(_lastAppliedCode.html);
+            cmCss.setValue(_lastAppliedCode.css);
+            cmJs.setValue(_lastAppliedCode.js);
+        } else {
+            cmHtml.setValue(prettifyHtml(p.html || ''));
+            cmCss.setValue(prettifyCss(p.css || ''));
+            cmJs.setValue(prettifyJs(p.js || ''));
+            _lastAppliedCode = { html: cmHtml.getValue(), css: cmCss.getValue(), js: cmJs.getValue() };
+        }
         updateUnsavedBadge();
         setTimeout(function() { cmHtml.refresh(); cmCss.refresh(); cmJs.refresh(); }, 50);
     }
@@ -1664,10 +1675,11 @@ async function startWebMExport() {
     recorder.stop();
     await done;
 
-    /* Rebuild preview renderer at 800x450 */
+    /* Rebuild preview renderer at 800x450 with the exported (applied) code —
+       using the preset here would snap the stage back to the old animation */
     if (modalRenderer) { modalRenderer.sandbox.remove(); }
     modalRenderer = new Renderer(W, H);
-    await modalRenderer.setClip(p.html, p.css, p.js);
+    await modalRenderer.setClip(code.html, code.css, code.js);
     const ok = await modalRenderer.renderFrame(0);
     if (ok) modalRenderer.drawTo(modalCtx, 0, 0, W, H);
 }
