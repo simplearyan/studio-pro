@@ -113,7 +113,7 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
 .code-wrap.active{display:block}
 .code-wrap .CodeMirror{height:max(420px,52vh);border-radius:0 0 10px 10px}
 
-.code-tabs{padding:10px 16px 0;display:flex;gap:4px;align-items:center;border-bottom:1px solid #1e2533}
+.code-tabs{padding:10px 16px 0;display:flex;gap:4px;align-items:center;border-bottom:1px solid #1e2533;flex-wrap:wrap}
 .code-tab{display:inline-flex;align-items:center;gap:7px;padding:8px 14px;border:none;border-bottom:2px solid transparent;background:none;font-size:11px;font-weight:600;cursor:pointer;color:#7c8798;transition:all .15s;letter-spacing:.2px;font-family:'Rubik',sans-serif;margin-bottom:-1px}
 .code-tab .lang-dot{width:6px;height:6px;border-radius:50%;background:#475569;transition:background .15s}
 .code-tab:hover{color:#cbd5e1}
@@ -125,8 +125,34 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
 .code-tab.active[data-lang="css"] .lang-dot{background:#60a5fa}
 .code-tab.active[data-lang="js"]{border-bottom-color:#fbbf24}
 .code-tab.active[data-lang="js"] .lang-dot{background:#fbbf24}
-.code-tabs .btn-apply{margin-left:auto}
-.unsaved-badge{display:none;align-items:center;gap:5px;margin-left:auto;font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#fbbf24;background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.3);padding:4px 10px;border-radius:20px}
+.code-tabs .code-right{margin-left:auto;display:flex;align-items:center;gap:4px}
+.btn-code-io{background:#1e2533;color:#cbd5e1;border:1px solid #2d3748;padding:8px 9px;font-size:11px}
+.btn-code-io:hover{background:#2d3748;color:#f1f5f9;border-color:#3b82f6}
+.btn-code-io:disabled{opacity:.65;cursor:default}
+
+/* Snippet gallery — saved code variants */
+.gallery-wrap{position:relative}
+.gal-count{background:#2563eb;color:#fff;font-size:9px;font-weight:700;border-radius:9px;padding:1px 5px;margin-left:4px;min-width:14px;text-align:center}
+.gallery-menu{position:absolute;right:0;top:calc(100% + 8px);width:330px;max-width:min(360px,calc(100vw - 80px));background:#161d2b;border:1px solid #2d3748;border-radius:10px;padding:8px;box-shadow:0 12px 32px rgba(0,0,0,.55);display:none;z-index:60}
+.gallery-menu.open{display:block}
+.gal-save-row{display:flex;gap:6px;margin-bottom:8px}
+.gal-input{flex:1;min-width:0;background:#0d1420;border:1px solid #2d3748;border-radius:7px;padding:7px 10px;font-size:11.5px;color:#e2e8f0;outline:none;font-family:'Rubik',sans-serif}
+.gal-input:focus{border-color:#3b82f6}
+.btn-gal-save{background:#2563eb;color:#fff;padding:0 13px;border-radius:7px;border:none;font-size:11px;font-weight:600;cursor:pointer;font-family:'Rubik',sans-serif;white-space:nowrap}
+.btn-gal-save:hover{background:#1d4ed8}
+.gal-list{max-height:250px;overflow-y:auto;display:flex;flex-direction:column;gap:3px}
+.gal-item{display:flex;align-items:center;gap:7px;padding:7px 9px;border-radius:8px;cursor:pointer;border:1px solid transparent;transition:background .12s}
+.gal-item:hover{background:#1f2937;border-color:#2d3748}
+.gal-info{flex:1;min-width:0}
+.gal-name{font-size:11.5px;font-weight:600;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gal-meta{font-size:9.5px;color:#64748b;font-weight:500;margin-top:1px}
+.gal-act{background:none;border:none;color:#64748b;cursor:pointer;padding:3px;border-radius:5px;display:flex;align-items:center;flex-shrink:0;transition:all .12s}
+.gal-act:hover{color:#e2e8f0;background:#2d3748}
+.gal-act.danger:hover{color:#f87171}
+.gal-act.confirm{color:#f87171;font-size:9.5px;font-weight:700;padding:3px 6px}
+.gal-empty{font-size:11px;color:#64748b;text-align:center;padding:14px 8px;line-height:1.5}
+.gal-rename{width:100%;background:#0d1420;border:1px solid #3b82f6;border-radius:5px;padding:3px 7px;font-size:11.5px;color:#e2e8f0;outline:none;font-family:'Rubik',sans-serif}
+.unsaved-badge{display:none;align-items:center;gap:5px;font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#fbbf24;background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.3);padding:4px 10px;border-radius:20px}
 .unsaved-badge.on{display:inline-flex}
 .unsaved-badge .dot{width:6px;height:6px;border-radius:50%;background:#fbbf24}
 .code-hint{padding:6px 16px 8px;font-size:10.5px;color:#64748b;font-weight:500;letter-spacing:.2px;border-bottom:1px solid #1e2533}
@@ -284,10 +310,35 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
                 <button class="code-tab" data-lang="css"><span class="lang-dot"></span>CSS</button>
                 <button class="code-tab" data-lang="js"><span class="lang-dot"></span>JS</button>
                 <span class="unsaved-badge" id="unsavedBadge"><span class="dot"></span>Unsaved</span>
-                <button class="btn btn-apply" id="applyCode">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                    Apply &amp; Preview
-                </button>
+                <div class="code-right">
+                    <div class="gallery-wrap" id="galleryWrap">
+                        <button class="btn btn-code-io" id="galleryBtn" title="Saved code snippets">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                            Gallery
+                            <span class="gal-count" id="galCount">0</span>
+                        </button>
+                        <div class="gallery-menu" id="galleryMenu">
+                            <div class="gal-save-row">
+                                <input type="text" class="gal-input" id="galNameInput" placeholder="Name this code variant…" maxlength="60">
+                                <button type="button" class="btn-gal-save" id="galSaveBtn">Save</button>
+                            </div>
+                            <div class="gal-list" id="galList"></div>
+                        </div>
+                    </div>
+                    <button class="btn btn-code-io" id="importCodeBtn" title="Import code from a .json file (or any code file) into the panes">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        Import
+                    </button>
+                    <button class="btn btn-code-io" id="exportCodeBtn" title="Save the three panes as a reusable .json code file">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        Export
+                    </button>
+                    <button class="btn btn-apply" id="applyCode" title="Render the panes on the stage and play">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                        Apply
+                    </button>
+                    <input type="file" id="codeFileInput" accept=".json,.txt,.html,.htm" style="display:none">
+                </div>
             </div>
             <p class="code-hint">Edits are sandboxed — <strong>Apply &amp; Preview</strong> renders them on the stage. Reopen the preset to reset.</p>
             <div class="code-wrap active" id="cmHtmlWrap"><textarea id="codeHtml"></textarea></div>
@@ -968,6 +1019,201 @@ applyCode.addEventListener('click', async function() {
 });
 
 /* ═══════════════════════════════════════════════════════════════
+ * CODE IMPORT / EXPORT — save panes as .json, reuse across presets
+ * ═══════════════════════════════════════════════════════════════ */
+const codeFileInput = document.getElementById('codeFileInput');
+
+/* Export: {version, name, duration, html, css, js} — duration included so a
+ * saved snippet carries its intended timing when imported into any preset */
+document.getElementById('exportCodeBtn').addEventListener('click', function() {
+    if (!currentPresetKey) return;
+    const payload = {
+        version: 1,
+        kind: 'hic-code',
+        name: PRESETS[currentPresetKey].name || currentPresetKey,
+        duration: aiCurrentDur(),
+        html: cmHtml.getValue(),
+        css: cmCss.getValue(),
+        js: cmJs.getValue()
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = (currentPresetKey + '_code.json');
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
+});
+
+/* Import: prefers our .json payload; falls back to the AI reply parser so
+ * plain .txt/.html code files (or an AI reply saved to disk) also load */
+document.getElementById('importCodeBtn').addEventListener('click', function() { codeFileInput.click(); });
+codeFileInput.addEventListener('change', function() {
+    const file = codeFileInput.files && codeFileInput.files[0];
+    codeFileInput.value = '';
+    if (!file || !currentPresetKey) return;
+    const reader = new FileReader();
+    reader.onload = function() {
+        const text = String(reader.result || '');
+        let html = '', css = '', js = '';
+        let imported = false;
+        if (/\.json$/i.test(file.name) || /^\s*\{/.test(text)) {
+            try {
+                const data = JSON.parse(text);
+                if (data && typeof data === 'object') {
+                    html = String(data.html || '');
+                    css = String(data.css || '');
+                    js = String(data.js || '');
+                    imported = !!(html || css || js);
+                }
+            } catch (e) { /* fall through to parser */ }
+        }
+        if (!imported) {
+            const parsed = aiParseReply(text);
+            html = parsed.html; css = parsed.css; js = parsed.js;
+            imported = !!(html || css || js);
+        }
+        if (!imported) { alert('Could not find any code in "' + file.name + '".'); return; }
+        cmHtml.setValue(prettifyHtml(html));
+        cmCss.setValue(prettifyCss(css));
+        cmJs.setValue(prettifyJs(js));
+        updateUnsavedBadge();
+        setTimeout(function() { cmHtml.refresh(); cmCss.refresh(); cmJs.refresh(); }, 30);
+    };
+    reader.readAsText(file);
+});
+
+/* ═══════════════════════════════════════════════════════════════
+ * SNIPPET GALLERY — named, persistent code variants (localStorage)
+ * ═══════════════════════════════════════════════════════════════ */
+const galleryWrap = document.getElementById('galleryWrap');
+const galleryMenu = document.getElementById('galleryMenu');
+const galList = document.getElementById('galList');
+const galNameInput = document.getElementById('galNameInput');
+const GAL_KEY = 'hicCodeGallery';
+
+function galLoad() {
+    try { return JSON.parse(localStorage.getItem(GAL_KEY)) || []; }
+    catch (e) { return []; }
+}
+function galSaveStore(snips) {
+    try { localStorage.setItem(GAL_KEY, JSON.stringify(snips)); } catch (e) {}
+}
+function galEscape(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+function galByteSize(s) {
+    var n = 0, i;
+    for (i = 0; i < s.length; i++) n += s.charCodeAt(i) > 127 ? 2 : 1;
+    return n < 1024 ? n + ' B' : (n / 1024).toFixed(1) + ' KB';
+}
+
+function galRender() {
+    var snips = galLoad();
+    document.getElementById('galCount').textContent = snips.length;
+    if (!snips.length) {
+        galList.innerHTML = '<div class="gal-empty">No saved snippets yet.<br>Edit a preset\'s code, then name &amp; save it here.</div>';
+        return;
+    }
+    galList.innerHTML = snips.map(function(s, i) {
+        var meta = (s.src || 'custom') + ' · ' + galByteSize((s.html || '') + (s.css || '') + (s.js || ''));
+        return '<div class="gal-item" data-gal-i="' + i + '" title="Click to load into the panes">'
+            + '<div class="gal-info"><div class="gal-name">' + galEscape(s.name) + '</div><div class="gal-meta">' + meta + '</div></div>'
+            + '<button type="button" class="gal-act" data-gal-dl="' + i + '" title="Download as .json">'
+            +   '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>'
+            + '</button>'
+            + '<button type="button" class="gal-act" data-gal-ren="' + i + '" title="Rename">'
+            +   '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>'
+            + '</button>'
+            + '<button type="button" class="gal-act danger" data-gal-del="' + i + '" title="Delete">'
+            +   '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>'
+            + '</button>'
+            + '</div>';
+    }).join('');
+}
+
+document.getElementById('galleryBtn').addEventListener('click', function(e) {
+    e.stopPropagation();
+    var isOpen = galleryMenu.classList.contains('open');
+    closeMenus();
+    if (!isOpen) { galleryMenu.classList.add('open'); galRender(); galNameInput.focus(); }
+});
+document.getElementById('galSaveBtn').addEventListener('click', galSaveCurrent);
+galNameInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') galSaveCurrent(); });
+
+function galSaveCurrent() {
+    if (!currentPresetKey) return;
+    var name = (galNameInput.value || '').trim();
+    if (!name) name = (PRESETS[currentPresetKey].name || currentPresetKey) + ' variant';
+    var snips = galLoad();
+    /* same name → overwrite (edit-in-place) */
+    var existing = snips.findIndex(function(s) { return s.name === name; });
+    var entry = { name: name, src: currentPresetKey, html: cmHtml.getValue(), css: cmCss.getValue(), js: cmJs.getValue(), savedAt: Date.now() };
+    if (existing >= 0) snips[existing] = entry; else snips.unshift(entry);
+    galSaveStore(snips);
+    galNameInput.value = '';
+    galRender();
+}
+
+galList.addEventListener('click', function(e) {
+    var item = e.target.closest('[data-gal-i]');
+    if (!item) return;
+    var i = parseInt(item.getAttribute('data-gal-i'));
+    var snips = galLoad();
+    var s = snips[i];
+    if (!s) return;
+    var dl = e.target.closest('[data-gal-dl]');
+    var ren = e.target.closest('[data-gal-ren]');
+    var del = e.target.closest('[data-gal-del]');
+    if (dl) {
+        var blob = new Blob([JSON.stringify({ version: 1, kind: 'hic-code', name: s.name, duration: aiCurrentDur(), html: s.html, css: s.css, js: s.js }, null, 2)], { type: 'application/json' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url; a.download = s.name.replace(/[^a-z0-9_-]+/gi, '_') + '_code.json';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
+    } else if (ren) {
+        if (item.querySelector('.gal-rename')) return;
+        var info = item.querySelector('.gal-info');
+        var inp = document.createElement('input');
+        inp.type = 'text'; inp.className = 'gal-rename'; inp.value = s.name; inp.maxLength = 60;
+        info.replaceWith(inp);
+        inp.focus(); inp.select();
+        var done = function(commit) {
+            if (commit) {
+                var nn = (inp.value || '').trim();
+                if (nn && nn !== s.name) { s.name = nn; snips[i] = s; galSaveStore(snips); }
+            }
+            galRender();
+        };
+        inp.addEventListener('keydown', function(ev) {
+            if (ev.key === 'Enter') done(true);
+            else if (ev.key === 'Escape') done(false);
+            ev.stopPropagation();
+        });
+        inp.addEventListener('blur', function() { done(true); });
+    } else if (del) {
+        if (del.classList.contains('confirm')) {
+            snips.splice(i, 1); galSaveStore(snips); galRender();
+        } else {
+            del.classList.add('confirm');
+            del.textContent = 'Sure?';
+            setTimeout(function() { galRender(); }, 2200);
+        }
+    } else {
+        /* load into panes */
+        cmHtml.setValue(prettifyHtml(s.html || ''));
+        cmCss.setValue(prettifyCss(s.css || ''));
+        cmJs.setValue(prettifyJs(s.js || ''));
+        updateUnsavedBadge();
+        closeMenus();
+        setTimeout(function() { cmHtml.refresh(); cmCss.refresh(); cmJs.refresh(); }, 30);
+    }
+});
+
+/* ═══════════════════════════════════════════════════════════════
  * RESOLUTION SELECTOR — controls export pixel count
  * ═══════════════════════════════════════════════════════════════ */
 /* ═══════════════════════════════════════════════════════════
@@ -1204,10 +1450,11 @@ function saveExpPrefs() {
 let exporting = false;
 
 /* Shared menu helpers — each button owns its menu; opening one closes the other */
-function anyMenuOpen() { return frameMenu.classList.contains('open') || videoMenu.classList.contains('open'); }
+function anyMenuOpen() { return frameMenu.classList.contains('open') || videoMenu.classList.contains('open') || galleryMenu.classList.contains('open'); }
 function closeMenus() {
     frameMenu.classList.remove('open'); frameCaret.classList.remove('open');
     videoMenu.classList.remove('open'); videoCaret.classList.remove('open');
+    galleryMenu.classList.remove('open');
 }
 frameCaret.addEventListener('click', function(e) {
     e.stopPropagation();
@@ -1240,9 +1487,18 @@ function refreshExportUI() {
 
 /* Shared frame-render core: rasterizes the current playhead frame at
    export resolution and triggers a download in the given format. */
+/* The code that should be exported: what's applied on the stage (edits,
+ * AI paste, gallery load) — falling back to the preset's original */
+function effectiveExportCode() {
+    if (_lastAppliedCode.html || _lastAppliedCode.css || _lastAppliedCode.js) return _lastAppliedCode;
+    const p = PRESETS[currentPresetKey];
+    return { html: (p && p.html) || '', css: (p && p.css) || '', js: (p && p.js) || '' };
+}
+
 async function exportFrame(fmtKey) {
     if (!currentPresetKey || !PRESETS[currentPresetKey] || exporting) return;
     const p = PRESETS[currentPresetKey];
+    const code = effectiveExportCode();
     const res = RESOLUTIONS[resSelect.value] || RESOLUTIONS['1080'];
     const fmt = FMT_META[fmtKey] || FMT_META.png;
     const t = parseInt(modalSlider.value); /* current playhead position, ms */
@@ -1255,7 +1511,7 @@ async function exportFrame(fmtKey) {
     try {
         /* Detached renderer at export resolution (sandbox is offscreen) */
         fr = new Renderer(res.w, res.h);
-        await fr.setClip(p.html, p.css, p.js);
+        await fr.setClip(code.html, code.css, code.js);
 
         /* Same wrapper fix as the WebM export: scale OUR 800x450 wrapper,
            never the preset's own first element (min-h-full / display:none
@@ -1321,6 +1577,7 @@ async function startWebMExport() {
     if (exporting) return;
     if (!currentPresetKey || !PRESETS[currentPresetKey]) return;
     const p = PRESETS[currentPresetKey];
+    const code = effectiveExportCode();
     const dur = p.dur || 5;
     const fps = lastFps;
 
@@ -1346,7 +1603,7 @@ async function startWebMExport() {
     /* Build renderer at export resolution with scale transform */
     if (modalRenderer) { modalRenderer.sandbox.remove(); }
     modalRenderer = new Renderer(expW, expH);
-    await modalRenderer.setClip(p.html, p.css, p.js);
+    await modalRenderer.setClip(code.html, code.css, code.js);
 
     /* Dedicated 800x450 scale wrapper: move ALL sandbox children into it and scale up.
        Styling the preset's own first element breaks when that element is display:none
