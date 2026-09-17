@@ -129,6 +129,23 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
 .btn-code-io{background:#1e2533;color:#cbd5e1;border:1px solid #2d3748;padding:8px 9px;font-size:11px}
 .btn-code-io:hover{background:#2d3748;color:#f1f5f9;border-color:#3b82f6}
 .btn-code-io:disabled{opacity:.65;cursor:default}
+.btn-reset{background:#1e2533;color:#cbd5e1;border:1px solid #2d3748;padding:8px 9px;font-size:11px}
+.btn-reset:hover:not(:disabled){background:#2d1a1c;color:#fca5a5;border-color:#dc2626}
+.btn-reset.confirm{background:#7f1d1d;color:#fee2e2;border-color:#dc2626}
+
+/* Code export split — .json payload or standalone .html page */
+.code-export-split{position:relative;display:flex;align-items:stretch}
+.btn-export-code{background:#1e2533;color:#cbd5e1;border:1px solid #2d3748;border-radius:8px 0 0 8px;padding:8px 9px;font-size:11px}
+.btn-export-code:hover:not(:disabled){background:#2d3748;color:#f1f5f9;border-color:#3b82f6}
+.btn-export-code:disabled{opacity:.65;cursor:default}
+.code-export-caret{background:#1e2533;border:1px solid #2d3748;border-left:none;border-radius:0 8px 8px 0;color:#cbd5e1;padding:0 7px;cursor:pointer;display:flex;align-items:center;transition:background .15s}
+.code-export-caret:hover:not(:disabled){background:#2d3748;color:#f1f5f9;border-color:#3b82f6}
+.code-export-caret:disabled{opacity:.65;cursor:default}
+.code-export-caret svg{transition:transform .15s}
+.code-export-caret.open svg{transform:rotate(180deg)}
+.code-export-menu{position:absolute;right:0;top:calc(100% + 8px);width:280px;background:#161d2b;border:1px solid #2d3748;border-radius:10px;padding:6px;box-shadow:0 12px 32px rgba(0,0,0,.55);display:none;z-index:60}
+.code-export-menu.open{display:block}
+.btn-reset:disabled{opacity:.65;cursor:default}
 
 /* Snippet gallery — saved code variants */
 .gallery-wrap{position:relative}
@@ -329,9 +346,32 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                         Import
                     </button>
-                    <button class="btn btn-code-io" id="exportCodeBtn" title="Save the three panes as a reusable .json code file">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                        Export
+                    <div class="code-export-split">
+                        <button class="btn btn-export-code" id="exportCodeBtn" title="Download the three panes as a reusable .json code file">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            Export
+                        </button>
+                        <button class="code-export-caret" id="exportCodeCaret" title="Export options" aria-haspopup="true">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                        </button>
+                        <div class="code-export-menu" id="exportCodeMenu">
+                            <div class="export-menu-label">Export current code as</div>
+                            <button class="export-item" data-exp-json>
+                                <svg class="fmt-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                Code file (.json)<em>re-importable</em>
+                                </button>
+                            <button class="export-item" data-exp-html>
+                                <svg class="fmt-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                Standalone page (.html)<em>open in browser</em>
+                            </button>
+                            <div class="export-menu-sep"></div>
+                            <div class="export-menu-label">Standalone page extras</div>
+                            <label class="export-item" style="cursor:pointer"><input type="checkbox" id="expStandaloneFonts" checked style="accent-color:#3b82f6"> Google Fonts fetch<em>recommended</em></label>
+                        </div>
+                    </div>
+                    <button class="btn btn-reset" id="resetCodeBtn" title="Discard applied edits and restore the original preset code" disabled>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                        Reset
                     </button>
                     <button class="btn btn-apply" id="applyCode" title="Render the panes on the stage and play">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
@@ -791,6 +831,7 @@ function openModal(key) {
     modalPlaying = false;
     setPlayState(false);
     unsavedBadge.classList.remove('on');
+    if (typeof resetCodeBtn !== 'undefined' && resetCodeBtn) { resetCodeBtn.classList.remove('confirm'); resetCodeBtn.disabled = true; }
     modalOverlay.classList.add('open');
     if (modalRenderer) { modalRenderer.sandbox.remove(); modalRenderer = null; }
     modalRenderer = new Renderer(W, H);
@@ -962,6 +1003,61 @@ const cmJs = CodeMirror.fromTextArea(document.getElementById('codeJs'), {
 /* Track edits for the Unsaved badge */
 [cmHtml, cmCss, cmJs].forEach(function(cm) { cm.on('change', updateUnsavedBadge); });
 
+/* Restore-original button: enabled only when applied code differs from the preset.
+ * Kept in sync by the same events that drive the Unsaved badge. */
+const resetCodeBtn = document.getElementById('resetCodeBtn');
+function resetSync() {
+    if (!currentPresetKey || !PRESETS[currentPresetKey]) { resetCodeBtn.disabled = true; resetCodeBtn.classList.remove('confirm'); return; }
+    const p = PRESETS[currentPresetKey];
+    /* Panes always hold prettified code, so compare against the prettified preset */
+    resetCodeBtn.disabled = !(
+        (_lastAppliedCode.html || _lastAppliedCode.css || _lastAppliedCode.js)
+        && (cmHtml.getValue() !== prettifyHtml(p.html || '')
+            || cmCss.getValue() !== prettifyCss(p.css || '')
+            || cmJs.getValue() !== prettifyJs(p.js || ''))
+    );
+    if (resetCodeBtn.disabled) resetCodeBtn.classList.remove('confirm');
+}
+[cmHtml, cmCss, cmJs].forEach(function(cm) { cm.on('change', resetSync); });
+resetCodeBtn.addEventListener('click', function() {
+    if (resetCodeBtn.disabled || !currentPresetKey || !PRESETS[currentPresetKey]) return;
+    if (!resetCodeBtn.classList.contains('confirm')) {
+        resetCodeBtn.classList.add('confirm');
+        resetCodeBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg> Sure?';
+        setTimeout(function() {
+            resetCodeBtn.classList.remove('confirm');
+            resetCodeBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg> Reset';
+        }, 2200);
+        return;
+    }
+    resetCodeBtn.classList.remove('confirm');
+    resetCodeBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg> Reset';
+    const p = PRESETS[currentPresetKey];
+    _lastAppliedCode = { html: '', css: '', js: '' };
+    cmHtml.setValue(prettifyHtml(p.html || ''));
+    cmCss.setValue(prettifyCss(p.css || ''));
+    cmJs.setValue(prettifyJs(p.js || ''));
+    _lastAppliedCode = { html: cmHtml.getValue(), css: cmCss.getValue(), js: cmJs.getValue() };
+    updateUnsavedBadge();
+    resetSync();
+    /* Re-render the original preset on the stage and start from t=0 */
+    modalPlaying = false;
+    setPlayState(false);
+    if (modalRenderer) { modalRenderer.sandbox.remove(); }
+    modalRenderer = new Renderer(W, H);
+    modalRenderer.setClip(p.html, p.css, p.js).then(function() {
+        modalRenderer.renderFrame(0).then(function(ok) {
+            if (ok) modalRenderer.drawTo(modalCtx, 0, 0, W, H);
+            modalSlider.value = 0;
+            modalTime.textContent = '0.0s';
+            modalPlaying = true;
+            modalStart = performance.now();
+            setPlayState(true);
+            tickModal();
+        });
+    });
+});
+
 function switchCodeLang(lang) {
     document.querySelectorAll('.code-tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.code-wrap').forEach(e => e.classList.remove('active'));
@@ -1005,6 +1101,7 @@ tabCode.addEventListener('click', function() {
             _lastAppliedCode = { html: cmHtml.getValue(), css: cmCss.getValue(), js: cmJs.getValue() };
         }
         updateUnsavedBadge();
+        resetSync();
         setTimeout(function() { cmHtml.refresh(); cmCss.refresh(); cmJs.refresh(); }, 50);
     }
 });
@@ -1018,6 +1115,7 @@ applyCode.addEventListener('click', async function() {
     await modalRenderer.setClip(cmHtml.getValue(), cmCss.getValue(), cmJs.getValue());
     _lastAppliedCode = { html: cmHtml.getValue(), css: cmCss.getValue(), js: cmJs.getValue() };
     updateUnsavedBadge();
+    resetSync();
     const ok = await modalRenderer.renderFrame(0);
     if (ok) modalRenderer.drawTo(modalCtx, 0, 0, W, H);
     modalSlider.value = 0;
@@ -1036,7 +1134,7 @@ const codeFileInput = document.getElementById('codeFileInput');
 
 /* Export: {version, name, duration, html, css, js} — duration included so a
  * saved snippet carries its intended timing when imported into any preset */
-document.getElementById('exportCodeBtn').addEventListener('click', function() {
+function exportJson() {
     if (!currentPresetKey) return;
     const payload = {
         version: 1,
@@ -1056,6 +1154,106 @@ document.getElementById('exportCodeBtn').addEventListener('click', function() {
     a.click();
     a.remove();
     setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
+}
+
+/* Standalone export: a single .html that plays the animation in any browser.
+ * The pane code travels as an INERT JSON payload (not inline markup), so no
+ * escaping traps (pane JS containing a literal closing script tag, etc.) and
+ * re-import stays byte-exact — the runtime just unpacks the payload and plays. */
+function exportStandalone() {
+    if (!currentPresetKey) return;
+    const p = PRESETS[currentPresetKey];
+    const code = effectiveExportCode();
+    const name = (p && p.name) || currentPresetKey;
+    const dur = aiCurrentDur();
+    const withFonts = document.getElementById('expStandaloneFonts') && document.getElementById('expStandaloneFonts').checked;
+
+    /* CDN scripts/styles already referenced inside the clip HTML (KaTeX, marked,
+       font stylesheets) are hoisted into the exported <head>; the Tailwind
+       runtime is auto-detected exactly like Renderer._loadExternalScripts does. */
+    const tmp = document.createElement('div');
+    tmp.innerHTML = code.html || '';
+    const headTags = [...tmp.querySelectorAll('script[src]')]
+        .map(s => s.getAttribute('src'))
+        .filter(src => src && src.indexOf('tailwind') === -1)
+        .map(src => '<scr' + 'ipt src="' + src + '"></scr' + 'ipt>');
+    [...tmp.querySelectorAll('link[rel="stylesheet"]')].forEach(l => {
+        const href = l.getAttribute('href');
+        if (href) headTags.push('<link rel="stylesheet" href="' + href + '">');
+    });
+    const rawHtml = code.html || '';
+    if (rawHtml.indexOf('tailwindcss') !== -1 || /class="[^"]*\b(bg-|text-|flex|grid-|p[xytblr]?-|m[xytblr]?-|rounded|shadow|font-|border)/.test(rawHtml)) {
+        headTags.push('<scr' + 'ipt src="https://cdn.tailwindcss.com"></scr' + 'ipt>');
+    }
+
+    /* Google Fonts stylesheet URLs in the code, collected HERE (exporter side)
+       and injected as plain data — no regex escaping inside the runtime source */
+    const fontSrc = (code.css || '') + '\n' + rawHtml;
+    const fontUrls = [...new Set(fontSrc.match(/https:\/\/fonts\.googleapis\.com[^\s"')\]]+/g) || [])];
+
+    /* u003c-escape the JSON so pane code containing a literal closing script tag can't break out */
+    const payload = JSON.stringify({ version: 1, kind: 'hic-standalone', name: name, duration: dur, html: code.html, css: code.css, js: code.js, fontUrls: fontUrls }).replace(/</g, '\\u003c');
+
+    const RUNTIME = [
+        'var P = JSON.parse(document.getElementById("hic-code").textContent);',
+        'var stage = document.getElementById("stage");',
+        'var onFrameFn = null;',
+        'try { onFrameFn = new Function("time", P.js + "\\n;return typeof onFrame==\\"function\\"?onFrame:null;")(); } catch(e) { console.error("onFrame compile error:", e); }',
+        'function mount() { stage.innerHTML = P.html; var st = document.createElement("style"); st.textContent = P.css; stage.appendChild(st); }',
+        'function fit() { var s = Math.min(1, window.innerWidth / 800, window.innerHeight / 450); stage.style.transform = s < 1 ? "scale(" + s + ")" : ""; }',
+        'var playing = true, t0 = null, rafId = 0;',
+        'function loop(now) { if (!playing) return; if (t0 === null) t0 = now; var t = (now - t0) % P.duration; try { if (onFrameFn) onFrameFn(t); } catch(e) {} rafId = requestAnimationFrame(loop); }',
+        'function start() { mount(); fit(); window.addEventListener("resize", fit); t0 = null; playing = true; rafId = requestAnimationFrame(loop); }',
+        'document.getElementById("hic-pause").addEventListener("click", function() { playing = !playing; this.textContent = playing ? "Pause" : "Play"; if (playing) { t0 = null; rafId = requestAnimationFrame(loop); } else cancelAnimationFrame(rafId); });',
+        'document.getElementById("hic-restart").addEventListener("click", function() { mount(); t0 = null; });',
+        "if (withFonts) { var pending = P.fontUrls.length; var go = function() { if (--pending === 0) start(); }; if (pending === 0) { start(); } else { P.fontUrls.forEach(function(u) { fetch(u).then(function(r) { return r.text(); }).then(function(css) { var s = document.createElement(\"style\"); s.textContent = css; document.head.appendChild(s); go(); }).catch(go); }); setTimeout(function() { if (pending > 0) { pending = 1; go(); } }, 4000); } } else { start(); }",
+        'window.HIC = { play: function() { if (!playing) document.getElementById("hic-pause").click(); }, pause: function() { if (playing) document.getElementById("hic-pause").click(); }, restart: function() { document.getElementById("hic-restart").click(); }, seek: function(ms) { t0 = performance.now() - ms; try { if (onFrameFn) onFrameFn(((ms % P.duration) + P.duration) % P.duration); } catch(e) {} } };'
+    ].join('\n');
+
+    const page = '<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n'
+        + '<meta name="viewport" content="width=device-width, initial-scale=1.0">\n'
+        + '<title>' + String(name).replace(/&/g, '&amp;').replace(/</g, '&lt;') + ' \u2014 HIC Animation</title>\n'
+        + headTags.join('\n') + (headTags.length ? '\n' : '')
+        + '<style>\n'
+        + 'body{margin:0;background:#0b0f1a;min-height:100vh;display:grid;place-items:center;font-family:system-ui,sans-serif}\n'
+        + '#stage{width:800px;height:450px;position:relative;overflow:hidden;background:transparent}\n'
+        + '#hic-pill{position:fixed;right:12px;bottom:12px;display:flex;gap:6px;z-index:9}\n'
+        + '#hic-pill button{background:rgba(30,37,51,.85);color:#cbd5e1;border:1px solid #2d3748;border-radius:7px;padding:6px 10px;font-size:11px;cursor:pointer;font-family:system-ui}\n'
+        + '#hic-pill button:hover{color:#f1f5f9;border-color:#3b82f6}\n'
+        + '</style>\n</head>\n<body>\n<div id="stage"></div>\n'
+        + '<div id="hic-pill"><button id="hic-pause">Pause</button><button id="hic-restart">Restart</button></div>\n'
+        + '<scr' + 'ipt type="application/json" id="hic-code">' + payload + '</scr' + 'ipt>\n'
+        + '<scr' + 'ipt>\n' + RUNTIME + '\n</scr' + 'ipt>\n</body>\n</html>';
+
+    const blob = new Blob([page], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = (currentPresetKey + '_standalone.html');
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
+}
+
+/* Menu elements — declared here (before the listeners below use them at load time) */
+const exportCodeMenu = document.getElementById('exportCodeMenu');
+const exportCodeCaret = document.getElementById('exportCodeCaret');
+
+/* Main click = JSON (existing workflow); caret opens the format menu */
+document.getElementById('exportCodeBtn').addEventListener('click', exportJson);
+exportCodeCaret.addEventListener('click', function(e) {
+    e.stopPropagation();
+    const open = exportCodeMenu.classList.contains('open');
+    closeMenus();
+    if (!open) { exportCodeMenu.classList.add('open'); exportCodeCaret.classList.add('open'); }
+});
+exportCodeMenu.addEventListener('click', function(e) {
+    const item = e.target.closest('[data-exp-json],[data-exp-html]');
+    if (!item) return;
+    e.stopPropagation();
+    closeMenus();
+    if (item.hasAttribute('data-exp-json')) exportJson(); else exportStandalone();
 });
 
 /* Import: prefers our .json payload; falls back to the AI reply parser so
@@ -1080,6 +1278,27 @@ codeFileInput.addEventListener('change', function() {
                     imported = !!(html || css || js);
                 }
             } catch (e) { /* fall through to parser */ }
+        }
+        /* Standalone .html export: pull the embedded JSON payload for a byte-exact
+           round-trip. Done BEFORE the AI-parser fallback — the naive parser would
+           sweep the page's own runtime script into the JS pane. */
+        if (!imported) {
+            const tagStart = text.indexOf('<script type="application/json" id="hic-code">');
+            if (tagStart !== -1) {
+                const payloadStart = tagStart + '<script type="application/json" id="hic-code">'.length;
+                const tagEnd = text.indexOf('</' + 'script>', payloadStart);
+                if (tagEnd > payloadStart) {
+                    try {
+                        const data = JSON.parse(text.slice(payloadStart, tagEnd));
+                        if (data && typeof data === 'object') {
+                            html = String(data.html || '');
+                            css = String(data.css || '');
+                            js = String(data.js || '');
+                            imported = !!(html || css || js);
+                        }
+                    } catch (e) { /* fall through to parser */ }
+                }
+            }
         }
         if (!imported) {
             const parsed = aiParseReply(text);
@@ -1461,11 +1680,12 @@ function saveExpPrefs() {
 let exporting = false;
 
 /* Shared menu helpers — each button owns its menu; opening one closes the other */
-function anyMenuOpen() { return frameMenu.classList.contains('open') || videoMenu.classList.contains('open') || galleryMenu.classList.contains('open'); }
+function anyMenuOpen() { return frameMenu.classList.contains('open') || videoMenu.classList.contains('open') || galleryMenu.classList.contains('open') || exportCodeMenu.classList.contains('open'); }
 function closeMenus() {
     frameMenu.classList.remove('open'); frameCaret.classList.remove('open');
     videoMenu.classList.remove('open'); videoCaret.classList.remove('open');
     galleryMenu.classList.remove('open');
+    exportCodeMenu.classList.remove('open'); exportCodeCaret.classList.remove('open');
 }
 frameCaret.addEventListener('click', function(e) {
     e.stopPropagation();
@@ -1660,18 +1880,26 @@ async function startWebMExport() {
 
     recorder.start();
 
-    /* Render each frame at export resolution to visible canvas */
+    /* Render each frame at export resolution to visible canvas.
+       Paced in WALL-CLOCK time: MediaRecorder timestamps frames by when the
+       canvas actually changes, so frame N must be drawn ~N/fps seconds after
+       start. Rendering flat-out (one rAF per frame) compresses the timeline —
+       a 3s choreography lands in a ~1.5s video playing at double speed. */
+    const wallStart = performance.now();
     for (let frame = 0; frame < dur * fps; frame++) {
         const t = (frame / fps) * 1000;
+        const delay = wallStart + t - performance.now();
+        await new Promise(function(r) { if (delay > 0) setTimeout(r, delay); else requestAnimationFrame(r); });
         modalSlider.value = Math.floor(t);
         modalTime.textContent = (t / 1000).toFixed(1) + 's';
         try {
             const ok = await modalRenderer.renderFrame(t);
             if (ok) modalRenderer.drawTo(modalCtx, 0, 0, expW, expH);
         } catch(e) { console.error('[Export] frame error:', e); }
-        await new Promise(function(r) { requestAnimationFrame(r); });
     }
 
+    /* Let the compositor capture the final frame before stopping */
+    await new Promise(function(r) { setTimeout(r, Math.max(50, 1000 / fps)); });
     recorder.stop();
     await done;
 
