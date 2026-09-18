@@ -1256,8 +1256,27 @@ function exportStandalone() {
         if (href) headTags.push('<link rel="stylesheet" href="' + href + '">');
     });
     const rawHtml = code.html || '';
-    if (rawHtml.indexOf('tailwindcss') !== -1 || /class="[^"]*\b(bg-|text-|flex|grid-|p[xytblr]?-|m[xytblr]?-|rounded|shadow|font-|border)/.test(rawHtml)) {
+    /* Same detection as Renderer._loadExternalScripts (superset: gradients from-/to-, w-/h-, gap-, tracking-…).
+       Skew note: the editor compiles with the locally-installed @tailwindcss/browser v4,
+       the standalone page uses the cdn.tailwindcss.com Play runtime — utility coverage
+       matches in practice for the classes these clips use. An inline CDN tag in the
+       code is served as-is instead of injecting a second copy. */
+    const usesTw = rawHtml.indexOf('tailwindcss') !== -1 || /class="[^"]*\b(bg-|text-|flex|grid-|p[xytblr]?-|m[xytblr]?-|rounded|shadow|font-|border|min-h-|max-w-|w-|h-|gap-|mt-|mb-|tracking-|from-|to-)/.test(rawHtml);
+    if (usesTw && !/<script[^>]*src="[^"]*cdn\.tailwindcss\.com/.test(rawHtml)) {
         headTags.push('<scr' + 'ipt src="https://cdn.tailwindcss.com"></scr' + 'ipt>');
+    }
+    /* Library-usage fallback: if the code calls a CDN library whose script tag was
+       lost (hand-edited code, or pastes made before the importer preserved src tags),
+       still inject it so the standalone plays like the editor did. Detection mirrors
+       the runtime guards AI code uses: window.marked / window.renderMathInElement. */
+    const libHint = rawHtml + '\n' + (code.css || '') + '\n' + (code.js || '');
+    if (/window\.marked|marked\.parse/.test(libHint) && !libHint.includes('marked.min.js')) {
+        headTags.push('<scr' + 'ipt src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></scr' + 'ipt>');
+    }
+    if (/window\.renderMathInElement|katex\.min\.css/.test(libHint) && !libHint.includes('katex.min.js')) {
+        headTags.push('<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">');
+        headTags.push('<scr' + 'ipt src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></scr' + 'ipt>');
+        headTags.push('<scr' + 'ipt src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></scr' + 'ipt>');
     }
 
     /* Google Fonts stylesheet URLs in the code, collected HERE (exporter side)
@@ -1624,13 +1643,21 @@ function aiParseReply(text) {
     } else {
         let s = text;
         s = s.replace(/<style[^>]*>([\s\S]*?)<\/style>/gi, (_, css) => { res.css += (res.css ? '\n\n' : '') + css.trim(); return ''; });
-        s = s.replace(/<script[^>]*>([\s\S]*?)<\/script>/gi, (_, js) => { res.js += (res.js ? '\n\n' : '') + js.trim(); return ''; });
-        s = s.replace(/<!DOCTYPE[^>]*>/i, '').replace(/<\/?html[^>]*>/gi, '').replace(/<head[\s\S]*?<\/head>/gi, '').replace(/<\/?body[^>]*>/gi, '').replace(/<meta[^>]*>/gi, '').replace(/<title[^>]*>[\s\S]*?<\/title>/gi, '');
+        s = s.replace(/<script(?![^>]*(?:\bsrc=|type="application\/json"))[^>]*>([\s\S]*?)<\/script>/gi, (_, js) => { res.js += (res.js ? '\n\n' : '') + js.trim(); return ''; });
+        s = s.replace(/<!DOCTYPE[^>]*>/i, '').replace(/<\/?html[^>]*>/gi, '').replace(/<head[^>]*>([\s\S]*?)<\/head>/gi, (_, head) => {
+            /* Keep external refs (CDN scripts, font/KaTeX stylesheets) from <head> —
+               only meta/title/inline scripts are disposable there */
+            const keep = [...head.matchAll(/<(script\b[^>]*\bsrc=[^>]*>[\s\S]*?<\/script>|link\b[^>]*\brel=[^>]*stylesheet[^>]*>)/gi)].map(x => x[0]).join('\n');
+            return keep ? '\n' + keep + '\n' : '';
+        }).replace(/<\/?body[^>]*>/gi, '').replace(/<meta[^>]*>/gi, '').replace(/<title[^>]*>[\s\S]*?<\/title>/gi, '');
         res.html = s.trim();
     }
     if (res.html && /<style|<script/i.test(res.html)) {
         res.html = res.html.replace(/<style[^>]*>([\s\S]*?)<\/style>/gi, (_, css) => { res.css += (res.css ? '\n\n' : '') + css.trim(); return ''; });
-        res.html = res.html.replace(/<script[^>]*>([\s\S]*?)<\/script>/gi, (_, js) => { res.js += (res.js ? '\n\n' : '') + js.trim(); return ''; });
+        /* External <script src> tags (KaTeX, marked CDN) MUST stay in the html —
+           Renderer._loadExternalScripts loads them in the editor and the standalone
+           exporter hoists them into <head>. Only inline scripts move to the js pane. */
+        res.html = res.html.replace(/<script(?![^>]*(?:\bsrc=|type="application\/json"))[^>]*>([\s\S]*?)<\/script>/gi, (_, js) => { res.js += (res.js ? '\n\n' : '') + js.trim(); return ''; });
         res.html = res.html.trim();
     }
     return res;
