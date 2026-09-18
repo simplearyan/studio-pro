@@ -1,0 +1,48 @@
+name: Sync designs gallery
+
+# Google Form → Sheet → this Action → static designs-gallery.json.
+# Runs every 6 hours and on manual dispatch; the push redeploys GitHub Pages
+# via the existing "Deploy to GitHub Pages" workflow.
+
+on:
+  schedule:
+    - cron: '0 */6 * * *' # every 6 hours
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-designs
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Commit on top of the latest default branch regardless of what triggered us
+          ref: refs/heads/${{ github.event.repository.default_branch }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Sync gallery from Google Sheet
+        run: python tools/sync_designs.py
+
+      - name: Commit updated gallery (if changed)
+        run: |
+          git config user.name "designs-sync-bot"
+          git config user.email "actions@users.noreply.github.com"
+          if git diff --quiet docs/html-in-canvas/designs-gallery.json; then
+            echo "No gallery changes — nothing to commit."
+          else
+            git add docs/html-in-canvas/designs-gallery.json
+            git commit -m "sync designs gallery from submissions [skip ci]"
+            git push
+            echo "Gallery updated and pushed — Pages redeploy will follow."
+          fi

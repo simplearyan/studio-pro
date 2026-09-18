@@ -206,6 +206,27 @@ footer{padding:0 32px 28px;font-size:10.5px;color:#475569;font-weight:500}
 .ai-status{font-size:11px;font-weight:500;color:#94a3b8}
 .ai-note{font-size:10px;line-height:1.6;color:#64748b;margin:2px 0 0}
 
+/* Submit-to-gallery flow (Phase C) */
+.btn-ai-submit{background:#d97706;color:#fff}
+.btn-ai-submit:hover{background:#b45309}
+.btn-ai-submit:disabled{opacity:.5;cursor:default}
+.submit-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.submit-grid .full{grid-column:1/-1}
+.submit-field label{display:block;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#64748b;margin-bottom:5px}
+.submit-field label .req{color:#f87171}
+.submit-field input,.submit-field textarea{width:100%;box-sizing:border-box;background:#0d1420;border:1px solid #2d3748;border-radius:8px;padding:8px 11px;font-size:12px;color:#e2e8f0;outline:none;font-family:'Rubik',sans-serif;resize:vertical}
+.submit-field input:focus,.submit-field textarea:focus{border-color:#3b82f6}
+.submit-field textarea.mono{font-family:ui-monospace,'Cascadia Code',Consolas,monospace;font-size:11px;line-height:1.5}
+.submit-field .ferr{display:none;font-size:10.5px;color:#f87171;margin-top:4px;font-weight:500}
+.submit-field.bad input,.submit-field.bad textarea{border-color:#f87171}
+.submit-field.bad .ferr{display:block}
+.submit-summary{font-size:11px;line-height:1.7;color:#94a3b8;background:#161d2b;border:1px solid #2d3748;border-radius:8px;padding:10px 12px}
+.submit-summary b{color:#e2e8f0;font-weight:600}
+.submit-summary .warn{color:#fbbf24}
+.submit-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.submit-actions .spacer{flex:1}
+@media(max-width:640px){.submit-grid{grid-template-columns:1fr}}
+
 /* toast */
 #toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);background:#1e293b;color:#f1f5f9;border:1px solid #334155;border-radius:12px;padding:10px 18px;font-size:12px;font-weight:600;opacity:0;pointer-events:none;transition:all .25s;z-index:2000;box-shadow:0 12px 32px rgba(0,0,0,.5);max-width:90vw;text-align:center}
 #toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
@@ -414,6 +435,62 @@ footer{padding:0 32px 28px;font-size:10.5px;color:#475569;font-weight:500}
                             Parse &amp; Apply
                         </button>
                         <button type="button" class="btn btn-ai-clear" id="aiClearBtn">Clear</button>
+                        <button type="button" class="btn btn-ai-submit" id="aiSubmitBtn" title="Submit this design to the public gallery">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                            Submit to Gallery
+                        </button>
+                    </div>
+                </div>
+                <div class="ai-view" id="aiViewSubmit">
+                    <p class="ai-hint">Review the submission, fill in the credits, then publish. It appears in the gallery after the next sync (~every 6 h).</p>
+                    <div class="submit-summary" id="submitSummary"></div>
+                    <div class="submit-grid">
+                        <div class="submit-field" id="sfTitle">
+                            <label>Title <span class="req">*</span></label>
+                            <input type="text" id="subTitle" maxlength="60" placeholder="e.g. Neon City Rush">
+                            <div class="ferr">Title is required (2–60 chars).</div>
+                        </div>
+                        <div class="submit-field" id="sfCreator">
+                            <label>Creator <span class="req">*</span></label>
+                            <input type="text" id="subCreator" maxlength="40" placeholder="your display name">
+                            <div class="ferr">Creator name is required.</div>
+                        </div>
+                        <div class="submit-field full" id="sfTags">
+                            <label>Tags</label>
+                            <input type="text" id="subTags" maxlength="80" placeholder="comma separated, e.g. fonts, latex, tailwind">
+                        </div>
+                        <div class="submit-field full" id="sfPrompt">
+                            <label>Prompt brief <span class="req">*</span></label>
+                            <textarea id="subPrompt" rows="4" placeholder="The creative brief only — the render contract is attached automatically when someone copies it."></textarea>
+                            <div class="ferr">A brief is required so others can regenerate this design.</div>
+                        </div>
+                        <div class="submit-field" id="sfDuration">
+                            <label>Duration (ms)</label>
+                            <input type="text" id="subDuration" inputmode="numeric" placeholder="5000">
+                            <div class="ferr">Duration must be a number between 500 and 60000.</div>
+                        </div>
+                        <div class="submit-field full" id="sfHtml">
+                            <label>HTML <span class="req">*</span></label>
+                            <textarea id="subHtml" class="mono" rows="6" placeholder="&lt;title&gt;Name&lt;/title&gt; then the stage markup"></textarea>
+                            <div class="ferr">HTML must start with a &lt;title&gt; tag (max 30k chars).</div>
+                        </div>
+                        <div class="submit-field full" id="sfCss">
+                            <label>CSS</label>
+                            <textarea id="subCss" class="mono" rows="5"></textarea>
+                            <div class="ferr">CSS is over the 30k char limit.</div>
+                        </div>
+                        <div class="submit-field full" id="sfJs">
+                            <label>JS <span class="req">*</span></label>
+                            <textarea id="subJs" class="mono" rows="6" placeholder="function onFrame(time) { … }"></textarea>
+                            <div class="ferr">JS must define onFrame(time), compile cleanly, and avoid rAF/setTimeout/keyframes (max 30k chars).</div>
+                        </div>
+                    </div>
+                    <div class="submit-actions">
+                        <button type="button" class="btn btn-ai-submit" id="subPostBtn" style="flex:1">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                            Publish to Gallery
+                        </button>
+                        <button type="button" class="btn btn-ai-clear" id="subBackBtn">Back</button>
                     </div>
                 </div>
             </div>
@@ -1282,12 +1359,12 @@ copyCodeHdr.addEventListener('click', function() { if (currentDesignId) copyFenc
 const aiWant = document.getElementById('aiWant');
 const aiReply = document.getElementById('aiReply');
 const aiStatus = document.getElementById('aiStatus');
-function aiMsg(html) { aiStatus.innerHTML = html || ''; }
-function aiShowView(name) {
+function aiMsg(html) { aiStatus.innerHTML = html || ''; }function aiShowView(name) {
     document.getElementById('aiSubGet').classList.toggle('active', name === 'get');
     document.getElementById('aiSubPaste').classList.toggle('active', name === 'paste');
     document.getElementById('aiViewGet').classList.toggle('active', name === 'get');
     document.getElementById('aiViewPaste').classList.toggle('active', name === 'paste');
+    document.getElementById('aiViewSubmit').classList.toggle('active', name === 'submit');
     if (name === 'paste') setTimeout(function() { aiReply.focus(); }, 30);
 }
 document.getElementById('aiSubGet').addEventListener('click', function() { aiShowView('get'); });
@@ -1321,6 +1398,185 @@ document.getElementById('aiApplyBtn').addEventListener('click', aiApplyReply);
 document.getElementById('aiClearBtn').addEventListener('click', function() { aiReply.value = ''; aiMsg(''); });
 aiReply.addEventListener('paste', function() {
     setTimeout(function() { if ((aiReply.value || '').trim()) aiApplyReply(); }, 60);
+});
+
+/* ═════════════════════════════════════════════════════════════
+ * SUBMIT TO GALLERY (Phase C) — invisible Google Form POST
+ * ═════════════════════════════════════════════════════════════ */
+/* Google Forms acts as the database; a GitHub Action syncs the linked Sheet
+ * into designs-gallery.json every ~6 h. See DESIGNS-GALLERY-PLAN.md. */
+const FORM = {
+    id: '1FAIpQLSf31WIC2A2ioBgolMM7OSKeqb9vnT3njNs4U41pofPClAWsng',
+    entries: {
+        title: 'entry.2036550004',
+        creator: 'entry.673665515',
+        tags: 'entry.2080048560',
+        prompt: 'entry.1575482696',
+        duration: 'entry.1415136671',
+        html: 'entry.907794936',
+        css: 'entry.1692215303',
+        js: 'entry.1301616407'
+    }
+};
+
+const DRAFT_KEY = 'hicDesignDraft';
+const aiSubmitBtn = document.getElementById('aiSubmitBtn');
+const subBackBtn = document.getElementById('subBackBtn');
+const subPostBtn = document.getElementById('subPostBtn');
+
+/* Persist the current modal code/brief so a refresh (or failed POST) never
+ * loses work. Restored into the draft the next time + New is used. */
+function saveDraft() {
+    if (!currentDesignId) return;
+    try {
+        localStorage.setItem(DRAFT_KEY, JSON.stringify({
+            prompt: document.getElementById('aiWant').value || '',
+            html: cmHtml.getValue(), css: cmCss.getValue(), js: cmJs.getValue(),
+            savedAt: Date.now()
+        }));
+    } catch (e) { /* storage unavailable */ }
+}
+function loadDraft() {
+    try { return JSON.parse(localStorage.getItem(DRAFT_KEY)); } catch (e) { return null; }
+}
+
+function aiShowView(name) {
+    document.getElementById('aiSubGet').classList.toggle('active', name === 'get');
+    document.getElementById('aiSubPaste').classList.toggle('active', name === 'paste');
+    document.getElementById('aiViewGet').classList.toggle('active', name === 'get');
+    document.getElementById('aiViewPaste').classList.toggle('active', name === 'paste');
+    document.getElementById('aiViewSubmit').classList.toggle('active', name === 'submit');
+    if (name === 'paste') setTimeout(function() { aiReply.focus(); }, 30);
+}
+
+/* The code the submission would carry: applied edits, else the design's own,
+ * else whatever is currently in the panes (draft flow) */
+function submitCandidateCode() {
+    if (_lastAppliedCode.html || _lastAppliedCode.css || _lastAppliedCode.js) return _lastAppliedCode;
+    const d = byId[currentDesignId];
+    if (d && (d.html || d.css || d.js)) return { html: d.html, css: d.css, js: d.js };
+    return { html: cmHtml.getValue(), css: cmCss.getValue(), js: cmJs.getValue() };
+}
+
+function validJs(js) {
+    if (!/\bonFrame\s*\(/.test(js)) return false;
+    if (/\brequestAnimationFrame\b|\bsetTimeout\b|\bsetInterval\b/.test(js)) return false;
+    try { new Function(js); return true; } catch (e) { return false; }
+}
+
+function validateSubmission(s) {
+    const errs = {};
+    if (!s.title || s.title.length < 2 || s.title.length > 60) errs.title = 1;
+    if (!s.creator || !s.creator.trim()) errs.creator = 1;
+    if (!s.prompt || !s.prompt.trim()) errs.prompt = 1;
+    const dur = parseInt(s.duration, 10);
+    if (!dur || dur < 500 || dur > 60000) errs.duration = 1;
+    if (!/^\s*<title[^>]*>/i.test(s.html) || !s.html || s.html.length > 30000) errs.html = 1;
+    if ((s.css || '').length > 30000) errs.css = 1;
+    if (!validJs(s.js || '') || (s.js || '').length > 30000) errs.js = 1;
+    return errs;
+}
+
+function markFields(errs) {
+    document.getElementById('sfTitle').classList.toggle('bad', !!errs.title);
+    document.getElementById('sfCreator').classList.toggle('bad', !!errs.creator);
+    document.getElementById('sfPrompt').classList.toggle('bad', !!errs.prompt);
+    document.getElementById('sfDuration').classList.toggle('bad', !!errs.duration);
+    document.getElementById('sfHtml').classList.toggle('bad', !!errs.html);
+    document.getElementById('sfCss').classList.toggle('bad', !!errs.css);
+    document.getElementById('sfJs').classList.toggle('bad', !!errs.js);
+}
+
+function openSubmitView() {
+    if (!currentDesignId) return;
+    const d = byId[currentDesignId];
+    const code = submitCandidateCode();
+    const parsed = clipTitleFrom(code.html);
+    /* Pre-fill from the design/draft */
+    document.getElementById('subTitle').value = parsed || (d._draft ? '' : (d.title || ''));
+    document.getElementById('subCreator').value = d._draft ? '' : (d.creator === 'studio' ? '' : (d.creator || ''));
+    document.getElementById('subTags').value = (d.tags || []).filter(t => t !== 'draft' && t !== 'prompt').join(', ');
+    document.getElementById('subPrompt').value = (d.prompt && d.prompt !== '(rendered design — code included)') ? d.prompt : (document.getElementById('aiWant').value || '');
+    document.getElementById('subDuration').value = String(designDur(d));
+    document.getElementById('subHtml').value = code.html || '';
+    document.getElementById('subCss').value = code.css || '';
+    document.getElementById('subJs').value = code.js || '';
+    const hasCode = !!(code.html || code.css || code.js);
+    aiSubmitBtn.disabled = !hasCode;
+    /* Summary of what's on stage */
+    const kb = n => (n / 1024).toFixed(1) + ' KB';
+    document.getElementById('submitSummary').innerHTML =
+        'Submitting: <b>' + esc(parsed || d.title || 'Untitled') + '</b> — ' +
+        'HTML ' + kb((code.html || '').length) + ' · CSS ' + kb((code.css || '').length) + ' · JS ' + kb((code.js || '').length) +
+        (hasCode ? '' : ' <span class="warn">⚠ no code yet — paste an AI reply first</span>');
+    markFields({});
+    aiShowView('submit');
+}
+
+aiSubmitBtn.addEventListener('click', openSubmitView);
+/* Also reachable from the modal header copy row on gallery designs */
+document.getElementById('copyPromptHdr').insertAdjacentHTML('afterend',
+    '<button class="btn-code-io" id="submitHdrBtn" title="Submit this design to the public gallery"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>');
+document.getElementById('submitHdrBtn').addEventListener('click', function() { showTab('ai'); openSubmitView(); });
+subBackBtn.addEventListener('click', function() { aiShowView('paste'); });
+
+subPostBtn.addEventListener('click', function() {
+    const s = {
+        title: document.getElementById('subTitle').value.trim(),
+        creator: document.getElementById('subCreator').value.trim(),
+        tags: document.getElementById('subTags').value.trim(),
+        prompt: document.getElementById('subPrompt').value.trim(),
+        duration: document.getElementById('subDuration').value.trim(),
+        html: document.getElementById('subHtml').value,
+        css: document.getElementById('subCss').value,
+        js: document.getElementById('subJs').value
+    };
+    const errs = validateSubmission(s);
+    markFields(errs);
+    if (Object.keys(errs).length) {
+        toast('Fix the highlighted fields first');
+        return;
+    }
+    /* Always keep a local backup — no-cors POSTs can't be confirmed */
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ prompt: s.prompt, html: s.html, css: s.css, js: s.js, savedAt: Date.now() })); } catch (e) {}
+
+    const body = new FormData();
+    body.append(FORM.entries.title, s.title);
+    body.append(FORM.entries.creator, s.creator);
+    body.append(FORM.entries.tags, s.tags);
+    body.append(FORM.entries.prompt, s.prompt);
+    body.append(FORM.entries.duration, s.duration);
+    body.append(FORM.entries.html, s.html);
+    body.append(FORM.entries.css, s.css);
+    body.append(FORM.entries.js, s.js);
+
+    subPostBtn.disabled = true;
+    subPostBtn.textContent = 'Publishing…';
+    /* no-cors: the opaque response can't be read, but Google accepts the POST */
+    fetch('https://docs.google.com/forms/d/e/' + FORM.id + '/formResponse', {
+        method: 'POST',
+        mode: 'no-cors',
+        body: body
+    }).then(function() {
+        toast('Submitted! It lands in the gallery after the next sync (≤ 6 h).');
+        aiMsg('Queued for the gallery — check back after the next sync.');
+        aiShowView('get');
+    }).catch(function() {
+        toast('Submit may have failed — a local backup was saved. Try again later.');
+    }).finally(function() {
+        subPostBtn.disabled = false;
+        subPostBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg> Publish to Gallery';
+    });
+});
+
+/* Draft autosave while the modal is open (throttled) */
+let _draftTimer = 0;
+[cmHtml, cmCss, cmJs].forEach(function(cm) {
+    cm.on('change', function() {
+        if (!currentDesignId) return;
+        clearTimeout(_draftTimer);
+        _draftTimer = setTimeout(saveDraft, 1200);
+    });
 });
 
 /* ── Exports ──────────────────────────────────────────────────── */
@@ -1670,15 +1926,18 @@ const NEW_DESIGN_ID = '__draft__';
 const newDesignBtn = document.getElementById('newDesignBtn');
 newDesignBtn.addEventListener('click', openNewDesign);
 function openNewDesign() {
+    const saved = loadDraft();
     byId[NEW_DESIGN_ID] = {
         id: NEW_DESIGN_ID,
         title: 'Untitled Design',
         creator: 'draft',
         tags: ['draft'],
-        prompt: '',
+        prompt: (saved && saved.prompt) || '',
         duration: 5000,
-        html: '', css: '', js: '',
-        hasCode: false,
+        html: (saved && saved.html) || '',
+        css: (saved && saved.css) || '',
+        js: (saved && saved.js) || '',
+        hasCode: !!(saved && (saved.html || saved.css || saved.js)),
         _draft: true
     };
     openDesign(NEW_DESIGN_ID);
