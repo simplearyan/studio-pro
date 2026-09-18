@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Prompt Engineer — HTML-in-Canvas</title>
+<!-- Emoji favicons: ✏️ light / 🪄 dark -->
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✏️</text></svg>" media="(prefers-color-scheme: light)">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🪄</text></svg>" media="(prefers-color-scheme: dark)">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-system,sans-serif;min-height:100vh}
+
+/* ── Top app bar — 3-zone grid like /designs ─────────────────── */
+.topbar{position:sticky;top:0;z-index:100;background:rgba(11,15,26,.92);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid #1a1f2e;padding:12px 32px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px}
+.brand{display:flex;align-items:baseline;gap:10px;min-width:0}
+.brand h1{font-size:19px;font-weight:800;letter-spacing:-.4px;color:#f1f5f9;white-space:nowrap}
+.brand .sub{font-size:11px;color:#7c8ba3;font-weight:500;white-space:nowrap}
+.top-actions{display:flex;align-items:center;gap:9px;justify-self:end}
+.btn-io{background:#1e2533;color:#cbd5e1;border:1px solid #2d3748;border-radius:8px;padding:8px 13px;font-size:11.5px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:7px;font-family:'Rubik',sans-serif;white-space:nowrap;transition:all .15s}
+.btn-io:hover{background:#2d3748;color:#f1f5f9;border-color:#3b82f6}
+.btn-plus{background:#2563eb;border-color:#2563eb;color:#fff;box-shadow:0 1px 3px rgba(37,99,235,.35)}
+.btn-plus:hover{background:#1d4ed8;border-color:#1d4ed8;color:#fff}
+@media(max-width:960px){.brand .sub{display:none}}
+
+/* ── Layout: modules left, live prompt right ─────────────────── */
+.workbench{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:18px;padding:18px 32px 60px;align-items:start}
+@media(max-width:1024px){.workbench{grid-template-columns:1fr;padding:14px 16px 90px}}
+
+/* ── Module cards (M3-style accordion) ───────────────────────── */
+.mod{background:#141922;border:1px solid #1e2533;border-radius:12px;margin-bottom:10px;overflow:hidden;transition:border-color .2s}
+.mod.on{border-color:#3b82f650}
+.mod-head{display:flex;align-items:center;gap:11px;padding:12px 14px;cursor:pointer;user-select:none}
+.mod-head:hover{background:#161d2b}
+.mod-ico{width:30px;height:30px;border-radius:8px;background:#1a2230;border:1px solid #263042;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.mod-name{font-size:13px;font-weight:700;color:#f1f5f9;letter-spacing:-.2px;flex:1;min-width:0}
+.mod-name .hint{display:block;font-size:10px;font-weight:500;color:#64748b;letter-spacing:0;margin-top:1px}
+.mod-badges{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.mod-chars{font-size:9.5px;font-weight:700;color:#64748b;font-variant-numeric:tabular-nums;background:#1a2230;border:1px solid #263042;border-radius:10px;padding:2px 7px}
+.mod-chars.warn{color:#fbbf24;border-color:#92600a}
+.mod-chev{color:#7c8ba3;font-size:11px;transition:transform .2s}
+.mod.open .mod-chev{transform:rotate(180deg)}
+.mod-body{display:none;padding:2px 14px 14px;border-top:1px solid #1a2230}
+.mod.open .mod-body{display:block}
+.mod.disabled .mod-body{opacity:.45;pointer-events:none}
+
+/* toggles + form primitives */
+.tgl{position:relative;width:32px;height:18px;border-radius:20px;background:#334155;border:none;cursor:pointer;transition:background .2s;flex-shrink:0}
+.tgl::after{content:'';position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#cbd5e1;transition:transform .2s,background .2s}
+.tgl.on{background:#2563eb}
+.tgl.on::after{transform:translateX(14px);background:#fff}
+.fld{margin-top:10px}
+.fld label{display:block;font-size:10px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:#7c8ba3;margin-bottom:5px}
+.fld input[type=text],.fld textarea,.fld select{width:100%;background:#0f1420;border:1px solid #2d3748;border-radius:8px;padding:8px 11px;color:#f1f5f9;font-size:12.5px;font-family:'Rubik',sans-serif;font-weight:500;outline:none;transition:border-color .15s}
+.fld input:focus,.fld textarea:focus,.fld select:focus{border-color:#3b82f6}
+.fld textarea{resize:vertical;min-height:60px;line-height:1.55}
+.fld .note{font-size:10px;color:#64748b;margin-top:4px;font-weight:500}
+.fld-row{display:flex;gap:10px}
+.fld-row .fld{flex:1}
+.chipset{display:flex;gap:6px;flex-wrap:wrap}
+.chipset button{background:#161d2b;border:1px solid #2d3748;border-radius:16px;padding:5px 12px;font-size:11px;font-weight:600;color:#94a3b8;cursor:pointer;font-family:'Rubik',sans-serif;transition:all .15s}
+.chipset button:hover{border-color:#3b82f6;color:#cbd5e1}
+.chipset button.on{background:#2563eb;border-color:#2563eb;color:#fff}
+
+/* archetype icon grid */
+.arch-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:7px;margin-top:10px}
+.arch{background:#161d2b;border:1px solid #2d3748;border-radius:10px;padding:10px 6px 8px;text-align:center;cursor:pointer;transition:all .15s;font-family:'Rubik',sans-serif}
+.arch:hover{border-color:#3b82f6}
+.arch.on{background:#1e3a5f;border-color:#3b82f6;box-shadow:0 0 0 1px #3b82f640}
+.arch .ico{font-size:19px;display:block;margin-bottom:4px}
+.arch .nm{font-size:9.5px;font-weight:700;color:#cbd5e1;letter-spacing:.2px}
+
+/* dynamic content field list */
+.row{display:flex;gap:7px;align-items:flex-start;margin-top:7px}
+.row .fld{flex:1;margin-top:0}
+.row .del{background:#1e2533;border:1px solid #2d3748;color:#94a3b8;border-radius:8px;width:32px;height:36px;cursor:pointer;font-size:14px;flex-shrink:0;transition:all .15s}
+.row .del:hover{border-color:#ef4444;color:#ef4444}
+.add-btn{background:none;border:1px dashed #33405a;color:#8ca3c0;border-radius:8px;padding:7px 12px;font-size:11px;font-weight:600;cursor:pointer;font-family:'Rubik',sans-serif;margin-top:9px;transition:all .15s}
+.add-btn:hover{border-color:#3b82f6;color:#cbd5e1}
+
+/* range rows */
+.rng{display:flex;align-items:center;gap:10px;margin-top:10px}
+.rng input[type=range]{flex:1;accent-color:#3b82f6;height:4px}
+.rng .val{font-size:11px;font-weight:700;color:#cbd5e1;font-variant-numeric:tabular-nums;background:#1a2230;border:1px solid #263042;border-radius:7px;padding:3px 8px;min-width:64px;text-align:center}
+
+/* ── Live prompt preview (sticky) ────────────────────────────── */
+.preview-col{position:sticky;top:76px;display:flex;flex-direction:column;gap:10px}
+@media(max-width:1024px){.preview-col{position:static}}
+.prompt-card{background:#0d1117;border:1px solid #1e2533;border-radius:12px;overflow:hidden;display:flex;flex-direction:column;max-height:calc(100vh - 120px)}
+@media(max-width:1024px){.prompt-card{max-height:60vh}}
+.pc-head{display:flex;align-items:center;gap:9px;padding:10px 14px;border-bottom:1px solid #1e2533;background:#111827;flex-shrink:0}
+.pc-head .dot3{display:flex;gap:5px}
+.pc-head .dot3 span{width:8px;height:8px;border-radius:50%;background:#1e2533;border:1px solid #2d3748}
+.pc-title{font-size:11px;font-weight:700;color:#94a3b8;letter-spacing:.5px;flex:1}
+.pc-count{font-size:10px;font-weight:700;font-variant-numeric:tabular-nums;color:#64748b}
+.pc-count.warn{color:#fbbf24}
+.pc-body{overflow:auto;padding:14px 16px;font-family:'SFMono-Regular',Consolas,'Liberation Mono',monospace;font-size:11px;line-height:1.7;white-space:pre-wrap;word-break:break-word;min-height:200px}
+.pc-body .c{color:#64748b}      /* contract lines */
+.pc-body .w{color:#f1f5f9}      /* creative brief */
+.pc-body .n{color:#c084fc}      /* numbers/timings */
+.pc-body .k{color:#7dd3fc}      /* section headers */
+.pc-empty{color:#64748b;font-style:italic;font-family:'Rubik',sans-serif;font-size:12px}
+.copy-bar{display:flex;gap:8px;padding:10px 14px;border-top:1px solid #1e2533;background:#111827;flex-shrink:0}
+.btn-copy{flex:1;background:#2563eb;color:#fff;border:none;border-radius:8px;padding:10px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Rubik',sans-serif;transition:background .15s;display:flex;align-items:center;justify-content:center;gap:8px}
+.btn-copy:hover{background:#1d4ed8}
+.btn-copy.done{background:#059669}
+.btn-soft{background:#1e2533;color:#cbd5e1;border:1px solid #2d3748;border-radius:8px;padding:10px 13px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:'Rubik',sans-serif;transition:all .15s}
+.btn-soft:hover{border-color:#3b82f6;color:#f1f5f9}
+
+/* toast */
+#toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(80px);background:#059669;color:#fff;font-size:12px;font-weight:600;padding:10px 18px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.5);transition:transform .25s;z-index:2000;pointer-events:none}
+#toast.show{transform:translateX(-50%) translateY(0)}
+
+/* mobile: floating copy */
+@media(max-width:1024px){
+  .fab-copy{position:fixed;bottom:18px;right:18px;z-index:900;background:#2563eb;color:#fff;border:none;border-radius:50px;padding:13px 20px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:'Rubik',sans-serif;box-shadow:0 6px 20px rgba(37,99,235,.45);display:flex;align-items:center;gap:8px}
+  .fab-copy:hover{background:#1d4ed8}
+}
+@media(min-width:1025px){.fab-copy{display:none}}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <h1>Prompt Engineer</h1>
+    <span class="sub">build HIC animation prompts from modules</span>
+  </div>
+  <div></div>
+  <div class="top-actions">
+    <a class="btn-io" href="designs.html">🎨 Gallery</a>
+    <a class="btn-io" href="test-renderer.html">🧪 Test Renderer</a>
+    <button class="btn-io btn-plus" id="copyTopBtn">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+      Copy Prompt
+    </button>
+  </div>
+</header>
+
+<main class="workbench">
+  <!-- ── Module stack ─────────────────────────────────────────── -->
+  <div class="modules-col" id="modulesCol"><!-- built by JS --></div>
+
+  <!-- ── Live prompt preview ──────────────────────────────────── -->
+  <div class="preview-col">
+    <div class="prompt-card">
+      <div class="pc-head">
+        <div class="dot3"><span></span><span></span><span></span></div>
+        <div class="pc-title">LIVE PROMPT</div>
+        <div class="pc-count" id="charCount">0 chars</div>
+      </div>
+      <div class="pc-body" id="promptBody"><span class="pc-empty">Fill in the modules to compose your brief…</span></div>
+      <div class="copy-bar">
+        <button class="btn-copy" id="copyBtn">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          <span id="copyLabel">Copy Full Prompt</span>
+        </button>
+        <button class="btn-soft" id="resetBtn" title="Reset all modules">Reset</button>
+      </div>
+    </div>
+    <div style="font-size:10px;color:#475569;font-weight:500;padding:0 4px;line-height:1.6">
+      Paste the copied prompt into Gemini / ChatGPT / Claude, then apply the reply in the
+      <a href="test-renderer.html" style="color:#60a5fa;text-decoration:none">Test Renderer</a>
+      or <a href="designs.html" style="color:#60a5fa;text-decoration:none">Gallery</a> AI tab.
+      The HARD CONTRACT is attached automatically — briefs stay render-safe.
+    </div>
+  </div>
+</main>
+
+<button class="fab-copy" id="fabCopy">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+  Copy
+</button>
+
+<div id="toast">Copied ✓</div>
+
+<script>
+'use strict';
+/* ══════════════════════════════════════════════════════════════
+   PROMPTS ENGINEER — Phase A (plan: PROMPTS-ENGINEER-PLAN.md §6)
+   Module schema + assemble() engine + live preview + copy.
+   Modules 1 (Format), 2 (Content), 8 (Duration & Title) fully
+   functional; Typography/Palette/Layout/Libraries/Timeline land
+   in Phases B/C with their real editors.
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── Contract: single source of truth, mirrors aiBuildPrompt ──── */
+const CONTRACT_HEADER = 'You are generating an HTML-in-Canvas animation for a video editor.';
+const CONTRACT_RULES = [
+  '1. Deterministic time: ALL animation must be driven by a single global function onFrame(time) where time is milliseconds since the clip start (number). Same time in = same frame out, forever. The editor seeks to any time and re-renders.',
+  '2. No requestAnimationFrame, no setTimeout/setInterval, no CSS @keyframes or animation: properties, no transitions. You compute every element state inside onFrame from time only.',
+  '3. The design space is exactly 800 x 450 pixels (16:9). Use absolute sizes in px; the renderer scales the whole stage to any output resolution. Use width:100%;height:100% on your root container.',
+  '4. Vanilla HTML/CSS/JS only — no bundlers, no imports, no fetch/XHR/network calls of your own. Allowed CDN exceptions (only when the design needs them): KaTeX for math and marked for markdown — load them with their <script src="https://cdn.jsdelivr.net/npm/..."> tags at the top of the html block (close each tag properly).',
+  '5. Images must be CORS-safe https URLs (images.unsplash.com is fine) and animated via style properties (transform/opacity/filter/clip-path) inside onFrame.',
+  '6. Guard element lookups (if(el){...}) so a missing id never throws.',
+  '7. The FIRST line of the html block must be <title>Short Name</title> — 2-4 Title Case words naming the animation (e.g. <title>Travel Slideshow</title>). It becomes the clip\'s display name and every export filename. No other head tags.'
+];
+function buildFullPrompt(want, dur) {
+  return [
+    CONTRACT_HEADER,
+    '',
+    'WHAT I WANT:',
+    want,
+    '',
+    'HARD CONTRACT (violations break the video render):',
+    ...CONTRACT_RULES,
+    '',
+    'CLIP DURATION: ' + dur + ' ms. Choreograph the animation to complete within that time.',
+    '',
+    'OUTPUT FORMAT — respond with EXACTLY three fenced code blocks and nothing else:',
+    '```html',
+    '<title>Short Name</title><!-- then the full markup for the 800x450 stage -->',
+    '```',
+    '```css',
+    '/* all styles; root container fills 100% x 100% */',
+    '```',
+    '```js',
+    'function onFrame(time) { /* deterministic animation */ }',
+    '```'
+  ].join('\n');
+}
+
+/* ── Archetypes (Module 1) ────────────────────────────────────── */
+const ARCHETYPES = [
+  { id: 'sting',     ico: '✨', name: 'Logo Sting',      verb: 'logo sting',       fields: ['words'] },
+  { id: 'title',     ico: '🎬', name: 'Title Intro',     verb: 'title intro',      fields: ['words', 'kicker'] },
+  { id: 'lower3rd',  ico: '📛', name: 'Lower Third',     verb: 'lower third',      fields: ['words', 'kicker'] },
+  { id: 'subtitle',  ico: '💬', name: 'Subtitles',       verb: 'subtitle / karaoke captions', fields: ['lines'] },
+  { id: 'slideshow', ico: '🖼️', name: 'Slideshow',       verb: 'photo slideshow',  fields: ['images'] },
+  { id: 'dataviz',   ico: '📊', name: 'Data Viz',        verb: 'data visualization', fields: ['stats'] },
+  { id: 'math',      ico: '➗', name: 'Math Lecture',    verb: 'math lecture scene', fields: ['math'] },
+  { id: 'blog',      ico: '📰', name: 'Blog / MDX',      verb: 'blog-post preview', fields: ['markdown'] },
+  { id: 'promo',     ico: '🛍️', name: 'Product Promo',   verb: 'product promo',    fields: ['words', 'kicker', 'images'] },
+  { id: 'outro',     ico: '👋', name: 'Outro / CTA',     verb: 'outro / call-to-action', fields: ['words', 'kicker'] }
+];
+
+/* ── Module schema + default state ────────────────────────────── */
+const DEFAULT_STATE = {
+  m1: { on: true,  open: true,  arch: 'title', intent: '' },
+  m2: { on: true,  open: false, words: ['Your Brand'], kicker: '', lines: ['First caption line', 'Second caption line'],
+        images: ['https://images.unsplash.com/photo-1519681393784-d120267933ba?w=800&q=60'],
+        stats: [{ label: 'Users', value: '10k+' }, { label: 'Uptime', value: '99.9%' }],
+        math: ['a^2 + b^2 = c^2'], markdown: '# Your Post Title\n\nA short teaser paragraph for the preview.' },
+  m8: { on: true,  open: false, duration: 5, title: 'Untitled Design' }
+};
+let S = JSON.parse(JSON.stringify(DEFAULT_STATE));
+
+/* ── assemble(): the engine — deterministic brief serializer ──── */
+function assemble() {
+  const parts = [];
+  const escq = s => String(s || '').replace(/\s+/g, ' ').trim();
+
+  /* Module 1 — Format */
+  if (S.m1.on) {
+    const a = ARCHETYPES.find(x => x.id === S.m1.arch) || ARCHETYPES[1];
+    let p = 'Design a ' + a.verb;
+    if (S.m1.intent) p += ' — ' + escq(S.m1.intent);
+    p += '.';
+    parts.push(p);
+  }
+
+  /* Module 2 — Content (per active archetype fields) */
+  if (S.m2.on) {
+    const a = ARCHETYPES.find(x => x.id === S.m1.arch) || ARCHETYPES[1];
+    const bits = [];
+    if (a.fields.includes('words') && S.m2.words.filter(w => w.trim()).length)
+      bits.push('Show the text ' + S.m2.words.filter(w => w.trim()).map(w => '"' + escq(w) + '"').join(', ') + '.');
+    if (a.fields.includes('kicker') && S.m2.kicker.trim())
+      bits.push('Include a small uppercase kicker reading "' + escq(S.m2.kicker) + '" above/beside the main text.');
+    if (a.fields.includes('lines') && S.m2.lines.filter(l => l.trim()).length)
+      bits.push('Caption lines, revealed one at a time: ' + S.m2.lines.filter(l => l.trim()).map(l => '"' + escq(l) + '"').join(' → ') + '.');
+    if (a.fields.includes('images') && S.m2.images.filter(i => i.trim()).length)
+      bits.push('Use these CORS-safe images (' + S.m2.images.filter(i => i.trim()).length + ', images.unsplash.com): ' + S.m2.images.filter(i => i.trim()).join(', ') + '.');
+    if (a.fields.includes('stats') && S.m2.stats.filter(s => s.label.trim()).length)
+      bits.push('Show these stats: ' + S.m2.stats.filter(s => s.label.trim()).map(s => escq(s.label) + ' = ' + escq(s.value)).join(', ') + '.');
+    if (a.fields.includes('math') && S.m2.math.filter(m => m.trim()).length)
+      bits.push('Render the math via KaTeX display mode: ' + S.m2.math.filter(m => m.trim()).map(m => '$$ ' + escq(m) + ' $$').join('  ') + '.');
+    if (a.fields.includes('markdown') && S.m2.markdown.trim())
+      bits.push('Hide this markdown source in a display:none div, unescape &amp;/&lt;/&gt; exactly, and parse it with marked.parse on first frame:\n"""\n' + S.m2.markdown.trim() + '\n"""');
+    if (bits.length) parts.push('CONTENT: ' + bits.join(' '));
+  }
+
+  /* Modules 3-7 arrive in Phases B/C — placeholders keep the canonical order */
+
+  /* Module 8 — Duration & Title */
+  if (S.m8.on) {
+    parts.push('Start the html block with <title>' + escq(S.m8.title || 'Untitled Design') + '</title>.');
+  }
+
+  return parts.join('\n\n');
+}
+
+/* brief char budget (Gemini-friendly soft cap) */
+const BRIEF_BUDGET = 6000;
+
+/* ── Live preview rendering ───────────────────────────────────── */
+function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+function escAttr(s) { return esc(s).replace(/"/g, '&quot;'); }
+function tintPrompt(full) {
+  /* syntax-tint: headers cyan, contract gray, brief white, numbers/timings violet */
+  const lines = full.split('\n');
+  let inContract = false;
+  return lines.map(line => {
+    let cls = 'w';
+    if (/^(HARD CONTRACT|OUTPUT FORMAT)/.test(line)) { cls = 'k'; inContract = !/OUTPUT FORMAT/.test(line); }
+    else if (/^CLIP DURATION/.test(line)) cls = 'k';
+    else if (inContract && /^\d\./.test(line)) cls = 'c';
+    else if (/^```/.test(line)) cls = 'c';
+    else if (line === CONTRACT_HEADER) cls = 'k';
+    return '<span class="' + cls + '">' + esc(line).replace(/(\d+\s*(?:ms|s|x|px|fps)\b|\d{2,4})/g, '<span class="n">$1</span>') + '</span>';
+  }).join('\n');
+}
+function refresh() {
+  const want = assemble();
+  const dur = Math.round((S.m8.on ? S.m8.duration : 5) * 1000);
+  const body = document.getElementById('promptBody');
+  if (!want.trim()) {
+    body.innerHTML = '<span class="pc-empty">All modules are off — toggle at least one on.</span>';
+  } else {
+    body.innerHTML = tintPrompt(buildFullPrompt(want, dur));
+  }
+  const n = want.length;
+  const cc = document.getElementById('charCount');
+  cc.textContent = n.toLocaleString() + ' chars' + (n > BRIEF_BUDGET ? ' · over budget' : ' brief');
+  cc.classList.toggle('warn', n > BRIEF_BUDGET);
+  /* per-module char badges */
+  document.querySelectorAll('.mod').forEach(el => {
+    const id = el.dataset.mod;
+    const badge = el.querySelector('.mod-chars');
+    if (!badge) return;
+    const len = { m1: 0, m2: 0, m8: 0 }[id] || 0; /* recomputed below */
+  });
+  computeBadges();
+}
+function computeBadges() {
+  /* cheap: measure each module's contribution by measuring its slice alone */
+  const len1 = assemble1(), len8 = assemble8();
+  const savedM8 = S.m8.on;
+  S.m8.on = false;
+  const len2 = assemble().length;
+  S.m8.on = savedM8;
+  const parts = { m1: S.m1.on ? len1 : 0, m2: S.m2.on ? len2 : 0, m8: S.m8.on ? len8 : 0 };
+  document.querySelectorAll('.mod').forEach(el => {
+    const badge = el.querySelector('.mod-chars');
+    if (!badge) return;
+    const len = parts[el.dataset.mod] || 0;
+    badge.textContent = len ? len + ' ch' : '—';
+    badge.classList.toggle('warn', len > 2500);
+  });
+}
+function assemble1() { const s = S.m1; if (!s.on) return 0; const a = ARCHETYPES.find(x => x.id === s.arch); return ('Design a ' + a.verb + (s.intent ? ' — ' + s.intent : '') + '.').length; }
+function assemble8() { return S.m8.on ? ('Start the html block with <title>' + S.m8.title + '</title>.').length : 0; }
+
+/* ── Module UI builders ───────────────────────────────────────── */
+function fldHtml(label, inner, note) {
+  return '<div class="fld"><label>' + label + '</label>' + inner + (note ? '<div class="note">' + note + '</div>' : '') + '</div>';
+}
+function buildModules() {
+  const col = document.getElementById('modulesCol');
+
+  /* Module 1 — Format */
+  const archs = ARCHETYPES.map(a =>
+    '<button class="arch' + (S.m1.arch === a.id ? ' on' : '') + '" data-arch="' + a.id + '"><span class="ico">' + a.ico + '</span><span class="nm">' + a.name + '</span></button>'
+  ).join('');
+  col.insertAdjacentHTML('beforeend',
+    '<div class="mod on open" data-mod="m1">' +
+      '<div class="mod-head"><div class="mod-ico">🎯</div><div class="mod-name">Format<span class="hint">what kind of video is this?</span></div><div class="mod-badges"><span class="mod-chars">—</span><span class="mod-chev">▾</span></div></div>' +
+      '<div class="mod-body">' +
+        '<div class="arch-grid">' + archs + '</div>' +
+        fldHtml('One-line intent <span style="text-transform:none;font-weight:500">(optional)</span>',
+          '<input type="text" id="fIntent" placeholder="e.g. cinematic, editorial, for a fashion channel" value="' + escAttr(S.m1.intent) + '">') +
+      '</div>' +
+    '</div>');
+
+  /* Module 2 — Content (dynamic per archetype) */
+  col.insertAdjacentHTML('beforeend',
+    '<div class="mod" data-mod="m2">' +
+      '<div class="mod-head"><div class="mod-ico">📝</div><div class="mod-name">Content<span class="hint">the words, images and data on screen</span></div><div class="mod-badges"><button class="tgl on" data-tgl="m2" aria-label="toggle"></button><span class="mod-chars">—</span><span class="mod-chev">▾</span></div></div>' +
+      '<div class="mod-body" id="m2Body"></div>' +
+    '</div>');
+
+  /* Module 8 — Duration & Title */
+  col.insertAdjacentHTML('beforeend',
+    '<div class="mod" data-mod="m8">' +
+      '<div class="mod-head"><div class="mod-ico">⏱️</div><div class="mod-name">Duration &amp; Title<span class="hint">clip length + the &lt;title&gt; that names exports</span></div><div class="mod-badges"><span class="mod-chars">—</span><span class="mod-chev">▾</span></div></div>' +
+      '<div class="mod-body">' +
+        '<div class="rng"><span style="font-size:11px;font-weight:600;color:#7c8ba3;min-width:56px">Duration</span><input type="range" id="fDur" min="1" max="30" step="0.5" value="' + S.m8.duration + '"><span class="val" id="fDurVal">' + S.m8.duration + 's</span></div>' +
+        fldHtml('Clip title <span style="text-transform:none;font-weight:500">(2-4 Title Case words — becomes the &lt;title&gt; and every filename)</span>',
+          '<input type="text" id="fTitle" value="' + escAttr(S.m8.title) + '" maxlength="60">') +
+      '</div>' +
+    '</div>');
+
+  /* accordion + toggle behaviour (delegated) */
+  col.addEventListener('click', function(e) {
+    const tglBtn = e.target.closest('[data-tgl]');
+    if (tglBtn) {
+      const id = tglBtn.dataset.tgl;
+      S[id].on = !S[id].on;
+      tglBtn.classList.toggle('on', S[id].on);
+      tglBtn.closest('.mod').classList.toggle('disabled', !S[id].on);
+      refresh(); renderContent(); return;
+    }
+    const head = e.target.closest('.mod-head');
+    if (head) { head.parentElement.classList.toggle('open'); return; }
+  });
+
+  renderContent();
+}
+/* ── Module 2 dynamic content editor ──────────────────────────── */
+function renderContent() {
+  const body = document.getElementById('m2Body');
+  if (!body) return;
+  const a = ARCHETYPES.find(x => x.id === S.m1.arch) || ARCHETYPES[1];
+  let h = '';
+  if (a.fields.includes('words')) {
+    h += '<label style="display:block;font-size:10px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:#7c8ba3;margin:10px 0 2px">Text</label>';
+    S.m2.words.forEach((w, i) => {
+      h += '<div class="row"><div class="fld"><input type="text" data-ck="words" data-i="' + i + '" value="' + escAttr(w) + '" placeholder="Word or short phrase"></div>' +
+           (S.m2.words.length > 1 ? '<button class="del" data-del="words" data-i="' + i + '" title="remove">×</button>' : '') + '</div>';
+    });
+    h += '<button class="add-btn" data-add="words">+ Add text</button>';
+  }
+  if (a.fields.includes('kicker'))
+    h += fldHtml('Kicker <span style="text-transform:none;font-weight:500">(small uppercase label)</span>',
+      '<input type="text" data-ck="kicker" value="' + escAttr(S.m2.kicker) + '" placeholder="e.g. PRESENTING · EST 2026">');
+  if (a.fields.includes('lines')) {
+    h += '<label style="display:block;font-size:10px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:#7c8ba3;margin:10px 0 2px">Caption lines</label>';
+    S.m2.lines.forEach((l, i) => {
+      h += '<div class="row"><div class="fld"><input type="text" data-ck="lines" data-i="' + i + '" value="' + escAttr(l) + '" placeholder="Caption line ' + (i + 1) + '"></div>' +
+           (S.m2.lines.length > 1 ? '<button class="del" data-del="lines" data-i="' + i + '">×</button>' : '') + '</div>';
+    });
+    h += '<button class="add-btn" data-add="lines">+ Add line</button>';
+  }
+  if (a.fields.includes('images')) {
+    h += '<label style="display:block;font-size:10px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:#7c8ba3;margin:10px 0 2px">Images <span style="text-transform:none;font-weight:500">(CORS-safe, images.unsplash.com)</span></label>';
+    S.m2.images.forEach((u, i) => {
+      h += '<div class="row"><div class="fld"><input type="text" data-ck="images" data-i="' + i + '" value="' + escAttr(u) + '" placeholder="https://images.unsplash.com/photo-…"></div>' +
+           (S.m2.images.length > 1 ? '<button class="del" data-del="images" data-i="' + i + '">×</button>' : '') + '</div>';
+    });
+    h += '<button class="add-btn" data-add="images">+ Add image</button>';
+  }
+  if (a.fields.includes('stats')) {
+    h += '<label style="display:block;font-size:10px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:#7c8ba3;margin:10px 0 2px">Stats</label>';
+    S.m2.stats.forEach((s, i) => {
+      h += '<div class="row"><div class="fld" style="flex:1.2"><input type="text" data-ck="statLabel" data-i="' + i + '" value="' + escAttr(s.label) + '" placeholder="Label"></div>' +
+           '<div class="fld"><input type="text" data-ck="statValue" data-i="' + i + '" value="' + escAttr(s.value) + '" placeholder="Value"></div>' +
+           (S.m2.stats.length > 1 ? '<button class="del" data-del="stats" data-i="' + i + '">×</button>' : '') + '</div>';
+    });
+    h += '<button class="add-btn" data-add="stats">+ Add stat</button>';
+  }
+  if (a.fields.includes('math')) {
+    h += '<label style="display:block;font-size:10px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:#7c8ba3;margin:10px 0 2px">Math expressions <span style="text-transform:none;font-weight:500">(KaTeX)</span></label>';
+    S.m2.math.forEach((m, i) => {
+      h += '<div class="row"><div class="fld"><input type="text" data-ck="math" data-i="' + i + '" value="' + escAttr(m) + '" placeholder="e.g. \\int_0^\\infty e^{-x^2} dx = \\frac{\\sqrt{\\pi}}{2}"></div>' +
+           (S.m2.math.length > 1 ? '<button class="del" data-del="math" data-i="' + i + '">×</button>' : '') + '</div>';
+    });
+    h += '<button class="add-btn" data-add="math">+ Add expression</button>';
+  }
+  if (a.fields.includes('markdown'))
+    h += fldHtml('Markdown source', '<textarea data-ck="markdown" rows="5">' + esc(S.m2.markdown) + '</textarea>',
+      'Hidden in a display:none div, parsed by marked on first frame.');
+  body.innerHTML = h;
+
+  /* inputs → state */
+  body.querySelectorAll('[data-ck]').forEach(inp => {
+    inp.addEventListener('input', function() {
+      const k = this.dataset.ck, i = this.dataset.i;
+      if (k === 'words' || k === 'lines' || k === 'images' || k === 'math') S.m2[k][+i] = this.value;
+      else if (k === 'statLabel') S.m2.stats[+i].label = this.value;
+      else if (k === 'statValue') S.m2.stats[+i].value = this.value;
+      else S.m2[k] = this.value;
+      refresh();
+    });
+  });
+  body.querySelectorAll('[data-add]').forEach(b => b.addEventListener('click', function() {
+    const k = this.dataset.add;
+    if (k === 'stats') S.m2.stats.push({ label: '', value: '' }); else S.m2[k].push('');
+    renderContent(); refresh();
+  }));
+  body.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', function() {
+    const k = this.dataset.del, i = +this.dataset.i;
+    if (k === 'stats') S.m2.stats.splice(i, 1); else S.m2[k].splice(i, 1);
+    renderContent(); refresh();
+  }));
+}
+
+/* ── Wire module 1 + 8 inputs (static, built once) ───────────── */
+function wireStatic() {
+  document.getElementById('modulesCol').addEventListener('click', function(e) {
+    const arch = e.target.closest('[data-arch]');
+    if (arch) {
+      S.m1.arch = arch.dataset.arch;
+      document.querySelectorAll('.arch').forEach(b => b.classList.toggle('on', b === arch));
+      renderContent(); refresh(); /* content fields change per archetype */
+    }
+  });
+  document.getElementById('modulesCol').addEventListener('input', function(e) {
+    if (e.target.id === 'fIntent') { S.m1.intent = e.target.value; refresh(); }
+    if (e.target.id === 'fTitle') { S.m8.title = e.target.value; refresh(); }
+    if (e.target.id === 'fDur') {
+      S.m8.duration = parseFloat(e.target.value);
+      document.getElementById('fDurVal').textContent = S.m8.duration + 's';
+      refresh();
+    }
+  });
+}
+
+/* ── Copy / reset ─────────────────────────────────────────────── */
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 1800);
+}
+function doCopy() {
+  const want = assemble();
+  const dur = Math.round((S.m8.on ? S.m8.duration : 5) * 1000);
+  const full = buildFullPrompt(want, dur);
+  navigator.clipboard.writeText(full).then(() => {
+    toast('Full prompt copied — paste it into Gemini / ChatGPT / Claude');
+    const btn = document.getElementById('copyBtn');
+    btn.classList.add('done');
+    document.getElementById('copyLabel').textContent = 'Copied ✓';
+    setTimeout(() => { btn.classList.remove('done'); document.getElementById('copyLabel').textContent = 'Copy Full Prompt'; }, 1600);
+  }).catch(() => toast('Copy failed — select the text manually'));
+}
+document.getElementById('copyBtn').addEventListener('click', doCopy);
+document.getElementById('fabCopy').addEventListener('click', doCopy);
+document.getElementById('copyTopBtn').addEventListener('click', doCopy);
+document.getElementById('resetBtn').addEventListener('click', function() {
+  S = JSON.parse(JSON.stringify(DEFAULT_STATE));
+  document.getElementById('modulesCol').innerHTML = '';
+  buildModules(); refresh();
+  toast('Reset to defaults');
+});
+
+/* ── Boot ─────────────────────────────────────────────────────── */
+buildModules();
+wireStatic();
+refresh();
+</script>
+</body>
+</html>
