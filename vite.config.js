@@ -18,7 +18,11 @@ export default defineConfig({
       targets: [
         /* v4 keeps the full source dir under dest unless stripped — stripBase
            flattens so the file lands at <outDir>/docs/html-in-canvas/ */
-        { src: 'docs/html-in-canvas/test-renderer.html', dest: 'docs/html-in-canvas', rename: { stripBase: true } }
+        { src: 'docs/html-in-canvas/test-renderer.html', dest: 'docs/html-in-canvas', rename: { stripBase: true } },
+        /* /designs gallery page + its synced data file (Phase A/B of
+           docs/html-in-canvas/DESIGNS-GALLERY-PLAN.md) */
+        { src: 'docs/html-in-canvas/designs.html', dest: 'docs/html-in-canvas', rename: { stripBase: true } },
+        { src: 'docs/html-in-canvas/designs-gallery.json', dest: 'docs/html-in-canvas', rename: { stripBase: true } }
       ]
     }),
     VitePWA({

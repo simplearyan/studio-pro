@@ -1,0 +1,1691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Design Gallery — HTML-in-Canvas</title>
+<!-- Emoji favicons: 🍡 for light browser UI, 🍨 for dark (Chrome picks via prefers-color-scheme) -->
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍡</text></svg>" media="(prefers-color-scheme: light)">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍨</text></svg>" media="(prefers-color-scheme: dark)">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/dracula.min.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-system,sans-serif;min-height:100vh}
+
+/* ── Top app bar — 3-zone grid: brand | centered search | actions ── */
+.topbar{position:sticky;top:0;z-index:100;background:rgba(11,15,26,.92);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid #1a1f2e;padding:12px 32px;display:grid;grid-template-columns:1fr minmax(220px,380px) 1fr;align-items:center;gap:12px}
+.brand{display:flex;align-items:baseline;gap:10px;min-width:0}
+.brand h1{font-size:19px;font-weight:800;letter-spacing:-.4px;color:#f1f5f9;white-space:nowrap}
+.brand .sub{font-size:11px;color:#7c8ba3;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.count-pill{background:#1e2533;border:1px solid #2d3748;color:#a5b4c8;font-size:10.5px;font-weight:700;padding:2px 9px;border-radius:20px;font-variant-numeric:tabular-nums;flex-shrink:0}
+.top-actions{display:flex;align-items:center;gap:10px;justify-self:end}
+.searchbox{display:flex;align-items:center;gap:9px;background:#1c2433;border:1px solid #33405a;border-radius:10px;padding:8px 13px;min-width:0;transition:border-color .15s,background .15s;box-shadow:inset 0 1px 2px rgba(0,0,0,.25)}
+.searchbox:focus-within{border-color:#60a5fa;background:#212b3d}
+.searchbox svg{color:#8ca3c0;flex-shrink:0}
+.searchbox input{background:none;border:none;outline:none;color:#f1f5f9;font-size:12.5px;font-family:'Rubik',sans-serif;width:100%;font-weight:500}
+.searchbox input::placeholder{color:#8ca3c0;opacity:1}
+.btn-io{background:#1e2533;color:#cbd5e1;border:1px solid #2d3748;border-radius:8px;padding:8px 13px;font-size:11.5px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:7px;font-family:'Rubik',sans-serif;white-space:nowrap;transition:all .15s}
+.btn-io:hover{background:#2d3748;color:#f1f5f9;border-color:#3b82f6}
+.btn-plus{background:#2563eb;border-color:#2563eb;color:#fff;box-shadow:0 1px 3px rgba(37,99,235,.35)}
+.btn-plus:hover{background:#1d4ed8;border-color:#1d4ed8;color:#fff}
+@media(max-width:960px){.brand .sub{display:none}}
+
+/* ── Filter chips ────────────────────────────────────────────── */
+.chips-row{display:flex;gap:7px;padding:14px 32px 2px;flex-wrap:wrap;align-items:center}
+.chip{background:#161d2b;border:1px solid #2d3748;border-radius:20px;padding:5px 13px;font-size:11px;font-weight:600;color:#94a3b8;cursor:pointer;font-family:'Rubik',sans-serif;letter-spacing:.2px;transition:all .15s;text-transform:capitalize}
+.chip:hover{border-color:#3b82f6;color:#cbd5e1}
+.chip.on{background:#2563eb;border-color:#2563eb;color:#fff}
+.chip .n{opacity:.65;font-size:10px;margin-left:4px;font-variant-numeric:tabular-nums}
+
+/* ── Card grid ───────────────────────────────────────────────── */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px;padding:14px 32px 40px}
+.dcard{background:#141922;border-radius:12px;overflow:hidden;border:1px solid #1e2533;cursor:pointer;transition:border-color .2s,box-shadow .2s,transform .2s;display:flex;flex-direction:column}
+.dcard:hover{border-color:#3b82f6;box-shadow:0 0 0 1px #3b82f630;transform:translateY(-1px)}
+.thumb-wrap{position:relative;aspect-ratio:16/9;background:#080b10;overflow:hidden}
+.thumb-wrap canvas{width:100%;height:100%;display:block}
+.thumb-skel{position:absolute;inset:0;background:linear-gradient(110deg,#0d1420 30%,#141d2e 45%,#0d1420 60%);background-size:200% 100%;animation:skel 1.4s infinite}
+@keyframes skel{to{background-position:-200% 0}}
+.thumb-ph{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;text-align:center;padding:18px}
+.thumb-ph .big{font-size:19px;font-weight:700;color:#f1f5f9;line-height:1.25;letter-spacing:-.3px}
+.thumb-ph .tagp{font-size:9px;font-weight:800;letter-spacing:1.5px;color:#c084fc;background:rgba(192,132,252,.12);border:1px solid rgba(192,132,252,.35);padding:3px 10px;border-radius:20px}
+.dcard-body{padding:11px 14px 12px;display:flex;flex-direction:column;gap:8px}
+.dcard-title{font-size:13.5px;font-weight:600;color:#f1f5f9;letter-spacing:-.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dcard-meta{display:flex;align-items:center;gap:6px;font-size:10.5px;color:#64748b;font-weight:500}
+.dcard-meta .dot{width:3px;height:3px;border-radius:50%;background:#334155}
+.dcard-tags{display:flex;gap:5px;flex-wrap:wrap}
+.minitag{font-size:9px;font-weight:700;letter-spacing:.4px;padding:2px 8px;border-radius:12px;background:#1f2937;color:#9ca3af;text-transform:uppercase}
+.dcard-actions{display:flex;gap:6px;margin-top:2px}
+.cbtn{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;background:#1a212e;border:1px solid #263042;color:#94a3b8;border:none;border-radius:8px;padding:7px 0;font-size:10.5px;font-weight:600;cursor:pointer;font-family:'Rubik',sans-serif;transition:all .15s}
+.cbtn:hover{background:#232b3b;color:#f1f5f9;border-color:#3b82f6}
+.cbtn:disabled{opacity:.4;cursor:default}
+.cbtn:disabled:hover{background:#1a212e;color:#94a3b8;border-color:#263042}
+.cbtn.primary{background:#2563eb;border-color:#2563eb;color:#fff}
+.cbtn.primary:hover{background:#1d4ed8}
+.cbtn.kebab{flex:0 0 30px}
+.empty{padding:60px 32px;text-align:center;color:#64748b;font-size:13px;font-weight:500}
+footer{padding:0 32px 28px;font-size:10.5px;color:#475569;font-weight:500}
+
+/* floating per-card menu */
+#cardMenu{position:fixed;z-index:500;background:#161d2b;border:1px solid #2d3748;border-radius:10px;padding:6px;min-width:190px;box-shadow:0 12px 32px rgba(0,0,0,.55);display:none}
+#cardMenu.open{display:block}
+#cardMenu .export-item{width:100%}
+
+/* ── Modal (ported from test-renderer) ───────────────────────── */
+.modal-overlay{position:fixed;inset:0;background:rgba(4,7,14,.78);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);z-index:1000;display:none;align-items:center;justify-content:center;padding:24px}
+.modal-overlay.open{display:flex}
+.modal{background:#111827;border-radius:16px;border:1px solid #232b3b;max-width:960px;width:100%;overflow:hidden;box-shadow:0 25px 60px -12px rgba(0,0,0,.7);max-height:calc(100vh - 48px);display:flex;flex-direction:column}
+.modal-header{padding:12px 20px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #1e2533;flex-shrink:0;gap:10px;flex-wrap:wrap}
+.mh-left{display:flex;align-items:center;gap:10px;min-width:0}
+.modal-title{font-size:15px;font-weight:700;color:#f1f5f9;letter-spacing:-.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:300px}
+.mh-copy{display:flex;gap:5px}
+.mh-copy .btn-code-io{padding:7px 9px}
+.mh-copy .btn-code-io:disabled{opacity:.4;cursor:default}
+.modal-close{background:none;border:none;color:#7c8798;font-size:20px;cursor:pointer;padding:4px 10px;border-radius:6px;transition:all .15s;line-height:1}
+.modal-close:hover{background:#232b3b;color:#f1f5f9}
+.modal-body{overflow:auto;min-height:0}
+.modal-canvas-wrap{position:relative;background:#080b10;display:flex;align-items:center;justify-content:center}
+.modal-canvas-wrap canvas{width:100%;max-height:52vh;display:block}
+.modal-controls{padding:12px 20px;display:flex;gap:12px;align-items:center;border-top:1px solid #1e2533;background:#131a26;flex-wrap:wrap}
+.btn{padding:8px 14px;border-radius:8px;border:none;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;font-family:'Rubik',sans-serif;display:inline-flex;align-items:center;justify-content:center;gap:7px;line-height:1}
+.btn svg{display:block;flex-shrink:0}
+.btn-play{background:#2563eb;color:#fff;box-shadow:0 1px 3px rgba(37,99,235,.3);padding:9px 13px}
+.btn-play:hover{background:#1d4ed8}
+.btn-play.playing{background:#334155;box-shadow:none}
+.btn-play.playing:hover{background:#3f4a5f}
+.btn-apply{background:#4f46e5;color:#fff;box-shadow:0 1px 3px rgba(79,70,229,.35)}
+.btn-apply:hover{background:#4338ca}
+.slider-wrap{flex:1;display:flex;align-items:center;gap:10px;min-width:180px}
+.slider-wrap input[type="range"]{flex:1;accent-color:#3b82f6;height:4px;min-width:80px}
+.time-label{font-size:12px;color:#94a3b8;font-variant-numeric:tabular-nums;min-width:38px;text-align:right;font-weight:500}
+.modal-info{display:flex;gap:10px;align-items:center;margin-left:auto}
+.res-meta{display:inline-flex;align-items:center;gap:7px;background:#161d2b;border:1px solid #232b3b;border-radius:7px;padding:5px 10px}
+.res-meta svg{color:#64748b;flex-shrink:0}
+.res-meta span{font-size:11px;color:#94a3b8;font-weight:500;font-variant-numeric:tabular-nums;white-space:nowrap}
+.res-select{background:#1e2533;color:#e2e8f0;border:1px solid #2d3748;border-radius:7px;padding:5px 8px;font-size:11px;font-weight:600;cursor:pointer;outline:none}
+.res-select:focus{border-color:#3b82f6}
+.res-select option{background:#1e2533;color:#e2e8f0}
+.export-cluster{display:flex;align-items:stretch;gap:8px}
+.btn-frame-main{background:#1e2533;color:#cbd5e1;border:1px solid #2d3748;border-radius:8px 0 0 8px}
+.btn-frame-main:hover{background:#2d3748;color:#f1f5f9;border-color:#3b82f6}
+.btn-frame-main:disabled{opacity:.65;cursor:default}
+.frame-caret{background:#1e2533;border:none;border-left:1px solid #2d3748;color:#cbd5e1;padding:0 8px;border-radius:0 8px 8px 0;cursor:pointer;display:flex;align-items:center}
+.frame-caret:hover{background:#2d3748;color:#f1f5f9;border-color:#3b82f6}
+.frame-caret:disabled{opacity:.65;cursor:default}
+.frame-caret svg{transition:transform .15s}
+.frame-caret.open svg{transform:rotate(180deg)}
+.export-split{position:relative;display:flex;align-items:stretch}
+.btn-export-main{background:#059669;color:#fff;border-radius:8px 0 0 8px;box-shadow:0 1px 3px rgba(5,150,105,.35)}
+.btn-export-main:hover{background:#047857}
+.btn-export-main:disabled{opacity:.65;cursor:default}
+.export-caret{background:#047857;border:none;border-left:1px solid rgba(255,255,255,.25);color:#fff;padding:0 8px;border-radius:0 8px 8px 0;cursor:pointer;display:flex;align-items:center}
+.export-caret:hover{background:#036852}
+.export-caret:disabled{opacity:.65;cursor:default}
+.export-caret svg{transition:transform .15s}
+.export-caret.open svg{transform:rotate(180deg)}
+.export-split.recording .btn-export-main{background:#dc2626;animation:pulse 1s infinite}
+.export-split.recording .export-caret{background:#b91c1c}
+.export-menu{position:absolute;right:0;bottom:calc(100% + 10px);background:#161d2b;border:1px solid #2d3748;border-radius:10px;min-width:210px;max-width:min(260px,calc(100vw - 64px));padding:6px;box-shadow:0 12px 32px rgba(0,0,0,.55);display:none;z-index:1050}
+.export-menu.open{display:block}
+.export-menu-label{font-size:9.5px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#64748b;padding:6px 10px 4px}
+.export-item{display:flex;align-items:center;gap:8px;width:100%;background:none;border:none;color:#e2e8f0;font-size:12px;font-weight:600;padding:8px 10px;border-radius:7px;cursor:pointer;text-align:left;transition:background .12s;font-family:'Rubik',sans-serif}
+.export-item:hover{background:#1f2937}
+.export-item em{margin-left:auto;font-style:normal;font-size:10px;font-weight:500;color:#64748b}
+.export-item .fmt-check{visibility:hidden;color:#34d399;flex-shrink:0}
+.export-item.selected .fmt-check{visibility:visible}
+.export-item.selected{color:#f1f5f9}
+.export-item svg{color:#94a3b8;flex-shrink:0}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.7}}
+.seg{display:flex;background:#161d2b;border:1px solid #2d3748;border-radius:8px;padding:2px;gap:2px}
+.tab-btn{padding:5px 14px;border-radius:6px;border:none;font-size:11px;font-weight:600;cursor:pointer;background:transparent;color:#7c8798;transition:all .15s;letter-spacing:.2px;font-family:'Rubik',sans-serif;line-height:1.4}
+.tab-btn:hover{color:#cbd5e1}
+.tab-btn.active{color:#f1f5f9;background:#334155}
+.code-wrap{display:none;overflow:auto}
+.code-wrap.active{display:block}
+.code-wrap .CodeMirror{height:max(420px,52vh);border-radius:0 0 10px 10px}
+.code-tabs{padding:10px 16px 0;display:flex;gap:4px;align-items:center;border-bottom:1px solid #1e2533;flex-wrap:wrap}
+.code-tab{display:inline-flex;align-items:center;gap:7px;padding:8px 14px;border:none;border-bottom:2px solid transparent;background:none;font-size:11px;font-weight:600;cursor:pointer;color:#7c8798;transition:all .15s;letter-spacing:.2px;font-family:'Rubik',sans-serif;margin-bottom:-1px}
+.code-tab .lang-dot{width:6px;height:6px;border-radius:50%;background:#475569}
+.code-tab:hover{color:#cbd5e1}
+.code-tab.active{color:#f1f5f9;border-bottom-color:#64748b}
+.code-tab.active .lang-dot{background:#94a3b8}
+.code-tab.active[data-lang="html"]{border-bottom-color:#34d399}
+.code-tab.active[data-lang="html"] .lang-dot{background:#34d399}
+.code-tab.active[data-lang="css"]{border-bottom-color:#60a5fa}
+.code-tab.active[data-lang="css"] .lang-dot{background:#60a5fa}
+.code-tab.active[data-lang="js"]{border-bottom-color:#fbbf24}
+.code-tab.active[data-lang="js"] .lang-dot{background:#fbbf24}
+.code-tabs .code-right{margin-left:auto;display:flex;align-items:center;gap:4px}
+.btn-code-io{background:#1e2533;color:#cbd5e1;border:1px solid #2d3748;padding:8px 9px;font-size:11px}
+.btn-code-io:hover{background:#2d3748;color:#f1f5f9;border-color:#3b82f6}
+.btn-code-io:disabled{opacity:.65;cursor:default}
+.btn-reset{background:#1e2533;color:#cbd5e1;border:1px solid #2d3748;padding:8px 9px;font-size:11px}
+.btn-reset:hover:not(:disabled){background:#2d1a1c;color:#fca5a5;border-color:#dc2626}
+.btn-reset.confirm{background:#7f1d1d;color:#fee2e2;border-color:#dc2626}
+.btn-reset:disabled{opacity:.65;cursor:default}
+.code-export-split{position:relative;display:flex;align-items:stretch}
+.btn-export-code{background:#1e2533;color:#cbd5e1;border:1px solid #2d3748;border-radius:8px 0 0 8px;padding:8px 9px;font-size:11px}
+.btn-export-code:hover:not(:disabled){background:#2d3748;color:#f1f5f9;border-color:#3b82f6}
+.btn-export-code:disabled{opacity:.65;cursor:default}
+.code-export-caret{background:#1e2533;border:1px solid #2d3748;border-left:none;border-radius:0 8px 8px 0;color:#cbd5e1;padding:0 7px;cursor:pointer;display:flex;align-items:center}
+.code-export-caret:hover:not(:disabled){background:#2d3748;color:#f1f5f9;border-color:#3b82f6}
+.code-export-caret svg{transition:transform .15s}
+.code-export-caret.open svg{transform:rotate(180deg)}
+.code-export-menu{position:absolute;right:0;top:calc(100% + 8px);width:280px;background:#161d2b;border:1px solid #2d3748;border-radius:10px;padding:6px;box-shadow:0 12px 32px rgba(0,0,0,.55);display:none;z-index:1060}
+.code-export-menu.open{display:block}
+.unsaved-badge{display:none;align-items:center;gap:5px;font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#fbbf24;background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.3);padding:4px 10px;border-radius:20px}
+.unsaved-badge.on{display:inline-flex}
+.unsaved-badge .dot{width:6px;height:6px;border-radius:50%;background:#fbbf24}
+.code-hint{padding:6px 16px 8px;font-size:10.5px;color:#64748b;font-weight:500;border-bottom:1px solid #1e2533}
+.code-hint strong{color:#94a3b8;font-weight:600}
+.ai-wrap{padding:14px 20px 16px;height:max(420px,52vh);display:flex;flex-direction:column;overflow:hidden}
+.ai-sub{display:flex;gap:6px;padding-bottom:10px;border-bottom:1px solid #1e2533;margin-bottom:10px;flex-shrink:0}
+.ai-sub-btn{padding:6px 16px;border-radius:7px;border:1px solid transparent;background:none;font-size:11px;font-weight:600;cursor:pointer;color:#7c8798;transition:all .15s;font-family:'Rubik',sans-serif;white-space:nowrap}
+.ai-sub-btn:hover{color:#cbd5e1}
+.ai-sub-btn.active{color:#f1f5f9;background:#334155}
+.ai-view{display:none;flex:1;min-height:0;flex-direction:column;gap:10px;overflow-y:auto}
+.ai-view.active{display:flex}
+.ai-step-label{font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#64748b;flex-shrink:0}
+.ai-hint{font-size:10.5px;color:#64748b;font-weight:500;flex-shrink:0}
+.ai-hint strong{color:#94a3b8;font-weight:600}
+.ai-textarea{width:100%;box-sizing:border-box;background:#0d1420;border:1px solid #2d3748;border-radius:8px;padding:9px 11px;font-size:11.5px;color:#e2e8f0;outline:none;resize:vertical;font-family:'Rubik',sans-serif;line-height:1.5}
+.ai-textarea:focus{border-color:#7c3aed}
+.ai-textarea.mono{font-family:ui-monospace,'Cascadia Code',Consolas,monospace;font-size:11px;color:#cbd5e1}
+.ai-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;flex-shrink:0}
+.btn-ai-copy{background:#7c3aed;color:#fff}
+.btn-ai-copy:hover{background:#6d28d9}
+.btn-ai-apply{background:#059669;color:#fff}
+.btn-ai-apply:hover{background:#047857}
+.btn-ai-clear{background:#1e2533;color:#cbd5e1;border:1px solid #2d3748}
+.btn-ai-clear:hover{background:#2d3748;color:#f1f5f9}
+.ai-link{font-size:11px;font-weight:600;color:#94a3b8;text-decoration:none;border:1px solid #2d3748;border-radius:7px;padding:7px 11px;transition:all .15s}
+.ai-link:hover{color:#e2e8f0;border-color:#3b82f6}
+.ai-status{font-size:11px;font-weight:500;color:#94a3b8}
+.ai-note{font-size:10px;line-height:1.6;color:#64748b;margin:2px 0 0}
+
+/* toast */
+#toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);background:#1e293b;color:#f1f5f9;border:1px solid #334155;border-radius:12px;padding:10px 18px;font-size:12px;font-weight:600;opacity:0;pointer-events:none;transition:all .25s;z-index:2000;box-shadow:0 12px 32px rgba(0,0,0,.5);max-width:90vw;text-align:center}
+#toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+
+@media(max-width:768px){
+    /* two-row navbar: brand + actions on row 1, search spans row 2 */
+    .topbar{padding:10px 16px;grid-template-columns:auto 1fr;row-gap:10px}
+    .brand{grid-row:1;grid-column:1}
+    .top-actions{grid-row:1;grid-column:2}
+    .searchbox{grid-row:2;grid-column:1/-1;width:100%}
+    .grid{padding:12px 16px 32px;grid-template-columns:1fr 1fr}
+    .chips-row{padding:12px 16px 0}
+    .searchbox{min-width:0;flex:1}
+    .modal{margin:8px}
+    .modal-controls{gap:8px;padding:10px 12px}
+    .modal-info{margin-left:0;width:100%;justify-content:space-between}
+    .modal-title{max-width:150px;font-size:13px}
+    .code-wrap .CodeMirror{height:60vh}
+    footer{padding:0 16px 24px}
+}
+@media(max-width:480px){
+    .grid{grid-template-columns:1fr}
+    .plus-label{display:none}
+    .btn-plus{padding:8px 10px}
+    .brand h1{font-size:17px}
+    .modal-controls{flex-direction:column;align-items:stretch}
+    .slider-wrap{min-width:0}
+    .modal-info{flex-wrap:wrap}
+    .mh-copy{display:none}
+    footer{padding:0 16px 20px}
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+    <div class="brand">
+        <h1>Design Gallery</h1>
+        <span class="count-pill" id="countPill">0</span>
+        <span class="sub">prompts &amp; code for HTML-in-Canvas animations</span>
+    </div>
+    <div class="top-actions">
+        <div class="searchbox">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
+            <input id="searchInput" type="text" placeholder="Search designs, creators, tags…" autocomplete="off">
+        </div>
+        <button class="btn-io btn-plus" id="newDesignBtn" title="New design — paste a prompt or code and preview it">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            <span class="plus-label">New</span>
+        </button>
+        <a class="btn-io" href="test-renderer.html" title="Open the test renderer">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            Test Renderer
+        </a>
+    </div>
+</div>
+
+<div class="chips-row" id="chipsRow"></div>
+<div class="grid" id="designGrid"></div>
+<div class="empty" id="emptyState" hidden>No designs match your search.</div>
+<footer id="footNote"></footer>
+
+<!-- floating per-card menu -->
+<div id="cardMenu"></div>
+
+<!-- ── Preview modal (ported from test-renderer) ─────────────────── -->
+<div class="modal-overlay" id="modalOverlay">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="mh-left">
+                <span class="modal-title" id="modalTitle">Design</span>
+                <div class="mh-copy">
+                    <button class="btn-code-io" id="copyPromptHdr" title="Copy the full AI prompt (brief + render contract)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+                    <button class="btn-code-io" id="copyCodeHdr" title="Copy the code as fenced html/css/js blocks"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></button>
+                </div>
+            </div>
+            <div class="seg">
+                <button class="tab-btn active" id="tabPreview">Preview</button>
+                <button class="tab-btn" id="tabCode">Code</button>
+                <button class="tab-btn" id="tabAi">AI</button>
+            </div>
+            <button class="modal-close" id="modalClose">&times;</button>
+        </div>
+        <div class="modal-body">
+        <div id="previewPanel">
+            <div class="modal-canvas-wrap">
+                <canvas id="modalCanvas" width="800" height="450"></canvas>
+            </div>
+            <div class="modal-controls">
+                <button class="btn btn-play" id="modalPlayBtn">
+                    <svg id="playIcon" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.14v13.72c0 .81.87 1.3 1.55.88l10.8-6.86a1.03 1.03 0 0 0 0-1.76L9.55 4.26A1.03 1.03 0 0 0 8 5.14z"/></svg>
+                    <svg id="pauseIcon" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="display:none"><rect x="6" y="5" width="4" height="14" rx="1.2"/><rect x="14" y="5" width="4" height="14" rx="1.2"/></svg>
+                </button>
+                <div class="slider-wrap">
+                    <input type="range" id="modalSlider" min="0" max="5000" value="0">
+                    <span class="time-label" id="modalTime">0.0s</span>
+                </div>
+                <div class="modal-info">
+                    <div class="res-meta" title="Source duration and canvas size">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg>
+                        <span id="modalDuration"></span>
+                    </div>
+                    <div class="export-cluster">
+                        <select id="resSelect" class="res-select" title="Export resolution (frame &amp; video)">
+                            <option value="480">480p</option>
+                            <option value="720">720p</option>
+                            <option value="1080" selected>1080p</option>
+                            <option value="1440">1440p</option>
+                        </select>
+                        <div class="export-split" id="frameSplit">
+                            <button class="btn btn-frame-main" id="frameBtn" title="Save current frame (PNG)">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                                <span>Save Frame</span>
+                            </button>
+                            <button class="frame-caret" id="frameCaret" title="Frame format" aria-haspopup="true">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                            </button>
+                            <div class="export-menu" id="frameMenu">
+                                <div class="export-menu-label">Save current frame as</div>
+                                <button class="export-item fmt-opt selected" data-frame-fmt="png"><svg class="fmt-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>PNG<em>lossless</em></button>
+                                <button class="export-item fmt-opt" data-frame-fmt="jpeg"><svg class="fmt-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>JPG<em>small</em></button>
+                                <button class="export-item fmt-opt" data-frame-fmt="webp"><svg class="fmt-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>WebP<em>smallest</em></button>
+                            </div>
+                        </div>
+                        <div class="export-split" id="exportSplit">
+                            <button class="btn btn-export-main" id="exportBtn" title="Record video (WebM 30fps)">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+                                <span>Export WebM</span>
+                            </button>
+                            <button class="export-caret" id="videoCaret" title="Video options" aria-haspopup="true">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                            </button>
+                            <div class="export-menu" id="videoMenu">
+                                <div class="export-menu-label">Video settings</div>
+                                <button class="export-item fps-opt selected" data-fps="30"><svg class="fmt-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>30 fps<em>standard</em></button>
+                                <button class="export-item fps-opt" data-fps="60"><svg class="fmt-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>60 fps<em>smoother</em></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="codePanel" style="display:none">
+            <div class="code-tabs">
+                <button class="code-tab active" data-lang="html"><span class="lang-dot"></span>HTML</button>
+                <button class="code-tab" data-lang="css"><span class="lang-dot"></span>CSS</button>
+                <button class="code-tab" data-lang="js"><span class="lang-dot"></span>JS</button>
+                <span class="unsaved-badge" id="unsavedBadge"><span class="dot"></span>Unsaved</span>
+                <div class="code-right">
+                    <div class="code-export-split">
+                        <button class="btn btn-export-code" id="exportCodeBtn" title="Download the three panes as a reusable .json code file">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            Export
+                        </button>
+                        <button class="code-export-caret" id="exportCodeCaret" title="Export options" aria-haspopup="true">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                        </button>
+                        <div class="code-export-menu" id="exportCodeMenu">
+                            <div class="export-menu-label">Export current code as</div>
+                            <button class="export-item" data-exp-json><svg class="fmt-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Code file (.json)<em>re-importable</em></button>
+                            <button class="export-item" data-exp-html><svg class="fmt-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Standalone page (.html)<em>open in browser</em></button>
+                        </div>
+                    </div>
+                    <button class="btn btn-reset" id="resetCodeBtn" title="Discard applied edits and restore the original design code" disabled>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                        Reset
+                    </button>
+                    <button class="btn btn-apply" id="applyCode" title="Render the panes on the stage and play">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                        Apply
+                    </button>
+                </div>
+            </div>
+            <p class="code-hint">Edits are sandboxed — <strong>Apply</strong> renders them on the stage. Reopen the design to reset.</p>
+            <div class="code-wrap active" id="cmHtmlWrap"><textarea id="codeHtml"></textarea></div>
+            <div class="code-wrap" id="cmCssWrap"><textarea id="codeCss"></textarea></div>
+            <div class="code-wrap" id="cmJsWrap"><textarea id="codeJs"></textarea></div>
+        </div>
+        <div id="aiPanel" style="display:none">
+            <div class="ai-wrap">
+                <div class="ai-sub">
+                    <button type="button" class="ai-sub-btn active" id="aiSubGet">Get AI Code</button>
+                    <button type="button" class="ai-sub-btn" id="aiSubPaste">Paste Reply</button>
+                    <span class="ai-status" id="aiStatus"></span>
+                </div>
+                <div class="ai-view active" id="aiViewGet">
+                    <div class="ai-step-label">1 · This design's brief (edit freely)</div>
+                    <textarea id="aiWant" class="ai-textarea" rows="5" placeholder="Describe what you want — e.g. A kinetic-typography intro: the word STUDIO slams in letter by letter."></textarea>
+                    <div class="ai-actions">
+                        <button type="button" class="btn btn-ai-copy" id="aiCopyBtn">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                            Copy AI Prompt
+                        </button>
+                        <a class="ai-link" href="https://gemini.google.com/app" target="_blank" rel="noopener">Gemini ↗</a>
+                        <a class="ai-link" href="https://chatgpt.com" target="_blank" rel="noopener">ChatGPT ↗</a>
+                        <a class="ai-link" href="https://claude.ai/new" target="_blank" rel="noopener">Claude ↗</a>
+                    </div>
+                    <p class="ai-note">The prompt enforces the render contract: deterministic onFrame(time in ms), 800×450 design space, no CSS keyframes. LaTeX, markdown, Google fonts and Tailwind are supported — replies drop straight into the preview and both export paths.</p>
+                </div>
+                <div class="ai-view" id="aiViewPaste">
+                    <p class="ai-hint">Paste the AI's whole reply — it <strong>parses and applies automatically</strong>.</p>
+                    <textarea id="aiReply" class="ai-textarea mono" style="flex:1;min-height:180px" placeholder="Paste everything the AI returned here…"></textarea>
+                    <div class="ai-actions">
+                        <button type="button" class="btn btn-ai-apply" id="aiApplyBtn">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.1 6.4 6.4 1.6-6.4 1.6L12 18l-2.1-6.4-6.4-1.6 6.4-1.6z"/></svg>
+                            Parse &amp; Apply
+                        </button>
+                        <button type="button" class="btn btn-ai-clear" id="aiClearBtn">Clear</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        </div>
+    </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/htmlmixed/htmlmixed.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/xml/xml.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/css/css.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════
+ * SVG foreignObject Renderer — verbatim port from test-renderer
+ * ═══════════════════════════════════════════════════════════════ */
+class Renderer {
+    constructor(w, h) {
+        this.w = w; this.h = h;
+        this.canvas = document.createElement('canvas');
+        this.canvas.width = w; this.canvas.height = h;
+        this.ctx = this.canvas.getContext('2d');
+        this.sandbox = document.createElement('div');
+        this.sandbox.style.cssText = 'position:absolute;top:-9999px;left:-9999px;width:800px;height:450px;overflow:hidden;pointer-events:none;';
+        document.body.appendChild(this.sandbox);
+        this.css = ''; this._onFrame = null; this._ready = false;
+    }
+    async setClip(html, css, js) {
+        this.css = css || '';
+        this.sandbox.innerHTML = '<div style="width:800px;height:450px;"></div>';
+        html = await this._loadExternalScripts(html);
+        html = await this._preloadImages(html);
+        this.sandbox.innerHTML = html;
+        var _usesTw = /class="[^"]*\b(bg-|text-|flex|grid-|p[xytblr]?-|m[xytblr]?-|rounded|shadow|font-|border|min-h-|max-w-|w-|h-|gap-|mt-|mb-|tracking-|from-|to-)/.test(html) || html.indexOf('tailwindcss') !== -1;
+        if (_usesTw) {
+            var twStyle = null;
+            for (var _twWait = 0; _twWait < 20 && !twStyle; _twWait++) {
+                await new Promise(r => setTimeout(r, 50));
+                twStyle = [...document.querySelectorAll('head style')]
+                    .filter(s => (s.textContent || '').indexOf('--tw-') !== -1)
+                    .pop();
+            }
+            if (twStyle) this.css = (css || '') + '\n' + twStyle.textContent;
+        }
+        const processed = await this._embedAssets(html, this.css);
+        html = processed.html;
+        this.css = processed.css;
+        this.sandbox.innerHTML = html;
+        try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch(e) {}
+        this._onFrame = null;
+        if (js) {
+            try {
+                var fn = new Function('time', js + '\n;return typeof onFrame==="function"?onFrame:null;');
+                this._onFrame = fn();
+            } catch(e) { console.error('[Renderer] JS parse error:', e); }
+        }
+        this._ready = true;
+    }
+    async _loadExternalScripts(html) {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString('<div>' + html + '</div>', 'text/html');
+        const srcs = [...doc.querySelectorAll('script[src]')].map(s => { const v = s.getAttribute('src'); s.remove(); return v; }).filter(Boolean);
+        for (const src of srcs) {
+            if (src.indexOf('tailwind') !== -1) continue;
+            if (document.querySelector('script[src="' + src + '"]')) continue;
+            await new Promise(res => {
+                const s = document.createElement('script');
+                s.src = src;
+                if (src.indexOf('jsdelivr') !== -1 || src.indexOf('crossorigin') !== -1) s.crossOrigin = 'anonymous';
+                s.onload = res; s.onerror = res;
+                document.head.appendChild(s);
+            });
+        }
+        html = doc.querySelector('div').innerHTML;
+        if (html.indexOf('tailwindcss') !== -1 || /class="[^"]*\b(bg-|text-|flex|grid-|p[xytblr]?-|m[xytblr]?-|rounded|shadow|font-|border)/.test(html)) {
+            if (!document.getElementById('tw-browser-runtime')) {
+                await new Promise(res => {
+                    const s = document.createElement('script');
+                    s.id = 'tw-browser-runtime';
+                    var _slashDocs = location.pathname.indexOf('/docs/');
+                    var _siteBase = _slashDocs > 0 ? location.pathname.slice(0, _slashDocs + 1) : '/';
+                    s.src = _siteBase + 'vendor/tailwind-browser/index.global.js';
+                    s.onload = res; s.onerror = res;
+                    document.head.appendChild(s);
+                    setTimeout(res, 3000);
+                });
+            }
+        }
+        return html;
+    }
+    async _embedAssets(html, css) {
+        const urls = [];
+        const linkRe = /<link[^>]*href=["'](https:\/\/fonts\.googleapis\.com[^"']*)["'][^>]*>/gi;
+        html = html.replace(linkRe, (_, url) => { urls.push(url.replace(/&amp;/g, '&')); return ''; });
+        const cdnLinkRe = /<link[^>]*rel=["']stylesheet["'][^>]*href=["'](https?:\/\/[^"']+)["'][^>]*>/gi;
+        const cdnLinkRe2 = /<link[^>]*href=["'](https?:\/\/[^"']+)["'][^>]*rel=["']stylesheet["'][^>]*>/gi;
+        html = html.replace(cdnLinkRe, (_, url) => { urls.push(url.replace(/&amp;/g, '&')); return ''; });
+        html = html.replace(cdnLinkRe2, (_, url) => { urls.push(url.replace(/&amp;/g, '&')); return ''; });
+        const importRe = /@import\s+(?:url\()?["']?(https:\/\/fonts\.googleapis\.com[^'\)\s]*)["']?\)?\s*;/gi;
+        css = css.replace(importRe, (_, url) => { urls.push(url.replace(/&amp;/g, '&')); return ''; });
+        let fontCss = '';
+        for (const url of urls) {
+            if (_fontCssCache[url]) { fontCss += _fontCssCache[url] + '\n'; continue; }
+            try {
+                const res = await fetch(url);
+                if (!res.ok) continue;
+                let sheet = await res.text();
+                const refs = [];
+                const urlRe = /url\(\s*['"]?([^'")]+?)['"]?\s*\)/g;
+                let mm;
+                while ((mm = urlRe.exec(sheet)) !== null) {
+                    const raw = mm[1];
+                    if (/^data:/i.test(raw)) continue;
+                    let abs = raw;
+                    if (!/^https?:\/\//i.test(raw)) {
+                        try { abs = new URL(raw, url).href; } catch(e) { continue; }
+                    }
+                    refs.push({ raw, abs });
+                }
+                const uniqAbs = Array.from(new Set(refs.map(r => r.abs)));
+                const dataMap = {};
+                await Promise.all(uniqAbs.map(async abs => {
+                    try {
+                        const r = await fetch(abs);
+                        const blob = await r.blob();
+                        dataMap[abs] = await new Promise(resolve => {
+                            const reader = new FileReader();
+                            reader.onloadend = () => resolve(reader.result);
+                            reader.readAsDataURL(blob);
+                        });
+                    } catch(e) {}
+                }));
+                refs.forEach(ref => { const d = dataMap[ref.abs]; if (d) sheet = sheet.split(ref.raw).join(d); });
+                _fontCssCache[url] = sheet;
+                fontCss += sheet + '\n';
+            } catch(e) { console.warn('[Renderer] Font fetch failed:', url); }
+        }
+        return { html, css: fontCss + '\n' + css };
+    }
+    async _preloadImages(htmlString) {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString('<div>' + htmlString + '</div>', 'text/html');
+        const images = doc.querySelectorAll('img');
+        const promises = Array.from(images).map(async (img) => {
+            const src = img.getAttribute('src');
+            if (src && (src.startsWith('http://') || src.startsWith('https://'))) {
+                try {
+                    const resp = await fetch(src, { mode: 'cors' });
+                    if (!resp.ok) throw new Error('fail');
+                    const blob = await resp.blob();
+                    const dataUrl = await new Promise((res, rej) => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => res(reader.result);
+                        reader.onerror = rej;
+                        reader.readAsDataURL(blob);
+                    });
+                    img.setAttribute('src', dataUrl);
+                } catch(e) {}
+            }
+        });
+        await Promise.allSettled(promises);
+        return doc.querySelector('div').innerHTML;
+    }
+    renderFrame(timeMs) {
+        if (!this._ready) return Promise.resolve(false);
+        if (this._onFrame) {
+            const origQSA = Document.prototype.querySelectorAll;
+            const origGEBI = Document.prototype.getElementById;
+            const sandbox = this.sandbox;
+            Document.prototype.querySelectorAll = function(sel) { return sandbox.querySelectorAll(sel); };
+            Document.prototype.getElementById = function(id) { return sandbox.querySelector('#' + id) || origGEBI.call(document, id); };
+            try { this._onFrame(timeMs); } catch(e) { console.error('[Renderer] onFrame error:', e); }
+            Document.prototype.querySelectorAll = origQSA;
+            Document.prototype.getElementById = origGEBI;
+        }
+        const clone = this.sandbox.cloneNode(true);
+        clone.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
+        clone.setAttribute('style', 'width:100%;height:100%;margin:0;padding:0;overflow:hidden;');
+        const domString = new XMLSerializer().serializeToString(clone);
+        const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + this.w + '" height="' + this.h + '">' +
+            '<foreignObject width="100%" height="100%">' +
+            '<style xmlns="http://www.w3.org/1999/xhtml"><![CDATA[' + this.css + ']]></style>' +
+            '<div xmlns="http://www.w3.org/1999/xhtml" style="width:' + this.w + 'px;height:' + this.h + 'px;overflow:hidden;">' +
+            domString + '</div></foreignObject></svg>';
+        return new Promise(resolve => {
+            const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+            const img = new Image();
+            img.onload = () => { this.ctx.clearRect(0, 0, this.w, this.h); this.ctx.drawImage(img, 0, 0); resolve(true); };
+            img.onerror = () => { this.ctx.fillStyle = '#1e293b'; this.ctx.fillRect(0, 0, this.w, this.h); this.ctx.fillStyle = '#f87171'; this.ctx.font = '14px sans-serif'; this.ctx.fillText('Render Error', 16, 24); resolve(false); };
+            img.src = url;
+        });
+    }
+    drawTo(targetCtx, x, y, w, h) { targetCtx.drawImage(this.canvas, 0, 0, this.w, this.h, x, y, w, h); }
+}
+const _fontCssCache = {};
+
+/* ═══════════════════════════════════════════════════════════════
+ * Prompt contract + reply parser — same as test-renderer
+ * ═══════════════════════════════════════════════════════════════ */
+function aiBuildPrompt(want, dur) {
+    return [
+        'You are generating an HTML-in-Canvas animation for a video editor.',
+        '',
+        'WHAT I WANT:',
+        want,
+        '',
+        'HARD CONTRACT (violations break the video render):',
+        '1. Deterministic time: ALL animation must be driven by a single global function onFrame(time) where time is milliseconds since the clip start (number). Same time in = same frame out, forever. The editor seeks to any time and re-renders.',
+        '2. No requestAnimationFrame, no setTimeout/setInterval, no CSS @keyframes or animation: properties, no transitions. You compute every element state inside onFrame from time only.',
+        '3. The design space is exactly 800 x 450 pixels (16:9). Use absolute sizes in px; the renderer scales the whole stage to any output resolution. Use width:100%;height:100% on your root container.',
+        '4. Vanilla HTML/CSS/JS only — no bundlers, no imports, no fetch/XHR/network calls of your own. Allowed CDN exceptions (only when the design needs them): KaTeX for math and marked for markdown — load them with their <script src="https://cdn.jsdelivr.net/npm/..."> tags at the top of the html block (close each tag properly).',
+        '5. Images must be CORS-safe https URLs (images.unsplash.com is fine) and animated via style properties (transform/opacity/filter/clip-path) inside onFrame.',
+        '6. Guard element lookups (if(el){...}) so a missing id never throws.',
+        '7. The FIRST line of the html block must be <title>Short Name</title> — 2-4 Title Case words naming the animation (e.g. <title>Travel Slideshow</title>). It becomes the clip\'s display name and every export filename. No other head tags.',
+        '',
+        'CLIP DURATION: ' + dur + ' ms. Choreograph the animation to complete within that time.',
+        '',
+        'OUTPUT FORMAT — respond with EXACTLY three fenced code blocks and nothing else:',
+        '```html',
+        '<title>Short Name</title><!-- then the full markup for the 800x450 stage -->',
+        '```',
+        '```css',
+        '/* all styles; root container fills 100% x 100% */',
+        '```',
+        '```js',
+        'function onFrame(time) { /* deterministic animation */ }',
+        '```'
+    ].join('\n');
+}
+
+function aiParseReply(text) {
+    const res = { html: '', css: '', js: '', title: '' };
+    text = (text || '').replace(/\r\n?/g, '\n').trim();
+    if (!text) return res;
+    const _tm = text.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+    if (_tm && _tm[1].trim()) res.title = _tm[1].replace(/\s+/g, ' ').trim().slice(0, 80);
+    const fenceRe = /```([a-zA-Z0-9]*)[ \t]*\n([\s\S]*?)```/g;
+    const blocks = [];
+    let m;
+    while ((m = fenceRe.exec(text)) !== null) blocks.push({ lang: (m[1] || '').toLowerCase(), code: m[2].trim() });
+    const looksCss = s => /(^|\n)\s*[.#@a-zA-Z\[][^{};]*\{[^}]*:/.test(s) && !/</.test(s);
+    const looksJs = s => /\b(function|onFrame|=>|var |let |const |document\.)/.test(s) && !/^\s*</.test(s);
+    const looksHtml = s => /^\s*<\/?[a-zA-Z!]/.test(s);
+    if (blocks.length) {
+        blocks.forEach(b => {
+            if (b.lang === 'css' || (!b.lang && looksCss(b.code))) res.css += (res.css ? '\n\n' : '') + b.code;
+            else if (b.lang === 'js' || b.lang === 'javascript' || (!b.lang && looksJs(b.code) && !looksHtml(b.code))) res.js += (res.js ? '\n\n' : '') + b.code;
+            else res.html += (res.html ? '\n' : '') + b.code;
+        });
+    } else {
+        let s = text;
+        s = s.replace(/<style[^>]*>([\s\S]*?)<\/style>/gi, (_, css) => { res.css += (res.css ? '\n\n' : '') + css.trim(); return ''; });
+        s = s.replace(/<script(?![^>]*(?:\bsrc=|type="application\/json"))[^>]*>([\s\S]*?)<\/script>/gi, (_, js) => { res.js += (res.js ? '\n\n' : '') + js.trim(); return ''; });
+        s = s.replace(/<!DOCTYPE[^>]*>/i, '').replace(/<\/?html[^>]*>/gi, '').replace(/<head[^>]*>([\s\S]*?)<\/head>/gi, (_, head) => {
+            const keep = [...head.matchAll(/<(script\b[^>]*\bsrc=[^>]*>[\s\S]*?<\/script>|link\b[^>]*\brel=[^>]*stylesheet[^>]*>)/gi)].map(x => x[0]).join('\n');
+            return keep ? '\n' + keep + '\n' : '';
+        }).replace(/<\/?body[^>]*>/gi, '').replace(/<meta[^>]*>/gi, '').replace(/<title[^>]*>[\s\S]*?<\/title>/gi, '');
+        res.html = s.trim();
+    }
+    if (res.html && /<style|<script/i.test(res.html)) {
+        res.html = res.html.replace(/<style[^>]*>([\s\S]*?)<\/style>/gi, (_, css) => { res.css += (res.css ? '\n\n' : '') + css.trim(); return ''; });
+        res.html = res.html.replace(/<script(?![^>]*(?:\bsrc=|type="application\/json"))[^>]*>([\s\S]*?)<\/script>/gi, (_, js) => { res.js += (res.js ? '\n\n' : '') + js.trim(); return ''; });
+        res.html = res.html.trim();
+    }
+    return res;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+ * Prettifiers — same as test-renderer
+ * ═══════════════════════════════════════════════════════════════ */
+function prettifyHtml(html) {
+    if (!html) return '';
+    var s = html.replace(/></g, '>\n<');
+    var lines = s.split('\n');
+    var out = [], indent = 0;
+    var selfClose = /^<(br|hr|img|input|link|meta|source|area|base|col|embed|param|track|wbr)\b/i;
+    var closeTag = /^<\//;
+    var openTag = /^<[a-zA-Z]/;
+    lines.forEach(function(line) {
+        line = line.trim();
+        if (!line) return;
+        if (closeTag.test(line)) indent = Math.max(0, indent - 1);
+        out.push('  '.repeat(indent) + line);
+        if (openTag.test(line) && !selfClose.test(line) && !closeTag.test(line) && !/\//.test(line) && !/\/>/.test(line)) {
+            indent++;
+        }
+    });
+    return out.join('\n');
+}
+function prettifyCss(css) {
+    if (!css) return '';
+    var s = css.replace(/\{/g, ' {\n  ').replace(/\}/g, '\n}').replace(/;([^}])/g, ';\n  $1');
+    var lines = s.split('\n');
+    var out = [];
+    lines.forEach(function(line) {
+        line = line.trimRight();
+        if (line === '}') out.push('}');
+        else if (line) out.push(line);
+    });
+    return out.join('\n');
+}
+function prettifyJs(js) {
+    if (!js) return '';
+    var s = '', out = [];
+    var i = 0, n = js.length, mode = null;
+    var prevSig = '';
+    while (i < n) {
+        var c = js[i], c2 = js.substr(i, 2);
+        if (mode === 'line') { if (c === '\n') { mode = null; out.push('\n'); } else out.push(c); i++; continue; }
+        if (mode === 'block') { if (c2 === '*/') { mode = null; out.push('*/'); i += 2; } else { if (c === '\n') out.push('\n'); i++; } continue; }
+        if (mode === "'" || mode === '"' || mode === '`') {
+            out.push(c);
+            if (c === '\\') { out.push(js[i + 1] || ''); i += 2; continue; }
+            if (c === mode) mode = null;
+            i++; continue;
+        }
+        if (mode === '/') {
+            out.push(c);
+            if (c === '\\') { out.push(js[i + 1] || ''); i += 2; continue; }
+            if (c === '[') s = s + '[';
+            else if (c === ']') s = s.slice(0, -1);
+            else if (c === '/' && !s.length) mode = null;
+            i++; continue;
+        }
+        if (c2 === '//') { mode = 'line'; out.push(c2); i += 2; continue; }
+        if (c2 === '/*') { mode = 'block'; out.push(c2); i += 2; continue; }
+        if (c === "'" || c === '"' || c === '`') { mode = c; out.push(c); i++; continue; }
+        if (c === '/') {
+            if (!/[\w$)\]"'`]/.test(prevSig)) { mode = '/'; out.push(c); i++; continue; }
+            out.push(c); i++; prevSig = '/'; continue;
+        }
+        out.push(c);
+        if (!/\s/.test(c)) prevSig = c;
+        if (c === ';') { out.push('\n'); prevSig = ''; }
+        else if (c === '{') { out.push('\n'); prevSig = ''; }
+        else if (c === '}') {
+            if (out[out.length - 2] !== '\n') out.splice(out.length - 1, 0, '\n');
+            out.push('\n'); prevSig = '';
+        }
+        i++;
+    }
+    var lines = out.join('').split('\n');
+    var res = [], ind = 0;
+    lines.forEach(function(line) {
+        line = line.trim();
+        if (!line) return;
+        if (line[0] === '}') ind = Math.max(0, ind - 1);
+        res.push('  '.repeat(ind) + line);
+        if (/\{\s*$/.test(line)) ind++;
+    });
+    return res.join('\n').replace(/\n\n+/g, '\n');
+}
+
+/* ═══════════════════════════════════════════════════════════════
+ * GALLERY DATA
+ * ═══════════════════════════════════════════════════════════════ */
+const W = 800, H = 450;
+let DESIGNS = [];
+const byId = {};
+
+fetch('designs-gallery.json', { cache: 'no-store' })
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(data => {
+        DESIGNS = (data.designs || []).filter(d => d && d.id);
+        DESIGNS.forEach(d => { byId[d.id] = d; d.hasCode = !!(d.html || d.css || d.js); });
+        const fu = document.getElementById('footNote');
+        if (data.updatedAt) fu.textContent = 'Gallery updated ' + new Date(data.updatedAt).toLocaleString() + ' · ' + DESIGNS.length + ' designs';
+        buildChips();
+        renderGrid();
+        handleHash();
+    })
+    .catch(err => {
+        document.getElementById('designGrid').innerHTML =
+            '<div class="empty" style="grid-column:1/-1">Could not load designs-gallery.json — ' + String(err.message || err) + '</div>';
+    });
+
+/* ── Filters / search ─────────────────────────────────────────── */
+let activeTag = '';
+let query = '';
+function buildChips() {
+    const counts = {};
+    DESIGNS.forEach(d => (d.tags || []).forEach(t => { counts[t] = (counts[t] || 0) + 1; }));
+    const row = document.getElementById('chipsRow');
+    const tags = Object.keys(counts).sort();
+    row.innerHTML = '<button class="chip on" data-tag="">All<span class="n">' + DESIGNS.length + '</span></button>' +
+        tags.map(t => '<button class="chip" data-tag="' + t + '">' + t + '<span class="n">' + counts[t] + '</span></button>').join('');
+    row.addEventListener('click', function(e) {
+        const chip = e.target.closest('.chip');
+        if (!chip) return;
+        activeTag = chip.getAttribute('data-tag');
+        row.querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c === chip));
+        renderGrid();
+    });
+}
+document.getElementById('searchInput').addEventListener('input', function() {
+    query = this.value.trim().toLowerCase();
+    renderGrid();
+});
+function matches(d) {
+    if (activeTag && !(d.tags || []).includes(activeTag)) return false;
+    if (!query) return true;
+    const hay = (d.title + ' ' + (d.creator || '') + ' ' + (d.tags || []).join(' ') + ' ' + (d.prompt || '')).toLowerCase();
+    return query.split(/\s+/).every(w => hay.includes(w));
+}
+
+/* ── Card grid + lazy thumbnails ─────────────────────────────── */
+const thumbQueue = [];
+let thumbRunning = false;
+function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+function phHue(title) { let h = 0; for (let i = 0; i < title.length; i++) h = (h * 31 + title.charCodeAt(i)) % 360; return h; }
+
+function renderGrid() {
+    const gridEl = document.getElementById('designGrid');
+    gridEl.innerHTML = '';
+    const list = DESIGNS.filter(matches);
+    document.getElementById('countPill').textContent = list.length;
+    document.getElementById('emptyState').hidden = list.length > 0;
+    let eagerThumbs = 6; /* first 6 code cards render immediately, rest stay lazy */
+    list.forEach(d => {
+        const card = document.createElement('div');
+        card.className = 'dcard';
+        card.dataset.id = d.id;
+        const hue = phHue(d.title || d.id);
+        card.innerHTML =
+            '<div class="thumb-wrap">' +
+              (d.hasCode
+                ? '<div class="thumb-skel"></div><canvas width="' + W + '" height="' + H + '"></canvas>'
+                : '<div class="thumb-ph" style="background:linear-gradient(135deg,hsl(' + hue + ',45%,14%),hsl(' + ((hue + 60) % 360) + ',50%,9%))">' +
+                  '<span class="big">' + esc(d.title) + '</span><span class="tagp">PROMPT BRIEF</span></div>') +
+            '</div>' +
+            '<div class="dcard-body">' +
+              '<div class="dcard-title">' + esc(d.title) + '</div>' +
+              '<div class="dcard-meta"><span>@' + esc(d.creator || 'studio') + '</span><span class="dot"></span><span>' + Math.round((d.duration || 5000) / 1000) + 's</span></div>' +
+              '<div class="dcard-tags">' + (d.tags || []).map(t => '<span class="minitag">' + esc(t) + '</span>').join('') + '</div>' +
+              '<div class="dcard-actions">' +
+                '<button class="cbtn primary" data-act="preview"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.14v13.72c0 .81.87 1.3 1.55.88l10.8-6.86a1.03 1.03 0 0 0 0-1.76L9.55 4.26A1.03 1.03 0 0 0 8 5.14z"/></svg>Preview</button>' +
+                '<button class="cbtn" data-act="copy-prompt" title="Copy AI prompt"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Prompt</button>' +
+                '<button class="cbtn" data-act="copy-code" title="Copy fenced code"' + (d.hasCode ? '' : ' disabled') + '><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>Code</button>' +
+                '<button class="cbtn kebab" data-act="more" title="More"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg></button>' +
+              '</div>' +
+            '</div>';
+        card.addEventListener('click', function(e) {
+            const act = e.target.closest('[data-act]');
+            if (act) {
+                e.stopPropagation();
+                const a = act.getAttribute('data-act');
+                if (a === 'preview') openDesign(d.id);
+                else if (a === 'copy-prompt') copyPrompt(d.id);
+                else if (a === 'copy-code') copyFenced(d.id);
+                else if (a === 'more') openCardMenu(d.id, act);
+                return;
+            }
+            openDesign(d.id);
+        });
+        gridEl.appendChild(card);
+        if (d.hasCode) {
+            /* Lazy-render thumbnails: IntersectionObserver for below-fold cards plus an
+             * eager pass for the first EAGER_THUMBS code cards (above-fold grids shouldn't
+             * wait for a scroll event that may never come — e.g. grids taller than the
+             * viewport with no scrollbar). Guards against double-queueing. */
+            card._thumbQueued = false;
+            if (eagerThumbs > 0) { eagerThumbs--; card._thumbQueued = true; thumbQueue.push(d.id); }
+            const io = new IntersectionObserver(entries => {
+                entries.forEach(en => {
+                    if (en.isIntersecting && !card._thumbQueued) {
+                        io.disconnect();
+                        card._thumbQueued = true;
+                        thumbQueue.push(d.id);
+                        pumpThumbs();
+                    }
+                });
+            }, { rootMargin: '300px' });
+            io.observe(card);
+        }
+    });
+    pumpThumbs();
+}
+
+function pumpThumbs() {
+    if (thumbRunning) return;
+    thumbRunning = true;
+    (async () => {
+        while (thumbQueue.length) {
+            const id = thumbQueue.shift();
+            const d = byId[id];
+            const card = document.querySelector('.dcard[data-id="' + id + '"]');
+            if (!d || !card) continue;
+            const canvas = card.querySelector('canvas');
+            const skel = card.querySelector('.thumb-skel');
+            try {
+                const r = new Renderer(W, H);
+                await r.setClip(d.html || '', d.css || '', d.js || '');
+                const ok = await r.renderFrame(Math.max(0, (d.duration || 5000) - 16));
+                if (ok && canvas) r.drawTo(canvas.getContext('2d'), 0, 0, W, H);
+                r.sandbox.remove();
+            } catch (e) { console.error('[Thumb]', id, e); }
+            if (skel) skel.remove();
+        }
+        thumbRunning = false;
+    })();
+}
+
+/* floating per-card menu */
+const cardMenu = document.getElementById('cardMenu');
+let cardMenuFor = null;
+function openCardMenu(id, anchor) {
+    cardMenuFor = id;
+    const d = byId[id];
+    cardMenu.innerHTML =
+        '<button class="export-item" data-cm="copy-html"' + (d.hasCode ? '' : ' disabled') + '>Copy HTML</button>' +
+        '<button class="export-item" data-cm="copy-css"' + (d.hasCode ? '' : ' disabled') + '>Copy CSS</button>' +
+        '<button class="export-item" data-cm="copy-js"' + (d.hasCode ? '' : ' disabled') + '>Copy JS</button>' +
+        '<button class="export-item" data-cm="dl-json"' + (d.hasCode ? '' : ' disabled') + '>Download .json</button>' +
+        '<button class="export-item" data-cm="share">Share / Submit…<em>soon</em></button>';
+    cardMenu.classList.add('open');
+    const r = anchor.getBoundingClientRect();
+    cardMenu.style.top = Math.min(window.innerHeight - cardMenu.offsetHeight - 10, r.bottom + 6) + 'px';
+    cardMenu.style.left = Math.max(8, Math.min(window.innerWidth - cardMenu.offsetWidth - 8, r.right - cardMenu.offsetWidth)) + 'px';
+}
+document.addEventListener('click', function(e) {
+    if (cardMenu.classList.contains('open') && !cardMenu.contains(e.target) && !e.target.closest('[data-act="more"]')) cardMenu.classList.remove('open');
+});
+cardMenu.addEventListener('click', function(e) {
+    const item = e.target.closest('[data-cm]');
+    if (!item || item.disabled) return;
+    const d = byId[cardMenuFor];
+    cardMenu.classList.remove('open');
+    if (!d) return;
+    const a = item.getAttribute('data-cm');
+    if (a === 'copy-html') copyText(d.html || '', 'HTML copied');
+    else if (a === 'copy-css') copyText(d.css || '', 'CSS copied');
+    else if (a === 'copy-js') copyText(d.js || '', 'JS copied');
+    else if (a === 'dl-json') downloadJson(d);
+});
+
+/* ── Clipboard + toast + downloads ───────────────────────────── */
+function toast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('on');
+    clearTimeout(t._h);
+    t._h = setTimeout(() => t.classList.remove('on'), 2200);
+}
+function copyText(text, okMsg) {
+    navigator.clipboard.writeText(text).then(() => toast(okMsg)).catch(() => toast('Copy failed'));
+}
+function copyPrompt(id) {
+    const d = byId[id];
+    if (!d) return;
+    copyText(aiBuildPrompt(d.prompt || '(no brief — propose something tasteful)', d.duration || 5000), 'Prompt copied — paste into Gemini / ChatGPT / Claude');
+}
+function copyFenced(id) {
+    const d = byId[id];
+    if (!d) return;
+    copyText('```html\n' + (d.html || '') + '\n```\n```css\n' + (d.css || '') + '\n```\n```js\n' + (d.js || '') + '\n```', 'Code copied as fenced blocks');
+}
+function downloadJson(d) {
+    const payload = { version: 1, kind: 'hic-code', name: d.title, duration: d.duration || 5000, html: d.html || '', css: d.css || '', js: d.js || '' };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = String(d.title || 'design').replace(/[^a-z0-9_-]+/gi, '_') + '_code.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function downloadBlob(blob, name) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+ * MODAL — ported from test-renderer, design-aware
+ * ═══════════════════════════════════════════════════════════════ */
+const modalOverlay = document.getElementById('modalOverlay');
+const modalTitle = document.getElementById('modalTitle');
+const modalCanvas = document.getElementById('modalCanvas');
+const modalPlayBtn = document.getElementById('modalPlayBtn');
+const modalSlider = document.getElementById('modalSlider');
+const modalTime = document.getElementById('modalTime');
+const modalDuration = document.getElementById('modalDuration');
+const modalClose = document.getElementById('modalClose');
+const modalCtx = modalCanvas.getContext('2d');
+const tabPreview = document.getElementById('tabPreview');
+const tabCode = document.getElementById('tabCode');
+const tabAi = document.getElementById('tabAi');
+const previewPanel = document.getElementById('previewPanel');
+const codePanel = document.getElementById('codePanel');
+const aiPanel = document.getElementById('aiPanel');
+const applyCode = document.getElementById('applyCode');
+const copyPromptHdr = document.getElementById('copyPromptHdr');
+const copyCodeHdr = document.getElementById('copyCodeHdr');
+const unsavedBadge = document.getElementById('unsavedBadge');
+const resetCodeBtn = document.getElementById('resetCodeBtn');
+
+let modalRenderer = null;
+let modalPlaying = false;
+let modalStart = 0;
+let currentDesignId = null;
+let _lastAppliedCode = { html: '', css: '', js: '' };
+let _clipTitle = '';
+
+function designDur(d) { return Math.round((d && d.duration) || 5000); }
+function clipTitleFrom(html) {
+    const m = String(html || '').match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+    const t = m ? m[1].replace(/\s+/g, ' ').trim() : '';
+    return t ? t.slice(0, 80) : '';
+}
+function exportFileStem() {
+    const base = _clipTitle || (byId[currentDesignId] || {}).title || 'design';
+    return base.replace(/[^a-z0-9_-]+/gi, '_').replace(/^_+|_+$/g, '') || 'design';
+}
+function refreshClipTitle() {
+    _clipTitle = clipTitleFrom((cmHtml && cmHtml.getValue()) || '');
+    if (currentDesignId) {
+        const d = byId[currentDesignId];
+        modalTitle.textContent = _clipTitle || (d && d.title) || currentDesignId;
+    }
+}
+
+const cmHtml = CodeMirror.fromTextArea(document.getElementById('codeHtml'), { mode: 'htmlmixed', theme: 'dracula', lineNumbers: true, tabSize: 2, lineWrapping: true });
+const cmCss = CodeMirror.fromTextArea(document.getElementById('codeCss'), { mode: 'css', theme: 'dracula', lineNumbers: true, tabSize: 2, lineWrapping: true });
+const cmJs = CodeMirror.fromTextArea(document.getElementById('codeJs'), { mode: 'javascript', theme: 'dracula', lineNumbers: true, tabSize: 2, lineWrapping: true });
+
+function updateUnsavedBadge() {
+    if (!currentDesignId) { unsavedBadge.classList.remove('on'); return; }
+    const dirty = cmHtml.getValue() !== _lastAppliedCode.html
+        || cmCss.getValue() !== _lastAppliedCode.css
+        || cmJs.getValue() !== _lastAppliedCode.js;
+    unsavedBadge.classList.toggle('on', dirty);
+}
+[cmHtml, cmCss, cmJs].forEach(function(cm) { cm.on('change', updateUnsavedBadge); });
+
+function resetSync() {
+    const d = byId[currentDesignId];
+    if (!d) { resetCodeBtn.disabled = true; resetCodeBtn.classList.remove('confirm'); return; }
+    resetCodeBtn.disabled = !(
+        (_lastAppliedCode.html || _lastAppliedCode.css || _lastAppliedCode.js)
+        && (cmHtml.getValue() !== prettifyHtml(d.html || '')
+            || cmCss.getValue() !== prettifyCss(d.css || '')
+            || cmJs.getValue() !== prettifyJs(d.js || ''))
+    );
+    if (resetCodeBtn.disabled) resetCodeBtn.classList.remove('confirm');
+}
+[cmHtml, cmCss, cmJs].forEach(function(cm) { cm.on('change', resetSync); });
+
+const RESET_ICON = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg> ';
+resetCodeBtn.addEventListener('click', function() {
+    const d = byId[currentDesignId];
+    if (resetCodeBtn.disabled || !d) return;
+    if (!resetCodeBtn.classList.contains('confirm')) {
+        resetCodeBtn.classList.add('confirm');
+        resetCodeBtn.innerHTML = RESET_ICON + 'Sure?';
+        setTimeout(function() { resetCodeBtn.classList.remove('confirm'); resetCodeBtn.innerHTML = RESET_ICON + 'Reset'; }, 2200);
+        return;
+    }
+    resetCodeBtn.classList.remove('confirm');
+    resetCodeBtn.innerHTML = RESET_ICON + 'Reset';
+    _lastAppliedCode = { html: '', css: '', js: '' };
+    cmHtml.setValue(prettifyHtml(d.html || ''));
+    cmCss.setValue(prettifyCss(d.css || ''));
+    cmJs.setValue(prettifyJs(d.js || ''));
+    _lastAppliedCode = { html: cmHtml.getValue(), css: cmCss.getValue(), js: cmJs.getValue() };
+    refreshClipTitle();
+    updateUnsavedBadge();
+    resetSync();
+    rebuildStage(d.html || '', d.css || '', d.js || '');
+});
+
+function rebuildStage(html, css, js) {
+    modalPlaying = false;
+    setPlayState(false);
+    if (modalRenderer) { modalRenderer.sandbox.remove(); }
+    const d = byId[currentDesignId];
+    if (!(html || css || js)) {
+        /* prompt-only design: neutral placeholder, no renderer */
+        modalRenderer = null;
+        modalCtx.fillStyle = '#0d1420';
+        modalCtx.fillRect(0, 0, W, H);
+        modalCtx.fillStyle = '#64748b';
+        modalCtx.font = '600 16px Rubik, sans-serif';
+        modalCtx.textAlign = 'center';
+        modalCtx.fillText('No code yet — use the AI tab to generate it', W / 2, H / 2);
+        modalCtx.textAlign = 'left';
+        modalSlider.value = 0;
+        modalTime.textContent = '0.0s';
+        return Promise.resolve();
+    }
+    modalRenderer = new Renderer(W, H);
+    return modalRenderer.setClip(html, css, js).then(function() {
+        return modalRenderer.renderFrame(0);
+    }).then(function(ok) {
+        if (ok) modalRenderer.drawTo(modalCtx, 0, 0, W, H);
+        modalSlider.value = 0;
+        modalTime.textContent = '0.0s';
+        modalPlaying = true;
+        modalStart = performance.now();
+        setPlayState(true);
+        tickModal();
+    });
+}
+
+function openDesign(id) {
+    const d = byId[id];
+    if (!d) return;
+    currentDesignId = id;
+    _lastAppliedCode = { html: '', css: '', js: '' };
+    showTab(d.hasCode ? 'preview' : 'ai');
+    _clipTitle = clipTitleFrom(d.html || '');
+    modalTitle.textContent = _clipTitle || d.title || id;
+    const dur = designDur(d);
+    modalSlider.max = dur;
+    modalSlider.value = 0;
+    modalTime.textContent = '0.0s';
+    modalDuration.textContent = (dur / 1000) + 's • ' + W + '×' + H;
+    modalPlaying = false;
+    setPlayState(false);
+    unsavedBadge.classList.remove('on');
+    resetCodeBtn.classList.remove('confirm');
+    resetCodeBtn.disabled = true;
+    copyPromptHdr.disabled = false;
+    copyCodeHdr.disabled = !d.hasCode;
+    document.getElementById('aiWant').value = d.prompt || '';
+    modalOverlay.classList.add('open');
+    rebuildStage(d.html || '', d.css || '', d.js || '');
+}
+function closeModal() {
+    modalPlaying = false;
+    modalOverlay.classList.remove('open');
+    currentDesignId = null;
+}
+modalClose.addEventListener('click', closeModal);
+modalOverlay.addEventListener('click', function(e) { if (e.target === modalOverlay) closeModal(); });
+document.addEventListener('keydown', function(e) { if (e.key === 'Escape') { closeModal(); cardMenu.classList.remove('open'); closeMenus(); } });
+
+function setPlayState(playing) {
+    const playIcon = document.getElementById('playIcon');
+    const pauseIcon = document.getElementById('pauseIcon');
+    if (playing) {
+        playIcon.style.display = 'none';
+        pauseIcon.style.display = '';
+        modalPlayBtn.title = 'Pause';
+        modalPlayBtn.classList.add('playing');
+    } else {
+        playIcon.style.display = '';
+        pauseIcon.style.display = 'none';
+        modalPlayBtn.title = 'Play';
+        modalPlayBtn.classList.remove('playing');
+    }
+}
+modalPlayBtn.addEventListener('click', function() {
+    if (!modalRenderer) return;
+    if (modalPlaying) {
+        modalPlaying = false;
+        setPlayState(false);
+    } else {
+        modalPlaying = true;
+        modalStart = performance.now() - parseInt(modalSlider.value);
+        setPlayState(true);
+        tickModal();
+    }
+});
+modalSlider.addEventListener('input', function() {
+    if (modalPlaying) return;
+    const t = parseInt(this.value);
+    modalTime.textContent = (t / 1000).toFixed(1) + 's';
+    if (modalRenderer && modalRenderer._ready) {
+        modalRenderer.renderFrame(t).then(ok => { if (ok) modalRenderer.drawTo(modalCtx, 0, 0, W, H); });
+    }
+});
+async function tickModal() {
+    const d = byId[currentDesignId];
+    const dur = designDur(d);
+    while (modalPlaying && currentDesignId) {
+        const t = (performance.now() - modalStart) % dur;
+        modalSlider.value = Math.floor(t);
+        modalTime.textContent = (t / 1000).toFixed(1) + 's';
+        try {
+            if (modalRenderer && modalRenderer._ready) {
+                const ok = await modalRenderer.renderFrame(t);
+                if (ok) modalRenderer.drawTo(modalCtx, 0, 0, W, H);
+            }
+        } catch(e) { console.error('[Modal] render error:', e); }
+        await new Promise(r => requestAnimationFrame(r));
+    }
+}
+
+/* ── Tabs ─────────────────────────────────────────────────────── */
+function showTab(name) {
+    [tabPreview, tabCode, tabAi].forEach(function(t) { t.classList.remove('active'); });
+    previewPanel.style.display = 'none';
+    codePanel.style.display = 'none';
+    aiPanel.style.display = 'none';
+    if (name === 'preview') { tabPreview.classList.add('active'); previewPanel.style.display = ''; }
+    else if (name === 'code') { tabCode.classList.add('active'); codePanel.style.display = ''; }
+    else { tabAi.classList.add('active'); aiPanel.style.display = ''; }
+}
+tabPreview.addEventListener('click', function() { showTab('preview'); });
+tabAi.addEventListener('click', function() { showTab('ai'); });
+tabCode.addEventListener('click', function() {
+    showTab('code');
+    const d = byId[currentDesignId];
+    if (d) {
+        if (_lastAppliedCode.html || _lastAppliedCode.css || _lastAppliedCode.js) {
+            cmHtml.setValue(_lastAppliedCode.html);
+            cmCss.setValue(_lastAppliedCode.css);
+            cmJs.setValue(_lastAppliedCode.js);
+        } else {
+            cmHtml.setValue(prettifyHtml(d.html || ''));
+            cmCss.setValue(prettifyCss(d.css || ''));
+            cmJs.setValue(prettifyJs(d.js || ''));
+            _lastAppliedCode = { html: cmHtml.getValue(), css: cmCss.getValue(), js: cmJs.getValue() };
+        }
+        updateUnsavedBadge();
+        resetSync();
+        setTimeout(function() { cmHtml.refresh(); cmCss.refresh(); cmJs.refresh(); }, 50);
+    }
+});
+
+function switchCodeLang(lang) {
+    document.querySelectorAll('.code-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.code-wrap').forEach(e => e.classList.remove('active'));
+    document.querySelector('[data-lang="' + lang + '"]').classList.add('active');
+    var wrap = lang === 'html' ? 'cmHtmlWrap' : lang === 'css' ? 'cmCssWrap' : 'cmJsWrap';
+    document.getElementById(wrap).classList.add('active');
+    var cm = lang === 'html' ? cmHtml : lang === 'css' ? cmCss : cmJs;
+    setTimeout(function() { cm.refresh(); }, 10);
+}
+document.querySelectorAll('.code-tab').forEach(function(btn) {
+    btn.addEventListener('click', function() { switchCodeLang(btn.dataset.lang); });
+});
+
+applyCode.addEventListener('click', async function() {
+    if (!currentDesignId) return;
+    modalPlaying = false;
+    setPlayState(false);
+    if (modalRenderer) { modalRenderer.sandbox.remove(); }
+    modalRenderer = new Renderer(W, H);
+    await modalRenderer.setClip(cmHtml.getValue(), cmCss.getValue(), cmJs.getValue());
+    _lastAppliedCode = { html: cmHtml.getValue(), css: cmCss.getValue(), js: cmJs.getValue() };
+    refreshClipTitle();
+    updateUnsavedBadge();
+    resetSync();
+    const ok = await modalRenderer.renderFrame(0);
+    if (ok) modalRenderer.drawTo(modalCtx, 0, 0, W, H);
+    modalSlider.value = 0;
+    modalTime.textContent = '0.0s';
+    modalPlaying = true;
+    modalStart = performance.now();
+    setPlayState(true);
+    showTab('preview');
+    tickModal();
+});
+
+/* ── Header copy actions ──────────────────────────────────────── */
+copyPromptHdr.addEventListener('click', function() { if (currentDesignId) copyPrompt(currentDesignId); });
+copyCodeHdr.addEventListener('click', function() { if (currentDesignId) copyFenced(currentDesignId); });
+
+/* ── AI tab ───────────────────────────────────────────────────── */
+const aiWant = document.getElementById('aiWant');
+const aiReply = document.getElementById('aiReply');
+const aiStatus = document.getElementById('aiStatus');
+function aiMsg(html) { aiStatus.innerHTML = html || ''; }
+function aiShowView(name) {
+    document.getElementById('aiSubGet').classList.toggle('active', name === 'get');
+    document.getElementById('aiSubPaste').classList.toggle('active', name === 'paste');
+    document.getElementById('aiViewGet').classList.toggle('active', name === 'get');
+    document.getElementById('aiViewPaste').classList.toggle('active', name === 'paste');
+    if (name === 'paste') setTimeout(function() { aiReply.focus(); }, 30);
+}
+document.getElementById('aiSubGet').addEventListener('click', function() { aiShowView('get'); });
+document.getElementById('aiSubPaste').addEventListener('click', function() { aiShowView('paste'); });
+
+function aiCurrentDur() { return designDur(byId[currentDesignId]); }
+document.getElementById('aiCopyBtn').addEventListener('click', function() {
+    var want = (aiWant.value || '').trim() || '(no extra description — propose something tasteful)';
+    copyText(aiBuildPrompt(want, aiCurrentDur()), 'Prompt copied — paste it into Gemini / ChatGPT / Claude, then paste the reply below.');
+    aiShowView('paste');
+});
+function aiApplyReply() {
+    if (!currentDesignId) return;
+    var parsed = aiParseReply(aiReply.value || '');
+    if (!parsed.html && !parsed.css && !parsed.js) {
+        aiMsg('Could not find any code in the pasted text. Paste the AI\'s full reply.');
+        return;
+    }
+    cmHtml.setValue(prettifyHtml(parsed.html || ''));
+    cmCss.setValue(prettifyCss(parsed.css || ''));
+    cmJs.setValue(prettifyJs(parsed.js || ''));
+    var parts = [];
+    if (parsed.html) parts.push('HTML');
+    if (parsed.css) parts.push('CSS');
+    if (parsed.js) parts.push('JS');
+    if (parsed.title) parts.push('&quot;' + parsed.title + '&quot;');
+    aiMsg('Inserted ' + parts.join(' · ') + ' — applying to stage…');
+    applyCode.click();
+}
+document.getElementById('aiApplyBtn').addEventListener('click', aiApplyReply);
+document.getElementById('aiClearBtn').addEventListener('click', function() { aiReply.value = ''; aiMsg(''); });
+aiReply.addEventListener('paste', function() {
+    setTimeout(function() { if ((aiReply.value || '').trim()) aiApplyReply(); }, 60);
+});
+
+/* ── Exports ──────────────────────────────────────────────────── */
+const resSelect = document.getElementById('resSelect');
+const RESOLUTIONS = {
+    '480': { w: 854, h: 480 },
+    '720': { w: 1280, h: 720 },
+    '1080': { w: 1920, h: 1080 },
+    '1440': { w: 2560, h: 1440 }
+};
+const frameBtn = document.getElementById('frameBtn');
+const frameCaret = document.getElementById('frameCaret');
+const frameMenu = document.getElementById('frameMenu');
+const frameSplit = document.getElementById('frameSplit');
+const exportBtn = document.getElementById('exportBtn');
+const videoCaret = document.getElementById('videoCaret');
+const videoMenu = document.getElementById('videoMenu');
+const exportSplit = document.getElementById('exportSplit');
+const FMT_META = { png: { ext: 'png', mime: 'image/png', label: 'PNG' }, jpeg: { ext: 'jpg', mime: 'image/jpeg', label: 'JPG' }, webp: { ext: 'webp', mime: 'image/webp', label: 'WebP' } };
+const EXP_PREFS_KEY = 'hicExportPrefs';
+let lastFrameFmt = 'png', lastFps = 30;
+try {
+    const saved = JSON.parse(localStorage.getItem(EXP_PREFS_KEY) || '{}');
+    if (FMT_META[saved.fmt]) lastFrameFmt = saved.fmt;
+    if (saved.fps === 30 || saved.fps === 60) lastFps = saved.fps;
+    if (RESOLUTIONS[saved.res]) resSelect.value = saved.res;
+} catch (e) {}
+function saveExpPrefs() {
+    try { localStorage.setItem(EXP_PREFS_KEY, JSON.stringify({ fmt: lastFrameFmt, fps: lastFps, res: resSelect.value })); } catch (e) {}
+}
+let exporting = false;
+
+const exportCodeMenu = document.getElementById('exportCodeMenu');
+const exportCodeCaret = document.getElementById('exportCodeCaret');
+
+function anyMenuOpen() {
+    return frameMenu.classList.contains('open') || videoMenu.classList.contains('open') || exportCodeMenu.classList.contains('open');
+}
+function closeMenus() {
+    frameMenu.classList.remove('open'); frameCaret.classList.remove('open');
+    videoMenu.classList.remove('open'); videoCaret.classList.remove('open');
+    exportCodeMenu.classList.remove('open'); exportCodeCaret.classList.remove('open');
+}
+frameCaret.addEventListener('click', function(e) {
+    e.stopPropagation();
+    const open = frameMenu.classList.contains('open');
+    closeMenus();
+    if (!open) { frameMenu.classList.add('open'); frameCaret.classList.add('open'); }
+});
+videoCaret.addEventListener('click', function(e) {
+    e.stopPropagation();
+    const open = videoMenu.classList.contains('open');
+    closeMenus();
+    if (!open) { videoMenu.classList.add('open'); videoCaret.classList.add('open'); }
+});
+exportCodeCaret.addEventListener('click', function(e) {
+    e.stopPropagation();
+    const open = exportCodeMenu.classList.contains('open');
+    closeMenus();
+    if (!open) { exportCodeMenu.classList.add('open'); exportCodeCaret.classList.add('open'); }
+});
+document.addEventListener('click', function(e) {
+    if (anyMenuOpen() && !e.target.closest('.export-cluster') && !e.target.closest('.code-export-split')) closeMenus();
+});
+resSelect.addEventListener('change', function() { saveExpPrefs(); });
+
+function refreshExportUI() {
+    frameMenu.querySelectorAll('.fmt-opt').forEach(function(el) {
+        el.classList.toggle('selected', el.getAttribute('data-frame-fmt') === lastFrameFmt);
+    });
+    videoMenu.querySelectorAll('.fps-opt').forEach(function(el) {
+        el.classList.toggle('selected', parseInt(el.getAttribute('data-fps')) === lastFps);
+    });
+    frameBtn.title = 'Save current frame (' + FMT_META[lastFrameFmt].label + ')';
+    exportBtn.title = 'Record video (WebM ' + lastFps + 'fps)';
+}
+refreshExportUI();
+
+function effectiveExportCode() {
+    if (_lastAppliedCode.html || _lastAppliedCode.css || _lastAppliedCode.js) return _lastAppliedCode;
+    const d = byId[currentDesignId];
+    return { html: (d && d.html) || '', css: (d && d.css) || '', js: (d && d.js) || '' };
+}
+
+async function exportFrame(fmtKey) {
+    const d = byId[currentDesignId];
+    if (!d || exporting) return;
+    const code = effectiveExportCode();
+    if (!(code.html || code.css || code.js)) { toast('No code to export yet — generate it from the AI tab first'); return; }
+    const res = RESOLUTIONS[resSelect.value] || RESOLUTIONS['1080'];
+    const fmt = FMT_META[fmtKey] || FMT_META.png;
+    const t = parseInt(modalSlider.value);
+
+    exporting = true;
+    closeMenus();
+    [frameBtn, frameCaret, exportBtn, videoCaret, resSelect].forEach(function(el) { el.disabled = true; });
+    frameBtn.querySelector('span').textContent = 'Rendering\u2026';
+    let fr = null;
+    try {
+        fr = new Renderer(res.w, res.h);
+        await fr.setClip(code.html, code.css, code.js);
+        const scaleX = res.w / W, scaleY = res.h / H;
+        const wrap = document.createElement('div');
+        wrap.style.cssText = 'width:' + W + 'px;height:' + H + 'px;overflow:hidden;transform-origin:0 0;transform:scale(' + scaleX + ',' + scaleY + ');';
+        while (fr.sandbox.firstChild) { wrap.appendChild(fr.sandbox.firstChild); }
+        fr.sandbox.appendChild(wrap);
+        fr.sandbox.style.width = res.w + 'px';
+        fr.sandbox.style.height = res.h + 'px';
+        fr.sandbox.style.overflow = 'hidden';
+        const okFlag = await fr.renderFrame(t);
+        if (!okFlag) throw new Error('raster failed');
+        const url = fr.canvas.toDataURL(fmt.mime, 0.95);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = exportFileStem() + '_frame_' + t + 'ms_' + res.w + 'x' + res.h + '.' + fmt.ext;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        lastFrameFmt = fmtKey;
+        saveExpPrefs();
+        toast('Frame saved — ' + res.w + '×' + res.h + ' ' + fmt.label);
+    } catch (e) {
+        console.error('[FrameExport]', e);
+        toast('Frame export failed — try again');
+    } finally {
+        if (fr && fr.sandbox) fr.sandbox.remove();
+        exporting = false;
+        [frameBtn, frameCaret, exportBtn, videoCaret, resSelect].forEach(function(el) { el.disabled = false; });
+        refreshExportUI();
+        frameBtn.querySelector('span').textContent = 'Save Frame';
+    }
+}
+frameBtn.addEventListener('click', function() { exportFrame(lastFrameFmt); });
+frameMenu.querySelectorAll('.fmt-opt').forEach(function(item) {
+    item.addEventListener('click', function() { closeMenus(); exportFrame(item.getAttribute('data-frame-fmt')); });
+});
+videoMenu.querySelectorAll('.fps-opt').forEach(function(item) {
+    item.addEventListener('click', function() {
+        lastFps = parseInt(item.getAttribute('data-fps'));
+        saveExpPrefs();
+        refreshExportUI();
+    });
+});
+
+/* Code tab export: JSON + standalone */
+function exportJson() {
+    if (!currentDesignId) return;
+    const payload = {
+        version: 1,
+        kind: 'hic-code',
+        name: _clipTitle || (byId[currentDesignId] || {}).title || 'design',
+        duration: aiCurrentDur(),
+        html: cmHtml.getValue(),
+        css: cmCss.getValue(),
+        js: cmJs.getValue()
+    };
+    downloadBlob(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }), exportFileStem() + '_code.json');
+}
+
+function exportStandalone() {
+    if (!currentDesignId) return;
+    const d = byId[currentDesignId];
+    const code = effectiveExportCode();
+    if (!(code.html || code.css || code.js)) { toast('No code to export yet — generate it from the AI tab first'); return; }
+    const name = _clipTitle || (d && d.title) || currentDesignId;
+    const dur = aiCurrentDur();
+
+    const tmp = document.createElement('div');
+    tmp.innerHTML = code.html || '';
+    const headTags = [...tmp.querySelectorAll('script[src]')]
+        .map(s => s.getAttribute('src'))
+        .filter(src => src && src.indexOf('tailwind') === -1)
+        .map(src => '<scr' + 'ipt src="' + src + '"></scr' + 'ipt>');
+    [...tmp.querySelectorAll('link[rel="stylesheet"]')].forEach(l => {
+        const href = l.getAttribute('href');
+        if (href) headTags.push('<link rel="stylesheet" href="' + href + '">');
+    });
+    const rawHtml = code.html || '';
+    const usesTw = rawHtml.indexOf('tailwindcss') !== -1 || /class="[^"]*\b(bg-|text-|flex|grid-|p[xytblr]?-|m[xytblr]?-|rounded|shadow|font-|border|min-h-|max-w-|w-|h-|gap-|mt-|mb-|tracking-|from-|to-)/.test(rawHtml);
+    if (usesTw && !/<script[^>]*src="[^"]*cdn\.tailwindcss\.com/.test(rawHtml)) {
+        headTags.push('<scr' + 'ipt src="https://cdn.tailwindcss.com"></scr' + 'ipt>');
+    }
+    const libHint = rawHtml + '\n' + (code.css || '') + '\n' + (code.js || '');
+    if (/window\.marked|marked\.parse/.test(libHint) && !libHint.includes('marked.min.js')) {
+        headTags.push('<scr' + 'ipt src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></scr' + 'ipt>');
+    }
+    if (/window\.renderMathInElement|katex\.min\.css/.test(libHint) && !libHint.includes('katex.min.js')) {
+        headTags.push('<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">');
+        headTags.push('<scr' + 'ipt src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></scr' + 'ipt>');
+        headTags.push('<scr' + 'ipt src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></scr' + 'ipt>');
+    }
+    const fontSrc = (code.css || '') + '\n' + rawHtml;
+    const fontUrls = [...new Set(fontSrc.match(/https:\/\/fonts\.googleapis\.com[^\s"'\)\]]+/g) || [])];
+
+    const payload = JSON.stringify({ version: 1, kind: 'hic-standalone', name: name, duration: dur, html: code.html, css: code.css, js: code.js, fontUrls: fontUrls }).replace(/</g, '\\u003c');
+
+    const RUNTIME = [
+        'var P = JSON.parse(document.getElementById("hic-code").textContent);',
+        'var stage = document.getElementById("stage");',
+        'var onFrameFn = null;',
+        'try { onFrameFn = new Function("time", P.js + "\\n;return typeof onFrame==\\"function\\"?onFrame:null;")(); } catch(e) { console.error("onFrame compile error:", e); }',
+        'function mount() { stage.innerHTML = P.html; var st = document.createElement("style"); st.textContent = P.css; stage.appendChild(st); }',
+        'function fit() { var s = Math.min(1, window.innerWidth / 800, window.innerHeight / 450); stage.style.transform = s < 1 ? "scale(" + s + ")" : ""; }',
+        'var playing = true, t0 = null, rafId = 0;',
+        'function loop(now) { if (!playing) return; if (t0 === null) t0 = now; var t = (now - t0) % P.duration; try { if (onFrameFn) onFrameFn(t); } catch(e) {} rafId = requestAnimationFrame(loop); }',
+        'function start() { mount(); fit(); window.addEventListener("resize", fit); t0 = null; playing = true; rafId = requestAnimationFrame(loop); }',
+        'document.getElementById("hic-pause").addEventListener("click", function() { playing = !playing; this.textContent = playing ? "Pause" : "Play"; if (playing) { t0 = null; rafId = requestAnimationFrame(loop); } else cancelAnimationFrame(rafId); });',
+        'document.getElementById("hic-restart").addEventListener("click", function() { mount(); t0 = null; });',
+        'if (P.fontUrls.length) { P.fontUrls.forEach(function(u) { var l = document.createElement("link"); l.rel = "stylesheet"; l.href = u; document.head.appendChild(l); }); }',
+        'start();',
+        'window.HIC = { play: function() { if (!playing) document.getElementById("hic-pause").click(); }, pause: function() { if (playing) document.getElementById("hic-pause").click(); }, restart: function() { document.getElementById("hic-restart").click(); }, seek: function(ms) { t0 = performance.now() - ms; try { if (onFrameFn) onFrameFn(((ms % P.duration) + P.duration) % P.duration); } catch(e) {} } };'
+    ].join('\n');
+
+    const FAVICON_EMOJIS = ['🎨', '🎹', '⭐', '👉', '😶‍🌫️', '🤯', '👀', '🤟', '🤌', '👌', '👍', '🤘', '☝️', '✌️'];
+    const favEmoji = FAVICON_EMOJIS[Math.floor(Math.random() * FAVICON_EMOJIS.length)];
+    const favSvg = '<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>' + encodeURIComponent(favEmoji) + '</text></svg>';
+
+    const page = '<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n'
+        + '<meta name="viewport" content="width=device-width, initial-scale=1.0">\n'
+        + '<link rel="icon" href="data:image/svg+xml,' + favSvg + '">\n'
+        + '<title>' + String(name).replace(/&/g, '&amp;').replace(/</g, '&lt;') + ' \u2014 HIC Animation</title>\n'
+        + headTags.join('\n') + (headTags.length ? '\n' : '')
+        + '<style>\n'
+        + 'body{margin:0;background:#0b0f1a;min-height:100vh;display:grid;place-items:center;font-family:system-ui,sans-serif}\n'
+        + '#stage{width:800px;height:450px;position:relative;overflow:hidden;background:transparent}\n'
+        + '#hic-pill{position:fixed;right:12px;bottom:12px;display:flex;gap:6px;z-index:9}\n'
+        + '#hic-pill button{background:rgba(30,37,51,.85);color:#cbd5e1;border:1px solid #2d3748;border-radius:7px;padding:6px 10px;font-size:11px;cursor:pointer;font-family:system-ui}\n'
+        + '#hic-pill button:hover{color:#f1f5f9;border-color:#3b82f6}\n'
+        + '</style>\n</head>\n<body>\n<div id="stage"></div>\n'
+        + '<div id="hic-pill"><button id="hic-pause">Pause</button><button id="hic-restart">Restart</button></div>\n'
+        + '<scr' + 'ipt type="application/json" id="hic-code">' + payload + '</scr' + 'ipt>\n'
+        + '<scr' + 'ipt>\n' + RUNTIME + '\n</scr' + 'ipt>\n</body>\n</html>';
+
+    downloadBlob(new Blob([page], { type: 'text/html' }), exportFileStem() + '_standalone.html');
+}
+
+document.getElementById('exportCodeBtn').addEventListener('click', exportJson);
+exportCodeMenu.addEventListener('click', function(e) {
+    const item = e.target.closest('[data-exp-json],[data-exp-html]');
+    if (!item) return;
+    e.stopPropagation();
+    closeMenus();
+    if (item.hasAttribute('data-exp-json')) exportJson(); else exportStandalone();
+});
+
+/* ── WebM export (wall-clock paced) ───────────────────────────── */
+exportBtn.addEventListener('click', startWebMExport);
+
+async function startWebMExport() {
+    if (exporting) return;
+    const d = byId[currentDesignId];
+    if (!d) return;
+    const code = effectiveExportCode();
+    if (!(code.html || code.css || code.js)) { toast('No code to export yet — generate it from the AI tab first'); return; }
+    const dur = designDur(d) / 1000;
+    const fps = lastFps;
+    const res = RESOLUTIONS[resSelect.value] || RESOLUTIONS['1080'];
+    const expW = res.w;
+    const expH = res.h;
+    const scaleX = expW / W;
+    const scaleY = expH / H;
+
+    exporting = true;
+    exportSplit.classList.add('recording');
+    closeMenus();
+    [frameBtn, frameCaret, exportBtn, videoCaret, resSelect].forEach(function(el) { el.disabled = true; });
+    exportBtn.querySelector('span').textContent = 'Recording\u2026';
+    modalPlaying = false;
+    setPlayState(false);
+
+    modalCanvas.width = expW;
+    modalCanvas.height = expH;
+
+    if (modalRenderer) { modalRenderer.sandbox.remove(); }
+    modalRenderer = new Renderer(expW, expH);
+    await modalRenderer.setClip(code.html, code.css, code.js);
+
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'width:' + W + 'px;height:' + H + 'px;overflow:hidden;transform-origin:0 0;transform:scale(' + scaleX + ',' + scaleY + ');';
+    while (modalRenderer.sandbox.firstChild) { wrap.appendChild(modalRenderer.sandbox.firstChild); }
+    modalRenderer.sandbox.appendChild(wrap);
+    modalRenderer.sandbox.style.width = expW + 'px';
+    modalRenderer.sandbox.style.height = expH + 'px';
+    modalRenderer.sandbox.style.overflow = 'hidden';
+
+    const stream = modalCanvas.captureStream(fps);
+    let mimeType = 'video/webm;codecs=vp9';
+    if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
+    const recorder = new MediaRecorder(stream, { mimeType: mimeType });
+    const chunks = [];
+    recorder.ondataavailable = function(e) { if (e.data && e.data.size > 0) chunks.push(e.data); };
+
+    const done = new Promise(function(resolve) {
+        recorder.onstop = function() {
+            const blob = new Blob(chunks, { type: 'video/webm' });
+            if (blob.size > 100) {
+                downloadBlob(blob, exportFileStem() + '_' + expW + 'x' + expH + '.webm');
+                toast('WebM saved — ' + expW + '×' + expH);
+            } else { toast('Export failed — try again'); }
+            exporting = false;
+            exportSplit.classList.remove('recording');
+            [frameBtn, frameCaret, exportBtn, videoCaret, resSelect].forEach(function(el) { el.disabled = false; });
+            exportBtn.querySelector('span').textContent = 'Export WebM';
+            modalCanvas.width = W;
+            modalCanvas.height = H;
+            resolve();
+        };
+    });
+
+    recorder.start();
+
+    const wallStart = performance.now();
+    for (let frame = 0; frame < dur * fps; frame++) {
+        const t = (frame / fps) * 1000;
+        const delay = wallStart + t - performance.now();
+        await new Promise(function(r) { if (delay > 0) setTimeout(r, delay); else requestAnimationFrame(r); });
+        modalSlider.value = Math.floor(t);
+        modalTime.textContent = (t / 1000).toFixed(1) + 's';
+        try {
+            const ok = await modalRenderer.renderFrame(t);
+            if (ok) modalRenderer.drawTo(modalCtx, 0, 0, expW, expH);
+        } catch(e) { console.error('[Export] frame error:', e); }
+    }
+
+    await new Promise(function(r) { setTimeout(r, Math.max(50, 1000 / fps)); });
+    recorder.stop();
+    await done;
+
+    if (modalRenderer) { modalRenderer.sandbox.remove(); }
+    modalRenderer = new Renderer(W, H);
+    await modalRenderer.setClip(code.html, code.css, code.js);
+    const ok = await modalRenderer.renderFrame(0);
+    if (ok) modalRenderer.drawTo(modalCtx, 0, 0, W, H);
+}
+
+/* ── Deep links: designs.html#design=<id> ─────────────────────── */
+function handleHash() {
+    const m = (location.hash || '').match(/#design=([A-Za-z0-9_-]+)/);
+    if (m && byId[m[1]]) openDesign(m[1]);
+}
+window.addEventListener('hashchange', handleHash);
+
+/* ── New design (+ button): empty draft workspace ─────────────── */
+/* A virtual design (not in DESIGNS/gallery) the user fills by pasting an AI
+ * reply (AI tab) or code (Code tab). Behaves exactly like a gallery design:
+ * preview, edits, frame/WebM/standalone exports all work. Phase C will add
+ * the submit-to-gallery step on top of this draft. */
+const NEW_DESIGN_ID = '__draft__';
+const newDesignBtn = document.getElementById('newDesignBtn');
+newDesignBtn.addEventListener('click', openNewDesign);
+function openNewDesign() {
+    byId[NEW_DESIGN_ID] = {
+        id: NEW_DESIGN_ID,
+        title: 'Untitled Design',
+        creator: 'draft',
+        tags: ['draft'],
+        prompt: '',
+        duration: 5000,
+        html: '', css: '', js: '',
+        hasCode: false,
+        _draft: true
+    };
+    openDesign(NEW_DESIGN_ID);
+    /* Drafts start on the AI tab with focus on the brief box */
+    showTab('ai');
+    setTimeout(function() { document.getElementById('aiWant').focus(); }, 60);
+}
+</script>
+</body>
+</html>
