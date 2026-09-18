@@ -364,9 +364,6 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
                                 <svg class="fmt-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                                 Standalone page (.html)<em>open in browser</em>
                             </button>
-                            <div class="export-menu-sep"></div>
-                            <div class="export-menu-label">Standalone page extras</div>
-                            <label class="export-item" style="cursor:pointer"><input type="checkbox" id="expStandaloneFonts" checked style="accent-color:#3b82f6"> Google Fonts fetch<em>recommended</em></label>
                         </div>
                     </div>
                     <button class="btn btn-reset" id="resetCodeBtn" title="Discard applied edits and restore the original preset code" disabled>
@@ -765,6 +762,19 @@ const PRESETS = {
     }
 };
 
+/* Title metadata: every preset carries <title>Name</title> as the first line of its
+ * html — one source of truth for the modal header, exports, and standalone pages.
+ * Backfill here keeps the preset table readable while older entries stay compatible. */
+Object.keys(PRESETS).forEach(function(k) {
+    var p = PRESETS[k];
+    var t = '<title>' + String(p.name || k).replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</title>';
+    if (/<title[^>]*>/i.test(p.html || '')) {
+        p.html = String(p.html).replace(/<title[^>]*>[\s\S]*?<\/title>/i, t);
+    } else {
+        p.html = t + (p.html || '');
+    }
+});
+
 /* ═══════════════════════════════════════════════════════════════
  * CARD GRID
  * ═══════════════════════════════════════════════════════════════ */
@@ -823,7 +833,8 @@ function openModal(key) {
        (edited / AI-pasted) snapshot so the Code tab and exports agree */
     _lastAppliedCode = { html: '', css: '', js: '' };
     tabPreview.click();
-    modalTitle.textContent = p.name;
+    _clipTitle = clipTitleFrom(p.html);
+    modalTitle.textContent = _clipTitle || p.name;
     modalDuration.textContent = p.dur + 's • ' + W + '×' + H;
     modalSlider.max = p.dur * 1000;
     modalSlider.value = 0;
@@ -904,6 +915,9 @@ const codePanel = document.getElementById('codePanel');
 const aiPanel = document.getElementById('aiPanel');
 const applyCode = document.getElementById('applyCode');
 let currentPresetKey = null;
+/* Display title: a <title> tag inside the clip HTML (AI contract / manual) overrides
+ * the preset's built-in name. Drives the modal header and every export filename. */
+let _clipTitle = '';
 
 /* ═══════════════════════════════════════════════════════════════
  * Code Prettifiers — format minified code for readability
@@ -943,22 +957,64 @@ function prettifyCss(css) {
 
 function prettifyJs(js) {
     if (!js) return '';
-    var s = js
-        .replace(/;/g, ';\n')
-        .replace(/\{/g, ' {\n  ')
-        .replace(/\}/g, '\n}\n')
-        .replace(/,\s*var /g, ',\nvar ')
-        .replace(/\n\n+/g, '\n');
-    var lines = s.split('\n');
-    var out = [], indent = 0;
+    /* Split on statement/brace boundaries WITHOUT touching string, regex,
+     * comment or template literals — naive replaces previously mangled
+     * regexes like /&amp;/g into /&amp;\n/g (Invalid regular expression). */
+    var s = '', depth = 0, out = [];
+    var i = 0, n = js.length, mode = null; /* null | "'" | '"' | '`' | '/' (regex) | 'line' | 'block' */
+    var prevSig = '';                       /* last significant char before this token */
+    while (i < n) {
+        var c = js[i], c2 = js.substr(i, 2);
+        if (mode === 'line') { if (c === '\n') { mode = null; out.push('\n'); } else out.push(c); i++; continue; }
+        if (mode === 'block') { if (c2 === '*/') { mode = null; out.push('*/'); i += 2; } else { if (c === '\n') out.push('\n'); i++; } continue; }
+        if (mode === "'" || mode === '"' || mode === '`') {
+            out.push(c);
+            if (c === '\\') { out.push(js[i + 1] || ''); i += 2; continue; }
+            if (c === mode) mode = null;
+            i++; continue;
+        }
+        if (mode === '/') { /* inside a regex literal */
+            out.push(c);
+            if (c === '\\') { out.push(js[i + 1] || ''); i += 2; continue; }
+            if (c === '[') depth++;            /* char class — / may appear inside */
+            else if (c === ']') depth = Math.max(0, depth - 1);
+            else if (c === '/' && depth === 0) mode = null;   /* regex closes */
+            i++; continue;
+        }
+        if (c2 === '//') { mode = 'line'; out.push(c2); i += 2; continue; }
+        if (c2 === '/*') { mode = 'block'; out.push(c2); i += 2; continue; }
+        if (c === "'" || c === '"' || c === '`') { mode = c; out.push(c); i++; continue; }
+        if (c === '/') {
+            /* regex or division? regex if previous significant char can't end an expression */
+            if (!/[\w$)\]"'`]/.test(prevSig)) {
+                mode = '/'; out.push(c); i++; continue;
+            }
+            out.push(c); i++; prevSig = '/'; continue;
+        }
+        out.push(c);
+        if (!/\s/.test(c)) prevSig = c;
+        if (c === ';') { out.push('\n'); prevSig = ''; }
+        else if (c === '{') { out.push('\n'); depth++; prevSig = ''; }
+        else if (c === '}') {
+            /* newline BEFORE the closing brace too, so nested one-liners unwind cleanly */
+            if (out[out.length - 2] !== '\n') out.splice(out.length - 1, 0, '\n');
+            out.push('\n'); depth = Math.max(0, depth - 1); prevSig = '';
+        }
+        i++;
+    }
+    if (mode === 'line' || mode === 'block') { /* unterminated comment — leave as-is */ }
+    var lines = out.join('').split('\n');
+    var res = [], ind = 0;
     lines.forEach(function(line) {
         line = line.trim();
         if (!line) return;
-        if (line[0] === '}') indent = Math.max(0, indent - 1);
-        out.push('  '.repeat(indent) + line);
-        if (/\{\s*$/.test(line)) indent++;
+        if (line[0] === '}' ) ind = Math.max(0, ind - 1);
+        res.push('  '.repeat(ind) + line);
+        if (/\{\s*$/.test(line)) ind++;
+        else if (line === '}' ) { /* already handled */ }
     });
-    return out.join('\n');
+    /* `else if(x){...}` chains: only indent lines ENDING in '{' — done above */
+    return res.join('\n').replace(/\n\n+/g, '\n');
 }
 
 /* Play/pause button state — swap SVG icons; icon-only button, title carries the hint */
@@ -981,6 +1037,23 @@ function setPlayState(playing) {
 /* Unsaved-changes badge: CodeMirror 'change' events vs the last applied snapshot */
 const unsavedBadge = document.getElementById('unsavedBadge');
 let _lastAppliedCode = { html: '', css: '', js: '' };
+function clipTitleFrom(html) {
+    const m = String(html || '').match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+    const t = m ? m[1].replace(/\s+/g, ' ').trim() : '';
+    return t ? t.slice(0, 80) : '';
+}
+function refreshClipTitle() {
+    const fromCode = clipTitleFrom((cmHtml && cmHtml.getValue()) || '');
+    _clipTitle = fromCode;
+    if (currentPresetKey) {
+        const p = PRESETS[currentPresetKey];
+        modalTitle.textContent = fromCode || ((p && p.name) || currentPresetKey);
+    }
+}
+function exportFileStem() {
+    const base = _clipTitle || (currentPresetKey || 'clip');
+    return base.replace(/[^a-z0-9_-]+/gi, '_').replace(/^_+|_+$/g, '') || 'clip';
+}
 function updateUnsavedBadge() {
     if (!currentPresetKey) { unsavedBadge.classList.remove('on'); return; }
     const dirty = cmHtml.getValue() !== _lastAppliedCode.html
@@ -1038,6 +1111,7 @@ resetCodeBtn.addEventListener('click', function() {
     cmCss.setValue(prettifyCss(p.css || ''));
     cmJs.setValue(prettifyJs(p.js || ''));
     _lastAppliedCode = { html: cmHtml.getValue(), css: cmCss.getValue(), js: cmJs.getValue() };
+    refreshClipTitle();
     updateUnsavedBadge();
     resetSync();
     /* Re-render the original preset on the stage and start from t=0 */
@@ -1114,6 +1188,7 @@ applyCode.addEventListener('click', async function() {
     modalRenderer = new Renderer(W, H);
     await modalRenderer.setClip(cmHtml.getValue(), cmCss.getValue(), cmJs.getValue());
     _lastAppliedCode = { html: cmHtml.getValue(), css: cmCss.getValue(), js: cmJs.getValue() };
+    refreshClipTitle();
     updateUnsavedBadge();
     resetSync();
     const ok = await modalRenderer.renderFrame(0);
@@ -1139,7 +1214,7 @@ function exportJson() {
     const payload = {
         version: 1,
         kind: 'hic-code',
-        name: PRESETS[currentPresetKey].name || currentPresetKey,
+        name: _clipTitle || PRESETS[currentPresetKey].name || currentPresetKey,
         duration: aiCurrentDur(),
         html: cmHtml.getValue(),
         css: cmCss.getValue(),
@@ -1149,7 +1224,7 @@ function exportJson() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = (currentPresetKey + '_code.json');
+    a.download = (exportFileStem() + '_code.json');
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -1164,9 +1239,8 @@ function exportStandalone() {
     if (!currentPresetKey) return;
     const p = PRESETS[currentPresetKey];
     const code = effectiveExportCode();
-    const name = (p && p.name) || currentPresetKey;
+    const name = _clipTitle || (p && p.name) || currentPresetKey;
     const dur = aiCurrentDur();
-    const withFonts = document.getElementById('expStandaloneFonts') && document.getElementById('expStandaloneFonts').checked;
 
     /* CDN scripts/styles already referenced inside the clip HTML (KaTeX, marked,
        font stylesheets) are hoisted into the exported <head>; the Tailwind
@@ -1206,12 +1280,22 @@ function exportStandalone() {
         'function start() { mount(); fit(); window.addEventListener("resize", fit); t0 = null; playing = true; rafId = requestAnimationFrame(loop); }',
         'document.getElementById("hic-pause").addEventListener("click", function() { playing = !playing; this.textContent = playing ? "Pause" : "Play"; if (playing) { t0 = null; rafId = requestAnimationFrame(loop); } else cancelAnimationFrame(rafId); });',
         'document.getElementById("hic-restart").addEventListener("click", function() { mount(); t0 = null; });',
-        "if (withFonts) { var pending = P.fontUrls.length; var go = function() { if (--pending === 0) start(); }; if (pending === 0) { start(); } else { P.fontUrls.forEach(function(u) { fetch(u).then(function(r) { return r.text(); }).then(function(css) { var s = document.createElement(\"style\"); s.textContent = css; document.head.appendChild(s); go(); }).catch(go); }); setTimeout(function() { if (pending > 0) { pending = 1; go(); } }, 4000); } } else { start(); }",
+        'if (P.fontUrls.length) { P.fontUrls.forEach(function(u) { var l = document.createElement("link"); l.rel = "stylesheet"; l.href = u; document.head.appendChild(l); }); }',
+        'start();',
         'window.HIC = { play: function() { if (!playing) document.getElementById("hic-pause").click(); }, pause: function() { if (playing) document.getElementById("hic-pause").click(); }, restart: function() { document.getElementById("hic-restart").click(); }, seek: function(ms) { t0 = performance.now() - ms; try { if (onFrameFn) onFrameFn(((ms % P.duration) + P.duration) % P.duration); } catch(e) {} } };'
     ].join('\n');
 
+    /* Emoji favicon — SVG data URI with a randomly picked emoji. Renders in the
+     * browser tab and, because it's a data URI, suppresses Chrome's automatic
+     * favicon request (which under file:// resolves to the page itself and
+     * logs a security-origin warning). */
+    const FAVICON_EMOJIS = ['🎨', '🎹', '⭐', '👉', '😶‍🌫️', '🤯', '👀', '🤟', '🤌', '👌', '👍', '🤘', '☝️', '✌️'];
+    const favEmoji = FAVICON_EMOJIS[Math.floor(Math.random() * FAVICON_EMOJIS.length)];
+    const favSvg = '<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>' + encodeURIComponent(favEmoji) + '</text></svg>';
+
     const page = '<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n'
         + '<meta name="viewport" content="width=device-width, initial-scale=1.0">\n'
+        + '<link rel="icon" href="data:image/svg+xml,' + favSvg + '">\n'
         + '<title>' + String(name).replace(/&/g, '&amp;').replace(/</g, '&lt;') + ' \u2014 HIC Animation</title>\n'
         + headTags.join('\n') + (headTags.length ? '\n' : '')
         + '<style>\n'
@@ -1229,7 +1313,7 @@ function exportStandalone() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = (currentPresetKey + '_standalone.html');
+    a.download = (exportFileStem() + '_standalone.html');
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -1475,7 +1559,15 @@ const AI_PROMPTS = [
     { t: 'Subscribe Outro', d: 'Subscribe button pops, cursor clicks, bell shakes',
       p: 'Design a YouTube-style outro. Soft dark gradient stage. Center: a white rounded "Subscribe" pill with red text pops in with overshoot; a hand-drawn-style cursor arrow (simple SVG) glides in and clicks it at 900ms — the pill squashes once (scaleY 0.85) and flips to "Subscribed ✓" in gray. A bell icon beside it rings (rotation wiggle 3 times) right after. Keep the cursor motion smooth with slight arc; finish by 2000ms and hold.' },
     { t: 'Particle Constellation', d: 'Drifting dots linked by lines, logo fades center',
-      p: 'Design a tech constellation intro. Deep navy (#0a0f1e) stage with ~40 small white dots (deterministic pseudo-random positions from index-based sines — no Math.random at module scope) drifting slowly; dots within 110px of each other connect with 1px rgba-white lines whose opacity scales with distance (compute pairs in onFrame). At 800ms a centered wordmark "CONSTELLATION" letter-spaced wide fades up with a soft glow (text-shadow). Loops gracefully forever.' }
+      p: 'Design a tech constellation intro. Deep navy (#0a0f1e) stage with ~40 small white dots (deterministic pseudo-random positions from index-based sines — no Math.random at module scope) drifting slowly; dots within 110px of each other connect with 1px rgba-white lines whose opacity scales with distance (compute pairs in onFrame). At 800ms a centered wordmark "CONSTELLATION" letter-spaced wide fades up with a soft glow (text-shadow). Loops gracefully forever.' },
+    { t: 'Travel Slideshow', d: 'Five Unsplash photos, Ken Burns drift, crossfades + captions',
+      p: 'Design a cinematic travel slideshow from FIVE different CORS-safe https://images.unsplash.com photos (use real photo IDs like photo-1506905925346-21bda4d32df4 — mountains, coast, city, desert, forest). Each photo is an object-fit:cover img filling the whole 800x450 stage. Sequence: each photo slowly scales 1.0 to 1.12 (Ken Burns, ease-linear) while crossfading to the next with a 900ms opacity overlap; every photo gets roughly duration/5 of screen time, all computed deterministically from time. Each slide gets a small uppercase letter-spaced location caption (bottom-left, e.g. DOLOMITES, ITALY) that slides up 14px and fades in 300ms after its photo appears, plus a thin bottom progress bar that fills continuously across the whole slideshow. Start the html block with <title>Travel Slideshow</title>.' },
+    { t: 'Math Lecture Scene', d: 'KaTeX equation with drawn SVG arrow + underline emphasis',
+      p: 'Design a math lecture scene using KaTeX. Put the three KaTeX CDN tags (css2 stylesheet URL for katex.min.css, then katex.min.js, then contrib/auto-render.min.js from cdn.jsdelivr.net) at the top of the html block, with a hidden div containing $$ a^2 + b^2 = c^2 $$ that auto-render converts on first frame. Warm paper background (#fbfaf8), serif card with soft shadow. Choreography: card fades in (0-400ms); an SVG curved arrow (absolutely positioned overlay, marker arrowhead) draws itself pointing at the b^2 term using stroke-dashoffset animated in onFrame (500-1100ms); then a 3px amber underline sweeps left-to-right under the c^2 term (1200-1600ms, approximate the position with percentages); finally an italic annotation \"Pythagoras, c. 500 BC\" fades up beside the card (1800-2200ms). Keep every motion deterministic from time. Start the html block with <title>Pythagoras Proof</title>.' },
+    { t: 'Blog Post Reveal', d: 'Markdown renders via marked, then article blocks cascade in',
+      p: 'Design an MDX blog-post preview. Include the marked CDN script tag (cdn.jsdelivr.net/npm/marked/marked.min.js) in the html block and hide the raw markdown inside a display:none div: a post title, subtitle, one paragraph, and three bullet takeaways. On first frame run marked.parse on the unescaped source (unescape &amp; &lt; &gt; exactly like the MDX Report preset does) into a styled article card: white paper, max-width 620px centered, subtle shadow, colored top bar reading engineering.blog. Choreography: top bar slides down (0-350ms), h1 fades up with slight rise, then subtitle, paragraph and each list item cascade in 120ms apart with a 24px rise and cubic ease-out; a small reading-time chip (6 min read) pops with overshoot at the end. All state from onFrame(time). Start the html block with <title>Blog Post Reveal</title>.' },
+    { t: 'SaaS Dashboard Teaser', d: 'Complex Tailwind utility design: navbar, hero, stat cards, sparklines',
+      p: 'Design a complex Tailwind CSS product teaser using ONLY utility classes for layout and visuals (flex, grid, rounded-2xl, shadow-lg, ring-1, bg-gradient-to-br from-violet-600 to-indigo-600, text-slate-300, backdrop-blur, etc. — the v4 runtime compiles them automatically). Dark slate-950 stage containing: a top navbar (gradient logo dot, three fake nav links, rounded avatar circle), a hero row with heading \"Ship your side project\", a muted subline and two buttons (one gradient, one outline), and a grid of three stat cards (Revenue $12.4k, Users 8,102, Churn 1.8%) each with a mini sparkline built from 8-10 colored rounded div bars. Choreography in onFrame: navbar drops in (0-300ms), hero elements stagger-fade-up (200-800ms), stat cards flip up from rotateX(90deg) staggered 150ms, sparkline bars grow bottom-up staggered 40ms, then the whole card group gently floats on ±3px sines with different phases. Start the html block with <title>SaaS Dashboard Teaser</title>.' }
 ];
 
 function aiBuildPrompt(want, dur) {
@@ -1489,15 +1581,16 @@ function aiBuildPrompt(want, dur) {
         '1. Deterministic time: ALL animation must be driven by a single global function onFrame(time) where time is milliseconds since the clip start (number). Same time in = same frame out, forever. The editor seeks to any time and re-renders.',
         '2. No requestAnimationFrame, no setTimeout/setInterval, no CSS @keyframes or animation: properties, no transitions. You compute every element state inside onFrame from time only.',
         '3. The design space is exactly 800 x 450 pixels (16:9). Use absolute sizes in px; the renderer scales the whole stage to any output resolution. Use width:100%;height:100% on your root container.',
-        '4. No external JS libraries, no imports, no network calls. Vanilla HTML/CSS/JS only.',
+        '4. Vanilla HTML/CSS/JS only — no bundlers, no imports, no fetch/XHR/network calls of your own. Allowed CDN exceptions (only when the design needs them): KaTeX for math and marked for markdown — load them with their <script src=\"https://cdn.jsdelivr.net/npm/...\"> tags at the top of the html block (close each tag properly).',
         '5. Images must be CORS-safe https URLs (images.unsplash.com is fine) and animated via style properties (transform/opacity/filter/clip-path) inside onFrame.',
         '6. Guard element lookups (if(el){...}) so a missing id never throws.',
+        '7. The FIRST line of the html block must be <title>Short Name</title> — 2-4 Title Case words naming the animation (e.g. <title>Travel Slideshow</title>). It becomes the clip\'s display name and every export filename. No other head tags.',
         '',
         'CLIP DURATION: ' + dur + ' ms. Choreograph the animation to complete within that time.',
         '',
         'OUTPUT FORMAT — respond with EXACTLY three fenced code blocks and nothing else:',
         '```html',
-        '<!-- full markup for the 800x450 stage -->',
+        '<title>Short Name</title><!-- then the full markup for the 800x450 stage -->',
         '```',
         '```css',
         '/* all styles; root container fills 100% x 100% */',
@@ -1510,9 +1603,11 @@ function aiBuildPrompt(want, dur) {
 
 /* Tolerant parser: fenced blocks, whole HTML docs, or bare markup */
 function aiParseReply(text) {
-    const res = { html: '', css: '', js: '' };
+    const res = { html: '', css: '', js: '', title: '' };
     text = (text || '').replace(/\r\n?/g, '\n').trim();
     if (!text) return res;
+    const _tm = text.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+    if (_tm && _tm[1].trim()) res.title = _tm[1].replace(/\s+/g, ' ').trim().slice(0, 80);
     const fenceRe = /```([a-zA-Z0-9]*)[ \t]*\n([\s\S]*?)```/g;
     const blocks = [];
     let m;
@@ -1619,6 +1714,7 @@ function aiApplyReply() {
     if (parsed.html) parts.push('HTML');
     if (parsed.css) parts.push('CSS');
     if (parsed.js) parts.push('JS');
+    if (parsed.title) parts.push('&quot;' + parsed.title + '&quot;');
     aiMsg('Inserted ' + parts.join(' · ') + ' — applying to stage…');
     applyCode.click(); /* renders + switches to Preview + plays */
 }
@@ -1762,7 +1858,7 @@ async function exportFrame(fmtKey) {
         const url = fr.canvas.toDataURL(fmt.mime, 0.95);
         const a = document.createElement('a');
         a.href = url;
-        a.download = currentPresetKey + '_frame_' + t + 'ms_' + res.w + 'x' + res.h + '.' + fmt.ext;
+        a.download = exportFileStem() + '_frame_' + t + 'ms_' + res.w + 'x' + res.h + '.' + fmt.ext;
         document.body.appendChild(a); a.click(); document.body.removeChild(a);
         lastFrameFmt = fmtKey;
         saveExpPrefs();
@@ -1863,7 +1959,7 @@ async function startWebMExport() {
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = currentPresetKey + '_' + expW + 'x' + expH + '.webm';
+                a.download = exportFileStem() + '_' + expW + 'x' + expH + '.webm';
                 document.body.appendChild(a); a.click(); document.body.removeChild(a);
                 setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
             } else { alert('Export failed — try again'); }
