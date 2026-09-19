@@ -36,18 +36,19 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
 }
 
 /* ── Layout: modules left, live prompt right ─────────────────── */
-.workbench{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:16px;padding:16px 32px 56px;align-items:start}
-@media(max-width:1024px){.workbench{grid-template-columns:1fr;padding:14px 16px 90px}}
+.workbench{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;padding:16px 28px 56px;align-items:start}
+@media(max-width:1279px){.workbench{grid-template-columns:1fr;padding:14px 16px 90px}}
 .modules-col{display:flex;flex-direction:column;gap:12px;min-width:0}
 
 /* ── Module cards (M3-style accordion) ───────────────────────── */
 .mod{background:#141922;border:1px solid #1e2533;border-radius:12px;overflow:hidden;transition:border-color .2s}
+.mod:not(.disabled):hover{border-color:#2a3550}
 .mod.on{border-color:#3b82f650}
 .mod-head{display:flex;align-items:center;gap:11px;padding:13px 16px;cursor:pointer;user-select:none}
 .mod-head:hover{background:#161d2b}
 .mod-ico{width:30px;height:30px;border-radius:8px;background:#1a2230;border:1px solid #263042;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
 .mod-name{font-size:13px;font-weight:700;color:#f1f5f9;letter-spacing:-.2px;flex:1;min-width:0}
-.mod-name .hint{display:block;font-size:10px;font-weight:500;color:#64748b;letter-spacing:0;margin-top:1px}
+.mod-name .hint{display:block;font-size:10.5px;font-weight:500;color:#7f92ab;letter-spacing:0;margin-top:2px}
 .mod-badges{display:flex;align-items:center;gap:8px;flex-shrink:0}
 .mod-chars{font-size:9.5px;font-weight:700;color:#64748b;font-variant-numeric:tabular-nums;background:#1a2230;border:1px solid #263042;border-radius:10px;padding:2px 7px}
 .mod-chars.warn{color:#fbbf24;border-color:#92600a}
@@ -98,21 +99,76 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
 
 /* ── Live prompt preview (sticky) ────────────────────────────── */
 .preview-col{position:sticky;top:76px;display:flex;flex-direction:column;gap:10px}
-@media(max-width:1024px){.preview-col{position:static}}
+@media(max-width:1279px){.preview-col{position:static}}
 .prompt-card{background:#0d1117;border:1px solid #1e2533;border-radius:12px;overflow:hidden;display:flex;flex-direction:column;max-height:calc(100vh - 120px)}
-@media(max-width:1024px){.prompt-card{max-height:60vh}}
+/* ≥1280px: true right rail — full-height sticky card, body flex-fills so
+   the copy bar is always visible without scrolling the page */
+@media(min-width:1280px){
+  .prompt-card{height:calc(100vh - 120px);max-height:none}
+  .prompt-card .pc-body{flex:1;min-height:120px}
+}
+@media(max-width:1279px){.prompt-card{max-height:50vh}}
+@media(max-width:767px){.prompt-card{max-height:55vh}}
 .pc-head{display:flex;align-items:center;gap:9px;padding:10px 14px;border-bottom:1px solid #1e2533;background:#111827;flex-shrink:0}
 .pc-head .dot3{display:flex;gap:5px}
 .pc-head .dot3 span{width:8px;height:8px;border-radius:50%;background:#1e2533;border:1px solid #2d3748}
 .pc-title{font-size:11px;font-weight:700;color:#94a3b8;letter-spacing:.5px;flex:1}
 .pc-count{font-size:10px;font-weight:700;font-variant-numeric:tabular-nums;color:#64748b}
 .pc-count.warn{color:#fbbf24}
-.pc-body{overflow:auto;padding:14px 16px;font-family:'SFMono-Regular',Consolas,'Liberation Mono',monospace;font-size:11px;line-height:1.7;white-space:pre-wrap;word-break:break-word;min-height:200px}
-.pc-body .c{color:#64748b}      /* contract lines */
-.pc-body .w{color:#f1f5f9}      /* creative brief */
+.pc-body{overflow:auto;padding:14px 16px;font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Consolas,monospace;font-size:12.5px;line-height:1.8;white-space:pre-wrap;word-break:break-word;min-height:200px;scrollbar-gutter:stable;scrollbar-width:thin;scrollbar-color:#2d3748 transparent}
+.pc-body::-webkit-scrollbar{width:8px}
+.pc-body::-webkit-scrollbar-thumb{background:#2d3748;border-radius:4px}
+.pc-body .hdr{display:block;color:#7dd3fc;font-weight:600;margin-bottom:6px}
+.pc-body .c{color:#8fa2c0;font-weight:400;font-size:.9em;line-height:1.6}   /* contract lines */
+.pc-body .w{color:#eef3fa;font-weight:500}      /* creative brief */
 .pc-body .n{color:#c084fc}      /* numbers/timings */
 .pc-body .k{color:#7dd3fc}      /* section headers */
+.sec{border-left:2px solid var(--acc,#5b9bff);padding:1px 0 1px 10px;margin:11px 0}
+.sec-head{display:flex;align-items:center;gap:8px;font-family:'Rubik',sans-serif;font-size:9.5px;font-weight:800;letter-spacing:1.1px;color:var(--acc,#5b9bff);margin-bottom:3px}
+.sec-head .spark{flex-shrink:0}
+.lab{font-family:'Rubik',sans-serif;font-weight:700;font-size:.88em;letter-spacing:.5px;color:var(--acc,#5b9bff)}
+.pc-details{margin:11px 0;border:1px solid #1e2533;border-radius:8px;background:#10151f}
+.pc-details summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;padding:7px 10px;font-family:'Rubik',sans-serif;font-size:10px;font-weight:800;letter-spacing:.8px;color:#8fa2c0;user-select:none}
+.pc-details summary::-webkit-details-marker{display:none}
+.pc-details summary::before{content:'▸';color:#5b9bff;transition:transform .15s;flex-shrink:0}
+.pc-details[open] summary::before{transform:rotate(90deg)}
+.pc-details .sum-d{font-weight:500;letter-spacing:0;color:#5d6f8a;text-transform:none}
+.pc-details .det-body{padding:2px 10px 9px}
+.dur-row{display:inline-block;background:#2a2313;border:1px solid #92600a;border-radius:8px;padding:4px 10px;margin:11px 0;color:#fbbf24;font-weight:600}
+.pc-tools{display:flex;align-items:center;gap:7px;padding:7px 14px;border-bottom:1px solid #1e2533;background:#111827;flex-shrink:0}
+.pc-spring{flex:1}
+.zoom-btn{background:#161d2b;border:1px solid #2d3748;border-radius:6px;color:#8fa2c0;font-size:10px;font-weight:700;padding:3px 8px;cursor:pointer;font-family:'Rubik',sans-serif}
+.zoom-btn:hover{color:#e2e8f0;border-color:#3b82f6}
+.mini-copy{background:#2563eb;border:none;border-radius:6px;color:#fff;font-size:10.5px;font-weight:700;padding:4px 10px;cursor:pointer;font-family:'Rubik',sans-serif}
+.mini-copy:hover{background:#3b82f6}
 .pc-empty{color:#64748b;font-style:italic;font-family:'Rubik',sans-serif;font-size:12px}
+.pc-empty-card{font-family:'Rubik',sans-serif;color:#8fa2c0;font-size:12px;line-height:1.7;padding:8px 2px}
+.pc-empty-card .ghost-btn{margin-top:8px}
+/* ── Panel light theme (.prompt-card.light) ──────────────────── */
+.prompt-card.light{background:#f8fafc;border-color:#e2e8f0}
+.prompt-card.light .pc-head,.prompt-card.light .pc-tabs,.prompt-card.light .pc-tools{background:#eef2f7;border-color:#e2e8f0}
+.prompt-card.light .pc-head .dot3 span{background:#e2e8f0;border-color:#cbd5e1}
+.prompt-card.light .pc-title{color:#475569}
+.prompt-card.light .pc-count{color:#64748b}
+.prompt-card.light .pc-body{background:#ffffff;scrollbar-color:#cbd5e1 transparent}
+.prompt-card.light .pc-body::-webkit-scrollbar-thumb{background:#cbd5e1}
+.prompt-card.light .pc-body .w{color:#1e293b}
+.prompt-card.light .pc-body .c{color:#64748b}
+.prompt-card.light .pc-body .k,.prompt-card.light .pc-body .hdr{color:#0369a1}
+.prompt-card.light .pc-body .n{color:#6d28d9}
+.prompt-card.light .sec{border-left-color:color-mix(in srgb,var(--acc,#2563eb),#1e293b 38%)}
+.prompt-card.light .sec-head,.prompt-card.light .lab{color:color-mix(in srgb,var(--acc,#2563eb),#1e293b 38%)}
+.prompt-card.light .pc-details{background:#f1f5f9;border-color:#e2e8f0}
+.prompt-card.light .pc-details summary{color:#475569}
+.prompt-card.light .pc-details .sum-d{color:#64748b}
+.prompt-card.light .pc-details summary::before{color:#2563eb}
+.prompt-card.light .dur-row{background:#fef3c7;border-color:#f59e0b;color:#92400e}
+.prompt-card.light .zoom-btn{background:#ffffff;border-color:#cbd5e1;color:#475569}
+.prompt-card.light .zoom-btn:hover{color:#1e293b;border-color:#3b82f6}
+.prompt-card.light .pc-empty,.prompt-card.light .pe-hint,.prompt-card.light .pe-info{color:#64748b}
+.prompt-card.light .pe-paste{background:#ffffff;border-color:#e2e8f0;color:#1e293b}
+.prompt-card.light .pe-stage canvas{border-color:#e2e8f0}
+.prompt-card.light .pe-tab-note,.prompt-card.light .pe-note{color:#64748b}
 .copy-bar{display:flex;gap:8px;padding:10px 14px;border-top:1px solid #1e2533;background:#111827;flex-shrink:0;flex-wrap:wrap}
 .btn-copy{flex:1;min-width:130px;background:#2563eb;color:#fff;border:none;border-radius:8px;padding:10px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Rubik',sans-serif;transition:background .15s;display:flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap}
 .btn-copy:hover{background:#1d4ed8}
@@ -210,6 +266,25 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
 .rec-item .go{margin-left:auto;font-size:9px;font-weight:700;color:#5b9bff;letter-spacing:.5px;flex-shrink:0}
 .rec-empty{padding:18px 12px;text-align:center;font-size:11px;color:#7f92ab}
 
+/* ── Rail tabs (Prompt / Code / Preview) ─────────────────────── */
+.pc-tabs{display:flex;align-items:center;gap:2px;padding:7px 14px 0;border-bottom:1px solid #1e2533;background:#111827;flex-shrink:0}
+.pc-tabs .pc-spring{flex:1}
+.pc-tab{background:none;border:none;border-bottom:2px solid transparent;color:#8fa2c0;font:600 11.5px 'Rubik',sans-serif;padding:6px 11px 7px;cursor:pointer;letter-spacing:.2px}
+.pc-tab:hover{color:#dce5f1}
+.pc-tab.active{color:#f1f5f9;border-bottom-color:#5b9bff}
+.pc-pane{display:none;flex-direction:column;flex:1;min-height:0}
+.pc-pane.active{display:flex}
+.pe-hint{padding:9px 16px 0;font:500 10.5px 'Rubik',sans-serif;color:#7f92ab;line-height:1.5}
+.pe-paste{flex:1;min-height:120px;margin:9px 16px 0;background:#0f1420;border:1px solid #263042;border-radius:9px;color:#e2e8f0;font:12px/1.6 'SFMono-Regular',Consolas,monospace;padding:10px 12px;resize:none;outline:none}
+.pe-paste:focus{border-color:#5b9bff}
+.pe-actions{display:flex;align-items:center;gap:10px;padding:9px 16px 12px}
+.pe-info{font:600 10.5px 'Rubik',sans-serif;color:#7f92ab}
+.pe-stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:12px 16px 0}
+.pe-stage canvas{width:100%;max-width:100%;aspect-ratio:16/9;background:#000;border-radius:9px;border:1px solid #1e2533}
+.pe-controls{display:flex;align-items:center;gap:10px;padding:10px 16px 0}
+.pe-controls input[type=range]{flex:1;accent-color:#5b9bff;min-width:0}
+.pe-note{padding:6px 16px 12px;font-weight:500}
+
 /* toast */
 #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(80px);background:#059669;color:#fff;font-size:12px;font-weight:600;padding:10px 18px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.5);transition:transform .25s;z-index:2000;pointer-events:none}
 #toast.show{transform:translateX(-50%) translateY(0)}
@@ -251,7 +326,6 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
       <div class="pc-head">
         <div class="dot3"><span></span><span></span><span></span></div>
         <div class="pc-title">LIVE PROMPT</div>
-        <div class="pc-count" id="charCount">0 chars</div>
         <div class="rec-wrap">
           <button class="btn-soft" id="recBtn" title="Load a library recipe into the modules">📖 Recipes ▾</button>
           <div class="rec-menu" id="recMenu">
@@ -260,7 +334,48 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
           </div>
         </div>
       </div>
-      <div class="pc-body" id="promptBody"><span class="pc-empty">Fill in the modules to compose your brief…</span></div>
+      <div class="pc-tabs">
+        <button class="pc-tab active" data-ptab="prompt">Prompt</button>
+        <button class="pc-tab" data-ptab="code">Code</button>
+        <button class="pc-tab" data-ptab="preview">Preview</button>
+        <span class="pc-spring"></span>
+        <button class="zoom-btn" id="peTheme" title="Toggle light / dark panel">☀</button>
+        <button class="zoom-btn" id="zoomOut" title="Smaller prompt text">A−</button>
+        <button class="zoom-btn" id="zoomIn" title="Larger prompt text">A+</button>
+        <button class="mini-copy" id="miniCopy" title="Copy the full prompt">⧉ Copy</button>
+      </div>
+      <div class="pc-pane active" data-pane="prompt">
+        <div class="pc-tools">
+          <span class="pc-count" id="charCount">0 chars</span>
+          <span class="pc-spring"></span>
+        </div>
+        <div class="pc-body" id="promptBody"><span class="pc-empty">Fill in the modules to compose your brief…</span></div>
+      </div>
+      <div class="pc-pane" data-pane="code">
+        <div class="pe-hint">Paste the AI's reply (three fenced blocks) — or raw HTML / CSS / JS. External CDN tags (KaTeX, marked, Tailwind, fonts) are kept.</div>
+        <textarea id="pePaste" class="pe-paste" spellcheck="false" placeholder="\`\`\`html
+<title>My Animation</title>…
+\`\`\`
+\`\`\`css
+…
+\`\`\`
+\`\`\`js
+function onFrame(time) { … }
+\`\`\`"></textarea>
+        <div class="pe-actions">
+          <button class="mini-copy" id="peParseBtn">Apply &amp; Preview</button>
+          <span class="pe-info" id="peParseInfo"></span>
+        </div>
+      </div>
+      <div class="pc-pane" data-pane="preview">
+        <div class="pe-stage"><canvas id="peCanvas" width="800" height="450"></canvas></div>
+        <div class="pe-controls">
+          <button class="mini-copy" id="pePlay">▶ Play</button>
+          <input type="range" id="peScrub" min="0" max="5000" step="16" value="0">
+          <span class="pe-info" id="peTime">0.0s</span>
+        </div>
+        <div class="pe-info pe-note" id="peState">Paste code in the Code tab, then Apply &amp; Preview.</div>
+      </div>
       <div class="copy-bar">
         <button class="btn-copy" id="copyBtn">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
@@ -549,18 +664,75 @@ const BRIEF_BUDGET = 6000;
 function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 function escAttr(s) { return esc(s).replace(/"/g, '&quot;'); }
 function tintPrompt(full) {
-  /* syntax-tint: headers cyan, contract gray, brief white, numbers/timings violet */
+  /* Structured renderer: section chips w/ per-module accents, two text roles,
+     contract as a collapsed <details>, violet numbers, timeline sparkline.
+     Display only — the copied text stays byte-identical. */
+  const ACC = {
+    'WHAT I WANT': '#5b9bff', FORMAT: '#5b9bff', CONTENT: '#4ade80', TYPOGRAPHY: '#a78bfa',
+    PALETTE: '#f472b6', LAYOUT: '#22d3ee', CHOREOGRAPHY: '#fbbf24', LIBRARIES: '#2dd4bf', TITLE: '#7dd3fc'
+  };
   const lines = full.split('\n');
-  let inContract = false;
-  return lines.map(line => {
-    let cls = 'w';
-    if (/^(HARD CONTRACT|OUTPUT FORMAT)/.test(line)) { cls = 'k'; inContract = !/OUTPUT FORMAT/.test(line); }
-    else if (/^CLIP DURATION/.test(line)) cls = 'k';
-    else if (inContract && /^\d\./.test(line)) cls = 'c';
-    else if (/^```/.test(line)) cls = 'c';
-    else if (line === CONTRACT_HEADER) cls = 'k';
-    return '<span class="' + cls + '">' + esc(line).replace(/(\d+\s*(?:ms|s|x|px|fps)\b|\d{2,4})/g, '<span class="n">$1</span>') + '</span>';
-  }).join('\n');
+  const num = s => esc(s).replace(/(\d+\s*(?:ms|s|x|px|fps|%|°)\b|\d{2,4})/g, '<span class="n">$1</span>');
+  const isHdr = l => /^([A-Z][A-Z &]{2,20}):$/.test(l) || /^HARD CONTRACT \(violations break the video render\):$/.test(l) || /^OUTPUT FORMAT/.test(l) || /^CLIP DURATION/.test(l);
+  const spark = () => {
+    if (!S.m6.on || !S.m6.steps.length) return '';
+    const steps = S.m6.steps.filter(st => String(st.target || '').trim() || st.verb === 'hold');
+    if (!steps.length) return '';
+    const span = Math.max.apply(null, steps.map(st => st.start + st.dur).concat([1]));
+    const w = Math.min(72, steps.length * 14 + 6);
+    return '<svg class="spark" width="' + w + '" height="12" viewBox="0 0 ' + w + ' 12">' +
+      steps.map(st => {
+        const x = (st.start / span) * (w - 6) + 2, bw = Math.max(2, (st.dur / span) * (w - 6));
+        return '<rect x="' + x.toFixed(1) + '" y="3" width="' + bw.toFixed(1) + '" height="6" rx="1.5" fill="#fbbf24"/>';
+      }).join('') + '</svg>';
+  };
+  let html = '', i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (line === CONTRACT_HEADER) { html += '<span class="hdr">' + esc(line) + '</span>'; i++; continue; }
+    if (/^HARD CONTRACT/.test(line)) {
+      let j = i + 1; const rules = [];
+      while (j < lines.length && !/^OUTPUT FORMAT/.test(lines[j]) && !/^CLIP DURATION/.test(lines[j])) {
+        if (lines[j].trim()) rules.push(lines[j]);
+        j++;
+      }
+      let open = false;
+      try { open = localStorage.getItem('pe_contract_open') === '1'; } catch (e) {}
+      html += '<details class="pc-details" data-k="contract"' + (open ? ' open' : '') + '>' +
+        '<summary>HARD CONTRACT <span class="sum-d">· ' + rules.length + ' rules · always attached on copy</span></summary>' +
+        '<div class="det-body">' + rules.map(r => '<span class="c">' + num(r) + '</span>').join('\n') + '</div></details>';
+      i = j; continue;
+    }
+    if (/^CLIP DURATION/.test(line)) { html += '<span class="dur-row">⏱ ' + num(line) + '</span>'; i++; continue; }
+    if (/^OUTPUT FORMAT/.test(line)) {
+      /* keep the output-format template visually calm like the contract */
+      let j = i + 1; const block = [line];
+      while (j < lines.length) { block.push(lines[j]); j++; }
+      html += '<details class="pc-details" data-k="outfmt"' + (function() { try { return localStorage.getItem('pe_outfmt_open') === '1' ? ' open' : ''; } catch (e) { return ''; } })() + '>' +
+        '<summary>OUTPUT FORMAT <span class="sum-d">· the 3 fenced code blocks the AI must return</span></summary>' +
+        '<div class="det-body">' + block.map(r => '<span class="c">' + num(r) + '</span>').join('\n') + '</div></details>';
+      i = j; continue;
+    }
+    let m = line.match(/^([A-Z][A-Z &]{2,20}):[ \n]?([\s\S]*)$/);
+    if (m && ACC[m[1]]) {
+      const label = m[1], acc = ACC[label];
+      const rest = [m[2]];
+      let j = i + 1;
+      while (j < lines.length && !isHdr(lines[j]) && lines[j] !== CONTRACT_HEADER &&
+             !/^([A-Z][A-Z &]{2,20}):[ \n]/.test(lines[j])) { rest.push(lines[j]); j++; }
+      html += '<span class="sec" style="--acc:' + acc + '">' +
+        '<span class="sec-head"><span>◆ ' + label + '</span>' + (label === 'CHOREOGRAPHY' ? spark() : '') + '</span>' +
+        '<span class="w">' + num(rest.join('\n').replace(/^\n+|\n+$/g, '')) + '</span></span>';
+      i = j; continue;
+    }
+    /* pre-section content (WHAT I WANT body lives under its own header) */
+    let j = i; const rest = [];
+    while (j < lines.length && !isHdr(lines[j]) && lines[j] !== CONTRACT_HEADER &&
+           !/^([A-Z][A-Z &]{2,20}):[ \n]/.test(lines[j])) { rest.push(lines[j]); j++; }
+    html += '<span class="w">' + num(rest.join('\n').replace(/^\n+|\n+$/g, '')) + '</span>';
+    i = j;
+  }
+  return html;
 }
 function refresh() {
   const want = assemble();
@@ -1034,6 +1206,273 @@ function sendToGallery() {
   window.location.href = 'designs.html#new=1';
 }
 
+class Renderer {
+    constructor(w, h) {
+        this.w = w; this.h = h;
+        this.canvas = document.createElement('canvas');
+        this.canvas.width = w; this.canvas.height = h;
+        this.ctx = this.canvas.getContext('2d');
+        this.sandbox = document.createElement('div');
+        this.sandbox.style.cssText = 'position:absolute;top:-9999px;left:-9999px;width:800px;height:450px;overflow:hidden;pointer-events:none;';
+        document.body.appendChild(this.sandbox);
+        this.css = ''; this._onFrame = null; this._ready = false;
+    }
+
+    async setClip(html, css, js) {
+        this.css = css || '';
+        this.sandbox.innerHTML = '<div style="width:800px;height:450px;"></div>';
+        /* 1. Load external scripts (KaTeX, marked, Tailwind CDN) in page context */
+        html = await this._loadExternalScripts(html);
+        /* 2. Inline external images as data URIs */
+        html = await this._preloadImages(html);
+        /* 3. Mount the html so the Tailwind Play CDN's MutationObserver sees the classes
+              and generates its utilities <style> — then capture that CSS for the SVG.
+              GATED: only when the clip actually uses Tailwind utilities. Once the CDN
+              runtime is loaded it emits a preflight reset stylesheet for EVERY DOM
+              change; capturing that unconditionally would append h1{font-size:inherit}
+              etc. after the preset's own CSS and collapse its typography. */
+        this.sandbox.innerHTML = html;
+        var _usesTw = /class="[^"]*\b(bg-|text-|flex|grid-|p[xytblr]?-|m[xytblr]?-|rounded|shadow|font-|border|min-h-|max-w-|w-|h-|gap-|mt-|mb-|tracking-|from-|to-)/.test(html) || html.indexOf('tailwindcss') !== -1;
+        if (_usesTw) {
+            /* v4 browser build compiles async on MutationObserver (no window global).
+               Poll for its managed <style> (identifiable by --tw- markers), then
+               capture it for the SVG. Gated on _usesTw so the preflight reset it
+               emits for every DOM change never pollutes non-Tailwind presets. */
+            var twStyle = null;
+            for (var _twWait = 0; _twWait < 20 && !twStyle; _twWait++) {
+                await new Promise(r => setTimeout(r, 50));
+                twStyle = [...document.querySelectorAll('head style')]
+                    .filter(s => (s.textContent || '').indexOf('--tw-') !== -1)
+                    .pop();
+            }
+            if (twStyle) this.css = (css || '') + '\n' + twStyle.textContent;
+        }
+        /* 4. Embed remote stylesheets (Google Fonts, KaTeX CSS) + their fonts as data URIs.
+              SVG rasterization can't load external resources, so this is what makes them work. */
+        const processed = await this._embedAssets(html, this.css);
+        html = processed.html;
+        this.css = processed.css;
+        this.sandbox.innerHTML = html;
+        /* 5. Wait for fonts to be ready so first raster isn't fallback-font */
+        try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch(e) {}
+        this._onFrame = null;
+        if (js) {
+            try {
+                /* Wrap js so onFrame returns correctly */
+                var fn = new Function('time', js + '\n;return typeof onFrame==="function"?onFrame:null;');
+                this._onFrame = fn();
+            } catch(e) { console.error('[Renderer] JS parse error:', e); }
+        }
+        this._ready = true;
+    }
+
+    /* External <script src> / <link rel=stylesheet> inside preset HTML — hoist into <head>.
+       Scripts load SEQUENTIALLY (dynamically inserted scripts don't honor defer order,
+       and auto-render must never beat katex.min.js to the global scope). */
+    async _loadExternalScripts(html) {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString('<div>' + html + '</div>', 'text/html');
+        /* Stylesheets: left untouched — _embedAssets (next step in setClip) strips them from the
+           html and inlines their content + fonts as data URIs. Rewriting or hoisting them here
+           would lose the URL before the embed step can fetch it. */
+        /* Scripts: sequential chain, each waits for the previous */
+        const srcs = [...doc.querySelectorAll('script[src]')].map(s => { const v = s.getAttribute('src'); s.remove(); return v; }).filter(Boolean);
+        for (const src of srcs) {
+            if (src.indexOf('tailwind') !== -1) continue; /* CDN runtime handled separately */
+            if (document.querySelector('script[src="' + src + '"]')) continue;
+            await new Promise(res => {
+                const s = document.createElement('script');
+                s.src = src;
+                if (src.indexOf('jsdelivr') !== -1 || src.indexOf('crossorigin') !== -1) s.crossOrigin = 'anonymous';
+                s.onload = res; s.onerror = res;
+                document.head.appendChild(s);
+            });
+        }
+        html = doc.querySelector('div').innerHTML;
+        /* Tailwind runtime loaded once globally from the locally installed
+           @tailwindcss/browser (same 4.3.3 version as the app's PostCSS toolchain) —
+           no CDN, works offline, and no "should not be used in production" warning.
+           v4 sets no window global; it appends a managed <style> to <head> and
+           compiles on MutationObserver — capture happens in setClip. */
+        if (html.indexOf('tailwindcss') !== -1 || /class="[^"]*\b(bg-|text-|flex|grid-|p[xytblr]?-|m[xytblr]?-|rounded|shadow|font-|border)/.test(html)) {
+            if (!document.getElementById('tw-browser-runtime')) {
+                await new Promise(res => {
+                    const s = document.createElement('script');
+                    s.id = 'tw-browser-runtime';
+                    /* Site base derived from this page's own URL: '/studio-pro/' on
+                       GitHub Pages, '/' locally (page lives at <base>docs/...). An
+                       absolute '/vendor/...' would 404 under the Pages base. */
+                    var _slashDocs = location.pathname.indexOf('/docs/');
+                    var _siteBase = _slashDocs > 0 ? location.pathname.slice(0, _slashDocs + 1) : '/';
+                    s.src = _siteBase + 'vendor/tailwind-browser/index.global.js';
+                    s.onload = res; s.onerror = res;
+                    document.head.appendChild(s);
+                    setTimeout(res, 3000); /* don't hang offline */
+                });
+            }
+        }
+        return html;
+    }
+
+    /* Fetch remote stylesheets (Google Fonts, KaTeX CDN, any https <link rel=stylesheet>)
+       + their font files, inline everything as @font-face / url data URIs. The SVG
+       rasterizer can't load external resources, so this is what makes web fonts work. */
+    async _embedAssets(html, css) {
+        const urls = [];
+        const linkRe = /<link[^>]*href=["'](https:\/\/fonts\.googleapis\.com[^"']*)["'][^>]*>/gi;
+        html = html.replace(linkRe, (_, url) => { urls.push(url.replace(/&amp;/g, '&')); return ''; });
+        /* Any other remote stylesheet (KaTeX CSS, Tailwind builds, etc.) */
+        const cdnLinkRe = /<link[^>]*rel=["']stylesheet["'][^>]*href=["'](https?:\/\/[^"']+)["'][^>]*>/gi;
+        const cdnLinkRe2 = /<link[^>]*href=["'](https?:\/\/[^"']+)["'][^>]*rel=["']stylesheet["'][^>]*>/gi;
+        html = html.replace(cdnLinkRe, (_, url) => { urls.push(url.replace(/&amp;/g, '&')); return ''; });
+        html = html.replace(cdnLinkRe2, (_, url) => { urls.push(url.replace(/&amp;/g, '&')); return ''; });
+        const importRe = /@import\s+(?:url\()?["']?(https:\/\/fonts\.googleapis\.com[^"')\s]*)["']?\)?\s*;/gi;
+        css = css.replace(importRe, (_, url) => { urls.push(url.replace(/&amp;/g, '&')); return ''; });
+        let fontCss = '';
+        for (const url of urls) {
+            if (_fontCssCache[url]) { fontCss += _fontCssCache[url] + '\n'; continue; }
+            try {
+                const res = await fetch(url);
+                if (!res.ok) continue;
+                let sheet = await res.text();
+                /* Collect every url(...) — absolute or relative (resolved against the sheet's base URL,
+                   e.g. KaTeX ships `url(fonts/KaTeX_AMS-Regular.woff2)`) */
+                const refs = [];
+                const urlRe = /url\(\s*['"]?([^'")]+?)['"]?\s*\)/g;
+                let mm;
+                while ((mm = urlRe.exec(sheet)) !== null) {
+                    const raw = mm[1];
+                    if (/^data:/i.test(raw)) continue;
+                    let abs = raw;
+                    if (!/^https?:\/\//i.test(raw)) {
+                        try { abs = new URL(raw, url).href; } catch(e) { continue; }
+                    }
+                    refs.push({ raw, abs });
+                }
+                /* Fetch unique absolute URLs once, then replace each ORIGINAL relative/absolute
+                   occurrence in the sheet — split() on the absolute URL would miss relative paths */
+                const uniqAbs = Array.from(new Set(refs.map(r => r.abs)));
+                const dataMap = {};
+                await Promise.all(uniqAbs.map(async abs => {
+                    try {
+                        const r = await fetch(abs);
+                        const blob = await r.blob();
+                        dataMap[abs] = await new Promise(resolve => {
+                            const reader = new FileReader();
+                            reader.onloadend = () => resolve(reader.result);
+                            reader.readAsDataURL(blob);
+                        });
+                    } catch(e) {}
+                }));
+                refs.forEach(ref => { const d = dataMap[ref.abs]; if (d) sheet = sheet.split(ref.raw).join(d); });
+                _fontCssCache[url] = sheet;
+                fontCss += sheet + '\n';
+            } catch(e) { console.warn('[Renderer] Font fetch failed:', url); }
+        }
+        return { html, css: fontCss + '\n' + css };
+    }
+
+    async _preloadImages(htmlString) {
+        const parser = new DOMParser();
+        /* Wrap in a div: a bare parse hoists leading <link> into <head>, and body.innerHTML
+           would silently drop it before _embedAssets ever sees the URL */
+        const doc = parser.parseFromString('<div>' + htmlString + '</div>', 'text/html');
+        const images = doc.querySelectorAll('img');
+        const promises = Array.from(images).map(async (img) => {
+            const src = img.getAttribute('src');
+            if (src && (src.startsWith('http://') || src.startsWith('https://'))) {
+                try {
+                    const resp = await fetch(src, { mode: 'cors' });
+                    if (!resp.ok) throw new Error('fail');
+                    const blob = await resp.blob();
+                    const dataUrl = await new Promise((res, rej) => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => res(reader.result);
+                        reader.onerror = rej;
+                        reader.readAsDataURL(blob);
+                    });
+                    img.setAttribute('src', dataUrl);
+                } catch(e) { /* keep original src as fallback */ }
+            }
+        });
+        await Promise.allSettled(promises);
+        return doc.querySelector('div').innerHTML;
+    }
+
+    renderFrame(timeMs) {
+        if (!this._ready) return false;
+        if (this._onFrame) {
+            const origQSA = Document.prototype.querySelectorAll;
+            const origGEBI = Document.prototype.getElementById;
+            const sandbox = this.sandbox;
+            Document.prototype.querySelectorAll = function(sel) { return sandbox.querySelectorAll(sel); };
+            Document.prototype.getElementById = function(id) { return sandbox.querySelector('#' + id) || origGEBI.call(document, id); };
+            try { this._onFrame(timeMs); } catch(e) { console.error('[Renderer] onFrame error:', e); }
+            Document.prototype.querySelectorAll = origQSA;
+            Document.prototype.getElementById = origGEBI;
+        }
+        const clone = this.sandbox.cloneNode(true);
+        clone.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
+        clone.setAttribute('style', 'width:100%;height:100%;margin:0;padding:0;overflow:hidden;');
+        const domString = new XMLSerializer().serializeToString(clone);
+        const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + this.w + '" height="' + this.h + '">' +
+            '<foreignObject width="100%" height="100%">' +
+            '<style xmlns="http://www.w3.org/1999/xhtml"><![CDATA[' + this.css + ']]></style>' +
+            '<div xmlns="http://www.w3.org/1999/xhtml" style="width:' + this.w + 'px;height:' + this.h + 'px;overflow:hidden;">' +
+            domString + '</div></foreignObject></svg>';
+        return new Promise(resolve => {
+            const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+            const img = new Image();
+            img.onload = () => { this.ctx.clearRect(0, 0, this.w, this.h); this.ctx.drawImage(img, 0, 0); resolve(true); };
+            img.onerror = () => { this.ctx.fillStyle = '#1e293b'; this.ctx.fillRect(0, 0, this.w, this.h); this.ctx.fillStyle = '#f87171'; this.ctx.font = '14px sans-serif'; this.ctx.fillText('Render Error', 16, 24); resolve(false); };
+            img.src = url;
+        });
+    }
+
+    drawTo(targetCtx, x, y, w, h) { targetCtx.drawImage(this.canvas, 0, 0, this.w, this.h, x, y, w, h); }
+}
+
+/* Cache for embedded Google-Fonts stylesheets (keyed by css2 URL) — survives renderer rebuilds */
+const _fontCssCache = {};
+
+
+/* ── Rail preview: reply parser (ported from test-renderer aiParseReply) ── */
+function peParseReply(text) {
+    const res = { html: '', css: '', js: '', title: '' };
+    text = (text || '').replace(/\r\n?/g, '\n').trim();
+    if (!text) return res;
+    const _tm = text.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+    if (_tm && _tm[1].trim()) res.title = _tm[1].replace(/\s+/g, ' ').trim().slice(0, 80);
+    const fenceRe = /\`\`\`([a-zA-Z0-9]*)[ \t]*\n([\s\S]*?)\`\`\`/g;
+    const blocks = [];
+    let m;
+    while ((m = fenceRe.exec(text)) !== null) blocks.push({ lang: (m[1] || '').toLowerCase(), code: m[2].trim() });
+    const looksCss = s => /(^|\n)\s*[.#@a-zA-Z\[][^{};]*\{[^}]*:/.test(s) && !/</.test(s);
+    const looksJs = s => /\b(function|onFrame|=>|var |let |const |document\.)/.test(s) && !/^\s*</.test(s);
+    const looksHtml = s => /^\s*<\/?[a-zA-Z!]/.test(s);
+    if (blocks.length) {
+        blocks.forEach(b => {
+            if (b.lang === 'css' || (!b.lang && looksCss(b.code))) res.css += (res.css ? '\n\n' : '') + b.code;
+            else if (b.lang === 'js' || b.lang === 'javascript' || (!b.lang && looksJs(b.code) && !looksHtml(b.code))) res.js += (res.js ? '\n\n' : '') + b.code;
+            else res.html += (res.html ? '\n' : '') + b.code;
+        });
+    } else {
+        let s = text;
+        s = s.replace(/<style[^>]*>([\s\S]*?)<\/style>/gi, (_, css) => { res.css += (res.css ? '\n\n' : '') + css.trim(); return ''; });
+        s = s.replace(/<script(?![^>]*(?:\bsrc=|type="application\/json"))[^>]*>([\s\S]*?)<\/script>/gi, (_, js) => { res.js += (res.js ? '\n\n' : '') + js.trim(); return ''; });
+        s = s.replace(/<!DOCTYPE[^>]*>/i, '').replace(/<\/?html[^>]*>/gi, '').replace(/<head[^>]*>([\s\S]*?)<\/head>/gi, (_, head) => {
+            const keep = [...head.matchAll(/<(script\b[^>]*\bsrc=[^>]*>[\s\S]*?<\/script>|link\b[^>]*\brel=[^>]*stylesheet[^>]*>)/gi)].map(x => x[0]).join('\n');
+            return keep ? '\n' + keep + '\n' : '';
+        }).replace(/<\/?body[^>]*>/gi, '').replace(/<meta[^>]*>/gi, '').replace(/<title[^>]*>[\s\S]*?<\/title>/gi, '');
+        res.html = s.trim();
+    }
+    if (res.html && /<style|<script/i.test(res.html)) {
+        res.html = res.html.replace(/<style[^>]*>([\s\S]*?)<\/style>/gi, (_, css) => { res.css += (res.css ? '\n\n' : '') + css.trim(); return ''; });
+        res.html = res.html.replace(/<script(?![^>]*(?:\bsrc=|type="application\/json"))[^>]*>([\s\S]*?)<\/script>/gi, (_, js) => { res.js += (res.js ? '\n\n' : '') + js.trim(); return ''; });
+        res.html = res.html.trim();
+    }
+    return res;
+}
 /* ── Phase D: recipes — load library prompts into the modules ─── */
 let RECIPES = null;
 function recipeSource() {
@@ -1153,8 +1592,142 @@ function doCopy() {
 document.getElementById('copyBtn').addEventListener('click', doCopy);
 document.getElementById('fabCopy').addEventListener('click', doCopy);
 document.getElementById('copyTopBtn').addEventListener('click', doCopy);
+document.getElementById('miniCopy').addEventListener('click', doCopy);
+
+/* prompt zoom stepper (persisted) */
+(function promptZoom() {
+  const body = document.getElementById('promptBody');
+  const SIZES = [11, 12.5, 14];
+  let idx = 1;
+  try { const saved = parseFloat(localStorage.getItem('pe_prompt_zoom')); const at = SIZES.indexOf(saved); if (at >= 0) idx = at; } catch (e) {}
+  const apply = () => { body.style.fontSize = SIZES[idx] + 'px'; };
+  apply();
+  document.getElementById('zoomIn').addEventListener('click', function() { idx = Math.min(2, idx + 1); apply(); try { localStorage.setItem('pe_prompt_zoom', String(SIZES[idx])); } catch (e) {} });
+  document.getElementById('zoomOut').addEventListener('click', function() { idx = Math.max(0, idx - 1); apply(); try { localStorage.setItem('pe_prompt_zoom', String(SIZES[idx])); } catch (e) {} });
+})();
+/* persist contract / output-format collapse state */
+document.getElementById('promptBody').addEventListener('toggle', function(e) {
+  const k = e.target.getAttribute && e.target.getAttribute('data-k');
+  if (!k) return;
+  try { localStorage.setItem(k === 'contract' ? 'pe_contract_open' : 'pe_outfmt_open', e.target.open ? '1' : '0'); } catch (err) {}
+}, true);
 document.getElementById('tryBtn').addEventListener('click', sendToRenderer);
 document.getElementById('sendGalleryBtn').addEventListener('click', sendToGallery);
+
+
+/* ── Rail tabs: Prompt / Code / Preview ───────────────────────── */
+const PE_RAIL = { pane: 'prompt', code: { html: '', css: '', js: '', title: '' }, renderer: null, playing: false, raf: 0, start: 0, t0: 0 };
+function peShowTab(name) {
+  PE_RAIL.pane = name;
+  document.querySelectorAll('.pc-tab').forEach(t => t.classList.toggle('active', t.dataset.ptab === name));
+  document.querySelectorAll('.pc-pane').forEach(p => p.classList.toggle('active', p.dataset.pane === name));
+  try { localStorage.setItem('pe_rail_tab', name); } catch (e) {}
+  if (name !== 'preview') pePausePreview();
+  else peEnsurePreview();
+}
+document.querySelector('.prompt-card').addEventListener('click', function(e) {
+  const t = e.target.closest('[data-ptab]');
+  if (t) peShowTab(t.dataset.ptab);
+});
+(function peRestoreTab() {
+  let t = null; try { t = localStorage.getItem('pe_rail_tab'); } catch (e) {}
+  if (t === 'code' || t === 'preview') peShowTab(t);
+})();
+/* panel light/dark theme toggle (persisted) */
+(function peThemeBoot() {
+  const card = document.querySelector('.prompt-card');
+  const btn = document.getElementById('peTheme');
+  let light = false; try { light = localStorage.getItem('pe_prompt_theme') === 'light'; } catch (e) {}
+  const apply = () => { card.classList.toggle('light', light); btn.textContent = light ? '☾' : '☀'; btn.title = light ? 'Switch to dark panel' : 'Switch to light panel'; };
+  apply();
+  btn.addEventListener('click', function() { light = !light; try { localStorage.setItem('pe_prompt_theme', light ? 'light' : 'dark'); } catch (e) {} apply(); });
+})();
+function peDur() { return Math.max(1, Math.round((S.m8.on ? S.m8.duration : 5) * 1000)); }
+function peParseInfo() {
+  const c = PE_RAIL.code;
+  const bits = [];
+  if (c.html) bits.push('html ' + (c.html.length / 1000).toFixed(1) + 'k');
+  if (c.css) bits.push('css ' + (c.css.length / 1000).toFixed(1) + 'k');
+  if (c.js) bits.push('js ' + (c.js.length / 1000).toFixed(1) + 'k');
+  return bits.join(' · ');
+}
+document.getElementById('peParseBtn').addEventListener('click', async function() {
+  const parsed = peParseReply(document.getElementById('pePaste').value);
+  if (!parsed.html && !parsed.css && !parsed.js) {
+    document.getElementById('peParseInfo').textContent = 'No code found — paste the AI reply or raw HTML/CSS/JS.';
+    return;
+  }
+  PE_RAIL.code = parsed;
+  if (parsed.title && S.m8.on) { S.m8.title = parsed.title; document.getElementById('fTitle').value = parsed.title; }
+  document.getElementById('peParseInfo').textContent = 'Parsed: ' + (peParseInfo() || 'empty') + (parsed.title ? ' · "' + parsed.title + '"' : '');
+  peShowTab('preview');
+  await peApplyPreview();
+});
+document.getElementById('pePaste').addEventListener('keydown', function(e) {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); document.getElementById('peParseBtn').click(); }
+});
+function peEnsurePreview() {
+  const scrub = document.getElementById('peScrub');
+  scrub.max = String(peDur());
+}
+async function peApplyPreview() {
+  const c = PE_RAIL.code;
+  const canvas = document.getElementById('peCanvas');
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#0d1117'; ctx.fillRect(0, 0, 800, 450);
+  document.getElementById('peState').textContent = 'Loading…';
+  if (PE_RAIL.renderer) { try { PE_RAIL.renderer.sandbox.remove(); } catch (e) {} PE_RAIL.renderer = null; }
+  const r = new Renderer(800, 450);
+  PE_RAIL.renderer = r;
+  await r.setClip(c.html, c.css, c.js);
+  document.getElementById('peScrub').max = String(peDur());
+  const ok = await r.renderFrame(0);
+  if (ok) r.drawTo(ctx, 0, 0, 800, 450);
+  document.getElementById('peState').textContent = c.title ? ('"' + c.title + '" · ' + (peParseInfo() || 'no code') + ' · ' + Math.round(peDur() / 100) / 10 + 's') : 'Loaded · ' + (peParseInfo() || 'no code');
+  peStartPreview();
+}
+function peStartPreview() {
+  pePausePreview();
+  PE_RAIL.playing = true;
+  document.getElementById('pePlay').textContent = '⏸ Pause';
+  PE_RAIL.start = performance.now();
+  PE_RAIL.t0 = parseFloat(document.getElementById('peScrub').value) || 0;
+  const loop = async () => {
+    if (!PE_RAIL.playing || PE_RAIL.pane !== 'preview') { pePausePreview(); return; }
+    const dur = peDur();
+    const t = ((performance.now() - PE_RAIL.start) + PE_RAIL.t0) % dur;
+    document.getElementById('peScrub').value = String(Math.round(t));
+    document.getElementById('peTime').textContent = (t / 1000).toFixed(1) + 's / ' + (dur / 1000).toFixed(1) + 's';
+    if (PE_RAIL.renderer) {
+      const ok = await PE_RAIL.renderer.renderFrame(t);
+      if (ok) PE_RAIL.renderer.drawTo(document.getElementById('peCanvas').getContext('2d'), 0, 0, 800, 450);
+    }
+    PE_RAIL.raf = requestAnimationFrame(loop);
+  };
+  PE_RAIL.raf = requestAnimationFrame(loop);
+}
+function pePausePreview() {
+  PE_RAIL.playing = false;
+  if (PE_RAIL.raf) cancelAnimationFrame(PE_RAIL.raf);
+  PE_RAIL.raf = 0;
+  const btn = document.getElementById('pePlay');
+  if (btn) btn.textContent = '▶ Play';
+}
+document.getElementById('pePlay').addEventListener('click', function() {
+  if (PE_RAIL.playing) pePausePreview();
+  else if (PE_RAIL.renderer) peStartPreview();
+  else if (PE_RAIL.code.html || PE_RAIL.code.js) peApplyPreview();
+});
+document.getElementById('peScrub').addEventListener('input', function() {
+  pePausePreview();
+  const t = parseFloat(this.value) || 0;
+  document.getElementById('peTime').textContent = (t / 1000).toFixed(1) + 's / ' + (peDur() / 1000).toFixed(1) + 's';
+  if (PE_RAIL.renderer) PE_RAIL.renderer.renderFrame(t).then(ok => { if (ok) PE_RAIL.renderer.drawTo(document.getElementById('peCanvas').getContext('2d'), 0, 0, 800, 450); });
+});
+/* duration edits keep the scrubber in range */
+document.getElementById('modulesCol').addEventListener('input', function(e) {
+  if (e.target.id === 'fDur') document.getElementById('peScrub').max = String(peDur());
+});
 
 /* ── Phase D recipe menu events ───────────────────────────────── */
 document.getElementById('recBtn').addEventListener('click', function(e) {
