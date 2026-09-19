@@ -9,7 +9,7 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🪄</text></svg>" media="(prefers-color-scheme: dark)">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Bebas+Neue&family=Caveat:wght@700&family=DM+Sans:wght@400;500;700&family=Fraunces:wght@600;800&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@300;400;500;600;700;800&family=Lora:wght@500;600&family=Manrope:wght@500;800&family=Playfair+Display:wght@600;700;800;900&family=Rubik:wght@400;500;600;700;800&family=Sora:wght@600;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-system,sans-serif;min-height:100vh}
@@ -25,15 +25,25 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
 .btn-plus{background:#2563eb;border-color:#2563eb;color:#fff;box-shadow:0 1px 3px rgba(37,99,235,.35)}
 .btn-plus:hover{background:#1d4ed8;border-color:#1d4ed8;color:#fff}
 @media(max-width:960px){.brand .sub{display:none}}
+@media(max-width:768px){
+  .topbar{padding:10px 16px;grid-template-columns:auto 1fr;row-gap:8px}
+  .top-spacer{display:none}
+  .top-actions{justify-self:end;flex-wrap:wrap;justify-content:flex-end}
+}
+@media(max-width:560px){
+  .topbar .nav-label{display:none}
+  .topbar .btn-io{padding:8px 11px}
+}
 
 /* ── Layout: modules left, live prompt right ─────────────────── */
-.workbench{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:18px;padding:18px 32px 60px;align-items:start}
+.workbench{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:16px;padding:16px 32px 56px;align-items:start}
 @media(max-width:1024px){.workbench{grid-template-columns:1fr;padding:14px 16px 90px}}
+.modules-col{display:flex;flex-direction:column;gap:12px;min-width:0}
 
 /* ── Module cards (M3-style accordion) ───────────────────────── */
-.mod{background:#141922;border:1px solid #1e2533;border-radius:12px;margin-bottom:10px;overflow:hidden;transition:border-color .2s}
+.mod{background:#141922;border:1px solid #1e2533;border-radius:12px;overflow:hidden;transition:border-color .2s}
 .mod.on{border-color:#3b82f650}
-.mod-head{display:flex;align-items:center;gap:11px;padding:12px 14px;cursor:pointer;user-select:none}
+.mod-head{display:flex;align-items:center;gap:11px;padding:13px 16px;cursor:pointer;user-select:none}
 .mod-head:hover{background:#161d2b}
 .mod-ico{width:30px;height:30px;border-radius:8px;background:#1a2230;border:1px solid #263042;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
 .mod-name{font-size:13px;font-weight:700;color:#f1f5f9;letter-spacing:-.2px;flex:1;min-width:0}
@@ -43,7 +53,7 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
 .mod-chars.warn{color:#fbbf24;border-color:#92600a}
 .mod-chev{color:#7c8ba3;font-size:11px;transition:transform .2s}
 .mod.open .mod-chev{transform:rotate(180deg)}
-.mod-body{display:none;padding:2px 14px 14px;border-top:1px solid #1a2230}
+.mod-body{display:none;padding:12px 16px 16px;border-top:1px solid #1a2230}
 .mod.open .mod-body{display:block}
 .mod.disabled .mod-body{opacity:.45;pointer-events:none}
 
@@ -66,8 +76,8 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
 .chipset button.on{background:#2563eb;border-color:#2563eb;color:#fff}
 
 /* archetype icon grid */
-.arch-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:7px;margin-top:10px}
-.arch{background:#161d2b;border:1px solid #2d3748;border-radius:10px;padding:10px 6px 8px;text-align:center;cursor:pointer;transition:all .15s;font-family:'Rubik',sans-serif}
+.arch-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:8px;margin-top:2px}
+.arch{background:#161d2b;border:1px solid #2d3748;border-radius:10px;padding:11px 6px 9px;text-align:center;cursor:pointer;transition:all .15s;font-family:'Rubik',sans-serif}
 .arch:hover{border-color:#3b82f6}
 .arch.on{background:#1e3a5f;border-color:#3b82f6;box-shadow:0 0 0 1px #3b82f640}
 .arch .ico{font-size:19px;display:block;margin-bottom:4px}
@@ -103,12 +113,56 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
 .pc-body .n{color:#c084fc}      /* numbers/timings */
 .pc-body .k{color:#7dd3fc}      /* section headers */
 .pc-empty{color:#64748b;font-style:italic;font-family:'Rubik',sans-serif;font-size:12px}
-.copy-bar{display:flex;gap:8px;padding:10px 14px;border-top:1px solid #1e2533;background:#111827;flex-shrink:0}
-.btn-copy{flex:1;background:#2563eb;color:#fff;border:none;border-radius:8px;padding:10px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Rubik',sans-serif;transition:background .15s;display:flex;align-items:center;justify-content:center;gap:8px}
+.copy-bar{display:flex;gap:8px;padding:10px 14px;border-top:1px solid #1e2533;background:#111827;flex-shrink:0;flex-wrap:wrap}
+.btn-copy{flex:1;min-width:130px;background:#2563eb;color:#fff;border:none;border-radius:8px;padding:10px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Rubik',sans-serif;transition:background .15s;display:flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap}
 .btn-copy:hover{background:#1d4ed8}
 .btn-copy.done{background:#059669}
-.btn-soft{background:#1e2533;color:#cbd5e1;border:1px solid #2d3748;border-radius:8px;padding:10px 13px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:'Rubik',sans-serif;transition:all .15s}
+.btn-soft{background:#1e2533;color:#cbd5e1;border:1px solid #2d3748;border-radius:8px;padding:10px 13px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:'Rubik',sans-serif;transition:all .15s;white-space:nowrap}
 .btn-soft:hover{border-color:#3b82f6;color:#f1f5f9}
+
+/* ── Phase B: typography / palette / layout / libraries ─────── */
+.pair-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 10px}
+@media(max-width:560px){.pair-grid{grid-template-columns:1fr}}
+.ghost-btn{background:#161d2b;border:1px solid #2d3748;border-radius:8px;color:#94a3b8;font-size:10.5px;font-weight:600;padding:6px 12px;cursor:pointer;font-family:'Rubik',sans-serif;margin-top:8px;transition:all .15s}
+.ghost-btn:hover{border-color:#3b82f6;color:#cbd5e1}
+.mood-chip{background:#161d2b;border:1px solid #2d3748;border-radius:14px;padding:4px 11px;font-size:10px;font-weight:600;color:#94a3b8;cursor:pointer;font-family:'Rubik',sans-serif;transition:all .15s}
+.mood-chip:hover{border-color:#3b82f6}
+.mood-chip.on{background:#3b82f6;border-color:#3b82f6;color:#fff}
+.fnt-sample{background:#0f1420;border:1px solid #263042;border-radius:10px;padding:14px;margin-top:10px}
+.fnt-sample .smp-cap{font-size:9px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#475569;margin-bottom:6px}
+.fnt-sample .smp-h{font-size:30px;font-weight:800;line-height:1.15;color:#f1f5f9}
+.fnt-sample .smp-b{font-size:12.5px;color:#94a3b8;margin-top:6px;line-height:1.5}
+.wcag{margin-top:10px;border-radius:10px;padding:9px 12px;font-size:11px;font-weight:600;display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#1a2230;border:1px solid #263042}
+.wcag .ratio{font-variant-numeric:tabular-nums;font-size:12.5px;font-weight:800}
+.wcag .tag{margin-left:auto;font-size:9.5px;color:#64748b;font-weight:500}
+.wcag.ok{color:#34d399;border-color:#065f46}
+.wcag.mid{color:#fbbf24;border-color:#92600a}
+.wcag.bad{color:#f87171;border-color:#7f1d1d}
+.sw-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px;margin-top:10px}
+.sw{background:#161d2b;border:1px solid #2d3748;border-radius:10px;padding:6px;position:relative}
+.sw input[type=color]{width:100%;height:34px;border:none;border-radius:6px;background:none;cursor:pointer;padding:0}
+.sw input[type=color]::-webkit-color-swatch-wrapper{padding:0}
+.sw input[type=color]::-webkit-color-swatch{border:1px solid #33405a;border-radius:6px}
+.sw .hx{font-size:9px;font-weight:600;color:#7c8ba3;text-align:center;margin-top:4px;font-family:monospace;text-transform:uppercase}
+.sw .del{position:absolute;top:-7px;right:-7px;width:18px;height:18px;border-radius:50%;background:#1e2533;border:1px solid #2d3748;color:#94a3b8;font-size:10px;cursor:pointer;display:none;align-items:center;justify-content:center;padding:0;line-height:1}
+.sw:hover .del{display:flex}
+.pal-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;align-items:center}
+.pal-preset{display:inline-flex;align-items:center;gap:6px;background:#161d2b;border:1px solid #2d3748;border-radius:14px;padding:4px 10px 4px 5px;font-size:10px;font-weight:600;color:#94a3b8;cursor:pointer;font-family:'Rubik',sans-serif;transition:all .15s}
+.pal-preset:hover{border-color:#3b82f6;color:#cbd5e1}
+.pal-preset .dots{display:flex}
+.pal-preset .dots i{width:10px;height:10px;border-radius:50%;display:block}
+.pal-preset .dots i+i{margin-left:-4px;border:1px solid #0b0f1a}
+.wire-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:7px;margin-top:10px}
+@media(max-width:560px){.wire-grid{grid-template-columns:repeat(3,1fr)}}
+.wire{background:#161d2b;border:1px solid #2d3748;border-radius:10px;padding:8px 4px 6px;text-align:center;cursor:pointer;transition:all .15s;font-family:'Rubik',sans-serif}
+.wire:hover{border-color:#3b82f6}
+.wire.on{background:#1e3a5f;border-color:#3b82f6;box-shadow:0 0 0 1px #3b82f640}
+.wire svg{display:block;margin:0 auto 4px;background:#0f1420;border-radius:4px}
+.wire .nm{font-size:9px;font-weight:700;color:#cbd5e1}
+.lib-row{display:flex;align-items:center;gap:10px;background:#161d2b;border:1px solid #2d3748;border-radius:10px;padding:9px 11px;margin-top:7px}
+.lib-row .li{font-size:15px;width:22px;text-align:center;flex-shrink:0}
+.lib-row .ln{font-size:11.5px;font-weight:700;color:#f1f5f9;flex:1;min-width:0}
+.lib-row .ln .hint{display:block;font-size:9.5px;font-weight:500;color:#64748b;margin-top:1px}
 
 /* toast */
 #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(80px);background:#059669;color:#fff;font-size:12px;font-weight:600;padding:10px 18px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.5);transition:transform .25s;z-index:2000;pointer-events:none}
@@ -129,10 +183,11 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
     <h1>Prompt Engineer</h1>
     <span class="sub">build HIC animation prompts from modules</span>
   </div>
-  <div></div>
+  <div class="top-spacer"></div>
   <div class="top-actions">
-    <a class="btn-io" href="designs.html">🎨 Gallery</a>
-    <a class="btn-io" href="test-renderer.html">🧪 Test Renderer</a>
+    <a class="btn-io" href="designs.html">🎨 <span class="nav-label">Gallery</span></a>
+    <a class="btn-io" href="test-renderer.html">🧪 <span class="nav-label">Test Renderer</span></a>
+    <button class="btn-io" id="tryBtn" title="Open this brief in the Test Renderer's AI tab">⚡ <span class="nav-label">Try in Renderer</span></button>
     <button class="btn-io btn-plus" id="copyTopBtn">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
       Copy Prompt
@@ -158,6 +213,7 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
           <span id="copyLabel">Copy Full Prompt</span>
         </button>
+        <button class="btn-soft" id="sendGalleryBtn" title="Open this brief as a draft in the Designs Gallery">🎓 To Gallery</button>
         <button class="btn-soft" id="resetBtn" title="Reset all modules">Reset</button>
       </div>
     </div>
@@ -180,11 +236,12 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
 <script>
 'use strict';
 /* ══════════════════════════════════════════════════════════════
-   PROMPTS ENGINEER — Phase A (plan: PROMPTS-ENGINEER-PLAN.md §6)
+   PROMPTS ENGINEER — Phase B (plan: PROMPTS-ENGINEER-PLAN.md §6)
    Module schema + assemble() engine + live preview + copy.
-   Modules 1 (Format), 2 (Content), 8 (Duration & Title) fully
-   functional; Typography/Palette/Layout/Libraries/Timeline land
-   in Phases B/C with their real editors.
+   Phase A: Format, Content, Duration & Title.
+   Phase B: Typography (live font samples), Palette (WCAG readout),
+   Layout (16:9 wireframes), Libraries (KaTeX/marked/Tailwind/Fonts).
+   Phase C will add the Motion Timeline step editor.
    ══════════════════════════════════════════════════════════════ */
 
 /* ── Contract: single source of truth, mirrors aiBuildPrompt ──── */
@@ -237,6 +294,41 @@ const ARCHETYPES = [
   { id: 'outro',     ico: '👋', name: 'Outro / CTA',     verb: 'outro / call-to-action', fields: ['words', 'kicker'] }
 ];
 
+/* ── Phase B data: fonts / palettes / layouts / libraries ─────── */
+const FONT_HEADS = ['Playfair Display', 'Fraunces', 'Archivo Black', 'Bebas Neue', 'Space Grotesk', 'Sora', 'Manrope', 'DM Sans', 'Inter', 'IBM Plex Mono', 'Caveat'];
+const FONT_BODIES = ['Inter', 'Manrope', 'DM Sans', 'Lora', 'Space Grotesk', 'IBM Plex Mono', 'Rubik'];
+const FONT_WEIGHTS = [['400', 'Regular'], ['500', 'Medium'], ['600', 'Semibold'], ['700', 'Bold'], ['800', 'ExtraBold'], ['900', 'Black']];
+const FONT_SIZES = [['34', '34px'], ['44', '44px'], ['56', '56px'], ['64', '64px'], ['76', '76px'], ['90', '90px'], ['110', '110px']];
+const BODY_SIZES = [['12', '12px'], ['14', '14px'], ['16', '16px'], ['18', '18px'], ['20', '20px']];
+const FONT_TONES = [['editorial', 'editorial serif'], ['bold', 'bold poster'], ['minimal', 'minimal sans'], ['mono', 'technical mono'], ['friendly', 'rounded friendly'], ['display', 'display mixed']];
+const PALETTES = [
+  { name: 'Slate Pro',   colors: ['#0f172a', '#f8fafc', '#2563eb', '#f59e0b', '#10b981'] },
+  { name: 'Paper Warm',  colors: ['#faf7f2', '#2c3539', '#c86d51', '#8b5cf6', '#5a656b'] },
+  { name: 'Neo Brutal',  colors: ['#f5f5f4', '#111111', '#facc15', '#ef4444', '#3b82f6'] },
+  { name: 'Deep Space',  colors: ['#050810', '#e2e8f0', '#8b5cf6', '#22d3ee', '#f472b6'] },
+  { name: 'Forest Calm', colors: ['#0c1f17', '#ecfdf5', '#34d399', '#a3e635', '#fbbf24'] },
+  { name: 'Ivory Serif', colors: ['#fbfaf8', '#1c1917', '#d97706', '#78716c', '#292524'] }
+];
+const MOODS = ['minimal', 'bold', 'editorial', 'playful', 'corporate', 'cinematic'];
+const LAYOUTS = [
+  { id: 'centered',  name: 'Centered',    text: 'main content centered on the stage with generous breathing room',
+    svg: '<svg width="40" height="23" viewBox="0 0 40 23"><rect x=".5" y=".5" width="39" height="22" rx="2" fill="none" stroke="#3b82f6"/><rect x="13" y="9" width="14" height="5" rx="1" fill="#3b82f680"/></svg>' },
+  { id: 'lower3rd',  name: 'Lower Third', text: 'main content as a lower-third band across the bottom of the stage',
+    svg: '<svg width="40" height="23" viewBox="0 0 40 23"><rect x=".5" y=".5" width="39" height="22" rx="2" fill="none" stroke="#3b82f6"/><rect x="4" y="14" width="24" height="5" rx="1" fill="#3b82f680"/></svg>' },
+  { id: 'split',     name: 'Split',       text: 'split composition — text column on one side, visual on the other',
+    svg: '<svg width="40" height="23" viewBox="0 0 40 23"><rect x=".5" y=".5" width="39" height="22" rx="2" fill="none" stroke="#3b82f6"/><rect x="3" y="5" width="14" height="13" rx="1" fill="#3b82f680"/><rect x="21" y="5" width="16" height="13" rx="1" fill="#3b82f640"/></svg>' },
+  { id: 'grid',      name: 'Card Grid',   text: 'a grid of equal cards filling the stage',
+    svg: '<svg width="40" height="23" viewBox="0 0 40 23"><rect x=".5" y=".5" width="39" height="22" rx="2" fill="none" stroke="#3b82f6"/><rect x="3" y="3" width="16" height="7" rx="1" fill="#3b82f680"/><rect x="21" y="3" width="16" height="7" rx="1" fill="#3b82f680"/><rect x="3" y="13" width="16" height="7" rx="1" fill="#3b82f680"/><rect x="21" y="13" width="16" height="7" rx="1" fill="#3b82f680"/></svg>' },
+  { id: 'fullbleed', name: 'Full-bleed',  text: 'full-bleed background imagery or color with overlaid text',
+    svg: '<svg width="40" height="23" viewBox="0 0 40 23"><rect x=".5" y=".5" width="39" height="22" rx="2" fill="#3b82f633" stroke="#3b82f6"/><circle cx="20" cy="11" r="3" fill="#3b82f6"/></svg>' }
+];
+const LIBS = [
+  { k: 'katex',    ico: '➗', name: 'KaTeX',        hint: 'math typesetting — auto-render on first frame' },
+  { k: 'marked',   ico: '📰', name: 'marked',       hint: 'markdown → HTML for blog previews' },
+  { k: 'tailwind', ico: '🌬️', name: 'Tailwind CSS', hint: 'utility classes via cdn.tailwindcss.com' },
+  { k: 'gfonts',   ico: '🔤', name: 'Google Fonts', hint: 'loads your Typography fonts as <link> tags' }
+];
+
 /* ── Module schema + default state ────────────────────────────── */
 const DEFAULT_STATE = {
   m1: { on: true,  open: true,  arch: 'title', intent: '' },
@@ -244,6 +336,11 @@ const DEFAULT_STATE = {
         images: ['https://images.unsplash.com/photo-1519681393784-d120267933ba?w=800&q=60'],
         stats: [{ label: 'Users', value: '10k+' }, { label: 'Uptime', value: '99.9%' }],
         math: ['a^2 + b^2 = c^2'], markdown: '# Your Post Title\n\nA short teaser paragraph for the preview.' },
+  m3: { on: false, open: false, hf: 'Playfair Display', hs: 'Georgia, serif', hw: '800', hsize: '64', tracking: '-1',
+        bf: 'Inter', bs: 'system-ui, sans-serif', bw: '400', bsize: '16', tone: 'editorial' },
+  m4: { on: false, open: false, swatches: ['#0f172a', '#f8fafc', '#2563eb', '#f59e0b', '#10b981'], mood: 'minimal' },
+  m5: { on: false, open: false, layout: 'centered' },
+  m7: { on: true,  open: false, katex: false, marked: false, tailwind: false, gfonts: false, fontList: [] },
   m8: { on: true,  open: false, duration: 5, title: 'Untitled Design' }
 };
 let S = JSON.parse(JSON.stringify(DEFAULT_STATE));
@@ -283,7 +380,44 @@ function assemble() {
     if (bits.length) parts.push('CONTENT: ' + bits.join(' '));
   }
 
-  /* Modules 3-7 arrive in Phases B/C — placeholders keep the canonical order */
+  /* Module 3 — Typography */
+  if (S.m3.on) {
+    const m = S.m3;
+    const head = 'Headline font "' + m.hf + '"' + (m.hs && m.hs !== m.hf ? ' (fallback ' + m.hs + ')' : '') +
+      ', weight ' + m.hw + ', size about ' + m.hsize + 'px' +
+      (parseInt(m.tracking, 10) !== 0 ? ', letter-spacing ' + m.tracking + 'px' : '') + '.';
+    const bodyTxt = 'Body font "' + m.bf + '"' + (m.bs && m.bs !== m.bf ? ' (fallback ' + m.bs + ')' : '') + ', weight ' + m.bw + ', size about ' + m.bsize + 'px.';
+    parts.push('TYPOGRAPHY: ' + head + ' ' + bodyTxt + (m.tone ? ' Overall type mood: ' + m.tone + '.' : ''));
+  }
+
+  /* Module 4 — Palette & Mood */
+  if (S.m4.on) {
+    const sw = S.m4.swatches.filter(c => /^#[0-9a-fA-F]{6}$/.test(c));
+    if (sw.length >= 2) {
+      const accent = sw[2] ? ', accent ' + sw[2] : '';
+      const rest = sw.slice(3).length ? ', supporting ' + sw.slice(3).join(', ') : '';
+      parts.push('PALETTE: background ' + sw[0] + ', primary text ' + sw[1] + accent + rest + '.' + (S.m4.mood ? ' Mood: ' + S.m4.mood + '.' : ''));
+    }
+  }
+
+  /* Module 5 — Layout */
+  if (S.m5.on) {
+    const L = LAYOUTS.find(x => x.id === S.m5.layout) || LAYOUTS[0];
+    parts.push('LAYOUT: ' + L.text + '.');
+  }
+
+  /* Module 7 — Libraries */
+  if (S.m7.on) {
+    const libs = [];
+    if (S.m7.katex) libs.push('KaTeX from cdn.jsdelivr.net (katex.min.css, katex.min.js, contrib/auto-render.min.js) — render the math with renderMathInElement on first frame.');
+    if (S.m7.marked) libs.push('marked from cdn.jsdelivr.net (marked.min.js) — parse the hidden markdown into the card on first frame.');
+    if (S.m7.tailwind) libs.push('Tailwind CSS from cdn.tailwindcss.com — use Tailwind utility classes for layout and styling.');
+    if (S.m7.gfonts) {
+      const fl = (S.m7.fontList.filter(x => x.trim()).length ? S.m7.fontList.filter(x => x.trim()) : [S.m3.hf, S.m3.bf].filter((v, i, a) => a.indexOf(v) === i));
+      libs.push('Load these Google Fonts with <link> tags: ' + fl.join(', ') + '.');
+    }
+    if (libs.length) parts.push('LIBRARIES: ' + libs.join(' '));
+  }
 
   /* Module 8 — Duration & Title */
   if (S.m8.on) {
@@ -336,23 +470,23 @@ function refresh() {
   computeBadges();
 }
 function computeBadges() {
-  /* cheap: measure each module's contribution by measuring its slice alone */
-  const len1 = assemble1(), len8 = assemble8();
-  const savedM8 = S.m8.on;
-  S.m8.on = false;
-  const len2 = assemble().length;
-  S.m8.on = savedM8;
-  const parts = { m1: S.m1.on ? len1 : 0, m2: S.m2.on ? len2 : 0, m8: S.m8.on ? len8 : 0 };
+  /* measure each module's slice alone: toggle all others off, measure, restore */
+  const KEYS = ['m1', 'm2', 'm3', 'm4', 'm5', 'm7', 'm8'];
+  const saved = KEYS.map(k => S[k].on);
+  const lens = {};
+  KEYS.forEach(k => {
+    KEYS.forEach(j => { S[j].on = (j === k); });
+    lens[k] = S[k].on ? assemble().length : 0;
+  });
+  KEYS.forEach((k, i) => { S[k].on = saved[i]; });
   document.querySelectorAll('.mod').forEach(el => {
     const badge = el.querySelector('.mod-chars');
     if (!badge) return;
-    const len = parts[el.dataset.mod] || 0;
+    const len = lens[el.dataset.mod] || 0;
     badge.textContent = len ? len + ' ch' : '—';
     badge.classList.toggle('warn', len > 2500);
   });
 }
-function assemble1() { const s = S.m1; if (!s.on) return 0; const a = ARCHETYPES.find(x => x.id === s.arch); return ('Design a ' + a.verb + (s.intent ? ' — ' + s.intent : '') + '.').length; }
-function assemble8() { return S.m8.on ? ('Start the html block with <title>' + S.m8.title + '</title>.').length : 0; }
 
 /* ── Module UI builders ───────────────────────────────────────── */
 function fldHtml(label, inner, note) {
@@ -382,6 +516,69 @@ function buildModules() {
       '<div class="mod-body" id="m2Body"></div>' +
     '</div>');
 
+  /* Module 3 — Typography (Phase B) */
+  const headOpts = FONT_HEADS.map(f => '<option' + (S.m3.hf === f ? ' selected' : '') + '>' + f + '</option>').join('');
+  const bodyOpts = FONT_BODIES.map(f => '<option' + (S.m3.bf === f ? ' selected' : '') + '>' + f + '</option>').join('');
+  const wOpts = arr => FONT_WEIGHTS.map(w => '<option value="' + w[0] + '"' + (arr === w[0] ? ' selected' : '') + '>' + w[1] + '</option>').join('');
+  const sizeOpts = (arr, table) => table.map(s => '<option value="' + s[0] + '"' + (arr === s[0] ? ' selected' : '') + '>' + s[1] + '</option>').join('');
+  const toneOpts = FONT_TONES.map(t => '<option value="' + t[0] + '"' + (S.m3.tone === t[0] ? ' selected' : '') + '>' + t[1] + '</option>').join('');
+  col.insertAdjacentHTML('beforeend',
+    '<div class="mod" data-mod="m3">' +
+      '<div class="mod-head"><div class="mod-ico">🔤</div><div class="mod-name">Typography<span class="hint">font pairing with live samples</span></div><div class="mod-badges"><button class="tgl" data-tgl="m3" aria-label="toggle"></button><span class="mod-chars">—</span><span class="mod-chev">▾</span></div></div>' +
+      '<div class="mod-body">' +
+        '<div class="pair-grid">' +
+          fldHtml('Headline font', '<select id="fHf">' + headOpts + '</select>') +
+          fldHtml('Body font', '<select id="fBf">' + bodyOpts + '</select>') +
+          fldHtml('Headline weight', '<select id="fHw">' + wOpts(S.m3.hw) + '</select>') +
+          fldHtml('Body weight', '<select id="fBw">' + wOpts(S.m3.bw) + '</select>') +
+          fldHtml('Headline size', '<select id="fHsize">' + sizeOpts(S.m3.hsize, FONT_SIZES) + '</select>') +
+          fldHtml('Body size', '<select id="fBsize">' + sizeOpts(S.m3.bsize, BODY_SIZES) + '</select>') +
+          fldHtml('Tracking (px)', '<input type="number" id="fTracking" value="' + S.m3.tracking + '" step="0.5" style="width:100%">') +
+          fldHtml('Type mood', '<select id="fTone">' + toneOpts + '</select>') +
+        '</div>' +
+        '<div class="fnt-sample" id="fontSample"></div>' +
+      '</div>' +
+    '</div>');
+
+  /* Module 4 — Palette & Mood (Phase B) */
+  col.insertAdjacentHTML('beforeend',
+    '<div class="mod" data-mod="m4">' +
+      '<div class="mod-head"><div class="mod-ico">🎨</div><div class="mod-name">Palette &amp; Mood<span class="hint">colors with live WCAG contrast check</span></div><div class="mod-badges"><button class="tgl" data-tgl="m4" aria-label="toggle"></button><span class="mod-chars">—</span><span class="mod-chev">▾</span></div></div>' +
+      '<div class="mod-body">' +
+        '<div class="sw-grid" id="swGrid"></div>' +
+        '<button class="ghost-btn" id="addSw">+ Add swatch</button>' +
+        '<div class="pal-row"><span style="font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.6px">Curated:</span>' +
+          PALETTES.map((p, i) => '<button class="pal-preset" data-pal="' + i + '"><span class="dots">' + p.colors.map(c => '<i style="background:' + c + '"></i>').join('') + '</span>' + p.name + '</button>').join('') +
+        '</div>' +
+        '<div class="pal-row"><span style="font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.6px">Mood:</span>' +
+          MOODS.map(mo => '<button class="mood-chip' + (S.m4.mood === mo ? ' on' : '') + '" data-mood="' + mo + '">' + mo + '</button>').join('') +
+        '</div>' +
+        '<div class="wcag" id="wcagBox"></div>' +
+      '</div>' +
+    '</div>');
+
+  /* Module 5 — Layout (Phase B) */
+  col.insertAdjacentHTML('beforeend',
+    '<div class="mod" data-mod="m5">' +
+      '<div class="mod-head"><div class="mod-ico">📐</div><div class="mod-name">Layout<span class="hint">composition on the 16:9 stage</span></div><div class="mod-badges"><button class="tgl" data-tgl="m5" aria-label="toggle"></button><span class="mod-chars">—</span><span class="mod-chev">▾</span></div></div>' +
+      '<div class="mod-body"><div class="wire-grid">' +
+        LAYOUTS.map(L => '<button class="wire' + (S.m5.layout === L.id ? ' on' : '') + '" data-wire="' + L.id + '">' + L.svg + '<div class="nm">' + L.name + '</div></button>').join('') +
+      '</div></div>' +
+    '</div>');
+
+  /* Module 7 — Libraries (Phase B) */
+  col.insertAdjacentHTML('beforeend',
+    '<div class="mod on" data-mod="m7">' +
+      '<div class="mod-head"><div class="mod-ico">📚</div><div class="mod-name">Libraries<span class="hint">CDN extras the design needs</span></div><div class="mod-badges"><span class="mod-chars">—</span><span class="mod-chev">▾</span></div></div>' +
+      '<div class="mod-body">' +
+        LIBS.map(L =>
+          '<label class="lib-row"><span class="li">' + L.ico + '</span><span class="ln">' + L.name + '<span class="hint">' + L.hint + '</span></span>' +
+          '<input type="checkbox" data-lib="' + L.k + '"' + (S.m7[L.k] ? ' checked' : '') + '></label>'
+        ).join('') +
+        '<div id="gfontRows" style="margin-top:8px"></div>' +
+      '</div>' +
+    '</div>');
+
   /* Module 8 — Duration & Title */
   col.insertAdjacentHTML('beforeend',
     '<div class="mod" data-mod="m8">' +
@@ -393,7 +590,13 @@ function buildModules() {
       '</div>' +
     '</div>');
 
-  /* accordion + toggle behaviour (delegated) */
+  /* accordion + toggle behaviour — attached ONCE in wireStatic (delegated),
+     because buildModules runs again on Reset and would double-bind. */
+
+  renderContent();
+}
+function wireAccordion() {
+  const col = document.getElementById('modulesCol');
   col.addEventListener('click', function(e) {
     const tglBtn = e.target.closest('[data-tgl]');
     if (tglBtn) {
@@ -406,8 +609,6 @@ function buildModules() {
     const head = e.target.closest('.mod-head');
     if (head) { head.parentElement.classList.toggle('open'); return; }
   });
-
-  renderContent();
 }
 /* ── Module 2 dynamic content editor ──────────────────────────── */
 function renderContent() {
@@ -489,6 +690,7 @@ function renderContent() {
 
 /* ── Wire module 1 + 8 inputs (static, built once) ───────────── */
 function wireStatic() {
+  wireAccordion();
   document.getElementById('modulesCol').addEventListener('click', function(e) {
     const arch = e.target.closest('[data-arch]');
     if (arch) {
@@ -506,6 +708,117 @@ function wireStatic() {
       refresh();
     }
   });
+}
+
+/* ── Phase B renders + wiring ─────────────────────────────────── */
+function hexToRgb(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return null;
+  const n = parseInt(m[1], 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+function relLum([r, g, b]) {
+  const f = c => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+  return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+}
+function contrast(a, b) {
+  const la = relLum(a), lb = relLum(b);
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+function renderFontSample() {
+  const m = S.m3, box = document.getElementById('fontSample');
+  if (!box) return;
+  box.innerHTML = '<div class="smp-cap">Live sample</div>' +
+    '<div class="smp-h" style="font-family:\'' + m.hf + '\',' + (m.hs || 'serif') + ';font-weight:' + m.hw + ';font-size:' + (Math.min(parseInt(m.hsize, 10), 64)) + 'px;letter-spacing:' + m.tracking + 'px">Motion Design</div>' +
+    '<div class="smp-b" style="font-family:\'' + m.bf + '\',' + (m.bs || 'sans-serif') + ';font-weight:' + m.bw + ';font-size:' + m.bsize + 'px">The quick brown fox jumps over the lazy dog — 0123456789</div>';
+}
+function renderSwatches() {
+  const grid = document.getElementById('swGrid');
+  if (!grid) return;
+  grid.innerHTML = S.m4.swatches.map((c, i) =>
+    '<div class="sw"><input type="color" data-sw="' + i + '" value="' + c + '"><div class="hx">' + c + '</div>' +
+    (S.m4.swatches.length > 2 ? '<button class="del" data-delsw="' + i + '">×</button>' : '') + '</div>'
+  ).join('');
+}
+function renderWcag() {
+  const box = document.getElementById('wcagBox');
+  if (!box) return;
+  const bg = hexToRgb(S.m4.swatches[0] || ''), fg = hexToRgb(S.m4.swatches[1] || '');
+  if (!bg || !fg) { box.className = 'wcag mid'; box.innerHTML = 'WCAG — enter valid hex colors'; return; }
+  const r = contrast(bg, fg);
+  const cls = r >= 4.5 ? 'ok' : r >= 3 ? 'mid' : 'bad';
+  const verdict = r >= 4.5 ? '✓ AA passes' : r >= 3 ? '△ large text only' : '✗ fails WCAG';
+  box.className = 'wcag ' + cls;
+  box.innerHTML = 'WCAG contrast <span class="ratio">' + r.toFixed(2) + ':1</span> ' + verdict +
+    '<span class="tag">bg ' + S.m4.swatches[0] + ' · text ' + S.m4.swatches[1] + '</span>';
+}
+function renderGfontRows() {
+  const wrap = document.getElementById('gfontRows');
+  if (!wrap) return;
+  if (!S.m7.gfonts) { wrap.innerHTML = ''; return; }
+  const list = S.m7.fontList.length ? S.m7.fontList : [S.m3.hf, S.m3.bf].filter((v, i, a) => a.indexOf(v) === i);
+  wrap.innerHTML = list.map((f, i) =>
+    '<div class="lib-row" style="margin-top:5px"><span class="li">🅰</span>' +
+    '<input type="text" value="' + escAttr(f) + '" data-gf="' + i + '" style="flex:1;min-width:0;background:#0f1420;border:1px solid #263042;border-radius:6px;color:#e2e8f0;font-size:11px;padding:5px 8px;font-family:\'Rubik\',sans-serif">' +
+    '<button class="del" style="position:static;display:flex" data-delgf="' + i + '">×</button></div>'
+  ).join('') + '<button class="ghost-btn" id="addGf">+ Add font</button>';
+}
+function renderPhaseB() { renderFontSample(); renderSwatches(); renderWcag(); renderGfontRows(); }
+
+function wirePhaseB() {
+  const col = document.getElementById('modulesCol');
+  col.addEventListener('input', function(e) {
+    const t = e.target;
+    if (t.id === 'fHf') { S.m3.hf = t.value; renderFontSample(); renderGfontRows(); refresh(); }
+    if (t.id === 'fBf') { S.m3.bf = t.value; renderFontSample(); renderGfontRows(); refresh(); }
+    if (t.id === 'fHw') { S.m3.hw = t.value; renderFontSample(); refresh(); }
+    if (t.id === 'fBw') { S.m3.bw = t.value; renderFontSample(); refresh(); }
+    if (t.id === 'fHsize') { S.m3.hsize = t.value; renderFontSample(); refresh(); }
+    if (t.id === 'fBsize') { S.m3.bsize = t.value; renderFontSample(); refresh(); }
+    if (t.id === 'fTracking') { S.m3.tracking = t.value; renderFontSample(); refresh(); }
+    if (t.id === 'fTone') { S.m3.tone = t.value; refresh(); }
+    if (t.dataset.sw !== undefined) {
+      const i = +t.dataset.sw; S.m4.swatches[i] = t.value;
+      const hx = t.parentElement.querySelector('.hx'); if (hx) hx.textContent = t.value;
+      renderWcag(); refresh();
+    }
+    if (t.dataset.gf !== undefined) { S.m7.fontList[+t.dataset.gf] = t.value; refresh(); }
+  });
+  col.addEventListener('change', function(e) {
+    if (e.target.dataset.lib) { S.m7[e.target.dataset.lib] = e.target.checked; renderGfontRows(); refresh(); }
+  });
+  col.addEventListener('click', function(e) {
+    const wire = e.target.closest('[data-wire]');
+    if (wire) { S.m5.layout = wire.dataset.wire; document.querySelectorAll('.wire').forEach(b => b.classList.toggle('on', b === wire)); refresh(); return; }
+    const mood = e.target.closest('[data-mood]');
+    if (mood) { S.m4.mood = mood.dataset.mood; document.querySelectorAll('.mood-chip').forEach(b => b.classList.toggle('on', b === mood)); refresh(); return; }
+    const pal = e.target.closest('[data-pal]');
+    if (pal) { S.m4.swatches = PALETTES[+pal.dataset.pal].colors.slice(); renderSwatches(); renderWcag(); refresh(); return; }
+    if (e.target.id === 'addSw') { if (S.m4.swatches.length < 8) { S.m4.swatches.push('#334155'); renderSwatches(); refresh(); } return; }
+    const delSw = e.target.closest('[data-delsw]');
+    if (delSw) { S.m4.swatches.splice(+delSw.dataset.delsw, 1); renderSwatches(); renderWcag(); refresh(); return; }
+    if (e.target.id === 'addGf') { S.m7.fontList.push(''); renderGfontRows(); refresh(); return; }
+    const delGf = e.target.closest('[data-delgf]');
+    if (delGf) { S.m7.fontList.splice(+delGf.dataset.delgf, 1); renderGfontRows(); refresh(); return; }
+  });
+}
+
+/* ── Deep links: hand the current brief to the sibling pages ──── */
+function b64url(str) {
+  return btoa(unescape(encodeURIComponent(str))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function currentBrief() {
+  const t = assemble();
+  return t.trim() ? t : '(no brief — propose something tasteful)';
+}
+function sendToRenderer() {
+  const dur = Math.round((S.m8.on ? S.m8.duration : 5) * 1000);
+  window.location.href = 'test-renderer.html#aiwant=' + b64url(currentBrief()) + '&dur=' + dur;
+}
+function sendToGallery() {
+  const dur = Math.round((S.m8.on ? S.m8.duration : 5) * 1000);
+  try { localStorage.setItem('pe_handoff', JSON.stringify({ brief: currentBrief(), dur: dur })); } catch (e) {}
+  window.location.href = 'designs.html#new=1';
 }
 
 /* ── Copy / reset ─────────────────────────────────────────────── */
@@ -530,16 +843,20 @@ function doCopy() {
 document.getElementById('copyBtn').addEventListener('click', doCopy);
 document.getElementById('fabCopy').addEventListener('click', doCopy);
 document.getElementById('copyTopBtn').addEventListener('click', doCopy);
+document.getElementById('tryBtn').addEventListener('click', sendToRenderer);
+document.getElementById('sendGalleryBtn').addEventListener('click', sendToGallery);
 document.getElementById('resetBtn').addEventListener('click', function() {
   S = JSON.parse(JSON.stringify(DEFAULT_STATE));
   document.getElementById('modulesCol').innerHTML = '';
-  buildModules(); refresh();
+  buildModules(); renderPhaseB(); refresh();
   toast('Reset to defaults');
 });
 
 /* ── Boot ─────────────────────────────────────────────────────── */
 buildModules();
 wireStatic();
+wirePhaseB();
+renderPhaseB();
 refresh();
 </script>
 </body>

@@ -21,6 +21,9 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
 .header{padding:32px 32px 12px;border-bottom:1px solid #1a1f2e;margin-bottom:4px}
 .header h1{font-size:24px;font-weight:800;letter-spacing:-.5px;color:#f1f5f9;font-family:'Rubik',sans-serif}
 .header p{font-size:13px;color:#a5b4c8;margin-top:4px;font-weight:500;letter-spacing:.1px;font-family:'Rubik',sans-serif}
+.header-links{margin-top:12px;display:flex;gap:8px;flex-wrap:wrap}
+.header-links a{display:inline-flex;align-items:center;gap:5px;background:#141a26;border:1px solid #232b3d;border-radius:18px;padding:5px 13px;font-size:11.5px;font-weight:600;color:#a5b4c8;text-decoration:none;transition:all .15s}
+.header-links a:hover{border-color:#3b82f6;color:#e2e8f0;background:#1a2233}
 
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;padding:16px 32px 32px}
 
@@ -231,6 +234,10 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
 <div class="header">
     <h1>HTML-in-Canvas Renderer</h1>
     <p>SVG foreignObject — zero dependencies, full CSS support, 16 animated presets (incl. LaTeX/MDX/Custom-Font/Tailwind) with live preview & WebM export.</p>
+    <div class="header-links">
+        <a href="designs.html">🎨 Designs Gallery</a>
+        <a href="prompts-engineer.html">🪄 Prompt Engineer</a>
+    </div>
 </div>
 
 <div class="grid" id="presetGrid"></div>
@@ -862,6 +869,43 @@ function closeModal() {
 }
 
 modalClose.addEventListener('click', closeModal);
+
+/* ── Deep links: prompts-engineer.html#aiwant=<b64>&dur=<ms> ──── */
+/* Opens a "custom" modal with no preset code behind it — the user pastes
+ * the AI reply (AI tab) or code (Code tab), then exports exactly like any
+ * preset. Implemented as a runtime-injected __custom preset so every
+ * existing export / code / restore path works unchanged. */
+function openCustomModal(brief, durMs) {
+    const dur = Math.max(1, Math.min(60, (parseInt(durMs, 10) || 5000) / 1000));
+    PRESETS.__custom = {
+        name: (brief ? 'Custom Design' : 'Custom Blank'),
+        dur: dur,
+        html: '', css: '', js: ''
+    };
+    openModal('__custom');
+    showTab('ai');
+    if (brief) {
+        aiWant.value = brief;
+        aiMsg('Brief loaded from Prompt Engineer — hit Copy AI Prompt, paste it into your model, then paste the reply here.');
+    } else {
+        aiMsg('Blank canvas — describe what you want, copy the prompt, or paste code in the Code tab.');
+    }
+    setTimeout(function() { aiWant.focus(); }, 60);
+}
+function handleAiWantHash() {
+    const m = (location.hash || '').match(/#aiwant=([^&]+)(?:&dur=(\d+))?/);
+    if (!m) return false;
+    let brief = '';
+    try { brief = decodeURIComponent(escape(atob(m[1].replace(/-/g, '+').replace(/_/g, '/')))); } catch (e) { brief = ''; }
+    openCustomModal(brief, m[2]);
+    history.replaceState(null, '', location.pathname);
+    return true;
+}
+window.addEventListener('hashchange', handleAiWantHash);
+/* Deferred to script end — openModal touches currentPresetKey/aiWant which
+   are declared further down (a synchronous call here would hit the TDZ). */
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', handleAiWantHash);
+else setTimeout(handleAiWantHash, 0);
 modalOverlay.addEventListener('click', function(e) { if (e.target === modalOverlay) closeModal(); });
 document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeModal(); });
 

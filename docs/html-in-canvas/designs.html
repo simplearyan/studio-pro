@@ -300,6 +300,9 @@ footer{padding:0 32px 28px;font-size:10.5px;color:#475569;font-weight:500}
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
             Test Renderer
         </a>
+        <a class="btn-io" href="prompts-engineer.html" title="Build a prompt visually">
+            🪄
+        </a>
     </div>
 </div>
 
@@ -1996,8 +1999,13 @@ async function startWebMExport() {
     if (ok) modalRenderer.drawTo(modalCtx, 0, 0, W, H);
 }
 
-/* ── Deep links: designs.html#design=<id> ─────────────────────── */
+/* ── Deep links: designs.html#design=<id> · #new=1 ───────────── */
 function handleHash() {
+    if (/#new=1/.test(location.hash)) {
+        history.replaceState(null, '', location.pathname);
+        openNewDesign(); /* consumes any pe_handoff brief from Prompt Engineer */
+        return;
+    }
     const m = (location.hash || '').match(/#design=([A-Za-z0-9_-]+)/);
     if (m && byId[m[1]]) openDesign(m[1]);
 }
@@ -2013,13 +2021,20 @@ const newDesignBtn = document.getElementById('newDesignBtn');
 newDesignBtn.addEventListener('click', openNewDesign);
 function openNewDesign() {
     const saved = loadDraft();
+    /* Handoff from prompts-engineer.html (To Gallery button) wins over the
+       stored draft brief so the freshly-built brief is what lands here */
+    let handoff = null;
+    try {
+        handoff = JSON.parse(localStorage.getItem('pe_handoff') || 'null');
+        if (handoff) localStorage.removeItem('pe_handoff');
+    } catch (e) { handoff = null; }
     byId[NEW_DESIGN_ID] = {
         id: NEW_DESIGN_ID,
         title: 'Untitled Design',
         creator: 'draft',
         tags: ['draft'],
-        prompt: (saved && saved.prompt) || '',
-        duration: 5000,
+        prompt: (handoff && handoff.brief) || (saved && saved.prompt) || '',
+        duration: (handoff && handoff.dur) || 5000,
         html: (saved && saved.html) || '',
         css: (saved && saved.css) || '',
         js: (saved && saved.js) || '',
