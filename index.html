@@ -111,6 +111,10 @@
     <script id="MathJax-script" async src="vendor/mathjax/tex-svg.js"></script>
     <!-- HTML Clips Module: bundled html2canvas for rendering HTML/CSS to Canvas -->
     <script src="src/html-clips/html2canvas.min.js"></script>
+    <!-- perfect-freehand 1.2.3 vendored locally: pressure-simulated tapered ink for
+         the draw tool's pen brush (thumb-maker parity). Pure function of its input
+         points, so export determinism holds. Sets window.__perfectFreehand. -->
+    <script src="vendor/perfect-freehand.min.js"></script>
 </head>
 <body class="bg-surface-50 dark:bg-surface-900 text-surface-900 dark:text-surface-100 font-sans h-screen flex flex-col overflow-hidden select-none">
 
@@ -9163,6 +9167,27 @@
         const DRAW_BASE_W = 1920;
         const drawBrushes = {
             pen: { label: 'Pen', minSize: 1, maxSize: 60, defSize: 6, hasTexture: false, hasAngle: false,
+                // Whole-stroke tapered ink via vendored perfect-freehand (thumb-maker
+                // parity): simulates pressure from point velocity, producing variable
+                // width and rounded tapered ends. Pure function of the input points,
+                // so the same frame always rasterizes identically — export determinism
+                // holds. Falls back to uniform segments when the vendor script is
+                // unavailable (offline file:// open, blocked request).
+                opts: { size: 6, thinning: 0.5, smoothing: 0.5, streamline: 0.5, simulatePressure: true, last: true },
+                path: (c, pts, st) => {
+                    const pf = (window.__perfectFreehand && window.__perfectFreehand.getStroke) || window.getStroke;
+                    if (!pf) return false;
+                    const opts = Object.assign({}, drawBrushes.pen.opts, { size: st.size });
+                    const outline = pf(pts.map(p => [p.x, p.y]), opts);
+                    if (!outline || outline.length < 2) return false;
+                    c.fillStyle = st.color;
+                    c.beginPath();
+                    c.moveTo(outline[0][0], outline[0][1]);
+                    for (let i = 1; i < outline.length; i++) c.lineTo(outline[i][0], outline[i][1]);
+                    c.closePath();
+                    c.fill();
+                    return true;
+                },
                 seg: (c, sx, sy, ex, ey, st) => {
                     c.strokeStyle = st.color;
                     c.lineWidth = st.size;
@@ -9256,6 +9281,13 @@
                 c.restore();
                 return;
             }
+            // Tapered path brush: one whole-stroke outline fill. On reveal budgets
+            // the input is clipped to a point prefix so the ink grows; falls back
+            // to segments only if the vendor library is unavailable.
+            if (brush.path && renderDrawStrokePath(c, stroke, st, budget) !== false) {
+                c.restore();
+                return;
+            }
             for (let i = 1; i < pts.length && budget > 0; i++) {
                 const ax = pts[i - 1].x, ay = pts[i - 1].y, bx = pts[i].x, by = pts[i].y;
                 const segLen = Math.hypot(bx - ax, by - ay);
@@ -9269,6 +9301,26 @@
                 }
             }
             c.restore();
+        }
+
+        // Path-based brushes (tapered pen ink): render the whole stroke at once.
+        // The reveal budget clips the input to a point prefix whose cumulative
+        // length fits the budget (plus a fractional point so the tip advances
+        // smoothly) — the outline therefore GROWS with time and the fully
+        // revealed frame is byte-identical to the static render.
+        function renderDrawStrokePath(c, stroke, st, budget) {
+            const pts = stroke.points;
+            if (budget === Infinity) return drawBrushes.pen.path(c, pts, st);
+            let acc = 0, end = 1;
+            while (end < pts.length) {
+                const segLen = Math.hypot(pts[end].x - pts[end - 1].x, pts[end].y - pts[end - 1].y);
+                if (acc + segLen <= budget) { acc += segLen; end++; continue; }
+                // partial segment: append the interpolated tip point
+                const k = segLen > 0 ? (budget - acc) / segLen : 0;
+                const tip = { x: pts[end - 1].x + (pts[end].x - pts[end - 1].x) * k, y: pts[end - 1].y + (pts[end].y - pts[end - 1].y) * k };
+                return drawBrushes.pen.path(c, pts.slice(0, end - 1).concat([tip]), st);
+            }
+            return drawBrushes.pen.path(c, pts, st);
         }
 
         // Per-stroke path length (local units) — shared by the reveal budget walker.
