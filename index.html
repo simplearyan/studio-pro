@@ -177,6 +177,8 @@
 
     <!-- HIC editor: mobile Preview/Code tabs (active below the sm breakpoint) -->
     <style>
+    /* Draw tool: crosshair cursor while armed (class toggled by setDrawMode) */
+    #renderCanvas.draw-armed { cursor: crosshair; }
     @media (max-width: 639.98px) {
         /* Column layout: the visible panel must GROW to fill the body height
            (in row mode desktop stretch handles it; in column mode without
@@ -1306,6 +1308,9 @@
             <button id="btnAddHic" onclick="addHicClipToTimeline()" class="p-1.5 text-violet-600 dark:text-violet-400 hover:text-violet-900 dark:hover:text-white bg-violet-50 dark:bg-violet-900/30 rounded-md border border-violet-200 dark:border-violet-700 shadow-sm" title="Add HTML-in-Canvas Animated Clip">
                 <i data-lucide="sparkles" class="w-4 h-4"></i>
             </button>
+            <button id="btnDrawMode" class="p-1.5 text-pink-600 dark:text-pink-400 hover:text-pink-900 dark:hover:text-pink-200 bg-pink-50 dark:bg-pink-900/30 rounded-md border border-pink-200 dark:border-pink-700 shadow-sm" title="Draw on canvas (Esc or click Select to finish)">
+                <i data-lucide="pencil" class="w-4 h-4"></i>
+            </button>
             <input type="file" id="mediaInput" accept="audio/*,video/*,image/*" class="hidden" multiple>
             <button id="btnImport" class="p-1.5 text-surface-600 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white bg-surface-100 dark:bg-surface-800 rounded-md border border-surface-200 dark:border-surface-700 shadow-sm" title="Import Media">
                 <i data-lucide="folder-plus" class="w-4 h-4"></i>
@@ -1755,7 +1760,7 @@
         // 'hic', its twin didn't). Always consume the helpers — never inline a
         // new visual-type list. Types render into video tracks; audio types go
         // to audio tracks; every listed visual type draws on the main canvas.
-        const VISUAL_CLIP_TYPES = ['video', 'image', 'text', 'scene', 'shape', 'html', 'hic'];
+        const VISUAL_CLIP_TYPES = ['video', 'image', 'text', 'scene', 'shape', 'html', 'hic', 'draw'];
         const AUDIO_CLIP_TYPES = ['audio'];
         function isVisualTimelineClip(clipOrType) {
             const t = typeof clipOrType === 'string' ? clipOrType : (clipOrType && clipOrType.type);
@@ -1795,6 +1800,11 @@
             sidebarTab: 'properties', // 'properties', 'animations', 'audio_library', 'presets', 'subtitles', 'markdown'
             audioSubTab: 'library', // 'library', 'mixer'
             activeAnimMainTab: 'transform',
+            // ── Draw-tool session state ──
+            drawMode: false,          // armed: toolbar button active, canvas crosshair
+            drawSessionClipId: null,  // open session clip being appended to
+            drawPoints: null,         // points of the stroke currently being drawn
+            drawHoverPt: null,        // live cursor preview while armed
             activeAnimSubTab: 'in',
             animGroupOpen: { transform: true, text: true },
             audioLibrary: [],
@@ -1994,6 +2004,43 @@
         ];
 
         const DEFAULT_PRESETS = [
+            // --- DRAW (INK) PRESETS --- center-relative strokes authored on a 1920x1080 stage
+            {
+                id: 'preset_draw_underline',
+                name: 'Hand-Drawn Underline',
+                type: 'draw',
+                category: 'Draw',
+                duration: 5,
+                center: { x: 960, y: 700 },
+                seed: 424242,
+                strokes: [{ tool: 'pen', color: '#ff3b6b', size: 8, points: (() => {
+                    const pts = []; for (let i = 0; i <= 24; i++) pts.push({ x: -220 + i * 18.3, y: Math.sin(i * 0.9) * 4 - 3 }); return pts; })() }]
+            },
+            {
+                id: 'preset_draw_circle',
+                name: 'Circled Highlight',
+                type: 'draw',
+                category: 'Draw',
+                duration: 5,
+                center: { x: 960, y: 540 },
+                seed: 777,
+                strokes: [{ tool: 'pen', color: '#f59e0b', size: 7, points: (() => {
+                    const pts = []; const loops = 1.06;
+                    for (let i = 0; i <= 40; i++) { const a = -0.6 + (i / 40) * Math.PI * 2 * loops; const r = 150 + Math.sin(i * 1.7) * 5; pts.push({ x: Math.cos(a) * r, y: Math.sin(a) * r * 0.72 }); } return pts; })() }]
+            },
+            {
+                id: 'preset_draw_arrow',
+                name: 'Sketch Arrow',
+                type: 'draw',
+                category: 'Draw',
+                duration: 5,
+                center: { x: 1180, y: 560 },
+                seed: 31337,
+                strokes: [
+                    { tool: 'pen', color: '#10b981', size: 7, points: (() => { const pts = []; for (let i = 0; i <= 20; i++) pts.push({ x: -160 + i * 16, y: Math.sin(i * 0.8) * 3 }); return pts; })() },
+                    { tool: 'pen', color: '#10b981', size: 7, points: [{ x: 0, y: -46 }, { x: 46, y: 0 }, { x: 4, y: 48 }] }
+                ]
+            },
             // --- TEXT PRESETS ---
             {
                 id: 'preset_text_cyberpunk',
@@ -6601,6 +6648,88 @@
                         }
 
                         ctx.restore();
+                    } else if (clip.type === 'draw') {
+                        // ── Draw Clip Rendering (ink strokes) ───────────────────
+                        // Points are stored center-relative in 1920-base preview px;
+                        // rescale factor keeps 4K exports and 1080p previews identical.
+                        const clipTime = State.currentTime - clip.start;
+                        const timeLeft = clip.duration - clipTime;
+                        const aState = calculateAnimationState(clip, clipTime, timeLeft, w, h);
+
+                        ctx.save();
+                        const finalScale = baseScale * aState.animScale;
+                        const cx = w/2 + (offsetX * w) / 100 + aState.animX;
+                        const cy = h/2 + (offsetY * h) / 100 + aState.animY;
+
+                        ctx.globalAlpha = aState.animAlpha * (opacity / 100);
+                        ctx.globalCompositeOperation = clip.effects.blendMode || 'source-over';
+                        ctx.translate(cx, cy);
+                        ctx.rotate((rotate * Math.PI / 180) + aState.animRot);
+                        ctx.scale(finalScale * (clip.effects.flipH ? -1 : 1), finalScale * (clip.effects.flipV ? -1 : 1));
+
+                        const inkScale = w / DRAW_BASE_W;
+                        ctx.scale(inkScale, inkScale);
+
+                        const isSelected = !State.isExporting && (clip.id === State.selectedClipId || (State.multiSelectedClipIds && State.multiSelectedClipIds.includes(clip.id)));
+                        const bounds = drawClipBounds(clip);
+                        (clip.strokes || []).forEach((s, si) => {
+                            // Selection pass: fat translucent halo behind the selected stroke
+                            if (isSelected) {
+                                ctx.save();
+                                ctx.globalAlpha = (aState.animAlpha * (opacity / 100)) * 0.18;
+                                renderDrawStroke(ctx, { ...s, size: s.size + 10 / inkScale, color: '#6366f1' }, (clip.seed || 1) + si * 7919);
+                                ctx.restore();
+                            }
+                            renderDrawStroke(ctx, s, (clip.seed || 1) + si * 7919);
+                        });
+
+                        // Live in-progress stroke preview (draw mode only).
+                        // Relative to the clip's interpolated render center so the preview
+                        // cancels the ctx translate exactly — what you see is what commits.
+                        if (State.drawMode && State.drawSessionClipId === clip.id && State.drawPoints && State.drawPoints.length > 0) {
+                            const fx = clip.effects;
+                            const refPx = w / 2 + (offsetX * w) / 100, refPy = h / 2 + (offsetY * h) / 100;
+                            const relPts = State.drawPoints.map(p => ({ x: p.x - refPx, y: p.y - refPy }));
+                            ctx.save();
+                            ctx.globalAlpha *= 0.85;
+                            renderDrawStroke(ctx, { tool: fx.drawTool, color: fx.drawColor, size: fx.drawSize, points: relPts }, clip.seed || 1);
+                            ctx.restore();
+                        }
+
+                        ctx.restore();
+
+                        // Selection box via DOM overlay (same treatment as shapes).
+                        // The box centers on the ink bbox's LOCAL center transformed to
+                        // canvas space (rotation applied), not the clip origin.
+                        if (isSelected && !targetCtx) {
+                            const container = document.getElementById('domBoundingBoxContainer');
+                            if (container) {
+                                const wrapper = document.getElementById('canvasAspectWrapper');
+                                const scaleUI = wrapper.clientWidth / canvas.width;
+                                const boxRot = rotate + (aState.animRot || 0) * 180 / Math.PI;
+                                const rad2 = boxRot * Math.PI / 180;
+                                const lx = bounds.cx * inkScale * finalScale * (clip.effects.flipH ? -1 : 1);
+                                const ly = bounds.cy * inkScale * finalScale * (clip.effects.flipV ? -1 : 1);
+                                const boxCx = cx + Math.cos(rad2) * lx - Math.sin(rad2) * ly;
+                                const boxCy = cy + Math.sin(rad2) * lx + Math.cos(rad2) * ly;
+                                const pad = 20;
+                                const w_box = bounds.w * inkScale * scaleUI * finalScale + pad;
+                                const h_box = bounds.h * inkScale * scaleUI * finalScale + pad;
+                                const cx_ui = boxCx * scaleUI;
+                                const cy_ui = boxCy * scaleUI;
+                                const box = document.createElement('div');
+                                box.style.position = 'absolute';
+                                box.style.left = cx_ui + 'px';
+                                box.style.top = cy_ui + 'px';
+                                box.style.width = w_box + 'px';
+                                box.style.height = h_box + 'px';
+                                box.style.transform = 'translate(-50%, -50%) rotate(' + boxRot + 'deg)';
+                                box.style.border = '2px dashed #6366f1';
+                                box.style.boxShadow = '0 0 10px rgba(99, 102, 241, 0.4)';
+                                box.style.borderRadius = '6px';
+                                container.appendChild(box);
+                            }
+                        }
                     } else if (clip.type === 'html') {
                         // ── HTML Clip Rendering ──────────────────────────────────────────────
                         // Renders HTML/CSS/JS to Canvas via iframe + html2canvas
@@ -8969,6 +9098,76 @@
             updateSidebarPanel();
         };
 
+        // ── Draw-clip ink engine (Phase 1) ─────────────────────────────────────
+        // A draw clip stores center-relative point lists per stroke; rendering is
+        // a pure function of clip data (+ clip.seed for future textured brushes),
+        // so exports at any resolution/seek position stay deterministic.
+        // Points live in 1920-base canvas px (same absolute space shapes use).
+        const DRAW_BASE_W = 1920;
+        const drawBrushes = {
+            pen: { label: 'Pen', minSize: 1, maxSize: 60, defSize: 6, hasTexture: false, hasAngle: false,
+                seg: (c, sx, sy, ex, ey, st) => {
+                    c.strokeStyle = st.color;
+                    c.lineWidth = st.size;
+                    c.lineCap = 'round';
+                    c.lineJoin = 'round';
+                    c.beginPath(); c.moveTo(sx, sy); c.lineTo(ex, ey); c.stroke();
+                } }
+        };
+
+        // Mulberry32 — tiny seeded PRNG so any future noise-based brush stays
+        // frame-seekable (MarkerForge's live p.random() would break export parity).
+        function drawRng(seed) {
+            let a = (seed | 0) || 1;
+            return function () {
+                a |= 0; a = (a + 0x6D2B79F5) | 0;
+                let t = Math.imul(a ^ (a >>> 15), 1 | a);
+                t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+                return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+            };
+        }
+
+        // Renders one stroke's polylines into an ALREADY-TRANSFORMED ctx
+        // (caller applied translate/rotate/scale). All coords are center-relative.
+        function renderDrawStroke(c, stroke, seed) {
+            const pts = stroke.points;
+            if (!pts || pts.length === 0) return;
+            const brush = drawBrushes[stroke.tool || 'pen'] || drawBrushes.pen;
+            const st = { color: stroke.color || '#ff3b6b', size: Math.max(0.5, stroke.size || 6), texture: stroke.texture || 0, angle: stroke.angle || 45 };
+            const rng = drawRng(seed);
+            c.beginPath();
+            c.moveTo(pts[0].x, pts[0].y);
+            for (let i = 1; i < pts.length; i++) c.lineTo(pts[i].x, pts[i].y);
+            c.save();
+            if (pts.length === 1) {
+                // A click without a drag still draws a dot
+                c.fillStyle = st.color;
+                c.beginPath();
+                c.arc(pts[0].x, pts[0].y, st.size / 2, 0, Math.PI * 2);
+                c.fill();
+            } else {
+                for (let i = 1; i < pts.length; i++) brush.seg(c, pts[i - 1].x, pts[i - 1].y, pts[i].x, pts[i].y, st, rng);
+            }
+            c.restore();
+        }
+
+        // Bounding box (center-relative local space) across every stroke of a clip
+        function drawClipBounds(clip) {
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            (clip.strokes || []).forEach(s => {
+                const r = (s.size || 6) / 2 + 1;
+                (s.points || []).forEach(p => {
+                    if (p.x - r < minX) minX = p.x - r;
+                    if (p.y - r < minY) minY = p.y - r;
+                    if (p.x + r > maxX) maxX = p.x + r;
+                    if (p.y + r > maxY) maxY = p.y + r;
+                });
+            });
+            if (!isFinite(minX)) return { x: -50, y: -50, w: 100, h: 100, cx: 0, cy: 0 };
+            const bcx = (minX + maxX) / 2, bcy = (minY + maxY) / 2;
+            return { x: minX, y: minY, w: Math.max(1, maxX - minX), h: Math.max(1, maxY - minY), cx: bcx, cy: bcy };
+        }
+
         window.setClipEffect = (clipId, effectName, value) => {
             const targetIds = (State.multiSelectedClipIds && State.multiSelectedClipIds.length > 0 && State.multiSelectedClipIds.includes(clipId)) 
                 ? State.multiSelectedClipIds 
@@ -8989,14 +9188,14 @@
                         // Object-valued effects (per-preset letterEase map) pass through
                         // untouched instead of hitting the parseFloat fallback.
                         clip.effects[effectName] = value;
-                    } else if (['shadowColor', 'animIn', 'animOut', 'animLoop', 'animPuzzleDir', 'extrudeColor', 'fillColor', 'fontFamily', 'extrudeDir', 'textTransform', 'fontStyle', 'textDecoration', 'blendMode', 'animEase', 'animTextSpecial', 'flashColor', 'animTextIn', 'animTextOut', 'animTextLoop', 'animTextEase', 'animTextStagger', 'shapeType', 'strokeColor', 'maskType', 'bgColor', 'bgStrokeColor', 'bgShadowColor', 'bgExtrudeColor', 'bgExtrudeDir', 'textureSrc', 'textureBlendMode', 'textureFitting', 'position', 'animPreset'].includes(effectName)) {
+                    } else if (['shadowColor', 'animIn', 'animOut', 'animLoop', 'animPuzzleDir', 'extrudeColor', 'fillColor', 'fontFamily', 'extrudeDir', 'textTransform', 'fontStyle', 'textDecoration', 'blendMode', 'animEase', 'animTextSpecial', 'flashColor', 'animTextIn', 'animTextOut', 'animTextLoop', 'animTextEase', 'animTextStagger', 'shapeType', 'strokeColor', 'maskType', 'bgColor', 'bgStrokeColor', 'bgShadowColor', 'bgExtrudeColor', 'bgExtrudeDir', 'textureSrc', 'textureBlendMode', 'textureFitting', 'position', 'animPreset', 'drawTool', 'drawColor'].includes(effectName)) {
                         clip.effects[effectName] = value;
                     } else {
                         clip.effects[effectName] = parseFloat(value);
                     }
                     
                     if (isVisualTimelineClip(clip)) needsCanvasRedraw = true;
-                    if (clip.type === 'text' || clip.type === 'shape') needsClipsRedraw = true;
+                    if (clip.type === 'text' || clip.type === 'shape' || clip.type === 'draw') needsClipsRedraw = true;
                     if (clip.audioNodes) applyAudioEffects(clip);
 
                     // Sync to subtitle data if this is a subtitle-linked clip
@@ -10824,7 +11023,7 @@
             }
 
             const clip = State.clips.find(c => c.id === State.selectedClipId);
-            if (!clip || !['image', 'video', 'text', 'audio', 'shape', 'scene', 'html', 'hic'].includes(clip.type)) {
+            if (!clip || !['image', 'video', 'text', 'audio', 'shape', 'scene', 'html', 'hic', 'draw'].includes(clip.type)) {
                 sidebarContent.className = "flex flex-col items-center justify-center p-4 w-full flex-1 min-h-0";
                 sidebarContent.innerHTML = `
                     <div class="flex flex-col items-center justify-center text-surface-500 dark:text-surface-300 py-16 h-full w-full">
@@ -11960,6 +12159,29 @@
                         rightSlot: propSwitch('strokeEnable', strokeEnable, `setClipEffect('${clip.id}', 'strokeEnable', this.checked); updateSidebarPanel();`),
                         bodyClass: !strokeEnable ? 'opacity-50 pointer-events-none' : ''
                     }) : '';
+
+            // Draw clip: ink card (brush, color, size) + restroke entry point
+            const isDraw = clip.type === 'draw';
+            let drawHTML = '';
+            if (isDraw) {
+                const _strokes = clip.strokes || [];
+                drawHTML = propCard('cardDraw', 'pencil', 'Ink', `
+                    <div>
+                        <label for="${clip.id}_drawTool" class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1">Brush</label>
+                        <select id="${clip.id}_drawTool" name="drawTool" class="w-full text-xs py-1.5 pl-3 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 appearance-none cursor-pointer font-bold text-surface-800 dark:text-surface-200" onchange="setClipEffect('${clip.id}', 'drawTool', this.value); drawCanvas();">
+                            ${Object.entries(drawBrushes).map(([k, b]) => `<option value="${k}" ${fx.drawTool === k ? 'selected' : ''}>${b.label}</option>`).join('')}
+                        </select>
+                    </div>
+                    ${colorRow('drawColor', fx.drawColor || '#ff3b6b', 'Ink Color')}
+                    ${propRow('Brush Size', propSlider('drawSize', fx.drawSize || 6, 1, 60, 1, "this.value + 'px'"), (fx.drawSize || 6) + 'px', { reset: propReset('drawSize', fx.drawSize || 6, 6) })}
+                    <div class="text-[10px] text-surface-500 dark:text-surface-300 leading-snug">
+                        ${_strokes.length} stroke${_strokes.length === 1 ? '' : 's'} · color/size apply to <b>new</b> strokes
+                    </div>
+                    <button type="button" onclick="setDrawMode(true); if(State.selectedClipId){State.drawSessionClipId=State.selectedClipId;} updateSidebarPanel();" class="w-full py-1.5 px-2 text-[10px] font-bold rounded-lg bg-pink-50 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400 border border-pink-200 dark:border-pink-700 hover:bg-pink-100 dark:hover:bg-pink-900/50 transition-colors flex items-center justify-center gap-1.5">
+                        <i data-lucide="pencil" class="w-3 h-3"></i> Continue Drawing
+                    </button>
+                `);
+            }
 
             const cropEnable = fx.cropEnable !== undefined ? fx.cropEnable : true;
             const cropLeft = fx.cropLeft || 0;
@@ -13680,6 +13902,8 @@
                         ? ['cardHtmlContent', 'cardTransform', 'cardOpacity', 'cardSpeed']
                         : isHic
                         ? ['cardHicContent', 'cardTransform', 'cardOpacity', 'cardSpeed']
+                        : isDraw
+                        ? ['cardDraw', 'cardTransform', 'cardOpacity', 'cardSpeed']
                         : ['cardTransform', 'cardCrop', 'cardOpacity', 'cardSpeed', 'cardContent', 'cardTypography', 'cardSpacing', 'cardCaption'];
                     const basicCardHtml = isText
                         ? [textHTML, typographyHTML, spacingHTML, captionHTML, transformHTML, blendingHTML, speedHTML]
@@ -13687,6 +13911,8 @@
                         ? [htmlHTML, transformHTML, blendingHTML, speedHTML]
                         : isHic
                         ? [hicHTML, transformHTML, blendingHTML, speedHTML]
+                        : isDraw
+                        ? [drawHTML, transformHTML, blendingHTML, speedHTML]
                         : [transformHTML, cropHTML, blendingHTML, speedHTML, textHTML, typographyHTML, spacingHTML, captionHTML, shapeHTML];
                     // Adjust is also most-edited-first per type: video/image users live in
                     // Color Correction, so it leads; text users reach for the outline (Stroke)
@@ -13778,7 +14004,7 @@
                         `;
                     }
                     
-                    sidebarContent.innerHTML = sceneHTML + sourceHTML + transformHTML + (isText ? (textHTML + typographyHTML + spacingHTML + letterStylesHTML + textBgHTML) : '') + (isHtml ? htmlHTML : '') + (isHic ? hicHTML : '') + (isShape ? shapeHTML : '') + cropHTML + maskHTML + strokeHTML + extrudeHTML + blendingHTML + shadowHTML + textureHTML + ((isText || isHtml || isHic) ? systemFontsHTML : '') + ((isText || isHtml || isHic) ? googleFontsHTML : '');
+                    sidebarContent.innerHTML = sceneHTML + sourceHTML + transformHTML + (isText ? (textHTML + typographyHTML + spacingHTML + letterStylesHTML + textBgHTML) : '') + (isHtml ? htmlHTML : '') + (isHic ? hicHTML : '') + (isShape ? shapeHTML : '') + (isDraw ? drawHTML : '') + cropHTML + maskHTML + strokeHTML + extrudeHTML + blendingHTML + shadowHTML + textureHTML + ((isText || isHtml || isHic) ? systemFontsHTML : '') + ((isText || isHtml || isHic) ? googleFontsHTML : '');
                 }
             }
             
@@ -14028,6 +14254,7 @@
                 if (p.category === 'Keyframe Path') return { cat: 'Keyframes', icon: 'key', color: '#e5e7eb', accent: '#4b5563' };
                 if (p.type === 'text') return { cat: 'Text', icon: 'type', color: '#bfdbfe', accent: '#2563eb' };
                 if (p.type === 'shape') return { cat: 'Shapes', icon: 'shapes', color: '#bbf7d0', accent: '#16a34a' };
+                if (p.type === 'draw') return { cat: 'Draw', icon: 'pencil', color: '#fbcfe8', accent: '#db2777' };
                 if (p.type === 'image') return { cat: 'Image', icon: 'image', color: '#fef08a', accent: '#ca8a04' };
                 if (p.type === 'video') return { cat: 'Video', icon: 'video', color: '#fecaca', accent: '#dc2626' };
                 if (p._isHic) return { cat: 'HTML in Canvas', icon: 'sparkles', color: '#ede9fe', accent: '#7c3aed' };
@@ -14246,6 +14473,20 @@
             }
             if (preset.type === 'shape') {
                 newClip.shapeType = preset.shapeType || 'rect';
+            }
+            // Draw presets carry pre-baked stroke geometry (center-relative, 1920-base px)
+            if (preset.type === 'draw' && preset.strokes) {
+                newClip.strokes = JSON.parse(JSON.stringify(preset.strokes));
+                newClip.seed = preset.seed || ((Math.random() * 1e9) | 0);
+                if (preset.effects) newClip.effects = Object.assign(newClip.effects, JSON.parse(JSON.stringify(preset.effects)));
+                if (preset.duration) newClip.duration = preset.duration;
+                // Anchor the ink where the geometry was authored (offset = center - canvas center)
+                if (preset.center) {
+                    const cw0 = document.getElementById('renderCanvas').width, ch0 = document.getElementById('renderCanvas').height;
+                    newClip.x = preset.center.x; newClip.y = preset.center.y;
+                    newClip.effects.offsetX = ((preset.center.x - cw0 / 2) / cw0) * 100;
+                    newClip.effects.offsetY = ((preset.center.y - ch0 / 2) / ch0) * 100;
+                }
             }
             if (preset.isPlaceholder) {
                 newClip.isPlaceholder = true;
@@ -24646,6 +24887,112 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 drawCanvas();
             });
 
+            // ── Draw tool: arm/disarm + live session handlers ────────────────
+            const btnDrawMode = document.getElementById('btnDrawMode');
+            const renderCanvasEl = document.getElementById('renderCanvas');
+
+            function setDrawMode(on) {
+                State.drawMode = on;
+                if (btnDrawMode) btnDrawMode.classList.toggle('ring-2', on),
+                    btnDrawMode.classList.toggle('ring-pink-500', on);
+                renderCanvasEl.classList.toggle('draw-armed', on);
+                if (!on) {
+                    // Disarm ends an open session
+                    if (State.drawSessionClipId) {
+                        // Session kept: the clip already exists on the timeline
+                        const sc = State.clips.find(c => c.id === State.drawSessionClipId);
+                        if (sc && sc.strokes.length === 0) {
+                            // Never persisted a stroke — remove the empty clip
+                            State.clips = State.clips.filter(c => c.id !== State.drawSessionClipId);
+                            if (State.selectedClipId === State.drawSessionClipId) { State.selectedClipId = null; State.multiSelectedClipIds = []; updatePropertiesPanel(); }
+                            calcOverlaps(); renderClips();
+                        }
+                    }
+                    State.drawSessionClipId = null;
+                    State.drawPoints = null;
+                    State.drawHoverPt = null;
+                }
+                drawCanvas();
+            }
+            window.setDrawMode = setDrawMode;
+
+            if (btnDrawMode) btnDrawMode.addEventListener('click', () => setDrawMode(!State.drawMode));
+
+            function ensureDrawSession() {
+                if (State.drawSessionClipId) {
+                    const sc = State.clips.find(c => c.id === State.drawSessionClipId);
+                    if (sc) return sc;
+                    State.drawSessionClipId = null;
+                }
+                const targetTrackId = getAvailableTrack('video', State.currentTime, 5);
+                const targetTrack = State.tracks.find(t => t.id === targetTrackId);
+                const clipColor = targetTrack ? (targetTrack.colorIndex + 4) % PALETTES.length : 0;
+                const newClip = {
+                    id: 'c_' + Date.now() + Math.random().toString(36).substr(2, 5),
+                    sceneId: State.activeSceneId || null,
+                    trackId: targetTrackId,
+                    colorIndex: clipColor,
+                    type: 'draw',
+                    title: 'Drawing',
+                    start: State.currentTime,
+                    duration: 5,
+                    sourceOffset: 0,
+                    maxDuration: 3600,
+                    strokes: [],
+                    seed: (Math.random() * 1e9) | 0,
+                    effects: {
+                        scale: 1, rotate: 0, offsetX: 0, offsetY: 0,
+                        drawTool: 'pen', drawColor: '#ff3b6b', drawSize: 6, drawOpacity: 100,
+                        animIn: 'none', animOut: 'none', animLoop: 'none', animInDur: 1.0, animOutDur: 1.0, animEase: 'easeOut',
+                        opacity: 100, blendMode: 'source-over'
+                    }
+                };
+                State.clips.push(newClip);
+                State.drawSessionClipId = newClip.id;
+                if (State.currentTime + 5 > State.duration) {
+                    State.duration = Math.ceil(State.currentTime + 5 + 10);
+                    updateTimelineWidth();
+                }
+                calcOverlaps();
+                renderClips();
+                return newClip;
+            }
+
+            function finishDrawStroke() {
+                const clip = State.clips.find(c => c.id === State.drawSessionClipId);
+                if (!clip || !State.drawPoints) return;
+                const pts = State.drawPoints;
+                if (pts.length === 0) { State.drawPoints = null; return; }
+                const fx = clip.effects;
+                const cw = renderCanvasEl.width, chh = renderCanvasEl.height;
+                if (clip.strokes.length === 0) {
+                    // First stroke: adopt its bbox center as the clip's render center
+                    // (offsets are the render source of truth, same as every clip type).
+                    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+                    pts.forEach(p => { if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x; if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y; });
+                    const scx = (minX + maxX) / 2, scy = (minY + maxY) / 2;
+                    fx.offsetX = ((scx - cw / 2) / cw) * 100;
+                    fx.offsetY = ((scy - chh / 2) / chh) * 100;
+                }
+                // ALL strokes are stored relative to the CURRENT offsets-derived render
+                // center, so committed ink renders exactly where drawn and a mid-session
+                // drag carries the whole drawing (thumb-maker's center-relative trick).
+                const refCx = cw / 2 + (fx.offsetX || 0) / 100 * cw;
+                const refCy = chh / 2 + (fx.offsetY || 0) / 100 * chh;
+                clip.strokes.push({
+                    tool: fx.drawTool || 'pen',
+                    color: fx.drawColor || '#ff3b6b',
+                    size: fx.drawSize || 6,
+                    points: pts.map(p => ({ x: p.x - refCx, y: p.y - refCy }))
+                });
+                State.drawPoints = null;
+                State.selectedClipId = clip.id;
+                State.multiSelectedClipIds = [clip.id];
+                updatePropertiesPanel();
+                renderClips();
+                drawCanvas();
+            }
+
             btnAddMath.addEventListener('click', async () => {
                 let targetTrackId = getAvailableTrack('video', State.currentTime, 5);
                 let targetTrack = State.tracks.find(t=>t.id===targetTrackId);
@@ -27455,6 +27802,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 if (clip.type === 'audio') icon = 'music';
                 else if (clip.type === 'image') icon = 'image';
                 else if (clip.type === 'shape') icon = 'shapes';
+                else if (clip.type === 'draw') icon = 'pencil';
                 else if (clip.type === 'scene') icon = 'layers';
                 else if (clip.type === 'text') icon = isSubtitleClip ? 'subtitles' : ((clip.effects && clip.effects.renderAsMath) ? 'variable' : 'type');
 
@@ -28334,6 +28682,13 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
                 
                 const k = e.key.toLowerCase();
+
+                // Esc while drawing: finish the session, keep the ink, back to select
+                if (e.key === 'Escape' && (State.drawMode || State.drawSessionClipId)) {
+                    e.preventDefault();
+                    setDrawMode(false);
+                    return;
+                }
                 
                 // Undo / Redo (canvas drags + keyframe edits)
                 if ((e.ctrlKey || e.metaKey) && !e.altKey && (k === 'z' || k === 'y')) {
@@ -28664,7 +29019,17 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
 
             // Canvas Interaction Handlers
             canvasAspectWrapper.addEventListener('mousedown', (e) => {
-                const pos = getCanvasMousePos(e);                let activeVisualClips = State.clips.filter(c =>
+                const pos = getCanvasMousePos(e);
+                // ── Draw mode: capture the click, start/append a stroke ──
+                if (State.drawMode && (e.button === 0 || e.pointerType === undefined)) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const clip = ensureDrawSession();
+                    State.drawPoints = [pos];
+                    drawCanvas();
+                    return;
+                }
+                let activeVisualClips = State.clips.filter(c =>
                     !c.hidden &&
                     isVisualTimelineClip(c) &&
                     State.currentTime >= c.start && State.currentTime < c.start + c.duration
@@ -28682,7 +29047,49 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 for (let clip of activeVisualClips) {
 
                     let dw = canvas.width, dh = canvas.height;
-                    
+
+                    // Animated transform is identical for every clip type — hoisted above
+                    // the type chain so the draw branch can hit-test before dw/dh exist.
+                    const clipTime = State.currentTime - clip.start;
+                    const timeLeft = clip.duration - clipTime;
+                    const aState = calculateAnimationState(clip, clipTime, timeLeft, canvas.width, canvas.height);
+                    const scale = Math.max(0.0001, window.getInterpolatedValue(clip, 'scale', clip.effects.scale !== undefined ? clip.effects.scale : 1) * aState.animScale);
+                    const rotate = window.getInterpolatedValue(clip, 'rotate', clip.effects.rotate !== undefined ? clip.effects.rotate : 0) + (aState.animRot || 0) * 180 / Math.PI;
+                    const offsetX = window.getInterpolatedValue(clip, 'offsetX', clip.effects.offsetX || 0);
+                    const offsetY = window.getInterpolatedValue(clip, 'offsetY', clip.effects.offsetY || 0);
+                    const pX = (offsetX * canvas.width) / 100 + (aState.animX || 0);
+                    const pY = (offsetY * canvas.height) / 100 + (aState.animY || 0);
+
+                    const cx = canvas.width/2 + pX;
+                    const cy = canvas.height/2 + pY;
+
+                    let mx = pos.x - cx;
+                    let my = pos.y - cy;
+
+                    const rad = -rotate * Math.PI / 180;
+                    const rmx = mx * Math.cos(rad) - my * Math.sin(rad);
+                    const rmy = mx * Math.sin(rad) + my * Math.cos(rad);
+
+                    const smx = rmx / scale;
+                    const smy = rmy / scale;
+
+                    if (clip.type === 'draw') {
+                        // Hit-test against the ink's true bbox (canvas px), including the
+                        // animated transform like every other clip type. The bbox is NOT
+                        // centered on the clip origin (later strokes extend asymmetrically),
+                        // so the comparison uses the bbox's own local center.
+                        const b = drawClipBounds(clip);
+                        const inkK = canvas.width / DRAW_BASE_W;
+                        const bScaledCx = b.cx * inkK, bScaledCy = b.cy * inkK;
+                        const bScaledW = b.w * inkK, bScaledH = b.h * inkK;
+                        const _bmx = smx - bScaledCx, _bmy = smy - bScaledCy;
+                        if (_bmx >= -bScaledW/2 && _bmx <= bScaledW/2 && _bmy >= -bScaledH/2 && _bmy <= bScaledH/2) {
+                            clickedClip = clip;
+                            break;
+                        }
+                        continue;
+                    }
+
                     if (clip.type === 'text') {
                         const ctx = canvas.getContext('2d');
                         ctx.font = `${clip.effects.fontWeight} 100px "${clip.effects.fontFamily}"`;
@@ -28692,6 +29099,21 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     } else if (clip.type === 'shape') {
                         dw = clip.effects.shapeWidth || 200;
                         dh = clip.effects.shapeHeight || 200;
+                    } else if (clip.type === 'draw') {
+                        // Hit-test against the ink's true bbox (canvas px), including the
+                        // animated transform like every other clip type. The bbox is NOT
+                        // centered on the clip origin (later strokes extend asymmetrically),
+                        // so the comparison uses the bbox's own local center.
+                        const b = drawClipBounds(clip);
+                        const inkK = canvas.width / DRAW_BASE_W;
+                        const bScaledCx = b.cx * inkK, bScaledCy = b.cy * inkK;
+                        const bScaledW = b.w * inkK, bScaledH = b.h * inkK;
+                        const _bmx = smx - bScaledCx, _bmy = smy - bScaledCy;
+                        if (_bmx >= -bScaledW/2 && _bmx <= bScaledW/2 && _bmy >= -bScaledH/2 && _bmy <= bScaledH/2) {
+                            clickedClip = clip;
+                            break;
+                        }
+                        continue;
                     } else if (clip.type === 'html' || clip.type === 'hic') {
                         // HTML/HIC clips render at canvas resolution — use canvas size for hit-test
                         dw = canvas.width;
@@ -28747,32 +29169,11 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                         }
                     }
 
-                    // Hit-test with the SAME animated transform drawCanvas uses, so
-                    // clicking a clip mid-animation (slide / zoom / spin / keyframes)
-                    // selects it instantly. Without this the clickable region sits at
-                    // the static resting pose while the element renders elsewhere.
-                    const clipTime = State.currentTime - clip.start;
-                    const timeLeft = clip.duration - clipTime;
-                    const aState = calculateAnimationState(clip, clipTime, timeLeft, canvas.width, canvas.height);
-                    const scale = Math.max(0.0001, window.getInterpolatedValue(clip, 'scale', clip.effects.scale !== undefined ? clip.effects.scale : 1) * aState.animScale);
-                    const rotate = window.getInterpolatedValue(clip, 'rotate', clip.effects.rotate !== undefined ? clip.effects.rotate : 0) + (aState.animRot || 0) * 180 / Math.PI;
-                    const offsetX = window.getInterpolatedValue(clip, 'offsetX', clip.effects.offsetX || 0);
-                    const offsetY = window.getInterpolatedValue(clip, 'offsetY', clip.effects.offsetY || 0);
-                    const pX = (offsetX * canvas.width) / 100 + (aState.animX || 0);
-                    const pY = (offsetY * canvas.height) / 100 + (aState.animY || 0);
-
-                    const cx = canvas.width/2 + pX;
-                    const cy = canvas.height/2 + pY;
-
-                    let mx = pos.x - cx;
-                    let my = pos.y - cy;
-
-                    const rad = -rotate * Math.PI / 180;
-                    const rmx = mx * Math.cos(rad) - my * Math.sin(rad);
-                    const rmy = mx * Math.sin(rad) + my * Math.cos(rad);
-
-                    const smx = rmx / scale;
-                    const smy = rmy / scale;
+                    // Hit-test with the SAME animated transform drawCanvas uses (hoisted
+                    // above the type chain), so clicking a clip mid-animation (slide /
+                    // zoom / spin / keyframes) selects it instantly. Without this the
+                    // clickable region sits at the static resting pose while the element
+                    // renders elsewhere.
 
                     if (smx >= -dw/2 && smx <= dw/2 && smy >= -dh/2 && smy <= dh/2) {
                         clickedClip = clip;
@@ -28836,6 +29237,20 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             });
 
             window.addEventListener('mousemove', (e) => {
+                // ── Draw mode: live ink follows the cursor ──
+                if (State.drawMode) {
+                    const pos = getCanvasMousePos(e);
+                    if (State.drawPoints) {
+                        const last = State.drawPoints[State.drawPoints.length - 1];
+                        if (!last || Math.hypot(pos.x - last.x, pos.y - last.y) > 1.5) {
+                            State.drawPoints.push(pos);
+                            drawCanvas();
+                        }
+                    } else {
+                        State.drawHoverPt = pos; // silent: no per-move canvas redraw
+                    }
+                    return;
+                }
                 if (State.dragKeyframe) {
                     const clip = State.clips.find(c => c.id === State.dragKeyframe.clipId);
                     if (clip && clip.keyframes) {
@@ -28914,7 +29329,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 }
             });
 
-            window.addEventListener('mouseup', () => {
+            window.addEventListener('mouseup', (e) => {
                 if (State.dragKeyframe) {
                     const clip = State.clips.find(c => c.id === State.dragKeyframe.clipId);
                     if (clip && clip.keyframes) {
@@ -28941,6 +29356,17 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     const cur = snapshotClipEdits(Object.keys(dragSnap.clips));
                     if (JSON.stringify(cur) !== JSON.stringify(dragSnap)) pushUndo(dragSnap);
                     canvasDrag.beforeSnapshot = null;
+                }
+                // Draw mode: commit the finished stroke into the session clip
+                if (State.drawMode && State.drawPoints) {
+                    // Append the release position so the stroke ends exactly where the
+                    // user lifted the pen and the first-stroke bbox center is true.
+                    const endPos = getCanvasMousePos(e);
+                    const lastPt = State.drawPoints[State.drawPoints.length - 1];
+                    if (!lastPt || Math.hypot(endPos.x - lastPt.x, endPos.y - lastPt.y) > 0.5) State.drawPoints.push(endPos);
+                    finishDrawStroke();
+                    State.drawHoverPt = null;
+                    return;
                 }
                 canvasDrag.active = false;
                 document.getElementById('renderCanvas').classList.remove('dragging');
