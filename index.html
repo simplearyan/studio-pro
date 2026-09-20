@@ -6735,7 +6735,20 @@
                         if (State.drawMode && State.drawSessionClipId === clip.id && State.drawPoints && State.drawPoints.length > 0) {
                             const fx = clip.effects;
                             const refPx = w / 2 + (offsetX * w) / 100, refPy = h / 2 + (offsetY * h) / 100;
-                            const relPts = smoothDrawPoints(State.drawPoints, (fx.drawTool === 'eraser') ? 0 : 2).map(p => ({ x: p.x - refPx, y: p.y - refPy }));
+                            // Preview in the SAME local frame the stroke will commit to:
+                            // un-rotate by the clip's animated rotation and un-scale by
+                            // its animated scale (with flips), so the in-progress ink
+                            // tracks the cursor exactly on rotated/scaled/flipped clips.
+                            const radP = -(rotate + (aState.animRot || 0) * 180 / Math.PI) * Math.PI / 180;
+                            const cosP = Math.cos(radP), sinP = Math.sin(radP);
+                            const sclP = Math.max(0.0001, finalScale);
+                            const flHp = (fx.flipH ? -1 : 1), flVp = (fx.flipV ? -1 : 1);
+                            const relPts = smoothDrawPoints(State.drawPoints, (fx.drawTool === 'eraser') ? 0 : 2).map(p => {
+                                const vx = p.x - refPx, vy = p.y - refPy;
+                                const rx = vx * cosP - vy * sinP;
+                                const ry = vx * sinP + vy * cosP;
+                                return { x: rx / (sclP * flHp), y: ry / (sclP * flVp) };
+                            });
                             ctx.save();
                             ctx.globalAlpha *= 0.85;
                             renderDrawStroke(ctx, { tool: fx.drawTool, color: fx.drawColor, size: fx.drawSize, points: relPts }, clip.seed || 1);
@@ -25185,13 +25198,28 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 // ALL strokes are stored relative to the CURRENT offsets-derived render
                 // center, so committed ink renders exactly where drawn and a mid-session
                 // drag carries the whole drawing (thumb-maker's center-relative trick).
+                // The stored frame is the clip's LOCAL space (post-rotation), so restroke
+                // works on rotated/scaled/flipped clips: screen deltas are un-rotated by
+                // the clip's current animated rotation and divided by its animated scale.
                 const refCx = cw / 2 + (fx.offsetX || 0) / 100 * cw;
                 const refCy = chh / 2 + (fx.offsetY || 0) / 100 * chh;
+                const aStateDraw = calculateAnimationState(clip, State.currentTime - clip.start, clip.duration - (State.currentTime - clip.start), cw, chh);
+                const rotDeg = (fx.rotate || 0) + (aStateDraw.animRot || 0) * 180 / Math.PI;
+                const radD = -rotDeg * Math.PI / 180;
+                const cosD = Math.cos(radD), sinD = Math.sin(radD);
+                const sclD = Math.max(0.0001, (fx.scale || 1) * (aStateDraw.animScale || 1));
+                const flH = (fx.flipH ? -1 : 1), flV = (fx.flipV ? -1 : 1);
                 clip.strokes.push({
                     tool: fx.drawTool || 'pen',
                     color: fx.drawColor || '#ff3b6b',
                     size: fx.drawSize || 6,
-                    points: pts2.map(p => ({ x: p.x - refCx, y: p.y - refCy }))
+                    points: pts2.map(p => {
+                        // invert screen→local: un-rotate first, then un-scale/un-flip
+                        const vx = p.x - refCx, vy = p.y - refCy;
+                        const rx = vx * cosD - vy * sinD;
+                        const ry = vx * sinD + vy * cosD;
+                        return { x: rx / (sclD * flH), y: ry / (sclD * flV) };
+                    })
                 });
                 State.drawPoints = null;
                 State.selectedClipId = clip.id;
