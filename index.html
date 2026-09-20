@@ -6754,11 +6754,16 @@
                                 const ly = bounds.cy * inkScale * finalScale * (clip.effects.flipV ? -1 : 1);
                                 const boxCx = cx + Math.cos(rad2) * lx - Math.sin(rad2) * ly;
                                 const boxCy = cy + Math.sin(rad2) * lx + Math.cos(rad2) * ly;
-                                const pad = 20;
-                                const w_box = bounds.w * inkScale * scaleUI * finalScale + pad;
-                                const h_box = bounds.h * inkScale * scaleUI * finalScale + pad;
                                 const cx_ui = boxCx * scaleUI;
                                 const cy_ui = boxCy * scaleUI;
+                                // Thumb-maker-style selection: hairline solid ring, white
+                                // circular corner handles, and a rotate stem — no dashes,
+                                // no glow, no radius. Pure ink-true bounds (the bounds
+                                // already include the stroke radius), tiny 8px pad so
+                                // handles get breathing room over thick strokes.
+                                const pad = 8;
+                                const w_box = bounds.w * inkScale * scaleUI * finalScale + pad;
+                                const h_box = bounds.h * inkScale * scaleUI * finalScale + pad;
                                 const box = document.createElement('div');
                                 box.style.position = 'absolute';
                                 box.style.left = cx_ui + 'px';
@@ -6766,9 +6771,19 @@
                                 box.style.width = w_box + 'px';
                                 box.style.height = h_box + 'px';
                                 box.style.transform = 'translate(-50%, -50%) rotate(' + boxRot + 'deg)';
-                                box.style.border = '2px dashed #6366f1';
-                                box.style.boxShadow = '0 0 10px rgba(99, 102, 241, 0.4)';
-                                box.style.borderRadius = '6px';
+                                box.style.border = '2px solid #6366f1';
+                                const hs = 10, ho = -5; // handle size / corner offset
+                                const hw = 2;           // handle ring width
+                                const stemH = 26, ballR = 5;
+                                const stemColor = '#6366f1';
+                                const corner = (pos) => `<div style="position:absolute;${pos};width:${hs}px;height:${hs}px;background:white;border:${hw}px solid ${stemColor};border-radius:50%;"></div>`;
+                                box.innerHTML =
+                                    corner(`top:${ho}px;left:${ho}px`) +
+                                    corner(`top:${ho}px;right:${ho}px`) +
+                                    corner(`bottom:${ho}px;left:${ho}px`) +
+                                    corner(`bottom:${ho}px;right:${ho}px`) +
+                                    `<div style="position:absolute;top:-${stemH}px;left:50%;transform:translateX(-50%);width:2px;height:${stemH}px;background:${stemColor};"></div>` +
+                                    `<div style="position:absolute;top:-${stemH + ballR * 2 + 2}px;left:50%;transform:translateX(-50%);width:${ballR * 2}px;height:${ballR * 2}px;border-radius:50%;background:${stemColor};border:2px solid white;box-sizing:content-box;"></div>`;
                                 container.appendChild(box);
                             }
                         }
