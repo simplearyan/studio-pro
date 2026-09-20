@@ -6672,16 +6672,58 @@
 
                         const isSelected = !State.isExporting && (clip.id === State.selectedClipId || (State.multiSelectedClipIds && State.multiSelectedClipIds.includes(clip.id)));
                         const bounds = drawClipBounds(clip);
-                        (clip.strokes || []).forEach((s, si) => {
-                            // Selection pass: fat translucent halo behind the selected stroke
-                            if (isSelected) {
-                                ctx.save();
-                                ctx.globalAlpha = (aState.animAlpha * (opacity / 100)) * 0.18;
-                                renderDrawStroke(ctx, { ...s, size: s.size + 10 / inkScale, color: '#6366f1' }, (clip.seed || 1) + si * 7919);
-                                ctx.restore();
-                            }
-                            renderDrawStroke(ctx, s, (clip.seed || 1) + si * 7919);
-                        });
+                        // Draw-on reveal: drawReveal seconds (0 = off) spreads the ink
+                        // budget across the clip's full path length, strokes in order.
+                        // clipTimeInk is seconds (State.currentTime/clip.start units) and
+                        // drawReveal is seconds — no unit conversion anywhere.
+                        const revealDur = (clip.effects.drawReveal || 0);
+                        const clipTimeInk = State.currentTime - clip.start;
+                        let inkBudget = Infinity;
+                        if (revealDur > 0) {
+                            const prog = revealDur > 0 ? Math.max(0, Math.min(1, clipTimeInk / revealDur)) : 1;
+                            // ease-out so the pen starts brisk and settles — reads as handwriting
+                            const eased = 1 - Math.pow(1 - prog, 2);
+                            inkBudget = drawClipInkLength(clip) * eased; // eslint-disable-line
+                        }
+                        const drawStrokes = clip.strokes || [];
+                        const inkAlpha = aState.animAlpha * (opacity / 100);
+                        const paintStrokes = (target, withHalo) => {
+                            let pool = inkBudget;
+                            drawStrokes.forEach((s, si) => {
+                                const budget = (inkBudget === Infinity) ? undefined : (() => { const L = strokeInkLen(s); const b = Math.max(0, pool); pool -= Math.min(b, L); return b; })();
+                                // Selection pass: fat translucent halo behind the selected stroke
+                                if (withHalo) {
+                                    target.save();
+                                    target.globalAlpha = inkAlpha * 0.18;
+                                    renderDrawStroke(target, { ...s, size: s.size + 10 / inkScale, color: '#6366f1' }, (clip.seed || 1) + si * 7919, budget);
+                                    target.restore();
+                                }
+                                renderDrawStroke(target, s, (clip.seed || 1) + si * 7919, budget);
+                            });
+                        };
+                        if (drawStrokes.some(s => (s.tool || 'pen') === 'eraser')) {
+                            // Clip-scoped erasing: the clip's strokes render into a scratch
+                            // buffer first, so destination-out only bites this clip's own
+                            // ink — the shared canvas, the background, and clips beneath
+                            // are never touched. Alpha applies once at blit time.
+                            const scratch = getDrawScratch(w, h);
+                            const sctx = scratch.getContext('2d');
+                            sctx.setTransform(1, 0, 0, 1, 0, 0);
+                            sctx.clearRect(0, 0, w, h);
+                            sctx.globalAlpha = 1;
+                            sctx.globalCompositeOperation = 'source-over';
+                            sctx.translate(cx, cy);
+                            sctx.rotate((rotate * Math.PI / 180) + aState.animRot);
+                            sctx.scale(finalScale * (clip.effects.flipH ? -1 : 1), finalScale * (clip.effects.flipV ? -1 : 1));
+                            sctx.scale(inkScale, inkScale);
+                            paintStrokes(sctx, isSelected);
+                            const prevTf = ctx.getTransform();
+                            ctx.setTransform(1, 0, 0, 1, 0, 0);
+                            ctx.drawImage(scratch, 0, 0);
+                            ctx.setTransform(prevTf);
+                        } else {
+                            paintStrokes(ctx, isSelected);
+                        }
 
                         // Live in-progress stroke preview (draw mode only).
                         // Relative to the clip's interpolated render center so the preview
@@ -6689,7 +6731,7 @@
                         if (State.drawMode && State.drawSessionClipId === clip.id && State.drawPoints && State.drawPoints.length > 0) {
                             const fx = clip.effects;
                             const refPx = w / 2 + (offsetX * w) / 100, refPy = h / 2 + (offsetY * h) / 100;
-                            const relPts = State.drawPoints.map(p => ({ x: p.x - refPx, y: p.y - refPy }));
+                            const relPts = smoothDrawPoints(State.drawPoints, (fx.drawTool === 'eraser') ? 0 : 2).map(p => ({ x: p.x - refPx, y: p.y - refPy }));
                             ctx.save();
                             ctx.globalAlpha *= 0.85;
                             renderDrawStroke(ctx, { tool: fx.drawTool, color: fx.drawColor, size: fx.drawSize, points: relPts }, clip.seed || 1);
@@ -9112,8 +9154,56 @@
                     c.lineCap = 'round';
                     c.lineJoin = 'round';
                     c.beginPath(); c.moveTo(sx, sy); c.lineTo(ex, ey); c.stroke();
+                } },
+            eraser: { label: 'Eraser', minSize: 5, maxSize: 120, defSize: 30, hasTexture: false, hasAngle: false,
+                seg: (c, sx, sy, ex, ey, st) => {
+                    // Clip-scoped erase: destination-out only bites pixels painted
+                    // earlier in this render pass — draw clips containing eraser
+                    // strokes are routed through an offscreen buffer by the renderer,
+                    // so the background and other clips are never touched.
+                    c.globalCompositeOperation = 'destination-out';
+                    c.strokeStyle = '#000';
+                    c.lineWidth = st.size;
+                    c.lineCap = 'round';
+                    c.lineJoin = 'round';
+                    c.beginPath(); c.moveTo(sx, sy); c.lineTo(ex, ey); c.stroke();
                 } }
         };
+
+        // Restroke polish: light smoothing applied when a stroke commits — the
+        // recorded mouse path keeps hand jitter; two passes of an endpoint-pinned
+        // weighted average ([0.25, 0.5, 0.25]) relax kinks without shrinking the
+        // stroke's overall shape. First/last points are preserved exactly so the
+        // stroke still starts and ends precisely where the pen did.
+        function smoothDrawPoints(pts, passes) {
+            const n = passes || 2;
+            if (!pts || pts.length < 3) return pts;
+            let src = pts;
+            for (let pass = 0; pass < n; pass++) {
+                const out = [src[0]];
+                for (let i = 1; i < src.length - 1; i++) {
+                    out.push({
+                        x: src[i].x * 0.5 + (src[i - 1].x + src[i + 1].x) * 0.25,
+                        y: src[i].y * 0.5 + (src[i - 1].y + src[i + 1].y) * 0.25
+                    });
+                }
+                out.push(src[src.length - 1]);
+                src = out;
+            }
+            return src;
+        }
+
+        // Shared offscreen buffer for clip-scoped erasing. Reused across frames
+        // (resized on demand) so eraser clips don't allocate per frame.
+        let drawScratchCanvas = null;
+        function getDrawScratch(w, h) {
+            if (!drawScratchCanvas) drawScratchCanvas = document.createElement('canvas');
+            if (drawScratchCanvas.width !== w || drawScratchCanvas.height !== h) {
+                drawScratchCanvas.width = w;
+                drawScratchCanvas.height = h;
+            }
+            return drawScratchCanvas;
+        }
 
         // Mulberry32 — tiny seeded PRNG so any future noise-based brush stays
         // frame-seekable (MarkerForge's live p.random() would break export parity).
@@ -9129,32 +9219,76 @@
 
         // Renders one stroke's polylines into an ALREADY-TRANSFORMED ctx
         // (caller applied translate/rotate/scale). All coords are center-relative.
-        function renderDrawStroke(c, stroke, seed) {
+        function renderDrawStroke(c, stroke, seed, upTo) {
             const pts = stroke.points;
             if (!pts || pts.length === 0) return;
             const brush = drawBrushes[stroke.tool || 'pen'] || drawBrushes.pen;
             const st = { color: stroke.color || '#ff3b6b', size: Math.max(0.5, stroke.size || 6), texture: stroke.texture || 0, angle: stroke.angle || 45 };
             const rng = drawRng(seed);
-            c.beginPath();
-            c.moveTo(pts[0].x, pts[0].y);
-            for (let i = 1; i < pts.length; i++) c.lineTo(pts[i].x, pts[i].y);
+            // Partial rendering budget: upTo (if set) limits rendered path length so
+            // the draw-on reveal can walk the ink progressively. Deterministic per frame.
+            let budget = (upTo === undefined || upTo === null) ? Infinity : Math.max(0, upTo);
             c.save();
             if (pts.length === 1) {
-                // A click without a drag still draws a dot
-                c.fillStyle = st.color;
-                c.beginPath();
-                c.arc(pts[0].x, pts[0].y, st.size / 2, 0, Math.PI * 2);
-                c.fill();
-            } else {
-                for (let i = 1; i < pts.length; i++) brush.seg(c, pts[i - 1].x, pts[i - 1].y, pts[i].x, pts[i].y, st, rng);
+                // A click without a drag still draws a dot (revealed when budget > 0)
+                if (budget > 0) {
+                    if ((stroke.tool || 'pen') === 'eraser') c.globalCompositeOperation = 'destination-out';
+                    c.fillStyle = st.color;
+                    c.beginPath();
+                    c.arc(pts[0].x, pts[0].y, st.size / 2, 0, Math.PI * 2);
+                    c.fill();
+                }
+                c.restore();
+                return;
+            }
+            for (let i = 1; i < pts.length && budget > 0; i++) {
+                const ax = pts[i - 1].x, ay = pts[i - 1].y, bx = pts[i].x, by = pts[i].y;
+                const segLen = Math.hypot(bx - ax, by - ay);
+                if (segLen <= budget) {
+                    brush.seg(c, ax, ay, bx, by, st, rng);
+                    budget -= segLen;
+                } else {
+                    const k = segLen > 0 ? budget / segLen : 0;
+                    brush.seg(c, ax, ay, ax + (bx - ax) * k, ay + (by - ay) * k, st, rng);
+                    budget = 0;
+                }
             }
             c.restore();
         }
 
-        // Bounding box (center-relative local space) across every stroke of a clip
+        // Per-stroke path length (local units) — shared by the reveal budget walker.
+        function strokeInkLen(s) {
+            const pts = s.points || [];
+            if (pts.length === 1) return (s.size || 6) * 2;
+            let L = 0;
+            for (let i = 1; i < pts.length; i++) L += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+            return L;
+        }
+
+        // True ink strokes only — eraser strokes remove pixels, they don't define
+        // the drawing's bounds, hit area, or reveal length.
+        function drawVisibleStrokes(clip) {
+            return (clip.strokes || []).filter(s => (s.tool || 'pen') !== 'eraser');
+        }
+
+        // Total ink path length across a clip's strokes (local units). Eraser strokes
+        // count too — during a draw-on reveal the wipe itself sweeps in recorded
+        // stroke order, so it must claim budget or it would never erase.
+        function drawClipInkLength(clip) {
+            let total = 0;
+            (clip.strokes || []).forEach(s => {
+                const pts = s.points || [];
+                if (pts.length === 1) { total += (s.size || 6) * 2; return; } // dot costs a little
+                for (let i = 1; i < pts.length; i++) total += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+            });
+            return total;
+        }
+
+        // Bounding box (center-relative local space) across a clip's VISIBLE
+        // strokes — eraser footprints never inflate the selectable area.
         function drawClipBounds(clip) {
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-            (clip.strokes || []).forEach(s => {
+            drawVisibleStrokes(clip).forEach(s => {
                 const r = (s.size || 6) / 2 + 1;
                 (s.points || []).forEach(p => {
                     if (p.x - r < minX) minX = p.x - r;
@@ -12174,6 +12308,9 @@
                     </div>
                     ${colorRow('drawColor', fx.drawColor || '#ff3b6b', 'Ink Color')}
                     ${propRow('Brush Size', propSlider('drawSize', fx.drawSize || 6, 1, 60, 1, "this.value + 'px'"), (fx.drawSize || 6) + 'px', { reset: propReset('drawSize', fx.drawSize || 6, 6) })}
+                    ${propRow('Draw-On Reveal', propSlider('drawReveal', fx.drawReveal || 0, 0, 10, 0.1, "this.value > 0 ? parseFloat(this.value).toFixed(1) + 's' : 'Off'"), (fx.drawReveal || 0) > 0 ? parseFloat(fx.drawReveal).toFixed(1) + 's' : 'Off', { reset: propReset('drawReveal', fx.drawReveal || 0, 0) })}
+                    ${(fx.drawReveal || 0) > 0 ? `<div class="text-[10px] text-brand-600 dark:text-brand-400 leading-snug">strokes draw themselves over ${parseFloat(fx.drawReveal).toFixed(1)}s after the clip starts</div>` : ''}
+                    ${fx.drawTool === 'eraser' ? `<div class="text-[10px] text-amber-600 dark:text-amber-400 leading-snug">Eraser only erases ink in this drawing — the canvas and other clips are untouched.</div>` : ''}
                     <div class="text-[10px] text-surface-500 dark:text-surface-300 leading-snug">
                         ${_strokes.length} stroke${_strokes.length === 1 ? '' : 's'} · color/size apply to <b>new</b> strokes
                     </div>
@@ -24964,12 +25101,16 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 const pts = State.drawPoints;
                 if (pts.length === 0) { State.drawPoints = null; return; }
                 const fx = clip.effects;
+                // Restroke polish: smooth the recorded path before it becomes ink so
+                // hand jitter relaxes without moving the stroke's start/end. The eraser
+                // skips smoothing — its preview must match its erase footprint exactly.
+                const pts2 = (fx.drawTool === 'eraser') ? pts : smoothDrawPoints(pts);
                 const cw = renderCanvasEl.width, chh = renderCanvasEl.height;
                 if (clip.strokes.length === 0) {
                     // First stroke: adopt its bbox center as the clip's render center
                     // (offsets are the render source of truth, same as every clip type).
                     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-                    pts.forEach(p => { if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x; if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y; });
+                    pts2.forEach(p => { if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x; if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y; });
                     const scx = (minX + maxX) / 2, scy = (minY + maxY) / 2;
                     fx.offsetX = ((scx - cw / 2) / cw) * 100;
                     fx.offsetY = ((scy - chh / 2) / chh) * 100;
@@ -24983,7 +25124,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     tool: fx.drawTool || 'pen',
                     color: fx.drawColor || '#ff3b6b',
                     size: fx.drawSize || 6,
-                    points: pts.map(p => ({ x: p.x - refCx, y: p.y - refCy }))
+                    points: pts2.map(p => ({ x: p.x - refCx, y: p.y - refCy }))
                 });
                 State.drawPoints = null;
                 State.selectedClipId = clip.id;
