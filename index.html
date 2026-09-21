@@ -9329,6 +9329,14 @@
             // Without this, the partial-prefix branch below would build a
             // single-point path, which getStroke renders as a stray touchdown dot.
             if (budget <= 0) return false;
+            // Float-dust guard: a budget covering the full path must render the
+            // EXACT same outline as an infinite budget. The pool hand-off between
+            // strokes (total - L1 vs L2) can miss the true length by ~1e-13, which
+            // would otherwise route the last segment through the partial branch
+            // with k≈1-ε and shift the whole tapered outline sub-pixel.
+            let totalLen = 0;
+            for (let i = 1; i < pts.length; i++) totalLen += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+            if (budget >= totalLen - 1e-6) return drawBrushes.pen.path(c, pts, st);
             let acc = 0, end = 1;
             while (end < pts.length) {
                 const segLen = Math.hypot(pts[end].x - pts[end - 1].x, pts[end].y - pts[end - 1].y);
@@ -36687,6 +36695,7 @@ Output ONLY the markdown script. No explanation. No code fences.`;
                     const doneResult = await new Promise((resolve, reject) => {
                         const finalizeDoneHandler = (e) => {
                             if (e.data.type === 'done') {
+                                clearTimeout(timeoutId);
                                 worker.removeEventListener('message', finalizeDoneHandler);
                                 worker.removeEventListener('message', finalizeErrorHandler);
                                 resolve(e.data);
@@ -36694,6 +36703,7 @@ Output ONLY the markdown script. No explanation. No code fences.`;
                         };
                         const finalizeErrorHandler = (e) => {
                             if (e.data.type === 'error') {
+                                clearTimeout(timeoutId);
                                 worker.removeEventListener('message', finalizeDoneHandler);
                                 worker.removeEventListener('message', finalizeErrorHandler);
                                 reject(new Error(e.data.error));
@@ -37232,8 +37242,14 @@ Output ONLY the markdown script. No explanation. No code fences.`;
                 worker.postMessage({ type: 'finalize' });
                 try {
                     const doneResult = await new Promise((resolve, reject) => {
+                        const finalizeTimeoutId = setTimeout(() => {
+                            worker.removeEventListener('message', doneHandler);
+                            worker.removeEventListener('message', errHandler);
+                            reject(new Error('Finalize timed out after 120 seconds'));
+                        }, 120000);
                         const doneHandler = (e) => {
                             if (e.data.type === 'done') {
+                                clearTimeout(finalizeTimeoutId);
                                 worker.removeEventListener('message', doneHandler);
                                 worker.removeEventListener('message', errHandler);
                                 resolve(e.data);
@@ -37241,6 +37257,7 @@ Output ONLY the markdown script. No explanation. No code fences.`;
                         };
                         const errHandler = (e) => {
                             if (e.data.type === 'error') {
+                                clearTimeout(finalizeTimeoutId);
                                 worker.removeEventListener('message', doneHandler);
                                 worker.removeEventListener('message', errHandler);
                                 reject(new Error(e.data.error));
@@ -37248,11 +37265,6 @@ Output ONLY the markdown script. No explanation. No code fences.`;
                         };
                         worker.addEventListener('message', doneHandler);
                         worker.addEventListener('message', errHandler);
-                        setTimeout(() => {
-                            worker.removeEventListener('message', doneHandler);
-                            worker.removeEventListener('message', errHandler);
-                            reject(new Error('Finalize timed out after 120 seconds'));
-                        }, 120000);
                     });
                     const mimeType = format === 'mp4' ? 'video/mp4' : 'video/webm';
                     const ext = format === 'mp4' ? 'mp4' : 'webm';
