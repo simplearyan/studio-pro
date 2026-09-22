@@ -50,8 +50,21 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
 .modal-close:hover{background:#232b3b;color:#f1f5f9}
 .modal-body{overflow:auto;min-height:0}
 .modal-canvas-wrap{position:relative;background:#080b10;display:flex;align-items:center;justify-content:center}
-.modal-canvas-wrap canvas{width:100%;max-height:52vh;display:block}
+.modal-canvas-wrap canvas{width:auto;max-width:100%;max-height:52vh;display:block}
 .modal-controls{padding:12px 20px;display:flex;gap:12px;align-items:center;border-top:1px solid #1e2533;background:#131a26;flex-wrap:wrap}
+/* Aspect segmented control + background swatches (frame geometry controls) */
+.aspect-seg{display:inline-flex;border:1px solid #2d3748;border-radius:8px;overflow:hidden;background:#0d1320}
+.aspect-opt{padding:6px 9px;font-size:11px;font-weight:600;color:#8b95a8;background:transparent;border:none;cursor:pointer;font-family:'Rubik',sans-serif;transition:all .12s;line-height:1}
+.aspect-opt + .aspect-opt{border-left:1px solid #2d3748}
+.aspect-opt:hover{color:#e2e8f0;background:#1a2334}
+.aspect-opt.selected{background:#2563eb;color:#fff}
+.bg-row{display:inline-flex;gap:5px;align-items:center;padding:4px 6px;border:1px solid #2d3748;border-radius:8px;background:#0d1320}
+.bg-swatch{width:22px;height:22px;border-radius:5px;border:1px solid #3a4353;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;transition:transform .12s, box-shadow .12s;background:#1a2334}
+.bg-swatch:hover{transform:scale(1.12)}
+.bg-swatch.selected{box-shadow:0 0 0 2px #2563eb;border-color:#2563eb}
+.bg-custom{position:relative;width:22px;height:22px;border-radius:5px;border:1px dashed #4a90d9;display:inline-block;cursor:pointer;background:conic-gradient(#ef4444,#eab308,#22c55e,#3b82f6,#a855f7,#ef4444)}
+.bg-custom input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.bg-custom.selected{box-shadow:0 0 0 2px #2563eb;border-style:solid}
 .btn{padding:8px 14px;border-radius:8px;border:none;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;font-family:'Rubik',sans-serif;display:inline-flex;align-items:center;justify-content:center;gap:7px;line-height:1}
 .btn svg{display:block;flex-shrink:0}
 .btn-play{background:#2563eb;color:#fff;box-shadow:0 1px 3px rgba(37,99,235,.3);padding:9px 13px}
@@ -280,6 +293,22 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
                             <option value="1080" selected>1080p</option>
                             <option value="1440">1440p</option>
                         </select>
+                        <div class="aspect-seg" id="aspectSeg" role="group" aria-label="Frame aspect ratio">
+                            <button type="button" data-aspect="16:9" class="aspect-opt selected" title="Landscape 16:9">16:9</button>
+                            <button type="button" data-aspect="9:16" class="aspect-opt" title="Vertical 9:16">9:16</button>
+                            <button type="button" data-aspect="1:1" class="aspect-opt" title="Square 1:1">1:1</button>
+                            <button type="button" data-aspect="4:5" class="aspect-opt" title="Portrait 4:5">4:5</button>
+                        </div>
+                        <div class="bg-row" id="bgRow" title="Frame background (fills the bars around the design; Transparent keeps alpha in PNG/WebP exports)">
+                            <button type="button" class="bg-swatch bg-transparent selected" data-bg="transparent" title="Transparent">
+                                <svg width="12" height="12" viewBox="0 0 12 12"><rect x="0" y="0" width="6" height="6" fill="#9aa4b2"/><rect x="6" y="6" width="6" height="6" fill="#9aa4b2"/><rect x="6" y="0" width="6" height="6" fill="#3a4353"/><rect x="0" y="6" width="6" height="6" fill="#3a4353"/></svg>
+                            </button>
+                            <button type="button" class="bg-swatch" data-bg="#ffffff" title="White" style="background:#ffffff"></button>
+                            <button type="button" class="bg-swatch" data-bg="#0b0f1a" title="Dark" style="background:#0b0f1a"></button>
+                            <label class="bg-custom" title="Custom background color">
+                                <input type="color" id="bgCustom" value="#2563eb">
+                            </label>
+                        </div>
                         <div class="export-split" id="frameSplit">
                             <button class="btn btn-frame-main" id="frameBtn" title="Save current frame (PNG)">
                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
@@ -662,6 +691,19 @@ class Renderer {
     }
 
     drawTo(targetCtx, x, y, w, h) { targetCtx.drawImage(this.canvas, 0, 0, this.w, this.h, x, y, w, h); }
+    /* Composite onto an output-size ctx: background fill first, then the
+       800x450 design raster contain-fitted and centered. This is the single
+       choke point for frame geometry + bg — preview and both export paths
+       call it, so they can never disagree. */
+    drawFrame(ctx, fw, fh) {
+        ctx.clearRect(0, 0, fw, fh);
+        if (expBg !== 'transparent') { ctx.fillStyle = expBg; ctx.fillRect(0, 0, fw, fh); }
+        if (fw === W && fh === H) { this.drawTo(ctx, 0, 0, W, H); return; }
+        const k = Math.min(fw / W, fh / H);
+        const dw = Math.round(W * k), dh = Math.round(H * k);
+        ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+        this.drawTo(ctx, Math.round((fw - dw) / 2), Math.round((fh - dh) / 2), dw, dh);
+    }
 }
 
 /* Cache for embedded Google-Fonts stylesheets (keyed by css2 URL) — survives renderer rebuilds */
@@ -785,7 +827,31 @@ Object.keys(PRESETS).forEach(function(k) {
 /* ═══════════════════════════════════════════════════════════════
  * CARD GRID
  * ═══════════════════════════════════════════════════════════════ */
-const W = 800, H = 450;
+const W = 800, H = 450; /* design space — presets choreograph against this and never changes */
+
+/* ═════════════════════════════════════════════════════════════
+ * FRAME GEOMETRY — aspect + background of the OUTPUT frame.
+ * The 800x450 design space is contain-fitted inside the frame:
+ * a 9:16 export pillarboxes the design over the background color,
+ * so every preset stays pixel-correct and preview === export.
+ * Resolution = the frame's SHORT side ("1080p" works for every aspect).
+ * ═════════════════════════════════════════════════════════════ */
+const ASPECTS = {
+    '16:9': { rw: 16, rh: 9 },
+    '9:16': { rw: 9, rh: 16 },
+    '1:1':  { rw: 1, rh: 1 },
+    '4:5':  { rw: 4, rh: 5 }
+};
+let curAspect = '16:9';
+let expBg = 'transparent'; /* 'transparent' keeps alpha in PNG/WebP exports */
+function frameDims(shortSide) {
+    const a = ASPECTS[curAspect] || ASPECTS['16:9'];
+    let w, h;
+    if (a.rw >= a.rh) { h = shortSide; w = Math.round(shortSide * a.rw / a.rh); }
+    else { w = shortSide; h = Math.round(shortSide * a.rh / a.rw); }
+    if (w % 2) w++; if (h % 2) h++; /* encoders want even dimensions */
+    return { w, h };
+}
 const grid = document.getElementById('presetGrid');
 const modalOverlay = document.getElementById('modalOverlay');
 const modalTitle = document.getElementById('modalTitle');
@@ -843,6 +909,7 @@ function openModal(key) {
     _clipTitle = clipTitleFrom(p.html);
     modalTitle.textContent = _clipTitle || p.name;
     modalDuration.textContent = p.dur + 's • ' + W + '×' + H;
+    applyAspect(); /* size the canvas to the persisted frame before first paint */
     modalSlider.max = p.dur * 1000;
     modalSlider.value = 0;
     modalTime.textContent = '0.0s';
@@ -927,7 +994,7 @@ modalSlider.addEventListener('input', function() {
     modalTime.textContent = (t / 1000).toFixed(1) + 's';
     if (modalRenderer && modalRenderer._ready) {
         modalRenderer.renderFrame(t).then(ok => {
-            if (ok) modalRenderer.drawTo(modalCtx, 0, 0, W, H);
+            if (ok) modalRenderer.drawFrame(modalCtx, modalCanvas.width, modalCanvas.height);
         });
     }
 });
@@ -941,7 +1008,7 @@ async function tickModal() {
         try {
             if (modalRenderer && modalRenderer._ready) {
                 const ok = await modalRenderer.renderFrame(t);
-                if (ok) modalRenderer.drawTo(modalCtx, 0, 0, W, H);
+                if (ok) modalRenderer.drawFrame(modalCtx, modalCanvas.width, modalCanvas.height);
             }
         } catch(e) { console.error('[Modal] render error:', e); }
         await new Promise(r => requestAnimationFrame(r));
@@ -1363,7 +1430,7 @@ function exportStandalone() {
         + headTags.join('\n') + (headTags.length ? '\n' : '')
         + '<style>\n'
         + 'body{margin:0;background:#0b0f1a;min-height:100vh;display:grid;place-items:center;font-family:system-ui,sans-serif}\n'
-        + '#stage{width:800px;height:450px;position:relative;overflow:hidden;background:transparent}\n'
+        + '#stage{width:800px;height:450px;position:relative;overflow:hidden;background:' + (expBg === 'transparent' ? 'transparent' : expBg) + '}\n'
         + '#hic-pill{position:fixed;right:12px;bottom:12px;display:flex;gap:6px;z-index:9}\n'
         + '#hic-pill button{background:rgba(30,37,51,.85);color:#cbd5e1;border:1px solid #2d3748;border-radius:7px;padding:6px 10px;font-size:11px;cursor:pointer;font-family:system-ui}\n'
         + '#hic-pill button:hover{color:#f1f5f9;border-color:#3b82f6}\n'
@@ -1818,10 +1885,10 @@ aiReply.addEventListener('paste', function() {
 
 const resSelect = document.getElementById('resSelect');
 const RESOLUTIONS = {
-    '480': { w: 854, h: 480 },
-    '720': { w: 1280, h: 720 },
-    '1080': { w: 1920, h: 1080 },
-    '1440': { w: 2560, h: 1440 }
+    '480': { w: 854, h: 480, n: 480 },
+    '720': { w: 1280, h: 720, n: 720 },
+    '1080': { w: 1920, h: 1080, n: 1080 },
+    '1440': { w: 2560, h: 1440, n: 1440 }
 };
 
 /* ═══════════════════════════════════════════════════════════════
@@ -1845,7 +1912,8 @@ const videoMenu = document.getElementById('videoMenu');
 const exportSplit = document.getElementById('exportSplit');
 const FMT_META = { png: { ext: 'png', mime: 'image/png', label: 'PNG' }, jpeg: { ext: 'jpg', mime: 'image/jpeg', label: 'JPG' }, webp: { ext: 'webp', mime: 'image/webp', label: 'WebP' } };
 
-/* Persisted preferences */
+/* Persisted preferences — frame geometry (aspect/bg) rides along with the
+   export prefs so a reload restores the exact preview composition. */
 const EXP_PREFS_KEY = 'hicExportPrefs';
 let lastFrameFmt = 'png', lastFps = 30;
 try {
@@ -1853,10 +1921,50 @@ try {
     if (FMT_META[saved.fmt]) lastFrameFmt = saved.fmt;
     if (saved.fps === 30 || saved.fps === 60) lastFps = saved.fps;
     if (RESOLUTIONS[saved.res]) resSelect.value = saved.res;
+    if (ASPECTS[saved.aspect]) curAspect = saved.aspect;
+    if (typeof saved.bg === 'string' && (saved.bg === 'transparent' || /^#[0-9a-fA-F]{6}$/.test(saved.bg))) expBg = saved.bg;
 } catch (e) { /* corrupted prefs — use defaults */ }
 function saveExpPrefs() {
-    try { localStorage.setItem(EXP_PREFS_KEY, JSON.stringify({ fmt: lastFrameFmt, fps: lastFps, res: resSelect.value })); } catch (e) { /* storage unavailable */ }
+    try { localStorage.setItem(EXP_PREFS_KEY, JSON.stringify({ fmt: lastFrameFmt, fps: lastFps, res: resSelect.value, aspect: curAspect, bg: expBg })); } catch (e) { /* storage unavailable */ }
 }
+
+/* Frame geometry UI + state → canvas. Called on aspect/bg change and on
+   modal open; the modal canvas always renders at the current FRAME size and
+   drawFrame() handles bg + contain-fit of the design raster. */
+function applyAspect() {
+    const fd = frameDims(parseInt(resSelect.value) || 1080);
+    modalCanvas.width = fd.w; modalCanvas.height = fd.h;
+    document.getElementById('aspectSeg').querySelectorAll('.aspect-opt').forEach(function(b) {
+        b.classList.toggle('selected', b.getAttribute('data-aspect') === curAspect);
+    });
+    const row = document.getElementById('bgRow');
+    row.querySelectorAll('.bg-swatch').forEach(function(s) { s.classList.toggle('selected', s.getAttribute('data-bg') === expBg); });
+    document.querySelector('.bg-custom').classList.toggle('selected', expBg !== 'transparent' && !row.querySelector('.bg-swatch.selected'));
+    if (modalRenderer && modalRenderer._ready) {
+        modalRenderer.renderFrame(parseInt(modalSlider.value) || 0).then(function(ok) { if (ok) modalRenderer.drawFrame(modalCtx, fd.w, fd.h); });
+    }
+    saveExpPrefs();
+}
+function applyBg() {
+    applyAspect(); /* bg rides the same composite path; one refresh covers both */
+}
+document.getElementById('aspectSeg').addEventListener('click', function(e) {
+    const b = e.target.closest('.aspect-opt');
+    if (!b || exporting) return;
+    curAspect = b.getAttribute('data-aspect');
+    applyAspect();
+});
+document.getElementById('bgRow').addEventListener('click', function(e) {
+    const s = e.target.closest('.bg-swatch');
+    if (!s || exporting) return;
+    expBg = s.getAttribute('data-bg');
+    applyBg();
+});
+document.getElementById('bgCustom').addEventListener('input', function() {
+    if (exporting) return;
+    expBg = this.value;
+    applyBg();
+});
 
 let exporting = false;
 
@@ -1883,7 +1991,7 @@ videoCaret.addEventListener('click', function(e) {
 document.addEventListener('click', function(e) {
     if (anyMenuOpen() && !exportCluster.contains(e.target)) closeMenus();
 });
-resSelect.addEventListener('change', function() { saveExpPrefs(); });
+resSelect.addEventListener('change', function() { applyAspect(); }); /* resolution also resizes the frame canvas */
 
 /* Selection state (checkmarks + tooltips) */
 function refreshExportUI() {
@@ -1921,29 +2029,47 @@ async function exportFrame(fmtKey) {
     frameBtn.querySelector('span').textContent = 'Rendering\u2026';
     let fr = null;
     try {
-        /* Detached renderer at export resolution (sandbox is offscreen) */
-        fr = new Renderer(res.w, res.h);
-        await fr.setClip(code.html, code.css, code.js);
-
-        /* Same wrapper fix as the WebM export: scale OUR 800x450 wrapper,
+        /* Detached renderer at export resolution (sandbox is offscreen).
+           Same wrapper fix as the WebM export: scale OUR 800x450 wrapper —
            never the preset's own first element (min-h-full / display:none
-           preset roots would break the geometry otherwise). */
-        const scaleX = res.w / W, scaleY = res.h / H;
+           preset roots would break the geometry otherwise) — and CENTER it
+           in the sandbox so non-16:9 frames contain-fit instead of clipping. */
+        const fd = frameDims(res.n);
+        fr = new Renderer(fd.w, fd.h);
+        await fr.setClip(code.html, code.css, code.js);
+        /* Uniform scale (never sx≠sy — that would stretch the design to the
+           frame aspect) + pre-scale translate to center: transform functions
+           apply right-to-left, so translate runs in unscaled px first. */
+        const k = Math.min(fd.w / W, fd.h / H);
+        const tx = (fd.w - k * W) / (2 * k), ty = (fd.h - k * H) / (2 * k);
         const wrap = document.createElement('div');
-        wrap.style.cssText = 'width:' + W + 'px;height:' + H + 'px;overflow:hidden;transform-origin:0 0;transform:scale(' + scaleX + ',' + scaleY + ');';
+        wrap.style.cssText = 'width:' + W + 'px;height:' + H + 'px;overflow:hidden;transform-origin:0 0;transform:scale(' + k + ') translate(' + tx + 'px,' + ty + 'px);';
         while (fr.sandbox.firstChild) { wrap.appendChild(fr.sandbox.firstChild); }
         fr.sandbox.appendChild(wrap);
-        fr.sandbox.style.width = res.w + 'px';
-        fr.sandbox.style.height = res.h + 'px';
+        fr.sandbox.style.width = fd.w + 'px';
+        fr.sandbox.style.height = fd.h + 'px';
         fr.sandbox.style.overflow = 'hidden';
 
         const okFlag = await fr.renderFrame(t);
         if (!okFlag) throw new Error('raster failed');
 
-        const url = fr.canvas.toDataURL(fmt.mime, 0.95);
+        /* The renderer rasterized design+wrapper directly at fd.w×fd.h. For a
+           solid bg, composite the raster OVER the fill (drawImage order keeps
+           the design's own opaque regions intact); transparent ships as-is —
+           PNG/WebP keep the real alpha. */
+        let out = fr.canvas;
+        if (expBg !== 'transparent') {
+            out = document.createElement('canvas');
+            out.width = fd.w; out.height = fd.h;
+            const octx = out.getContext('2d');
+            octx.fillStyle = expBg; octx.fillRect(0, 0, fd.w, fd.h);
+            octx.drawImage(fr.canvas, 0, 0);
+        }
+
+        const url = out.toDataURL(fmt.mime, 0.95);
         const a = document.createElement('a');
         a.href = url;
-        a.download = exportFileStem() + '_frame_' + t + 'ms_' + res.w + 'x' + res.h + '.' + fmt.ext;
+        a.download = exportFileStem() + '_frame_' + t + 'ms_' + fd.w + 'x' + fd.h + '.' + fmt.ext;
         document.body.appendChild(a); a.click(); document.body.removeChild(a);
         lastFrameFmt = fmtKey;
         saveExpPrefs();
@@ -1993,12 +2119,15 @@ async function startWebMExport() {
     const dur = p.dur || 5;
     const fps = lastFps;
 
-    /* Get export resolution */
+    /* Get export resolution + frame size for the current aspect */
     const res = RESOLUTIONS[resSelect.value] || RESOLUTIONS['1080'];
-    const expW = res.w;
-    const expH = res.h;
-    const scaleX = expW / W;
-    const scaleY = expH / H;
+    const fd = frameDims(res.n);
+    const expW = fd.w;
+    const expH = fd.h;
+    /* Uniform scale + centering translate (see frame export) — the design is
+       contain-fitted, never stretched. */
+    const kScale = Math.min(expW / W, expH / H);
+    const kTx = (expW - kScale * W) / (2 * kScale), kTy = (expH - kScale * H) / (2 * kScale);
 
     exporting = true;
     exportSplit.classList.add('recording');
@@ -2017,12 +2146,13 @@ async function startWebMExport() {
     modalRenderer = new Renderer(expW, expH);
     await modalRenderer.setClip(code.html, code.css, code.js);
 
-    /* Dedicated 800x450 scale wrapper: move ALL sandbox children into it and scale up.
+    /* Dedicated 800x450 scale wrapper: move ALL sandbox children into it, scale up,
+       and CENTER it so non-16:9 frames contain-fit the design instead of clipping.
        Styling the preset's own first element breaks when that element is display:none
        (MDX's hidden markdown source -> unscaled output) or uses min-h-full (Tailwind —
-       min-height:100% then resolves against the 1920x1080 sandbox, not 450px). */
+       min-height:100% then resolves against the export sandbox, not 450px). */
     const wrap = document.createElement('div');
-    wrap.style.cssText = 'width:' + W + 'px;height:' + H + 'px;overflow:hidden;transform-origin:0 0;transform:scale(' + scaleX + ',' + scaleY + ');';
+    wrap.style.cssText = 'width:' + W + 'px;height:' + H + 'px;overflow:hidden;transform-origin:0 0;transform:scale(' + kScale + ') translate(' + kTx + 'px,' + kTy + 'px);';
     while (modalRenderer.sandbox.firstChild) { wrap.appendChild(modalRenderer.sandbox.firstChild); }
     modalRenderer.sandbox.appendChild(wrap);
     modalRenderer.sandbox.style.width = expW + 'px';
@@ -2044,7 +2174,7 @@ async function startWebMExport() {
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = exportFileStem() + '_' + expW + 'x' + expH + '.webm';
+                a.download = exportFileStem() + '_' + expW + 'x' + expH + '_' + curAspect.replace(':', '') + '.webm';
                 document.body.appendChild(a); a.click(); document.body.removeChild(a);
                 setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
             } else { alert('Export failed — try again'); }
@@ -2052,9 +2182,9 @@ async function startWebMExport() {
             exportSplit.classList.remove('recording');
             [frameBtn, frameCaret, exportBtn, videoCaret, resSelect].forEach(function(el) { el.disabled = false; });
             exportBtn.querySelector('span').textContent = 'Export WebM';
-            /* Restore preview canvas to 800x450 */
-            modalCanvas.width = W;
-            modalCanvas.height = H;
+            /* Restore preview canvas to the current frame size */
+            modalCanvas.width = frameDims(parseInt(resSelect.value) || 1080).w;
+            modalCanvas.height = frameDims(parseInt(resSelect.value) || 1080).h;
             resolve();
         };
     });
@@ -2075,7 +2205,10 @@ async function startWebMExport() {
         modalTime.textContent = (t / 1000).toFixed(1) + 's';
         try {
             const ok = await modalRenderer.renderFrame(t);
-            if (ok) modalRenderer.drawTo(modalCtx, 0, 0, expW, expH);
+            if (ok) {
+                if (expBg !== 'transparent') { modalCtx.fillStyle = expBg; modalCtx.fillRect(0, 0, expW, expH); }
+                modalRenderer.drawTo(modalCtx, 0, 0, expW, expH);
+            }
         } catch(e) { console.error('[Export] frame error:', e); }
     }
 
@@ -2084,13 +2217,14 @@ async function startWebMExport() {
     recorder.stop();
     await done;
 
-    /* Rebuild preview renderer at 800x450 with the exported (applied) code —
+    /* Rebuild preview renderer at frame size with the exported (applied) code —
        using the preset here would snap the stage back to the old animation */
     if (modalRenderer) { modalRenderer.sandbox.remove(); }
+    const fdOut = frameDims(parseInt(resSelect.value) || 1080);
     modalRenderer = new Renderer(W, H);
     await modalRenderer.setClip(code.html, code.css, code.js);
     const ok = await modalRenderer.renderFrame(0);
-    if (ok) modalRenderer.drawTo(modalCtx, 0, 0, W, H);
+    if (ok) modalRenderer.drawFrame(modalCtx, fdOut.w, fdOut.h);
 }
 
 </script>
