@@ -1315,6 +1315,9 @@
             <button id="btnDrawMode" class="p-1.5 text-pink-600 dark:text-pink-400 hover:text-pink-900 dark:hover:text-pink-200 bg-pink-50 dark:bg-pink-900/30 rounded-md border border-pink-200 dark:border-pink-700 shadow-sm" title="Draw on canvas (Esc or click Select to finish)">
                 <i data-lucide="pencil" class="w-4 h-4"></i>
             </button>
+            <button id="btnAnnoLibrary" onclick="toggleAnnoFlyout(event)" class="p-1.5 text-rose-600 dark:text-rose-400 hover:text-rose-900 dark:hover:text-rose-200 bg-rose-50 dark:bg-rose-900/30 rounded-md border border-rose-200 dark:border-rose-700 shadow-sm" title="Hand-drawn annotation elements (stamp at playhead)">
+                <i data-lucide="pen-line" class="w-4 h-4"></i>
+            </button>
             <input type="file" id="mediaInput" accept="audio/*,video/*,image/*" class="hidden" multiple>
             <button id="btnImport" class="p-1.5 text-surface-600 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white bg-surface-100 dark:bg-surface-800 rounded-md border border-surface-200 dark:border-surface-700 shadow-sm" title="Import Media">
                 <i data-lucide="folder-plus" class="w-4 h-4"></i>
@@ -5640,6 +5643,7 @@
             return [
                 extra || '', e.shapeType, e.shapeWidth, e.shapeHeight, e.sides, e.points, e.innerRadiusRatio,
                 e.fillColor, e.strokeEnable, e.strokeColor, e.strokeWidth,
+                e.shapeSketch, e.shapeWobble, e.shapeBoil, e.sketchFill,
                 e.extrudeEnable, e.extrudeColor, e.extrudeDepth, e.extrudeDir,
                 e.shadowEnable, e.shadowColor, e.shadowBlur, e.shadowX, e.shadowY,
                 e.textureEnable, e.textureSrc, e.borderRadius,
@@ -6562,10 +6566,24 @@
                                 c.shadowBlur = 0;
                             }
 
-                            // Draw main shape Fill
-                            drawShapePath(c, shapeType, sw, sh, borderRadius);
-                            c.fillStyle = clip.effects.fillColor || '#ffbb00';
-                            c.fill();
+                            // Draw main shape Fill — unless a sketchy hachure fill
+                            // replaces it (hachure draws its own lines; a solid fill
+                            // beneath same-colored hachure would hide it entirely).
+                            const _sketchOn = (clip.effects.shapeSketch || 'off') !== 'off';
+                            if (!_sketchOn || clip.effects.sketchFill !== 'hachure') {
+                                drawShapePath(c, shapeType, sw, sh, borderRadius);
+                                c.fillStyle = clip.effects.fillColor || '#ffbb00';
+                                c.fill();
+                            }
+
+                            // Sketch overlay (Phase A): replaces the crisp outline with
+                            // hand-drawn passes and optionally re-fills hachure. The boil
+                            // bucket derives from CLIP time (not wall-clock) so seeking to
+                            // the same instant rasterizes identically — the wiggle comes
+                            // from the bucket changing as the playhead advances.
+                            if ((clip.effects.shapeSketch || 'off') !== 'off') {
+                                renderSketchShape(c, clip.effects, shapeType, sw, sh, borderRadius, clip.seed || 1, clipTime * 1000, true);
+                            }
 
                             // Texture overlay clipped to the shape
                             if (clip.effects.textureEnable && clip.effects.textureSrc) {
@@ -6601,11 +6619,21 @@
                             // Selection frame needs exact local coords — render directly
                             renderShapeContent(ctx);
                         } else {
-                            // Phase 3a: cached content layer, transform applied by caller
-                            const _sig = _layerSig(clip, 'shape');
-                            const _layer = getStaticLayer(clip, sw, sh, _sig, (c) => renderShapeContent(c));
-                            ctx.imageSmoothingEnabled = true;
-                            ctx.drawImage(_layer.canvas, -_layer.pad - sw / 2, -_layer.pad - sh / 2, _layer.canvas.width, _layer.canvas.height);
+                            // Phase 3a: cached content layer, transform applied by caller.
+                            // Sketchy shapes bypass the static cache — boiling must wiggle
+                            // per frame and even a frozen-boil sketch bakes clipTime into
+                            // the pixels, which the sig can't express. Deterministic cost:
+                            // the boil bucket only changes every 100 ms, and the same
+                            // bucket re-rasterizes identically (proven by the export parity
+                            // checks below).
+                            if ((clip.effects.shapeSketch || 'off') !== 'off') {
+                                renderShapeContent(ctx);
+                            } else {
+                                const _sig = _layerSig(clip, 'shape');
+                                const _layer = getStaticLayer(clip, sw, sh, _sig, (c) => renderShapeContent(c));
+                                ctx.imageSmoothingEnabled = true;
+                                ctx.drawImage(_layer.canvas, -_layer.pad - sw / 2, -_layer.pad - sh / 2, _layer.canvas.width, _layer.canvas.height);
+                            }
                         }
 
                         // Draw selection box in layout editor
@@ -6695,6 +6723,9 @@
                             let pool = inkBudget;
                             drawStrokes.forEach((s, si) => {
                                 const budget = (inkBudget === Infinity) ? undefined : (() => { const L = strokeInkLen(s); const b = Math.max(0, pool); pool -= Math.min(b, L); return b; })();
+                                // _t feeds the sketch boil bucket (ms since clip start) so
+                                // boiling strokes wiggle across frames but stay frame-stable.
+                                s._t = clipTimeInk * 1000;
                                 // Selection pass: fat translucent halo behind the selected stroke
                                 if (withHalo) {
                                     target.save();
@@ -6751,7 +6782,7 @@
                             });
                             ctx.save();
                             ctx.globalAlpha *= 0.85;
-                            renderDrawStroke(ctx, { tool: fx.drawTool, color: (fx.drawTool === 'eraser') ? '#000000' : (fx.drawColor || '#ff3b6b'), size: fx.drawSize, angle: fx.drawAngle, inkOpacity: fx.drawInkOpacity, inkBlend: fx.drawInkBlend, texture: fx.drawTexture, points: relPts }, clip.seed || 1);
+                            renderDrawStroke(ctx, { tool: fx.drawTool, color: (fx.drawTool === 'eraser') ? '#000000' : (fx.drawColor || '#ff3b6b'), size: fx.drawSize, angle: fx.drawAngle, inkOpacity: fx.drawInkOpacity, inkBlend: fx.drawInkBlend, texture: fx.drawTexture, sketch: fx.drawSketch, bleed: fx.drawBleed, sensitivity: fx.drawSensitivity, depletion: fx.drawDepletion, scatter: fx.drawScatter, points: relPts }, clip.seed || 1);
                             ctx.restore();
                         }
 
@@ -9402,7 +9433,267 @@
                     }
                     c.restore();
                 },
-                dot: (c, x, y, st) => drawBrushes.paintMarker.seg(c, x, y, x + 0.01, y + 0.01, st) }
+                dot: (c, x, y, st) => drawBrushes.paintMarker.seg(c, x, y, x + 0.01, y + 0.01, st) },
+
+            // ── Ink-physics pack (Phase C): Sumi-e Studio Pro + Paint Studio Pro ─
+            // Every p.random/p.noise from the source concepts is replaced by
+            // dHash/annoN (coordinate-hashed), so all speckle/bleed/splatter
+            // rasterizes identically at any seek or export resolution. New
+            // shared knobs: bleed (wet spread), sensitivity (speed→width,
+            // resolved at COMMIT time), depletion (ink fades along the stroke),
+            // scatter (particle density).
+            fude:      { label: 'Fude Brush', minSize: 4, maxSize: 80, defSize: 18, hasTexture: false, hasAngle: false, defNib: 0, hasInkOpacity: true, defOpacity: 100, hasInkBlend: true, defBlend: 'multiply', hasBleed: true, defBleed: 30, hasSensitivity: true, defSensitivity: 40, hasDepletion: true, defDepletion: 0,
+                seg: (c, sx, sy, ex, ey, st) => {
+                    // Angled ellipse core + kasure bristle scatter on fast/dry passes
+                    const d = Math.hypot(ex - sx, ey - sy);
+                    const steps = Math.max(1, Math.floor(d / 2));
+                    const angle = Math.atan2(ey - sy, ex - sx);
+                    const sensK = 1 - (st.speed || 0) * 0.22 * ((st.sensitivity || 0) / 100);
+                    const depK = 1 - (st._dep || 0);
+                    const bleed = (st.bleed || 0) / 100;
+                    c.save();
+                    if (st.inkBlend) c.globalCompositeOperation = st.inkBlend;
+                    c.fillStyle = st.color;
+                    for (let i = 0; i <= steps; i++) {
+                        const ix = sx + (ex - sx) * i / steps, iy = sy + (ey - sy) * i / steps;
+                        const n = 0.8 + 0.4 * annoN(ix, iy, 31);
+                        const sz = Math.max(0.5, st.size * sensK * n);
+                        c.globalAlpha = (st.inkOpacity !== undefined ? st.inkOpacity : 0.78) * 0.78 * depK;
+                        c.beginPath();
+                        c.ellipse(ix, iy, sz, sz * 0.6, angle + Math.PI / 4, 0, Math.PI * 2);
+                        c.fill();
+                        if (bleed > 0 && ((st.speed || 0) > 0.8 || depK < 0.6)) {
+                            const scatter = sz * (0.5 + bleed);
+                            const dots = Math.floor(bleed * 7 + (st.speed || 0) * 2);
+                            c.globalAlpha = (st.inkOpacity !== undefined ? st.inkOpacity : 0.78) * 0.47 * depK;
+                            for (let j = 0; j < dots; j++) {
+                                const a1 = annoN(ix + j * 3.7, iy, 53) * Math.PI * 2;
+                                const r1 = annoN(ix, iy + j * 5.1, 71) * scatter;
+                                c.beginPath(); c.arc(ix + Math.cos(a1) * r1, iy + Math.sin(a1) * r1, 1 + annoN(ix, iy, j + 97) * 2, 0, Math.PI * 2); c.fill();
+                            }
+                        }
+                    }
+                    c.restore();
+                },
+                dot: (c, x, y, st) => drawBrushes.fude.seg(c, x, y, x + 0.01, y + 0.01, st) },
+            menso:     { label: 'Menso Fine', minSize: 1, maxSize: 30, defSize: 6, hasTexture: false, hasAngle: false, defNib: 0, hasInkOpacity: true, defOpacity: 100, hasInkBlend: true, defBlend: 'multiply', hasSensitivity: true, defSensitivity: 70, hasDepletion: true, defDepletion: 20,
+                seg: (c, sx, sy, ex, ey, st) => {
+                    // Stiff detail brush: hairline core, strongly speed-thinned
+                    const d = Math.hypot(ex - sx, ey - sy);
+                    const steps = Math.max(1, Math.floor(d / 2));
+                    const sensK = 1 - (st.speed || 0) * 0.16 * ((st.sensitivity || 0) / 100);
+                    const depK = 1 - (st._dep || 0);
+                    c.save();
+                    if (st.inkBlend) c.globalCompositeOperation = st.inkBlend;
+                    c.fillStyle = st.color;
+                    for (let i = 0; i <= steps; i++) {
+                        const ix = sx + (ex - sx) * i / steps, iy = sy + (ey - sy) * i / steps;
+                        c.globalAlpha = (st.inkOpacity !== undefined ? st.inkOpacity : 1) * 0.86 * depK;
+                        c.beginPath(); c.arc(ix, iy, Math.max(0.4, st.size * 0.5 * sensK), 0, Math.PI * 2); c.fill();
+                    }
+                    c.restore();
+                },
+                dot: (c, x, y, st) => drawBrushes.menso.seg(c, x, y, x + 0.01, y + 0.01, st) },
+            kasure:    { label: 'Kasure Dry', minSize: 6, maxSize: 90, defSize: 26, hasTexture: false, hasAngle: false, defNib: 0, hasInkOpacity: true, defOpacity: 100, hasInkBlend: true, defBlend: 'multiply', hasBleed: true, defBleed: 35, hasDepletion: true, defDepletion: 45,
+                seg: (c, sx, sy, ex, ey, st) => {
+                    // Dry-brush: almost no core, separated bristle marks that break up
+                    const d = Math.hypot(ex - sx, ey - sy);
+                    const steps = Math.max(1, Math.floor(d / 2));
+                    const angle = Math.atan2(ey - sy, ex - sx);
+                    const nx = Math.cos(angle - Math.PI / 2), ny = Math.sin(angle - Math.PI / 2);
+                    const depK = 1 - (st._dep || 0);
+                    const bleed = (st.bleed || 0) / 100;
+                    c.save();
+                    if (st.inkBlend) c.globalCompositeOperation = st.inkBlend;
+                    for (let i = 0; i <= steps; i++) {
+                        const ix = sx + (ex - sx) * i / steps, iy = sy + (ey - sy) * i / steps;
+                        const n = 0.8 + 0.4 * annoN(ix, iy, 13);
+                        const sz = st.size * n;
+                        const bristles = Math.max(3, Math.floor(sz / 2));
+                        const spread = sz * (0.5 + bleed * 2);
+                        for (let j = 0; j < bristles; j++) {
+                            const bn = annoN(ix * 0.5, iy * 0.5, j * 7.3);
+                            const off = (bn - 0.5) * 2 * spread;
+                            // Skip chance breaks the bristle into dry streaks (seeded)
+                            if (annoN(ix, iy, j * 11.9 + 5) > 0.8 * depK) continue;
+                            c.globalAlpha = (st.inkOpacity !== undefined ? st.inkOpacity : 1) * 0.59 * depK * (0.5 + annoN(ix, iy, j + 41) * 0.5);
+                            c.fillStyle = st.color;
+                            c.beginPath(); c.arc(ix + nx * off, iy + ny * off, 1 + annoN(ix + j, iy, 3.1) * 3, 0, Math.PI * 2); c.fill();
+                        }
+                    }
+                    c.restore();
+                },
+                dot: (c, x, y, st) => drawBrushes.kasure.seg(c, x, y, x + 0.01, y + 0.01, st) },
+            nijimi:    { label: 'Nijimi Wet', minSize: 6, maxSize: 80, defSize: 20, hasTexture: false, hasAngle: false, defNib: 0, hasInkOpacity: true, defOpacity: 100, hasInkBlend: true, defBlend: 'multiply', hasBleed: true, defBleed: 55, hasDepletion: true, defDepletion: 15,
+                seg: (c, sx, sy, ex, ey, st) => {
+                    // Wet bleed: translucent spreading rings + darker core
+                    const d = Math.hypot(ex - sx, ey - sy);
+                    const steps = Math.max(1, Math.floor(d / 2));
+                    const depK = 1 - (st._dep || 0);
+                    const bleed = (st.bleed || 0) / 100;
+                    const slow = Math.max(0, 2 - (st.speed || 0));
+                    c.save();
+                    if (st.inkBlend) c.globalCompositeOperation = st.inkBlend;
+                    c.fillStyle = st.color;
+                    for (let i = 0; i <= steps; i++) {
+                        const ix = sx + (ex - sx) * i / steps, iy = sy + (ey - sy) * i / steps;
+                        const n = 0.8 + 0.4 * annoN(ix, iy, 23);
+                        const sz = st.size * n;
+                        const wet = sz + slow * st.size * bleed * 2;
+                        const rings = Math.max(3, Math.floor(bleed * 10));
+                        c.globalAlpha = (st.inkOpacity !== undefined ? st.inkOpacity : 1) * 0.10 * depK;
+                        for (let j = 0; j < rings; j++) {
+                            const ringRad = wet * (j / rings) * (0.8 + 0.4 * annoN(ix, iy, j + 61));
+                            const ox = (annoN(ix, iy, j * 3.3) - 0.5) * ringRad * 0.2;
+                            const oy = (annoN(ix + 7, iy, j * 5.7) - 0.5) * ringRad * 0.2;
+                            c.beginPath(); c.arc(ix + ox, iy + oy, Math.max(0.5, ringRad), 0, Math.PI * 2); c.fill();
+                        }
+                        c.globalAlpha = (st.inkOpacity !== undefined ? st.inkOpacity : 1) * 0.4 * depK;
+                        c.beginPath(); c.arc(ix, iy, sz * 0.5, 0, Math.PI * 2); c.fill();
+                    }
+                    c.restore();
+                },
+                dot: (c, x, y, st) => drawBrushes.nijimi.seg(c, x, y, x + 0.01, y + 0.01, st) },
+            bokashi:   { label: 'Bokashi Wash', minSize: 10, maxSize: 120, defSize: 40, hasTexture: false, hasAngle: false, defNib: 0, hasInkOpacity: true, defOpacity: 100, hasInkBlend: true, defBlend: 'multiply', hasBleed: true, defBleed: 45, hasDepletion: true, defDepletion: 10,
+                seg: (c, sx, sy, ex, ey, st) => {
+                    // Soft gradient wash: huge ultra-low-alpha rings that build up
+                    const d = Math.hypot(ex - sx, ey - sy);
+                    const steps = Math.max(1, Math.floor(d / 3));
+                    const depK = 1 - (st._dep || 0);
+                    const bleed = (st.bleed || 0) / 100;
+                    c.save();
+                    if (st.inkBlend) c.globalCompositeOperation = st.inkBlend;
+                    c.fillStyle = st.color;
+                    for (let i = 0; i <= steps; i++) {
+                        const ix = sx + (ex - sx) * i / steps, iy = sy + (ey - sy) * i / steps;
+                        const wash = st.size * 3 * (1 + bleed);
+                        const rings = Math.floor(5 + bleed * 5);
+                        c.globalAlpha = (st.inkOpacity !== undefined ? st.inkOpacity : 1) * 0.05 * depK;
+                        for (let j = 0; j < rings; j++) {
+                            c.beginPath(); c.arc(ix, iy, Math.max(0.5, wash * Math.pow(j / rings, 1.5)), 0, Math.PI * 2); c.fill();
+                        }
+                    }
+                    c.restore();
+                },
+                dot: (c, x, y, st) => drawBrushes.bokashi.seg(c, x, y, x + 0.01, y + 0.01, st) },
+            shibuki:   { label: 'Shibuki Splatter', minSize: 4, maxSize: 60, defSize: 16, hasTexture: false, hasAngle: false, defNib: 0, hasInkOpacity: true, defOpacity: 100, hasInkBlend: true, defBlend: 'multiply', hasBleed: true, defBleed: 60, hasScatter: true, defScatter: 50,
+                seg: (c, sx, sy, ex, ey, st) => {
+                    // Trailing drops flung by speed, gated by seeded scatter
+                    const d = Math.hypot(ex - sx, ey - sy);
+                    const steps = Math.max(1, Math.floor(d / 2));
+                    const angle = Math.atan2(ey - sy, ex - sx);
+                    const depK = 1 - (st._dep || 0);
+                    const bleed = (st.bleed || 0) / 100;
+                    const scatter = (st.scatter !== undefined ? st.scatter : 50) / 100;
+                    const speed = st.speed || 0;
+                    c.save();
+                    if (st.inkBlend) c.globalCompositeOperation = st.inkBlend;
+                    c.fillStyle = st.color;
+                    for (let i = 0; i <= steps; i++) {
+                        const ix = sx + (ex - sx) * i / steps, iy = sy + (ey - sy) * i / steps;
+                        const n = 0.8 + 0.4 * annoN(ix, iy, 43);
+                        const sz = st.size * n;
+                        c.globalAlpha = (st.inkOpacity !== undefined ? st.inkOpacity : 1) * 0.7 * depK;
+                        c.beginPath(); c.arc(ix + (annoN(ix, iy, 1.7) - 0.5) * 4, iy + (annoN(ix, iy, 9.1) - 0.5) * 4, sz * 0.2, 0, Math.PI * 2); c.fill();
+                        if (speed > 0.5 && annoN(ix, iy, 77) < bleed + 0.1) {
+                            const dropSize = 1 + annoN(ix, iy, 81) * sz * 0.4;
+                            const throwDist = speed * (5 + annoN(ix, iy, 83) * 15) * bleed * 2;
+                            const sAngle = angle + (annoN(ix, iy, 89) - 0.5) * 1.0;
+                            c.globalAlpha = (st.inkOpacity !== undefined ? st.inkOpacity : 1) * (0.4 + annoN(ix, iy, 91) * 0.6) * depK * (0.5 + scatter * 0.5);
+                            c.beginPath(); c.arc(ix + Math.cos(sAngle) * throwDist, iy + Math.sin(sAngle) * throwDist, Math.max(0.5, dropSize), 0, Math.PI * 2); c.fill();
+                        }
+                    }
+                    c.restore();
+                },
+                dot: (c, x, y, st) => drawBrushes.shibuki.seg(c, x, y, x + 0.01, y + 0.01, st) },
+            hake:      { label: 'Hake Flat', minSize: 10, maxSize: 140, defSize: 34, hasTexture: false, hasAngle: false, defNib: 0, hasInkOpacity: true, defOpacity: 100, hasInkBlend: true, defBlend: 'multiply', hasBleed: true, defBleed: 25, hasDepletion: true, defDepletion: 25,
+                seg: (c, sx, sy, ex, ey, st) => {
+                    // Wide flat wash brush: parallel bristle lines with organic lifting
+                    const angle = Math.atan2(ey - sy, ex - sx);
+                    const nx = Math.cos(angle - Math.PI / 2), ny = Math.sin(angle - Math.PI / 2);
+                    const depK = 1 - (st._dep || 0);
+                    const bleed = (st.bleed || 0) / 100;
+                    const width = st.size * 2.5;
+                    const bristles = Math.max(10, Math.floor(width / 3));
+                    c.save();
+                    if (st.inkBlend) c.globalCompositeOperation = st.inkBlend;
+                    c.strokeStyle = st.color;
+                    c.lineWidth = 1.5;
+                    c.globalAlpha = (st.inkOpacity !== undefined ? st.inkOpacity : 1) * 0.24 * depK;
+                    c.beginPath();
+                    for (let j = 0; j < bristles; j++) {
+                        const off = (j / (bristles - 1) - 0.5) * width;
+                        // Organic bristle lifting: skip wet-slow sections (seeded)
+                        if (annoN(j * 10.7, sx * 0.01, sy * 0.01) > (st.speed || 0) * 0.02 + bleed * 0.2 + 0.55) continue;
+                        c.moveTo(sx + nx * off, sy + ny * off);
+                        c.lineTo(ex + nx * off, ey + ny * off);
+                    }
+                    c.stroke();
+                    c.restore();
+                },
+                dot: (c, x, y, st) => drawBrushes.hake.seg(c, x, y, x + 0.01, y + 0.01, st) },
+            watercolor:{ label: 'Watercolor', minSize: 8, maxSize: 100, defSize: 30, hasTexture: false, hasAngle: false, defNib: 0, hasInkOpacity: true, defOpacity: 100, hasInkBlend: true, defBlend: 'multiply', hasBleed: true, defBleed: 50, hasScatter: true, defScatter: 40,
+                seg: (c, sx, sy, ex, ey, st) => {
+                    // Low-alpha bleeding circles; radius noise widens with scatter
+                    const d = Math.hypot(ex - sx, ey - sy);
+                    const steps = Math.max(1, Math.floor(d / Math.max(1, st.size * 0.2)));
+                    const scatter = (st.scatter !== undefined ? st.scatter : 40) / 100;
+                    c.save();
+                    if (st.inkBlend) c.globalCompositeOperation = st.inkBlend;
+                    c.fillStyle = st.color;
+                    for (let i = 0; i <= steps; i++) {
+                        const ix = sx + (ex - sx) * i / steps, iy = sy + (ey - sy) * i / steps;
+                        const radMod = 0.5 + annoN(ix * 0.02, iy * 0.02, 29) * (1.0 + scatter);
+                        c.globalAlpha = (st.inkOpacity !== undefined ? st.inkOpacity : 1) * 0.08;
+                        c.beginPath(); c.arc(ix, iy, Math.max(1, st.size * radMod), 0, Math.PI * 2); c.fill();
+                    }
+                    c.restore();
+                },
+                dot: (c, x, y, st) => drawBrushes.watercolor.seg(c, x, y, x + 0.01, y + 0.01, st) },
+            charcoal:  { label: 'Charcoal', minSize: 4, maxSize: 90, defSize: 22, hasTexture: false, hasAngle: false, defNib: 0, hasInkOpacity: true, defOpacity: 100, hasInkBlend: false, hasScatter: true, defScatter: 50,
+                seg: (c, sx, sy, ex, ey, st) => {
+                    // Grainy scatter: 1px rects gated inside a circular footprint
+                    const d = Math.hypot(ex - sx, ey - sy);
+                    const steps = Math.max(1, Math.floor(d));
+                    const scatter = (st.scatter !== undefined ? st.scatter : 50) / 100;
+                    c.save();
+                    c.fillStyle = st.color;
+                    for (let i = 0; i <= steps; i++) {
+                        const ix = sx + (ex - sx) * i / steps, iy = sy + (ey - sy) * i / steps;
+                        const dots = Math.floor(st.size * 0.5 * (scatter + 0.5));
+                        c.globalAlpha = (st.inkOpacity !== undefined ? st.inkOpacity : 1) * 0.78;
+                        for (let j = 0; j < dots; j++) {
+                            const rx = ix + (annoN(ix, iy, j * 13.1) - 0.5) * 2 * st.size * scatter;
+                            const ry = iy + (annoN(ix, iy, j * 17.3 + 7) - 0.5) * 2 * st.size * scatter;
+                            if (Math.hypot(rx - ix, ry - iy) <= st.size * (0.5 + scatter * 0.5)) c.fillRect(rx, ry, 1, 1);
+                        }
+                    }
+                    c.restore();
+                },
+                dot: (c, x, y, st) => drawBrushes.charcoal.seg(c, x, y, x + 0.01, y + 0.01, st) },
+            airbrush:  { label: 'Airbrush', minSize: 8, maxSize: 120, defSize: 36, hasTexture: false, hasAngle: false, defNib: 0, hasInkOpacity: true, defOpacity: 100, hasInkBlend: false, hasScatter: true, defScatter: 50,
+                seg: (c, sx, sy, ex, ey, st) => {
+                    // Fine center-biased mist; drop count scales with segment length
+                    const d = Math.hypot(ex - sx, ey - sy);
+                    const steps = Math.max(1, Math.floor(d / 2));
+                    const scatter = (st.scatter !== undefined ? st.scatter : 50) / 100;
+                    const spread = st.size * (1 + scatter * 2);
+                    c.save();
+                    c.fillStyle = st.color;
+                    for (let i = 0; i <= steps; i++) {
+                        const ix = sx + (ex - sx) * i / steps, iy = sy + (ey - sy) * i / steps;
+                        const drops = Math.floor(15 * (scatter + 0.2) * (d + 1) / Math.max(1, steps) * 2);
+                        c.globalAlpha = (st.inkOpacity !== undefined ? st.inkOpacity : 1) * 0.31;
+                        for (let j = 0; j < drops; j++) {
+                            const a1 = annoN(ix + j * 2.9, iy, 101) * Math.PI * 2;
+                            let radius = annoN(ix, iy, j * 7.7 + 3) * spread;
+                            if (annoN(ix, iy, j + 103) > 0.3) radius *= annoN(ix, iy, j + 107);
+                            c.beginPath(); c.arc(ix + Math.cos(a1) * radius, iy + Math.sin(a1) * radius, Math.max(1, st.size * 0.05), 0, Math.PI * 2); c.fill();
+                        }
+                    }
+                    c.restore();
+                },
+                dot: (c, x, y, st) => drawBrushes.airbrush.seg(c, x, y, x + 0.01, y + 0.01, st) }
         };
 
         // Position-hashed pseudo-noise for textured brushes (dryErase streaks,
@@ -9413,6 +9704,9 @@
             const h = Math.sin(x * 12.9898 + y * 78.233 + s * 37.719) * 43758.5453;
             return h - Math.floor(h);
         }
+        // Alias used by the ink-physics brushes (Phase C): keeps call sites
+        // self-documenting ("organic noise") while sharing dHash's determinism.
+        function annoN(x, y, s) { return dHash(x, y, s); }
 
         // Per-brush default settings (size plus brush-specific nib angle, ink
         // opacity, blend mode, texture) — used to seed new strokes when a brush is
@@ -9425,7 +9719,12 @@
                 nib: b.hasAngle ? (b.defNib !== undefined ? b.defNib : 45) : 0,
                 opacity: b.hasInkOpacity ? (b.defOpacity !== undefined ? b.defOpacity : 100) : 100,
                 blend: b.hasInkBlend ? (b.defBlend || 'source-over') : 'source-over',
-                texture: b.hasTexture ? (b.defTexture !== undefined ? b.defTexture : 0) : 0
+                texture: b.hasTexture ? (b.defTexture !== undefined ? b.defTexture : 0) : 0,
+                // Phase C ink-physics knobs (only when the brush exposes them)
+                bleed: b.hasBleed ? (b.defBleed !== undefined ? b.defBleed : 30) : undefined,
+                sensitivity: b.hasSensitivity ? (b.defSensitivity !== undefined ? b.defSensitivity : 40) : undefined,
+                depletion: b.hasDepletion ? (b.defDepletion !== undefined ? b.defDepletion : 0) : undefined,
+                scatter: b.hasScatter ? (b.defScatter !== undefined ? b.defScatter : 50) : undefined
             };
         }
 
@@ -9476,6 +9775,260 @@
             };
         }
 
+        // ── Sketch style engine (Phase A) ────────────────────────────────────
+        // Hand-drawn re-rendering for shape outlines and draw strokes: every
+        // geometry point is resampled along the path and jittered by a SEEDED
+        // hash, then quadratic-bowed for the wobbly-line look. VoxAnimator's
+        // "boiling" re-rolls its seed on wall-clock — that would break exports,
+        // so here the boil seed derives from floor(clipTime/100ms): stable
+        // within a frame, wiggling at 10 fps across frames, and IDENTICAL at
+        // any export seek position.
+        const SKETCH_PRESETS = {
+            off:    { label: 'Off',     roughness: 0,  passes: 1,   bowing: 0   },
+            light:  { label: 'Light',   roughness: 1.2, passes: 1,  bowing: 0.6 },
+            sketchy:{ label: 'Sketchy', roughness: 3,  passes: 2,   bowing: 1.4 },
+            messy:  { label: 'Messy',   roughness: 6,  passes: 2,   bowing: 3   }
+        };
+        // Per-frame boil bucket: 100 ms slots so preview wiggles at 10 fps.
+        function sketchBoilingBucket(clipTimeMs) {
+            return Math.floor((clipTimeMs < 0 ? 0 : clipTimeMs) / 100);
+        }
+        // Deterministic hash — shared with dHash's sin-mix so sketch jitter
+        // rasterizes identically at any resolution (no wall-clock anywhere).
+        function sketchJitter(sx, sy, salt) {
+            const h = Math.sin(sx * 12.9898 + sy * 78.233 + salt * 37.719) * 43758.5453;
+            return h - Math.floor(h);
+        }
+        // Resolve a clip's sketch parameters. Prefs shape clips (shapeSketch);
+        // draw clips fall back from stroke.sketch to the clip default.
+        function sketchParamsFromFx(fx, override) {
+            const key = (override !== undefined ? override : (fx && fx.shapeSketch)) || 'off';
+            const p = SKETCH_PRESETS[key] || SKETCH_PRESETS.off;
+            const wobPct = (fx && fx.shapeWobble !== undefined) ? fx.shapeWobble : 40;
+            const boilOn = !(fx && fx.shapeBoil === false);
+            return { key, roughness: p.roughness, passes: p.passes, bowing: p.bowing, wobble: p.roughness > 0 ? (wobPct / 100) * 10 : 0, boil: boilOn };
+        }
+        // Resample + jitter + bow a polyline into a hand-drawn pass. pts are
+        // LOCAL units; salt mixes seed + pass + boil bucket + point role so no
+        // two samples ever correlate. Roughness scales a resample pitch of
+        // ~7px (Rough.js-style segment density: fine on detail, coarse on
+        // long edges), wobble is the jitter amplitude in local px.
+        function sketchPassPts(pts, saltBase, wobble, bowing, boilBucket) {
+            if (pts.length < 2) return pts.slice();
+            let per = 0;
+            for (let i = 1; i < pts.length; i++) per += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+            per /= (pts.length - 1);
+            const pitch = Math.max(6, Math.min(24, per * 0.22));
+            const out = [];
+            const addJ = (x, y, endK) => {
+                const salt = saltBase * 131 + boilBucket * 17 + endK * 7;
+                return { x: x + (sketchJitter(x * 0.35, y * 0.35, salt) - 0.5) * 2 * wobble, y: y + (sketchJitter(y * 0.35, x * 0.35, salt + 53) - 0.5) * 2 * wobble };
+            };
+            for (let i = 1; i < pts.length; i++) {
+                const ax = pts[i - 1].x, ay = pts[i - 1].y, bx = pts[i].x, by = pts[i].y;
+                const seg = Math.hypot(bx - ax, by - ay);
+                const n = Math.max(1, Math.round(seg / pitch));
+                for (let k = 0; k < n; k++) {
+                    const t = k / n;
+                    const isEnd = (i === pts.length - 1 && k === n - 1) ? 2 : (k === 0 && i === 1 ? 1 : 0);
+                    out.push(addJ(ax + (bx - ax) * t, ay + (by - ay) * t, isEnd));
+                }
+            }
+            out.push(addJ(pts[pts.length - 1].x, pts[pts.length - 1].y, 2));
+            // Quadratic bow: offset midpoints toward the chord midpoint for the
+            // hand-drawn arc between corners.
+            if (bowing > 0 && out.length >= 3) {
+                for (let i = 1; i < out.length - 1; i++) {
+                    const mx = (out[i - 1].x + out[i + 1].x) / 2, my = (out[i - 1].y + out[i + 1].y) / 2;
+                    const salt = saltBase * 31 + i * 5 + boilBucket * 3;
+                    const b = (sketchJitter(out[i].x * 0.7, out[i].y * 0.7, salt) - 0.5) * 2 * bowing * 6;
+                    out[i] = { x: out[i].x + (mx - out[i].x) * 0.35 + (out[i].y - my) / Math.max(0.001, Math.hypot(out[i + 1].x - out[i - 1].x, out[i + 1].y - out[i - 1].y)) * b, y: out[i].y + (my - out[i].y) * 0.35 - (out[i].x - mx) / Math.max(0.001, Math.hypot(out[i + 1].x - out[i - 1].x, out[i + 1].y - out[i - 1].y)) * b };
+                }
+            }
+            return out;
+        }
+        // Resample a polyline to even spacing (used by hachure lines so their
+        // jitter reads evenly across long straight edges).
+        function sketchResamplePts(pts, pitch) {
+            if (pts.length < 2) return pts.slice();
+            const out = [pts[0]];
+            for (let i = 1; i < pts.length; i++) {
+                const ax = pts[i - 1].x, ay = pts[i - 1].y, bx = pts[i].x, by = pts[i].y;
+                const seg = Math.hypot(bx - ax, by - ay);
+                const n = Math.max(1, Math.round(seg / pitch));
+                for (let k = 1; k <= n; k++) out.push({ x: ax + (bx - ax) * k / n, y: ay + (by - ay) * k / n });
+            }
+            return out;
+        }
+        // Closed-shape outline points in LOCAL center-relative space (corner
+        // vertices; ellipses are dense polylines already).
+        function shapeOutlinePts(type, w, h, r, fx) {
+            const pts = [];
+            if (type === 'rect') {
+                let x0 = -w / 2, y0 = -h / 2;
+                if (r > 0) {
+                    const rr = Math.min(r, w / 2, h / 2);
+                    for (let a = -Math.PI / 2; a <= 0; a += Math.PI / 12) pts.push({ x: 0 + (w / 2 - rr) + Math.cos(a) * rr + rr - w / 2 + w / 2 - 0, y: 0 + (-h / 2 + rr) + Math.sin(a) * rr });
+                    for (let a = 0; a <= Math.PI / 2; a += Math.PI / 12) pts.push({ x: w / 2 - rr + Math.cos(a) * rr, y: -h / 2 + rr + Math.sin(a) * rr });
+                    for (let a = Math.PI / 2; a <= Math.PI; a += Math.PI / 12) pts.push({ x: w / 2 - rr + Math.cos(a) * rr, y: h / 2 - rr + Math.sin(a) * rr });
+                    for (let a = Math.PI; a <= Math.PI * 1.5; a += Math.PI / 12) pts.push({ x: -w / 2 + rr + Math.cos(a) * rr, y: h / 2 - rr + Math.sin(a) * rr });
+                    for (let a = Math.PI * 1.5; a <= Math.PI * 2 + 0.001; a += Math.PI / 12) pts.push({ x: -w / 2 + rr + Math.cos(a) * rr, y: -h / 2 + rr + Math.sin(a) * rr });
+                } else {
+                    pts.push({ x: -w / 2, y: -h / 2 }, { x: w / 2, y: -h / 2 }, { x: w / 2, y: h / 2 }, { x: -w / 2, y: h / 2 }, { x: -w / 2, y: -h / 2 });
+                }
+            } else if (type === 'circle') {
+                for (let a = 0; a <= Math.PI * 2 + 0.001; a += Math.PI / 24) pts.push({ x: Math.cos(a) * w / 2, y: Math.sin(a) * h / 2 });
+            } else if (type === 'semicircle') {
+                for (let a = Math.PI; a <= Math.PI * 2 + 0.001; a += Math.PI / 24) pts.push({ x: Math.cos(a) * w / 2, y: Math.sin(a) * h / 2 });
+                pts.push({ x: -w / 2, y: 0 });
+            } else if (type === 'triangle') {
+                pts.push({ x: 0, y: -h / 2 }, { x: w / 2, y: h / 2 }, { x: -w / 2, y: h / 2 }, { x: 0, y: -h / 2 });
+            } else if (type === 'polygon') {
+                const sides = (fx && fx.sides) || 5;
+                for (let i = 0; i <= sides; i++) {
+                    const a = (i * 2 * Math.PI / sides) - Math.PI / 2;
+                    pts.push({ x: Math.cos(a) * w / 2, y: Math.sin(a) * h / 2 });
+                }
+            } else if (type === 'star') {
+                const np = (fx && fx.points) || 5;
+                const ir = (fx && fx.innerRadiusRatio) || 0.4;
+                for (let i = 0; i <= np * 2; i++) {
+                    const a = (i * Math.PI / np) - Math.PI / 2;
+                    const k = i % 2 === 0 ? 1 : ir;
+                    pts.push({ x: Math.cos(a) * w / 2 * k, y: Math.sin(a) * h / 2 * k });
+                }
+            }
+            return pts;
+        }
+        // Sketchy outline pass for shapes: draws the jittered polyline directly
+        // (stroke already configured by the caller). Returns the raw path so
+        // the same jittered geometry feeds the hachure clip.
+        function traceSketchPath(c, pts, saltBase, wobble, bowing, boilBucket) {
+            const jp = sketchPassPts(pts, saltBase, wobble, bowing, boilBucket);
+            c.beginPath();
+            c.moveTo(jp[0].x, jp[0].y);
+            for (let i = 1; i < jp.length; i++) c.lineTo(jp[i].x, jp[i].y);
+            return jp;
+        }
+        // Hachure fill: parallel sketch lines at ~-41° clipped to the jittered
+        // outline. Gap ≈ lineWidth·2.6, weight = the stroke's own width.
+        function renderSketchHachure(c, rawPts, lineWidth, gap, saltBase, wobble, boilBucket, clipToPts) {
+            if (!rawPts || rawPts.length < 3) return;
+            const minX = Math.min(...rawPts.map(p => p.x)), maxX = Math.max(...rawPts.map(p => p.x));
+            const minY = Math.min(...rawPts.map(p => p.y)), maxY = Math.max(...rawPts.map(p => p.y));
+            c.save();
+            c.beginPath();
+            c.moveTo(rawPts[0].x, rawPts[0].y);
+            for (let i = 1; i < rawPts.length; i++) c.lineTo(rawPts[i].x, rawPts[i].y);
+            c.clip();
+            c.beginPath();
+            const ang = -41 * Math.PI / 180;
+            const dx = Math.cos(ang), dy = Math.sin(ang);
+            const ext = (maxX - minX) + (maxY - minY);
+            const step = Math.max(4, gap);
+            // Hachure lines run perpendicular to (dx,dy): sample p = base + dir*t
+            // across the full bbox diagonal so every line crosses the shape.
+            const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+            const px0 = cx - dx * ext / 2 - dy * ext / 2, py0 = cy - dy * ext / 2 + dx * ext / 2;
+            const nx = dy, ny = -dx; // step direction between adjacent lines
+            let li = 0;
+            for (let d = -ext; d <= ext; d += step, li++) {
+                const bx = px0 + nx * d, by = py0 + ny * d;
+                const line = [];
+                for (let t = 0; t <= 8; t++) line.push({ x: bx + dx * (ext * t / 8), y: by + dy * (ext * t / 8) });
+                const jp = sketchPassPts(sketchResamplePts(line, 14), saltBase + 977 + li * 13, wobble * 0.7, 0.5, boilBucket);
+                c.moveTo(jp[0].x, jp[0].y);
+                for (let i = 1; i < jp.length; i++) c.lineTo(jp[i].x, jp[i].y);
+            }
+            c.stroke();
+            c.restore();
+        }
+        // Full sketchy shape paint: fill (solid under a clipped rough outline
+        // or hachure), then N outline passes. Caller sets strokeStyle/lineWidth
+        // and fills ctx state (transform/alpha/blend) as usual.
+        function renderSketchShape(c, fx, shapeType, sw, sh, borderRadius, seed, clipTimeMs, paintFill) {
+            const sp = sketchParamsFromFx(fx);
+            if (sp.roughness <= 0) return false;
+            const boil = sp.boil ? sketchBoilingBucket(clipTimeMs) : 0;
+            const saltBase = (seed || 1) * 7919 + (shapeType.length * 131);
+            const raw = shapeOutlinePts(shapeType, sw, sh, borderRadius, fx);
+            if (!raw.length) return false;
+            const lw = Math.max(1, fx.strokeWidth || 4);
+            // Fill pass: solid fill stays exact; hachure replaces it.
+            if (paintFill) {
+                if (fx.sketchFill === 'hachure') {
+                    c.strokeStyle = c.fillStyle = fx.fillColor || '#ffbb00';
+                    c.lineWidth = Math.max(1, lw * 0.9);
+                    c.lineJoin = 'round'; c.lineCap = 'round';
+                    renderSketchHachure(c, raw, lw, lw * 2.6, saltBase, sp.wobble, boil);
+                } else {
+                    c.save();
+                    traceSketchPath(c, raw, saltBase, sp.wobble, 0, boil);
+                    c.closePath();
+                    c.fillStyle = fx.fillColor || '#ffbb00';
+                    c.fill();
+                    c.restore();
+                }
+            }
+            // Outline passes (only when the shape's own stroke is on).
+            if (fx.strokeEnable) {
+                c.strokeStyle = fx.strokeColor || '#ffffff';
+                c.lineWidth = lw;
+                c.lineJoin = 'round'; c.lineCap = 'round';
+                for (let p = 0; p < sp.passes; p++) {
+                    traceSketchPath(c, raw, saltBase + p * 613, sp.wobble, sp.bowing, boil);
+                    c.stroke();
+                }
+            }
+            return true;
+        }
+        // Sketch overlay for draw strokes: re-renders the stroke's polyline as
+        // jittered passes with the caller's stroke style. Used for pen/chisel/
+        // calligraphy when the stroke opts in (stroke.sketch set or clip
+        // default sketchSketch). Returns true if handled.
+        function renderSketchStroke(c, stroke, st, seed, budget) {
+            const sp = sketchParamsFromFx(stroke, stroke.sketch);
+            if (sp.roughness <= 0 || stroke.tool === 'eraser') return false;
+            // let (not const): the reveal-budget branch below rebinds pts to a
+            // clipped prefix. Reassigning a const here threw on EVERY partial
+            // reveal — full-budget renders skipped the branch, which is why the
+            // bug hid until a stamp with draw-on reveal was probed mid-draw.
+            let pts = stroke.points;
+            if (!pts || pts.length < 2) return false;
+            let totalLen = 0;
+            for (let i = 1; i < pts.length; i++) totalLen += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+            if (budget !== undefined && budget !== null && budget < totalLen - 1e-6) {
+                // Budgeted reveal: clip to the point prefix that fits, then
+                // append the interpolated tip so the ink advances smoothly
+                // instead of jumping vertex to vertex.
+                let acc = 0, end = 1;
+                while (end < pts.length) {
+                    const segLen = Math.hypot(pts[end].x - pts[end - 1].x, pts[end].y - pts[end - 1].y);
+                    if (acc + segLen <= budget) { acc += segLen; end++; continue; }
+                    break;
+                }
+                if (end < 2) return false;
+                const tipSeg = Math.hypot(pts[end].x - pts[end - 1].x, pts[end].y - pts[end - 1].y);
+                const k = tipSeg > 0 ? Math.max(0, Math.min(1, (budget - acc) / tipSeg)) : 0;
+                pts = pts.slice(0, end).concat([{ x: pts[end - 1].x + (pts[end].x - pts[end - 1].x) * k, y: pts[end - 1].y + (pts[end].y - pts[end - 1].y) * k }]);
+            }
+            const boil = sp.boil ? sketchBoilingBucket(stroke._t || 0) : 0;
+            const saltBase = (seed || 1) * 7919;
+            c.save();
+            c.strokeStyle = st.color;
+            c.lineWidth = st.size;
+            c.lineJoin = 'round'; c.lineCap = 'round';
+            if (st.inkBlend) c.globalCompositeOperation = st.inkBlend;
+            if (st.inkOpacity !== undefined) c.globalAlpha *= st.inkOpacity;
+            for (let p = 0; p < sp.passes; p++) {
+                traceSketchPath(c, pts, saltBase + p * 613, sp.wobble * Math.max(0.4, st.size / 8), sp.bowing, boil);
+                c.stroke();
+            }
+            c.restore();
+            return true;
+        }
+        // ── end sketch engine ────────────────────────────────────────────────
+
         // Renders one stroke's polylines into an ALREADY-TRANSFORMED ctx
         // (caller applied translate/rotate/scale). All coords are center-relative.
         function renderDrawStroke(c, stroke, seed, upTo) {
@@ -9493,8 +10046,17 @@
                 texture: stroke.texture !== undefined ? stroke.texture : (brush.defTexture || 0),
                 angle: stroke.angle !== undefined ? stroke.angle : (brush.defNib !== undefined ? brush.defNib : 45),
                 inkOpacity: stroke.inkOpacity !== undefined ? stroke.inkOpacity / 100 : (brush.defOpacity !== undefined ? brush.defOpacity / 100 : undefined),
-                inkBlend: stroke.inkBlend || brush.defBlend || undefined
+                inkBlend: stroke.inkBlend || brush.defBlend || undefined,
+                // Phase C ink-physics knobs: bleed (wet spread), sensitivity
+                // (speed→width), scatter (particle density), depletion (set
+                // per-segment below from the stroke fraction).
+                bleed: stroke.bleed !== undefined ? stroke.bleed : (brush.defBleed || 0),
+                sensitivity: stroke.sensitivity !== undefined ? stroke.sensitivity : (brush.defSensitivity || 0),
+                scatter: stroke.scatter !== undefined ? stroke.scatter : (brush.defScatter !== undefined ? brush.defScatter : 0),
+                speed: 0,
+                _dep: 0
             };
+            const _depletion = isEraser ? 0 : ((stroke.depletion !== undefined ? stroke.depletion : (brush.defDepletion || 0)) / 100);
             const rng = drawRng(seed);
             // Partial rendering budget: upTo (if set) limits rendered path length so
             // the draw-on reveal can walk the ink progressively. Deterministic per frame.
@@ -9518,6 +10080,15 @@
             // Tapered path brush: one whole-stroke outline fill. On reveal budgets
             // the input is clipped to a point prefix so the ink grows; falls back
             // to segments only if the vendor library is unavailable.
+            // Sketch style (Phase A): opted-in strokes re-render as jittered
+            // hand-drawn passes instead of brush ink (never for erasers). MUST
+            // precede the path-brush branch — pen/highlighter are path brushes
+            // and would otherwise always win, silently ignoring the sketch
+            // setting (and its boil).
+            if (!isEraser && (stroke.sketch || 'off') !== 'off' && renderSketchStroke(c, stroke, st, seed, budget) === true) {
+                c.restore();
+                return;
+            }
             if (brush.path && renderDrawStrokePath(c, stroke, st, budget) !== false) {
                 c.restore();
                 return;
@@ -9547,9 +10118,18 @@
                 c.restore();
                 return;
             }
+            // Ink-physics walker (Phase C): per segment, derive SPEED from the
+            // recorded geometry (px per ~60fps event — commit-time data, so
+            // exports can never differ) and DEPLETION from cumulative ink
+            // fraction. Mutating st is safe: it's this call's private view.
+            let _walked = 0;
+            const _total = strokeInkLen(stroke) || 1;
             for (let i = 1; i < pts.length && budget > 0; i++) {
                 const ax = pts[i - 1].x, ay = pts[i - 1].y, bx = pts[i].x, by = pts[i].y;
                 const segLen = Math.hypot(bx - ax, by - ay);
+                st.speed = segLen / 2;
+                st._dep = _depletion * Math.min(1, _walked / _total);
+                _walked += segLen;
                 if (segLen <= budget) {
                     brush.seg(c, ax, ay, bx, by, st, rng);
                     budget -= segLen;
@@ -9733,6 +10313,10 @@
                     clip.effects.drawInkOpacity = d.opacity;
                     clip.effects.drawInkBlend = d.blend;
                     clip.effects.drawTexture = d.texture;
+                    if (d.bleed !== undefined) clip.effects.drawBleed = d.bleed;
+                    if (d.sensitivity !== undefined) clip.effects.drawSensitivity = d.sensitivity;
+                    if (d.depletion !== undefined) clip.effects.drawDepletion = d.depletion;
+                    if (d.scatter !== undefined) clip.effects.drawScatter = d.scatter;
                 }
             }
             // setClipEffect doesn't refresh the sidebar — re-render the Ink card
@@ -9740,6 +10324,183 @@
             updateSidebarPanel();
             drawCanvas();
         };
+
+        // ── Annotation element library (Phase B) ────────────────────────────
+        // Stampable hand-drawn emphasis marks (Elements Annotator model): each
+        // entry generates stroke polylines in clip-local 1920-base coords,
+        // which the Phase A sketch engine re-renders as boiling hand-drawn
+        // passes. Stamping creates a DRAW clip at the playhead — timeline,
+        // selection, reveal, styling and exports all come free.
+        // Closed-loop ellipse polyline: startFrac positions the pen-down point
+        // (0.62 = upper-left, like a person drawing a circle), turns > 1 adds
+        // the hand-drawn overlap where the loop crosses its own start.
+        function annoLoopPts(rx, ry, startFrac, turns, rxWobble) {
+            const pts = [];
+            const total = Math.PI * 2 * turns;
+            const start = Math.PI * 2 * startFrac - Math.PI / 2;
+            const N = Math.max(28, Math.round(40 * turns));
+            for (let i = 0; i <= N; i++) {
+                const a = start + (i / N) * total;
+                const k = rxWobble ? 1 + Math.sin(a * 3 + 1.3) * rxWobble : 1;
+                pts.push({ x: Math.cos(a) * rx * k, y: Math.sin(a) * ry * k });
+            }
+            return pts;
+        }
+        // Arrowhead lines at a tip, given the shaft direction.
+        function annoHeadPts(tipX, tipY, dirX, dirY, len, spreadDeg) {
+            const L = Math.hypot(dirX, dirY) || 1;
+            const ux = dirX / L, uy = dirY / L;
+            const s = (spreadDeg || 26) * Math.PI / 180;
+            return [
+                [{ x: tipX, y: tipY }, { x: tipX - (ux * Math.cos(s) - uy * Math.sin(s)) * len, y: tipY - (ux * Math.sin(s) + uy * Math.cos(s)) * len }],
+                [{ x: tipX, y: tipY }, { x: tipX - (ux * Math.cos(-s) - uy * Math.sin(-s)) * len, y: tipY - (ux * Math.sin(-s) + uy * Math.cos(-s)) * len }]
+            ];
+        }
+        const ANNO_ELEMENTS = {
+            circle:   { label: 'Circle', icon: 'circle', group: 'Emphasis', color: '#ff4d5e', size: 9, sketch: 'sketchy', reveal: 0.8,
+                        strokes: () => [{ points: annoLoopPts(270, 170, 0.62, 1.15) }] },
+            circle2:  { label: 'Double Circle', icon: 'circle-dot', group: 'Emphasis', color: '#ff4d5e', size: 9, sketch: 'sketchy', reveal: 1.1,
+                        strokes: () => [{ points: annoLoopPts(270, 170, 0.62, 2.2) }] },
+            circle3:  { label: 'Messy Circle', icon: 'loader', group: 'Emphasis', color: '#ff4d5e', size: 8, sketch: 'messy', reveal: 1.3,
+                        strokes: () => [{ points: annoLoopPts(270, 170, 0.62, 3.4, 0.05) }] },
+            box:      { label: 'Box', icon: 'square-dashed', group: 'Emphasis', color: '#ff4d5e', size: 9, sketch: 'sketchy', reveal: 0.8,
+                        strokes: () => [{ points: [{ x: -280, y: -160 }, { x: 268, y: -172 }, { x: 282, y: 150 }, { x: -272, y: 164 }, { x: -284, y: -154 }, { x: -180, y: -166 }] }] },
+            star:     { label: 'Star', icon: 'star', group: 'Emphasis', color: '#ffb020', size: 8, sketch: 'sketchy', reveal: 0.8,
+                        strokes: () => { const p = []; const n = 5, ir = 0.42, R = 200;
+                            for (let i = 0; i <= n * 2; i++) { const a = (i * Math.PI / n) - Math.PI / 2; const k = i % 2 === 0 ? 1 : ir; p.push({ x: Math.cos(a) * R * k, y: Math.sin(a) * R * k }); }
+                            return [{ points: p }]; } },
+            arrow:    { label: 'Arrow', icon: 'move-up-right', group: 'Arrows', color: '#ff4d5e', size: 9, sketch: 'sketchy', reveal: 0.6,
+                        strokes: () => [{ points: [{ x: -240, y: 90 }, { x: 190, y: -60 }] }, ...annoHeadPts(190, -60, 430, -150, 62, 24).map(points => ({ points }))] },
+            arrowArc: { label: 'Curved Arrow', icon: 'corner-up-right', group: 'Arrows', color: '#ff4d5e', size: 9, sketch: 'sketchy', reveal: 0.7,
+                        strokes: () => {
+                            // Quadratic Bézier (-260,120) → ctrl (0,-280) → (210,-70);
+                            // head points along the end tangent P2-P1 = (210, 210).
+                            const pts = [];
+                            for (let i = 0; i <= 32; i++) { const t = i / 32; const mt = 1 - t;
+                                pts.push({ x: mt * mt * -260 + 2 * mt * t * 0 + t * t * 210, y: mt * mt * 120 + 2 * mt * t * -280 + t * t * -70 }); }
+                            return [{ points: pts }, ...annoHeadPts(210, -70, 210, 210, 62, 24).map(pp => ({ points: pp })) ];
+                        } },
+            underline:{ label: 'Underline', icon: 'minus', group: 'Marks', color: '#ff4d5e', size: 10, sketch: 'light', reveal: 0.5,
+                        strokes: () => [{ points: [{ x: -250, y: 30 }, { x: 10, y: 22 }, { x: 250, y: 34 }] }] },
+            highlight:{ label: 'Highlight', icon: 'highlighter', group: 'Marks', color: '#ffd60a', size: 44, sketch: 'off', reveal: 0.6,
+                        strokes: () => [{ tool: 'highlighter', points: [{ x: -280, y: 0 }, { x: 60, y: -6 }, { x: 280, y: 4 }] }] },
+            check:    { label: 'Check', icon: 'check', group: 'Marks', color: '#22c55e', size: 12, sketch: 'sketchy', reveal: 0.5,
+                        strokes: () => [{ points: [{ x: -150, y: 10 }, { x: -35, y: 115 }, { x: 175, y: -125 }] }] },
+            cross:    { label: 'Cross', icon: 'x', group: 'Marks', color: '#ff4d5e', size: 12, sketch: 'sketchy', reveal: 0.6,
+                        strokes: () => [{ points: [{ x: -120, y: -120 }, { x: 120, y: 120 }] }, { points: [{ x: -120, y: 120 }, { x: 120, y: -120 }] }] }
+        };
+        function drawAnnoIcon(k) { return (ANNO_ELEMENTS[k] && ANNO_ELEMENTS[k].icon) || 'pen-tool'; }
+        // Stamp: create the draw clip at the playhead carrying the element's
+        // strokes (baked color/size/sketch per stroke) + draw-on reveal, then
+        // select it. Creation matches ensureDrawSession's clip shape.
+        window.stampAnnoElement = (key) => {
+            const el = ANNO_ELEMENTS[key];
+            if (!el) return;
+            closeAnnoFlyout();
+            const targetTrackId = getAvailableTrack('video', State.currentTime, 4);
+            const targetTrack = State.tracks.find(t => t.id === targetTrackId);
+            const clipColor = targetTrack ? (targetTrack.colorIndex + 4) % PALETTES.length : 0;
+            const clip = {
+                id: 'c_' + Date.now() + Math.random().toString(36).substr(2, 5),
+                sceneId: State.activeSceneId || null,
+                trackId: targetTrackId,
+                colorIndex: clipColor,
+                type: 'draw',
+                title: el.label,
+                start: State.currentTime,
+                duration: 4,
+                sourceOffset: 0,
+                maxDuration: 3600,
+                seed: (Math.random() * 1e9) | 0,
+                strokes: el.strokes().map(s => ({
+                    tool: s.tool || 'pen',
+                    color: s.tool === 'highlighter' ? el.color : el.color,
+                    size: s.size || el.size,
+                    sketch: (s.sketch || el.sketch) !== 'off' ? (s.sketch || el.sketch) : undefined,
+                    points: s.points
+                })),
+                effects: {
+                    scale: 1, rotate: 0, offsetX: 0, offsetY: 0,
+                    drawTool: 'pen', drawColor: el.color, drawSize: el.size, drawOpacity: 100,
+                    drawAngle: 0, drawInkOpacity: 100, drawInkBlend: 'source-over', drawTexture: 0,
+                    drawSketch: el.sketch !== 'off' ? el.sketch : undefined,
+                    drawReveal: el.reveal || 0,
+                    animIn: 'none', animOut: 'none', animLoop: 'none', animInDur: 1.0, animOutDur: 1.0, animEase: 'easeOut',
+                    opacity: 100, blendMode: 'source-over'
+                }
+            };
+            State.clips.push(clip);
+            State.selectedClipId = clip.id;
+            State.multiSelectedClipIds = [clip.id];
+            if (State.currentTime + clip.duration > State.duration) {
+                State.duration = Math.ceil(State.currentTime + clip.duration + 10);
+                updateTimelineWidth();
+            }
+            calcOverlaps();
+            renderClips();
+            updateSidebarPanel();
+            drawCanvas();
+        };
+        // Elements flyout: anchored card grid off the toolbar button. Same
+        // open/close discipline as the brush flyout — the capture-phase
+        // mousedown closer must ignore presses inside the panel (and on its
+        // toggle button) or chips die between mousedown and click.
+        window.toggleAnnoFlyout = (ev) => {
+            if (ev) ev.stopPropagation();
+            const existing = document.getElementById('_annoFlyout');
+            closeAnnoFlyout();
+            if (existing) return;
+            const fly = document.createElement('div');
+            fly.id = '_annoFlyout';
+            fly.style.position = 'fixed';
+            fly.style.zIndex = '80';
+            const groups = ['Emphasis', 'Arrows', 'Marks'];
+            fly.className = 'w-64 max-w-[calc(100vw-1.5rem)] p-1.5 rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 shadow-xl';
+            fly.innerHTML = `<div class="px-2 pt-1.5 pb-1 text-[10px] font-bold uppercase tracking-widest text-surface-400 dark:text-surface-500">Hand-drawn Elements</div>` +
+                groups.map(g => {
+                    const items = Object.entries(ANNO_ELEMENTS).filter(([, e]) => e.group === g);
+                    if (!items.length) return '';
+                    return `<div class="px-2 pt-1 pb-0.5 text-[9px] font-bold uppercase tracking-widest text-surface-400 dark:text-surface-500">${g}</div>` +
+                        `<div class="grid grid-cols-2 gap-1">` + items.map(([k, e]) => `
+                            <button type="button" data-anno="${k}" onclick="stampAnnoElement('${k}')" class="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-transparent hover:bg-surface-100 dark:hover:bg-surface-700/60 hover:border-surface-200 dark:hover:border-surface-600 text-left transition-colors">
+                                <i data-lucide="${drawAnnoIcon(k)}" class="w-3.5 h-3.5 shrink-0" style="color: ${e.color}"></i>
+                                <span class="text-[11px] font-bold truncate text-surface-700 dark:text-surface-200">${e.label}</span>
+                            </button>`).join('') + `</div>`;
+                }).join('') +
+                `<div class="px-2 pt-1.5 pb-1 text-[10px] text-surface-500 dark:text-surface-300 leading-snug border-t border-surface-200 dark:border-surface-700 mt-1">stamps a draw clip at the playhead with draw-on reveal</div>`;
+            document.body.appendChild(fly);
+            if (window.lucide && window.lucide.createIcons) { try { window.lucide.createIcons(); } catch (e) {} }
+            const btn = document.getElementById('btnAnnoLibrary');
+            if (btn && btn.getBoundingClientRect) {
+                const r = btn.getBoundingClientRect();
+                fly.style.visibility = 'hidden';
+                requestAnimationFrame(() => {
+                    const fw = fly.offsetWidth, fh = fly.offsetHeight;
+                    let left = Math.min(r.left, window.innerWidth - fw - 10);
+                    let top = r.bottom + 6;
+                    if (top + fh > window.innerHeight - 8) top = Math.max(8, r.top - fh - 6);
+                    fly.style.left = Math.max(10, left) + 'px';
+                    fly.style.top = top + 'px';
+                    fly.style.visibility = 'visible';
+                });
+            } else { fly.style.left = '16px'; fly.style.top = '80px'; }
+            setTimeout(() => {
+                document.addEventListener('mousedown', closeAnnoFlyout, true);
+                window.addEventListener('resize', closeAnnoFlyout);
+                window.addEventListener('scroll', closeAnnoFlyout, true);
+            }, 0);
+        };
+        function closeAnnoFlyout(ev) {
+            if (ev) {
+                const t = ev.target;
+                if (t && t.closest && (t.closest('#_annoFlyout') || t.closest('#btnAnnoLibrary'))) return;
+            }
+            const f = document.getElementById('_annoFlyout');
+            if (f && f.parentNode) f.parentNode.removeChild(f);
+            document.removeEventListener('mousedown', closeAnnoFlyout, true);
+            window.removeEventListener('resize', closeAnnoFlyout);
+            window.removeEventListener('scroll', closeAnnoFlyout, true);
+        }
 
         window.setDrawStyleAll = (clipId, key, value) => {
             const targetIds = (State.multiSelectedClipIds && State.multiSelectedClipIds.length > 0 && State.multiSelectedClipIds.includes(clipId))
@@ -9772,6 +10533,18 @@
                         if (!isE) s.inkBlend = value;
                     } else if (key === 'texture') {
                         if (!isE) s.texture = value;
+                    } else if (key === 'sketch') {
+                        // Sketch preset (Phase A): 'off' clears the per-stroke
+                        // override so the brush default applies.
+                        if (!isE) { if (value && value !== 'off') s.sketch = value; else delete s.sketch; }
+                    } else if (key === 'bleed') {
+                        if (!isE) s.bleed = value;
+                    } else if (key === 'sensitivity') {
+                        if (!isE) s.sensitivity = value;
+                    } else if (key === 'depletion') {
+                        if (!isE) s.depletion = value;
+                    } else if (key === 'scatter') {
+                        if (!isE) s.scatter = value;
                     }
                 });
                 if (key === 'color') clip.effects.drawColor = value;
@@ -9780,6 +10553,11 @@
                 else if (key === 'opacity') clip.effects.drawInkOpacity = value;
                 else if (key === 'blend') clip.effects.drawInkBlend = value;
                 else if (key === 'texture') clip.effects.drawTexture = value;
+                else if (key === 'sketch') clip.effects.drawSketch = (value && value !== 'off') ? value : undefined;
+                else if (key === 'bleed') clip.effects.drawBleed = value;
+                else if (key === 'sensitivity') clip.effects.drawSensitivity = value;
+                else if (key === 'depletion') clip.effects.drawDepletion = value;
+                else if (key === 'scatter') clip.effects.drawScatter = value;
             });
             pushUndo(before, 'drawAll:' + key + ':' + clipId);
             drawCanvas();
@@ -11861,6 +12639,41 @@
                                 ` : ''}
 
                                 <div>
+                                    <label for="${clip.id}_shapeSketch" class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1">Sketch Style</label>
+                                    <select id="${clip.id}_shapeSketch" class="w-full text-xs py-1.5 pl-2.5 pr-2 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner font-bold text-surface-800 dark:text-surface-200 cursor-pointer" onchange="setClipEffect('${clip.id}', 'shapeSketch', this.value); updateSidebarPanel();">
+                                        <option value="off" ${(fx.shapeSketch || 'off') === 'off' ? 'selected' : ''}>Off (crisp)</option>
+                                        <option value="light" ${fx.shapeSketch === 'light' ? 'selected' : ''}>Light</option>
+                                        <option value="sketchy" ${fx.shapeSketch === 'sketchy' ? 'selected' : ''}>Sketchy (2 passes)</option>
+                                        <option value="messy" ${fx.shapeSketch === 'messy' ? 'selected' : ''}>Messy</option>
+                                    </select>
+                                </div>
+
+                                ${(fx.shapeSketch || 'off') !== 'off' ? `
+                                <div class="flex items-center justify-between">
+                                    <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Boiling</label>
+                                    <label class="relative inline-flex items-center cursor-pointer">
+                                        <input type="checkbox" class="sr-only peer" ${fx.shapeBoil === false ? '' : 'checked'} onchange="setClipEffect('${clip.id}', 'shapeBoil', this.checked); updateSidebarPanel();">
+                                        <div class="w-7 h-4 bg-surface-300 dark:bg-surface-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all dark:peer-checked:bg-brand-500 peer-checked:bg-brand-500"></div>
+                                    </label>
+                                </div>
+                                <div class="flex items-center justify-between">
+                                    <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Fill Style</label>
+                                    <select class="w-28 text-xs py-1 pl-2 pr-1.5 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner font-bold text-surface-800 dark:text-surface-200 cursor-pointer" onchange="setClipEffect('${clip.id}', 'sketchFill', this.value);">
+                                        <option value="solid" ${(fx.sketchFill || 'solid') === 'solid' ? 'selected' : ''}>Solid</option>
+                                        <option value="hachure" ${fx.sketchFill === 'hachure' ? 'selected' : ''}>Hachure</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <div class="flex justify-between items-center mb-1">
+                                        <label class="text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest">Wobble</label>
+                                        <span class="text-[10px] font-bold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded">${fx.shapeWobble !== undefined ? fx.shapeWobble : 40}%</span>
+                                    </div>
+                                    <input type="range" min="10" max="100" value="${fx.shapeWobble !== undefined ? fx.shapeWobble : 40}" class="w-full custom-slider" oninput="setClipEffect('${clip.id}', 'shapeWobble', this.value); this.previousElementSibling.querySelector('span').textContent = this.value + '%'; drawCanvas();">
+                                </div>
+                                <div class="text-[10px] text-brand-600 dark:text-brand-400 leading-snug">outline re-drawn by hand; boiling wiggles at 10 fps and stays frame-stable in exports</div>
+                                ` : ''}
+
+                                <div>
                                     <label for="${clip.id}_fillColor" class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1">Fill Color</label>
                                     <div class="relative flex items-center bg-surface-50 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 rounded p-1 cursor-pointer shadow-inner w-full">
                                         <div class="w-6 h-6 rounded shadow-sm" style="background-color: ${fx.fillColor || '#ffbb00'}"></div>
@@ -12791,6 +13604,10 @@
                 const _op = fx.drawInkOpacity !== undefined ? fx.drawInkOpacity : (_b.defOpacity !== undefined ? _b.defOpacity : 100);
                 const _bl = fx.drawInkBlend || _b.defBlend || 'source-over';
                 const _tx = fx.drawTexture !== undefined ? fx.drawTexture : (_b.defTexture || 0);
+                const _bleed = fx.drawBleed !== undefined ? fx.drawBleed : (_b.defBleed !== undefined ? _b.defBleed : 30);
+                const _sens = fx.drawSensitivity !== undefined ? fx.drawSensitivity : (_b.defSensitivity !== undefined ? _b.defSensitivity : 40);
+                const _depl = fx.drawDepletion !== undefined ? fx.drawDepletion : (_b.defDepletion !== undefined ? _b.defDepletion : 0);
+                const _scat = fx.drawScatter !== undefined ? fx.drawScatter : (_b.defScatter !== undefined ? _b.defScatter : 50);
                 // Per-brush settings block: only the controls the picked brush
                 // supports, at that brush's own ranges and defaults.
                 const _brushSettings = [
@@ -12805,7 +13622,11 @@
                             <option value="overlay" ${_bl === 'overlay' ? 'selected' : ''}>Overlay</option>
                         </select>
                     </div>` : '',
-                    _b.hasTexture ? propRow('Texture', propSlider('drawTexture', _tx, 0, 100, 1, "this.value + '%'", { setter: `setDrawStyleAll('${clip.id}', 'texture', parseFloat(this.value))` }), _tx + '%', { reset: `<button type="button" onclick="setDrawStyleAll('${clip.id}', 'texture', ${_b.defTexture || 0}); updateSidebarPanel(); event.stopPropagation();" class="p-0.5 rounded text-surface-400 dark:text-surface-500 hover:text-brand-600 dark:hover:text-brand-400 transition-colors" title="Reset texture"><i data-lucide="rotate-ccw" class="w-3 h-3"></i></button>` }) : ''
+                    _b.hasTexture ? propRow('Texture', propSlider('drawTexture', _tx, 0, 100, 1, "this.value + '%'", { setter: `setDrawStyleAll('${clip.id}', 'texture', parseFloat(this.value))` }), _tx + '%', { reset: `<button type="button" onclick="setDrawStyleAll('${clip.id}', 'texture', ${_b.defTexture || 0}); updateSidebarPanel(); event.stopPropagation();" class="p-0.5 rounded text-surface-400 dark:text-surface-500 hover:text-brand-600 dark:hover:text-brand-400 transition-colors" title="Reset texture"><i data-lucide="rotate-ccw" class="w-3 h-3"></i></button>` }) : '',
+                    _b.hasBleed ? propRow('Bleed', propSlider('drawBleed', _bleed, 0, 100, 1, "this.value + '%'", { setter: `setDrawStyleAll('${clip.id}', 'bleed', parseFloat(this.value))` }), _bleed + '%', { reset: `<button type="button" onclick="setDrawStyleAll('${clip.id}', 'bleed', ${_b.defBleed !== undefined ? _b.defBleed : 30}); updateSidebarPanel(); event.stopPropagation();" class="p-0.5 rounded text-surface-400 dark:text-surface-500 hover:text-brand-600 dark:hover:text-brand-400 transition-colors" title="Reset bleed"><i data-lucide="rotate-ccw" class="w-3 h-3"></i></button>` }) : '',
+                    _b.hasSensitivity ? propRow('Speed Feel', propSlider('drawSensitivity', _sens, 0, 100, 1, "this.value + '%'", { setter: `setDrawStyleAll('${clip.id}', 'sensitivity', parseFloat(this.value))` }), _sens + '%', { reset: `<button type="button" onclick="setDrawStyleAll('${clip.id}', 'sensitivity', ${_b.defSensitivity !== undefined ? _b.defSensitivity : 40}); updateSidebarPanel(); event.stopPropagation();" class="p-0.5 rounded text-surface-400 dark:text-surface-500 hover:text-brand-600 dark:hover:text-brand-400 transition-colors" title="Reset speed feel"><i data-lucide="rotate-ccw" class="w-3 h-3"></i></button>` }) : '',
+                    _b.hasDepletion ? propRow('Ink Fade', propSlider('drawDepletion', _depl, 0, 100, 1, "this.value + '%'", { setter: `setDrawStyleAll('${clip.id}', 'depletion', parseFloat(this.value))` }), _depl + '%', { reset: `<button type="button" onclick="setDrawStyleAll('${clip.id}', 'depletion', ${_b.defDepletion !== undefined ? _b.defDepletion : 0}); updateSidebarPanel(); event.stopPropagation();" class="p-0.5 rounded text-surface-400 dark:text-surface-500 hover:text-brand-600 dark:hover:text-brand-400 transition-colors" title="Reset ink fade"><i data-lucide="rotate-ccw" class="w-3 h-3"></i></button>` }) : '',
+                    _b.hasScatter ? propRow('Scatter', propSlider('drawScatter', _scat, 0, 100, 1, "this.value + '%'", { setter: `setDrawStyleAll('${clip.id}', 'scatter', parseFloat(this.value))` }), _scat + '%', { reset: `<button type="button" onclick="setDrawStyleAll('${clip.id}', 'scatter', ${_b.defScatter !== undefined ? _b.defScatter : 50}); updateSidebarPanel(); event.stopPropagation();" class="p-0.5 rounded text-surface-400 dark:text-surface-500 hover:text-brand-600 dark:hover:text-brand-400 transition-colors" title="Reset scatter"><i data-lucide="rotate-ccw" class="w-3 h-3"></i></button>` }) : ''
                 ].filter(Boolean).join('');
                 drawHTML = propCard('cardDraw', 'pencil', 'Ink', `
                     <div>
@@ -12830,6 +13651,17 @@
                     <button type="button" onclick="setDrawMode(true); if(State.selectedClipId){State.drawSessionClipId=State.selectedClipId;} updateSidebarPanel();" class="w-full py-1.5 px-2 text-[10px] font-bold rounded-lg bg-pink-50 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400 border border-pink-200 dark:border-pink-700 hover:bg-pink-100 dark:hover:bg-pink-900/50 transition-colors flex items-center justify-center gap-1.5">
                         <i data-lucide="pencil" class="w-3 h-3"></i> Continue Drawing
                     </button>
+                    <div class="w-full h-px bg-surface-200 dark:bg-surface-700 my-0.5"></div>
+                    <div>
+                        <label for="${clip.id}_drawSketch" class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1">Sketch Style</label>
+                        <select id="${clip.id}_drawSketch" onchange="setDrawStyleAll('${clip.id}', 'sketch', this.value); updateSidebarPanel();" class="w-full text-xs py-1.5 pl-2.5 pr-2 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner font-bold text-surface-800 dark:text-surface-200 cursor-pointer">
+                            <option value="off" ${(fx.drawSketch || 'off') === 'off' ? 'selected' : ''}>Off (brush ink)</option>
+                            <option value="light" ${fx.drawSketch === 'light' ? 'selected' : ''}>Light</option>
+                            <option value="sketchy" ${fx.drawSketch === 'sketchy' ? 'selected' : ''}>Sketchy (2 passes)</option>
+                            <option value="messy" ${fx.drawSketch === 'messy' ? 'selected' : ''}>Messy</option>
+                        </select>
+                        ${fx.drawSketch && fx.drawSketch !== 'off' ? `<div class="text-[10px] text-brand-600 dark:text-brand-400 leading-snug mt-1">strokes re-render as hand-drawn passes — boiling wiggles at 10 fps, frame-stable in exports</div>` : ''}
+                    </div>
                 `);
             }
 
@@ -25664,6 +26496,15 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     inkOpacity: (bDefNow.hasInkOpacity || (fx.drawInkOpacity !== undefined && fx.drawInkOpacity !== 100)) ? (fx.drawInkOpacity !== undefined ? fx.drawInkOpacity : 100) : undefined,
                     inkBlend: (bDefNow.hasInkBlend || (fx.drawInkBlend && fx.drawInkBlend !== 'source-over')) ? (fx.drawInkBlend || 'source-over') : undefined,
                     texture: (bDefNow.hasTexture || (fx.drawTexture || 0) > 0) ? (fx.drawTexture || 0) : undefined,
+                    // Sketch preset snapshot (Phase A): stored only when active so
+                    // stroke data stays lean and old sketches render unchanged.
+                    sketch: (fx.drawSketch && fx.drawSketch !== 'off') ? fx.drawSketch : undefined,
+                    // Phase C ink-physics snapshots: kept when the brush exposes
+                    // the knob (write-through needs a stable target per stroke).
+                    bleed: (bDefNow.hasBleed || (fx.drawBleed !== undefined && fx.drawBleed !== (bDefNow.defBleed || 30))) ? (fx.drawBleed !== undefined ? fx.drawBleed : bDefNow.defBleed) : undefined,
+                    sensitivity: (bDefNow.hasSensitivity || (fx.drawSensitivity !== undefined && fx.drawSensitivity !== (bDefNow.defSensitivity || 40))) ? (fx.drawSensitivity !== undefined ? fx.drawSensitivity : bDefNow.defSensitivity) : undefined,
+                    depletion: (bDefNow.hasDepletion || (fx.drawDepletion !== undefined && fx.drawDepletion !== (bDefNow.defDepletion || 0))) ? (fx.drawDepletion !== undefined ? fx.drawDepletion : bDefNow.defDepletion) : undefined,
+                    scatter: (bDefNow.hasScatter || (fx.drawScatter !== undefined && fx.drawScatter !== (bDefNow.defScatter || 50))) ? (fx.drawScatter !== undefined ? fx.drawScatter : bDefNow.defScatter) : undefined,
                     points: pts2.map(p => {
                         // invert screen→local: un-rotate first, then un-scale/un-flip
                         const vx = p.x - refCx, vy = p.y - refCy;
