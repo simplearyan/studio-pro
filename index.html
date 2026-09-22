@@ -6751,7 +6751,7 @@
                             });
                             ctx.save();
                             ctx.globalAlpha *= 0.85;
-                            renderDrawStroke(ctx, { tool: fx.drawTool, color: fx.drawColor, size: fx.drawSize, points: relPts }, clip.seed || 1);
+                            renderDrawStroke(ctx, { tool: fx.drawTool, color: (fx.drawTool === 'eraser') ? '#000000' : (fx.drawColor || '#ff3b6b'), size: fx.drawSize, angle: fx.drawAngle, inkOpacity: fx.drawInkOpacity, inkBlend: fx.drawInkBlend, texture: fx.drawTexture, points: relPts }, clip.seed || 1);
                             ctx.restore();
                         }
 
@@ -9178,8 +9178,62 @@
         // so exports at any resolution/seek position stay deterministic.
         // Points live in 1920-base canvas px (same absolute space shapes use).
         const DRAW_BASE_W = 1920;
+        // Flat-nib band renderer shared by chisel/calligraphy/highlighter: sweeps a
+        // quad band of width st.size·widthK along the segment, held at the nib
+        // angle. Overlapping per-step stamps would create sawtooth edges and
+        // multiply-darkened interior seams, so instead the polyline is offset to
+        // BOTH sides in ONE path and filled as a polygon, then the true nib-flat
+        // end caps (the full ±nib diagonal at each endpoint) are extra subpaths of
+        // the SAME fill — disjoint geometry, so translucent inks (highlighter)
+        // stay perfectly uniform with no double-darkened seams. Texture adds a
+        // deterministic dHash wobble to the band edges for rough-paper nibs.
+        // Returns true (path-renderer contract).
+        function drawFlatNibBand(c, sx, sy, ex, ey, st, widthK, inkOpacity, inkBlend) {
+            const a = st.angle * Math.PI / 180;
+            const nax = Math.cos(a) * st.size * widthK / 2, nay = Math.sin(a) * st.size * widthK / 2;
+            const len = Math.hypot(ex - sx, ey - sy);
+            const nx = len > 0.001 ? (-(ey - sy) / len) : 0, ny = len > 0.001 ? ((ex - sx) / len) : 0;
+            const halfW = Math.max(0.5, st.size * widthK / 2);
+            const up = [], down = [];
+            const N = Math.max(2, Math.ceil(len / 4));
+            for (let i = 0; i <= N; i++) {
+                const t = i / N;
+                const px = sx + (ex - sx) * t, py = sy + (ey - sy) * t;
+                let wobble = 0;
+                if (st.texture > 0) wobble = (dHash(px * 0.05, py * 0.05, 17.31) - 0.5) * st.size * 0.24 * st.texture;
+                up.push({ x: px - nx * (halfW + wobble), y: py - ny * (halfW + wobble) });
+                down.push({ x: px + nx * (halfW + wobble), y: py + ny * (halfW + wobble) });
+            }
+            c.save();
+            if (inkBlend) c.globalCompositeOperation = inkBlend;
+            if (inkOpacity !== undefined) c.globalAlpha *= inkOpacity;
+            c.fillStyle = st.color;
+            c.beginPath();
+            // Band polygon: up-side forward, down-side back
+            c.moveTo(up[0].x, up[0].y);
+            for (let i = 1; i < up.length; i++) c.lineTo(up[i].x, up[i].y);
+            for (let i = down.length - 1; i >= 0; i--) c.lineTo(down[i].x, down[i].y);
+            c.closePath();
+            // Nib-flat end caps: the full ±nib diagonal at each endpoint, extended
+            // 0.6px past the spine so the flat edge reads square, not clipped.
+            const e = 0.6;
+            c.moveTo(sx - nax, sy - nay);
+            c.lineTo(sx + nax, sy + nay);
+            c.lineTo(sx + nax + nx * e, sy + nay + ny * e);
+            c.lineTo(sx - nax + nx * e, sy - nay + ny * e);
+            c.closePath();
+            c.moveTo(ex - nax, ey - nay);
+            c.lineTo(ex + nax, ey + nay);
+            c.lineTo(ex + nax - nx * e, ey + nay - ny * e);
+            c.lineTo(ex - nax - nx * e, ey - nay - ny * e);
+            c.closePath();
+            c.fill();
+            c.restore();
+            return true;
+        }
+
         const drawBrushes = {
-            pen: { label: 'Pen', minSize: 1, maxSize: 60, defSize: 6, hasTexture: false, hasAngle: false,
+            pen: { label: 'Pen', minSize: 1, maxSize: 60, defSize: 6, hasTexture: false, hasAngle: false, defNib: 0, hasInkOpacity: false, hasInkBlend: false,
                 // Whole-stroke tapered ink via vendored perfect-freehand (thumb-maker
                 // parity): simulates pressure from point velocity, producing variable
                 // width and rounded tapered ends. Pure function of the input points,
@@ -9208,7 +9262,7 @@
                     c.lineJoin = 'round';
                     c.beginPath(); c.moveTo(sx, sy); c.lineTo(ex, ey); c.stroke();
                 } },
-            eraser: { label: 'Eraser', minSize: 5, maxSize: 120, defSize: 30, hasTexture: false, hasAngle: false,
+            eraser: { label: 'Eraser', minSize: 5, maxSize: 120, defSize: 30, hasTexture: false, hasAngle: false, defNib: 0, hasInkOpacity: false, hasInkBlend: false,
                 seg: (c, sx, sy, ex, ey, st) => {
                     // Clip-scoped erase: destination-out only bites pixels painted
                     // earlier in this render pass — draw clips containing eraser
@@ -9220,8 +9274,160 @@
                     c.lineCap = 'round';
                     c.lineJoin = 'round';
                     c.beginPath(); c.moveTo(sx, sy); c.lineTo(ex, ey); c.stroke();
-                } }
+                } },
+            // ── MarkerForge port (Phase 2) ──────────────────────────────────
+            // Eight brushes ported from MarkerForge Pro's drawBrushSegment.
+            // MarkerForge's live p.random()/p.noise() are replaced by a
+            // position-hashed pseudo-noise (dHash): the speckle/bleed pattern
+            // depends only on coordinates, so the same frame rasterizes
+            // identically at any seek position or export resolution.
+            chisel: { label: 'Chisel', minSize: 4, maxSize: 80, defSize: 18, hasTexture: false, hasAngle: true, defNib: 45, defOpacity: 100, hasInkOpacity: true, hasInkBlend: false,
+                seg: (c, sx, sy, ex, ey, st) => {
+                    // Flat chisel nib: a solid quad band of width st.size, held at
+                    // the nib angle — MarkerForge's square-cap stamp read, filled
+                    // (not hairline-stroked) so the ink is uniform and opaque.
+                    drawFlatNibBand(c, sx, sy, ex, ey, st, 1);
+                },
+                dot: (c, x, y, st) => drawFlatNibBand(c, x, y, x + 0.01, y + 0.01, st, 1) },
+            calligraphy: { label: 'Calligraphy', minSize: 4, maxSize: 80, defSize: 20, hasTexture: false, hasAngle: true, defNib: 45, defOpacity: 100, hasInkOpacity: true, hasInkBlend: false,
+                seg: (c, sx, sy, ex, ey, st) => {
+                    // Same flat nib band at a hairline width — thin elegant strokes.
+                    drawFlatNibBand(c, sx, sy, ex, ey, st, 0.12);
+                },
+                dot: (c, x, y, st) => drawFlatNibBand(c, x, y, x + 0.01, y + 0.01, st, 0.12) },
+            highlighter: { label: 'Highlighter', minSize: 8, maxSize: 100, defSize: 32, hasTexture: false, hasAngle: true, defNib: 12, defOpacity: 45, defBlend: 'multiply', hasInkOpacity: true, hasInkBlend: true,
+                // Whole-stroke band: one polyline offset + fill so a translucent
+                // multiply stroke never double-darkens at segment joints.
+                path: (c, pts, st) => {
+                    let ok = true;
+                    for (let i = 1; i < pts.length && ok; i++) ok = drawFlatNibBand(c, pts[i - 1].x, pts[i - 1].y, pts[i].x, pts[i].y, st, 1, st.inkOpacity, st.inkBlend) !== false;
+                    return ok;
+                },
+                seg: (c, sx, sy, ex, ey, st) => {
+                    // Flat felt nib at a NEAR-PERPENDICULAR angle: a wide translucent
+                    // band whose edges are true straight lines (no sawtooth), with
+                    // soft square ends. Per-stroke inkOpacity/inkBlend override the
+                    // marker defaults (highlighter ships 45% + multiply).
+                    drawFlatNibBand(c, sx, sy, ex, ey, st, 1, st.inkOpacity !== undefined ? st.inkOpacity : 0.45, st.inkBlend || 'multiply');
+                },
+                dot: (c, x, y, st) => drawFlatNibBand(c, x, y, x + 0.01, y + 0.01, st, 1, st.inkOpacity !== undefined ? st.inkOpacity : 0.45, st.inkBlend || 'multiply') },
+            fine: { label: 'Fine Liner', minSize: 1, maxSize: 20, defSize: 2, hasTexture: false, hasAngle: false, defNib: 0, hasInkOpacity: false, hasInkBlend: false,
+                seg: (c, sx, sy, ex, ey, st) => {
+                    c.save();
+                    c.strokeStyle = st.color; c.lineWidth = st.size;
+                    c.lineCap = 'round'; c.lineJoin = 'round';
+                    c.beginPath(); c.moveTo(sx, sy); c.lineTo(ex, ey); c.stroke();
+                    c.restore();
+                },
+                dot: (c, x, y, st) => { c.save(); c.fillStyle = st.color; c.beginPath(); c.arc(x, y, st.size / 2, 0, Math.PI * 2); c.fill(); c.restore(); } },
+            dryErase: { label: 'Dry Erase', minSize: 6, maxSize: 80, defSize: 24, hasTexture: true, hasAngle: false, defNib: 0, defTexture: 35, hasInkOpacity: true, hasInkBlend: false,
+                seg: (c, sx, sy, ex, ey, st) => {
+                    // Bristle speckle: a row of dots across the nib width, gated
+                    // by position-hashed noise against a texture-derived threshold.
+                    const d = Math.hypot(ex - sx, ey - sy);
+                    const steps = Math.max(1, Math.floor(d / 1.5));
+                    const bristles = Math.max(4, Math.floor(st.size * 0.5));
+                    const streakThreshold = st.texture * 0.75;
+                    c.save();
+                    c.fillStyle = st.color;
+                    for (let i = 0; i <= steps; i++) {
+                        const ix = sx + (ex - sx) * i / steps, iy = sy + (ey - sy) * i / steps;
+                        for (let b = 0; b < bristles; b++) {
+                            const off = bristles === 1 ? 0 : (b / (bristles - 1)) * st.size - st.size / 2;
+                            const bx = ix + (-(ey - sy) / (d || 1)) * off, by = iy + ((ex - sx) / (d || 1)) * off;
+                            const n = dHash(bx * 0.05, by * 0.05, b * 17.31);
+                            if (n > streakThreshold) {
+                                const r = st.size * (0.15 + dHash(bx + 31.7, by - 17.3, b) * 0.10);
+                                c.beginPath(); c.arc(bx, by, r, 0, Math.PI * 2); c.fill();
+                            }
+                        }
+                    }
+                    c.restore();
+                },
+                dot: (c, x, y, st) => drawBrushes.dryErase.seg(c, x, y, x + 0.01, y + 0.01, st) },
+            wetMarker: { label: 'Wet Marker', minSize: 6, maxSize: 70, defSize: 20, hasTexture: true, hasAngle: false, defNib: 0, defTexture: 30, defOpacity: 55, hasInkOpacity: true, hasInkBlend: true,
+                seg: (c, sx, sy, ex, ey, st) => {
+                    // Soft felt-tip core with occasional translucent bleed halos.
+                    const d = Math.hypot(ex - sx, ey - sy);
+                    const steps = Math.max(1, Math.floor(d / (st.size * 0.15)));
+                    c.save();
+                    for (let i = 0; i <= steps; i++) {
+                        const ix = sx + (ex - sx) * i / steps, iy = sy + (ey - sy) * i / steps;
+                        c.globalAlpha = 0.47;
+                        c.fillStyle = st.color;
+                        c.beginPath(); c.arc(ix, iy, st.size * 0.4, 0, Math.PI * 2); c.fill();
+                        if (st.texture > 0 && dHash(ix * 3.1, iy * 3.1, 7.7) < st.texture) {
+                            const spread = st.size * (1.0 + dHash(ix, iy, 3.3) * 0.6);
+                            const jx = (dHash(ix + 9.1, iy, 1.2) - 0.5) * 4, jy = (dHash(ix, iy + 9.1, 5.6) - 0.5) * 4;
+                            c.globalAlpha = 0.10;
+                            c.beginPath(); c.arc(ix + jx, iy + jy, spread / 2, 0, Math.PI * 2); c.fill();
+                        }
+                    }
+                    c.restore();
+                },
+                dot: (c, x, y, st) => drawBrushes.wetMarker.seg(c, x, y, x + 0.01, y + 0.01, st) },
+            brushPen: { label: 'Brush Pen', minSize: 4, maxSize: 60, defSize: 12, hasTexture: false, hasAngle: false, defNib: 0, hasInkOpacity: false, hasInkBlend: false,
+                seg: (c, sx, sy, ex, ey, st) => {
+                    // Speed taper: fast segments thin out, slow segments swell —
+                    // MarkerForge's map(speed, 0..40, size*1.5 .. size*0.3).
+                    const d = Math.hypot(ex - sx, ey - sy);
+                    const k = Math.min(1, d / 40);
+                    const ts = (st.size * 1.5) + ((st.size * 0.3) - st.size * 1.5) * k;
+                    const steps = Math.max(1, Math.floor(d / 1.5));
+                    c.save();
+                    c.fillStyle = st.color;
+                    for (let i = 0; i <= steps; i++) {
+                        const ix = sx + (ex - sx) * i / steps, iy = sy + (ey - sy) * i / steps;
+                        c.beginPath(); c.arc(ix, iy, Math.max(0.4, ts / 2), 0, Math.PI * 2); c.fill();
+                    }
+                    c.restore();
+                },
+                dot: (c, x, y, st) => { c.save(); c.fillStyle = st.color; c.beginPath(); c.arc(x, y, st.size * 0.75, 0, Math.PI * 2); c.fill(); c.restore(); } },
+            paintMarker: { label: 'Paint Marker', minSize: 6, maxSize: 80, defSize: 22, hasTexture: true, hasAngle: false, defNib: 0, defTexture: 25, hasInkOpacity: false, hasInkBlend: false,
+                seg: (c, sx, sy, ex, ey, st) => {
+                    // Opaque wide core with optional texture speckles around it.
+                    const d = Math.hypot(ex - sx, ey - sy);
+                    const steps = Math.max(1, Math.floor(d / 2));
+                    c.save();
+                    c.fillStyle = st.color;
+                    for (let i = 0; i <= steps; i++) {
+                        const ix = sx + (ex - sx) * i / steps, iy = sy + (ey - sy) * i / steps;
+                        c.beginPath(); c.arc(ix, iy, st.size / 2, 0, Math.PI * 2); c.fill();
+                        if (st.texture > 0 && dHash(ix * 2.3, iy * 2.3, 11.1) < st.texture) {
+                            const rad = st.size * (0.5 + dHash(ix, iy, 2.2) * 0.15);
+                            const ang = dHash(ix + 5.5, iy + 5.5, 8.8) * Math.PI * 2;
+                            const rr = 1 + dHash(ix - 3.3, iy + 7.7, 4.4) * 3;
+                            c.beginPath(); c.arc(ix + Math.cos(ang) * rad, iy + Math.sin(ang) * rad, rr, 0, Math.PI * 2); c.fill();
+                        }
+                    }
+                    c.restore();
+                },
+                dot: (c, x, y, st) => drawBrushes.paintMarker.seg(c, x, y, x + 0.01, y + 0.01, st) }
         };
+
+        // Position-hashed pseudo-noise for textured brushes (dryErase streaks,
+        // wetMarker bleeds, paintMarker speckles). Replaces MarkerForge's live
+        // p.random()/p.noise(): value depends only on coordinates, so frames
+        // rasterize identically at any seek position or export resolution.
+        function dHash(x, y, s) {
+            const h = Math.sin(x * 12.9898 + y * 78.233 + s * 37.719) * 43758.5453;
+            return h - Math.floor(h);
+        }
+
+        // Per-brush default settings (size plus brush-specific nib angle, ink
+        // opacity, blend mode, texture) — used to seed new strokes when a brush is
+        // picked and to reset the Ink card's per-brush section.
+        function brushDefaults(k) {
+            const b = drawBrushes[k];
+            if (!b) return null;
+            return {
+                size: b.defSize,
+                nib: b.hasAngle ? (b.defNib !== undefined ? b.defNib : 45) : 0,
+                opacity: b.hasInkOpacity ? (b.defOpacity !== undefined ? b.defOpacity : 100) : 100,
+                blend: b.hasInkBlend ? (b.defBlend || 'source-over') : 'source-over',
+                texture: b.hasTexture ? (b.defTexture !== undefined ? b.defTexture : 0) : 0
+            };
+        }
 
         // Restroke polish: light smoothing applied when a stroke commits — the
         // recorded mouse path keeps hand jitter; two passes of an endpoint-pinned
@@ -9276,7 +9482,19 @@
             const pts = stroke.points;
             if (!pts || pts.length === 0) return;
             const brush = drawBrushes[stroke.tool || 'pen'] || drawBrushes.pen;
-            const st = { color: stroke.color || '#ff3b6b', size: Math.max(0.5, stroke.size || 6), texture: stroke.texture || 0, angle: stroke.angle || 45 };
+            const isEraser = (stroke.tool || 'pen') === 'eraser';
+            // Per-stroke style: size (eraser keeps legacy px default), nib angle,
+            // texture, ink opacity (0-100 → 0-1), blend — falling back to the
+            // brush's own defaults so strokes drawn before a setting existed
+            // render exactly as the brush ships.
+            const st = {
+                color: isEraser ? (stroke.color || '#000') : (stroke.color || '#ff3b6b'),
+                size: isEraser ? Math.max(0.5, stroke.size || 6) : Math.max(0.5, stroke.size || brush.defSize || 6),
+                texture: stroke.texture !== undefined ? stroke.texture : (brush.defTexture || 0),
+                angle: stroke.angle !== undefined ? stroke.angle : (brush.defNib !== undefined ? brush.defNib : 45),
+                inkOpacity: stroke.inkOpacity !== undefined ? stroke.inkOpacity / 100 : (brush.defOpacity !== undefined ? brush.defOpacity / 100 : undefined),
+                inkBlend: stroke.inkBlend || brush.defBlend || undefined
+            };
             const rng = drawRng(seed);
             // Partial rendering budget: upTo (if set) limits rendered path length so
             // the draw-on reveal can walk the ink progressively. Deterministic per frame.
@@ -9286,10 +9504,13 @@
                 // A click without a drag still draws a dot (revealed when budget > 0)
                 if (budget > 0) {
                     if ((stroke.tool || 'pen') === 'eraser') c.globalCompositeOperation = 'destination-out';
-                    c.fillStyle = st.color;
-                    c.beginPath();
-                    c.arc(pts[0].x, pts[0].y, st.size / 2, 0, Math.PI * 2);
-                    c.fill();
+                    if (brush.dot) brush.dot(c, pts[0].x, pts[0].y, st);
+                    else {
+                        c.fillStyle = st.color;
+                        c.beginPath();
+                        c.arc(pts[0].x, pts[0].y, st.size / 2, 0, Math.PI * 2);
+                        c.fill();
+                    }
                 }
                 c.restore();
                 return;
@@ -9298,6 +9519,31 @@
             // the input is clipped to a point prefix so the ink grows; falls back
             // to segments only if the vendor library is unavailable.
             if (brush.path && renderDrawStrokePath(c, stroke, st, budget) !== false) {
+                c.restore();
+                return;
+            }
+            // Textured brushes (dryErase, wetMarker, paintMarker with texture) paint
+            // with discrete dabs — under a tight reveal budget the segment walker
+            // could land entirely inside a gap between dabs and produce zero ink.
+            // Dabbing consumes budget in fixed steps so partial reveals still show
+            // speckles; a zero budget still paints nothing.
+            if (brush.hasTexture && st.texture > 0) {
+                let acc = 0;
+                const step = Math.max(2, st.size * 0.3);
+                for (let i = 1; i < pts.length && acc <= budget; i++) {
+                    const ax = pts[i - 1].x, ay = pts[i - 1].y, bx = pts[i].x, by = pts[i].y;
+                    const segLen = Math.hypot(bx - ax, by - ay);
+                    let t = step;
+                    while (t <= segLen && acc + t <= budget) {
+                        const k = t / segLen;
+                        // Dab through the brush's own seg handler with an epsilon
+                        // segment so reveal dabs carry the same speckle/bleed
+                        // texture the final ink will have.
+                        brush.seg(c, ax + (bx - ax) * k, ay + (by - ay) * k, ax + (bx - ax) * k + 0.01, ay + (by - ay) * k + 0.01, st);
+                        t += step;
+                    }
+                    acc += segLen;
+                }
                 c.restore();
                 return;
             }
@@ -9316,14 +9562,15 @@
             c.restore();
         }
 
-        // Path-based brushes (tapered pen ink): render the whole stroke at once.
-        // The reveal budget clips the input to a point prefix whose cumulative
-        // length fits the budget (plus a fractional point so the tip advances
-        // smoothly) — the outline therefore GROWS with time and the fully
+        // Path-based brushes (tapered pen ink, highlighter band): render the whole
+        // stroke at once. The reveal budget clips the input to a point prefix whose
+        // cumulative length fits the budget (plus a fractional point so the tip
+        // advances smoothly) — the ink therefore GROWS with time and the fully
         // revealed frame is byte-identical to the static render.
         function renderDrawStrokePath(c, stroke, st, budget) {
+            const brush = drawBrushes[stroke.tool || 'pen'] || drawBrushes.pen;
             const pts = stroke.points;
-            if (budget === Infinity) return drawBrushes.pen.path(c, pts, st);
+            if (budget === Infinity) return brush.path(c, pts, st);
             // Budget exhausted (stroke not started yet): draw nothing. Falling back
             // to the segment walker here is safe — its loop no-ops at budget 0.
             // Without this, the partial-prefix branch below would build a
@@ -9336,7 +9583,7 @@
             // with k≈1-ε and shift the whole tapered outline sub-pixel.
             let totalLen = 0;
             for (let i = 1; i < pts.length; i++) totalLen += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
-            if (budget >= totalLen - 1e-6) return drawBrushes.pen.path(c, pts, st);
+            if (budget >= totalLen - 1e-6) return brush.path(c, pts, st);
             let acc = 0, end = 1;
             while (end < pts.length) {
                 const segLen = Math.hypot(pts[end].x - pts[end - 1].x, pts[end].y - pts[end - 1].y);
@@ -9347,9 +9594,9 @@
                 // Keep at least the first point so a just-started stroke is a tiny
                 // 2-point segment (a growing line), not a lone dot.
                 const base = pts.slice(0, Math.max(1, end - 1));
-                return drawBrushes.pen.path(c, base.concat([tip]), st);
+                return brush.path(c, base.concat([tip]), st);
             }
-            return drawBrushes.pen.path(c, pts, st);
+            return brush.path(c, pts, st);
         }
 
         // Per-stroke path length (local units) — shared by the reveal budget walker.
@@ -9402,6 +9649,98 @@
         // are ALREADY drawn, not just the defaults for future ones. Color skips
         // eraser strokes (they have no visible color); size applies to them too so
         // wipe width can be tuned after the fact. One undo entry per gesture.
+        // ── Ink card brush picker flyout (Phase 2) ─────────────────────────
+        // Anchored panel of brush chips (grid on mobile, 2-col desktop). Each
+        // entry shows the brush's lucide glyph and defSize demo swatch; picking
+        // routes through setClipEffect so the tool, undo, and multi-select
+        // conventions match every other Ink card control.
+        function drawBrushIcon(k) {
+            return ({ pen: 'pen-tool', eraser: 'eraser', chisel: 'square', calligraphy: 'pen-line', highlighter: 'highlighter', fine: 'pencil-line', dryErase: 'eraser', wetMarker: 'droplet', brushPen: 'brush', paintMarker: 'paintbrush' })[k] || 'pen-tool';
+        }
+        window.toggleBrushFlyout = (clipId, ev) => {
+            if (ev) ev.stopPropagation();
+            const existing = document.getElementById('_brushFlyout');
+            closeBrushFlyout();
+            if (existing) return; // was open — toggle closed
+            const clip = State.clips.find(c => c.id === clipId);
+            if (!clip) return;
+            const cur = clip.effects.drawTool || 'pen';
+            const fly = document.createElement('div');
+            fly.id = '_brushFlyout';
+            fly.style.position = 'fixed';
+            fly.style.zIndex = '80';
+            fly.className = 'w-56 max-w-[calc(100vw-1.5rem)] p-1.5 rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 shadow-xl';
+            fly.innerHTML = `<div class="px-2 pt-1.5 pb-1 text-[10px] font-bold uppercase tracking-widest text-surface-400 dark:text-surface-500">Brush</div>` +
+                `<div class="grid grid-cols-2 gap-1">` +
+                Object.entries(drawBrushes).map(([k, b]) => `
+                    <button type="button" data-brush="${k}" onclick="pickBrush('${clipId}', '${k}')" class="flex flex-col items-start gap-0.5 px-2 py-1.5 rounded-lg border text-left transition-colors ${k === cur ? 'border-brand-500 bg-brand-50 dark:bg-brand-900/30' : 'border-transparent hover:bg-surface-100 dark:hover:bg-surface-700/60'}">
+                        <span class="flex items-center gap-1.5 w-full">
+                            <i data-lucide="${drawBrushIcon(k)}" class="w-3.5 h-3.5 shrink-0 ${k === cur ? 'text-brand-600 dark:text-brand-400' : 'text-surface-400 dark:text-surface-500'}"></i>
+                            <span class="text-[11px] font-bold truncate ${k === cur ? 'text-brand-700 dark:text-brand-300' : 'text-surface-700 dark:text-surface-200'}">${b.label}</span>
+                        </span>
+                        <span class="w-8 rounded-full" style="height: ${Math.max(2, Math.min(8, b.defSize / 4))}px; background: ${k === 'eraser' ? 'repeating-linear-gradient(45deg, #a1a1aa, #a1a1aa 2px, transparent 2px, transparent 4px)' : 'currentColor'}; color: ${k === 'eraser' ? '' : '#64748b'};"></span>
+                    </button>`).join('') +
+                `</div>`;
+            document.body.appendChild(fly);
+            if (window.lucide && window.lucide.createIcons) { try { window.lucide.createIcons(); } catch (e) {} }
+            const btn = document.getElementById(clipId + '_drawTool');
+            if (btn && btn.getBoundingClientRect) {
+                const r = btn.getBoundingClientRect();
+                fly.style.visibility = 'hidden';
+                requestAnimationFrame(() => {
+                    const fw = fly.offsetWidth, fh = fly.offsetHeight;
+                    let left = Math.min(r.left, window.innerWidth - fw - 10);
+                    let top = r.bottom + 6;
+                    if (top + fh > window.innerHeight - 8) top = Math.max(8, r.top - fh - 6);
+                    fly.style.left = Math.max(10, left) + 'px';
+                    fly.style.top = top + 'px';
+                    fly.style.visibility = 'visible';
+                });
+            } else { fly.style.left = '16px'; fly.style.top = '80px'; }
+            setTimeout(() => {
+                document.addEventListener('mousedown', closeBrushFlyout, true);
+                window.addEventListener('resize', closeBrushFlyout);
+                window.addEventListener('scroll', closeBrushFlyout, true);
+            }, 0);
+        };
+        function closeBrushFlyout(ev) {
+            // Presses inside the flyout (or on its toggle button, which handles
+            // its own toggle-close) must NOT close it: the mousedown listener is
+            // capture-phase, so killing the panel here removes the chip between
+            // mousedown and click and the pick never fires.
+            if (ev) {
+                const t = ev.target;
+                if (t && t.closest && (t.closest('#_brushFlyout') || t.closest('[id$="_drawTool"]'))) return;
+            }
+            const f = document.getElementById('_brushFlyout');
+            if (f && f.parentNode) f.parentNode.removeChild(f);
+            document.removeEventListener('mousedown', closeBrushFlyout, true);
+            window.removeEventListener('resize', closeBrushFlyout);
+            window.removeEventListener('scroll', closeBrushFlyout, true);
+        }
+        window.pickBrush = (clipId, k) => {
+            closeBrushFlyout();
+            setClipEffect(clipId, 'drawTool', k);
+            // Seed the per-brush defaults (size + nib/opacity/blend/texture) so
+            // the next stroke uses the brush's shipped look; new strokes only —
+            // existing ink keeps its committed style (use the sliders to restyle).
+            const clip = State.clips.find(c => c.id === clipId);
+            if (clip && clip.type === 'draw') {
+                const d = brushDefaults(k);
+                if (d) {
+                    clip.effects.drawSize = d.size;
+                    clip.effects.drawAngle = d.nib;
+                    clip.effects.drawInkOpacity = d.opacity;
+                    clip.effects.drawInkBlend = d.blend;
+                    clip.effects.drawTexture = d.texture;
+                }
+            }
+            // setClipEffect doesn't refresh the sidebar — re-render the Ink card
+            // so the picker button label (and any tool-specific UI) reflects it.
+            updateSidebarPanel();
+            drawCanvas();
+        };
+
         window.setDrawStyleAll = (clipId, key, value) => {
             const targetIds = (State.multiSelectedClipIds && State.multiSelectedClipIds.length > 0 && State.multiSelectedClipIds.includes(clipId))
                 ? State.multiSelectedClipIds
@@ -9418,13 +9757,29 @@
             const before = snapshotClipEdits(targetIds);
             drawTargets.forEach(clip => {
                 (clip.strokes || []).forEach(s => {
+                    // Eraser strokes carry no visible ink style — recolor/opacity/
+                    // blend/nib don't apply (size does: it's the wipe footprint).
+                    const isE = (s.tool || 'pen') === 'eraser';
                     if (key === 'color') {
-                        if ((s.tool || 'pen') !== 'eraser') s.color = value;
+                        if (!isE) s.color = value;
                     } else if (key === 'size') {
                         s.size = value;
+                    } else if (key === 'nib') {
+                        if (!isE) s.angle = value;
+                    } else if (key === 'opacity') {
+                        if (!isE) s.inkOpacity = value;
+                    } else if (key === 'blend') {
+                        if (!isE) s.inkBlend = value;
+                    } else if (key === 'texture') {
+                        if (!isE) s.texture = value;
                     }
                 });
-                clip.effects[key === 'color' ? 'drawColor' : 'drawSize'] = value;
+                if (key === 'color') clip.effects.drawColor = value;
+                else if (key === 'size') clip.effects.drawSize = value;
+                else if (key === 'nib') clip.effects.drawAngle = value;
+                else if (key === 'opacity') clip.effects.drawInkOpacity = value;
+                else if (key === 'blend') clip.effects.drawInkBlend = value;
+                else if (key === 'texture') clip.effects.drawTexture = value;
             });
             pushUndo(before, 'drawAll:' + key + ':' + clipId);
             drawCanvas();
@@ -12429,20 +12784,48 @@
             let drawHTML = '';
             if (isDraw) {
                 const _strokes = clip.strokes || [];
+                const _bk = fx.drawTool || 'pen';
+                const _b = drawBrushes[_bk] || drawBrushes.pen;
+                const _isE = _bk === 'eraser';
+                const _nib = fx.drawAngle || 0;
+                const _op = fx.drawInkOpacity !== undefined ? fx.drawInkOpacity : (_b.defOpacity !== undefined ? _b.defOpacity : 100);
+                const _bl = fx.drawInkBlend || _b.defBlend || 'source-over';
+                const _tx = fx.drawTexture !== undefined ? fx.drawTexture : (_b.defTexture || 0);
+                // Per-brush settings block: only the controls the picked brush
+                // supports, at that brush's own ranges and defaults.
+                const _brushSettings = [
+                    _b.hasInkOpacity ? propRow('Ink Opacity', propSlider('drawInkOpacity', _op, 5, 100, 1, "this.value + '%'", { setter: `setDrawStyleAll('${clip.id}', 'opacity', parseFloat(this.value))` }), _op + '%', { reset: `<button type="button" onclick="setDrawStyleAll('${clip.id}', 'opacity', ${_b.defOpacity !== undefined ? _b.defOpacity : 100}); updateSidebarPanel(); event.stopPropagation();" class="p-0.5 rounded text-surface-400 dark:text-surface-500 hover:text-brand-600 dark:hover:text-brand-400 transition-colors" title="Reset ink opacity"><i data-lucide="rotate-ccw" class="w-3 h-3"></i></button>` }) : '',
+                    _b.hasAngle ? propRow('Nib Angle', propSlider('drawAngle', _nib || (_b.defNib || 45), 0, 180, 1, "this.value + '°'", { setter: `setDrawStyleAll('${clip.id}', 'nib', parseFloat(this.value))` }), (_nib || (_b.defNib || 45)) + '°', { reset: `<button type="button" onclick="setDrawStyleAll('${clip.id}', 'nib', ${_b.defNib !== undefined ? _b.defNib : 45}); updateSidebarPanel(); event.stopPropagation();" class="p-0.5 rounded text-surface-400 dark:text-surface-500 hover:text-brand-600 dark:hover:text-brand-400 transition-colors" title="Reset nib angle"><i data-lucide="rotate-ccw" class="w-3 h-3"></i></button>` }) : '',
+                    _b.hasInkBlend ? `<div>
+                        <label for="${clip.id}_drawInkBlend" class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1">Ink Blend</label>
+                        <select id="${clip.id}_drawInkBlend" onchange="setDrawStyleAll('${clip.id}', 'blend', this.value); updateSidebarPanel();" class="w-full text-xs py-1.5 pl-2.5 pr-2 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner font-bold text-surface-800 dark:text-surface-200 cursor-pointer">
+                            <option value="multiply" ${_bl === 'multiply' ? 'selected' : ''}>Multiply (marker on paper)</option>
+                            <option value="source-over" ${_bl === 'source-over' ? 'selected' : ''}>Normal</option>
+                            <option value="screen" ${_bl === 'screen' ? 'selected' : ''}>Screen (glow)</option>
+                            <option value="overlay" ${_bl === 'overlay' ? 'selected' : ''}>Overlay</option>
+                        </select>
+                    </div>` : '',
+                    _b.hasTexture ? propRow('Texture', propSlider('drawTexture', _tx, 0, 100, 1, "this.value + '%'", { setter: `setDrawStyleAll('${clip.id}', 'texture', parseFloat(this.value))` }), _tx + '%', { reset: `<button type="button" onclick="setDrawStyleAll('${clip.id}', 'texture', ${_b.defTexture || 0}); updateSidebarPanel(); event.stopPropagation();" class="p-0.5 rounded text-surface-400 dark:text-surface-500 hover:text-brand-600 dark:hover:text-brand-400 transition-colors" title="Reset texture"><i data-lucide="rotate-ccw" class="w-3 h-3"></i></button>` }) : ''
+                ].filter(Boolean).join('');
                 drawHTML = propCard('cardDraw', 'pencil', 'Ink', `
                     <div>
                         <label for="${clip.id}_drawTool" class="block text-[10px] font-bold text-surface-500 dark:text-surface-300 uppercase tracking-widest mb-1">Brush</label>
-                        <select id="${clip.id}_drawTool" name="drawTool" class="w-full text-xs py-1.5 pl-3 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 appearance-none cursor-pointer font-bold text-surface-800 dark:text-surface-200" onchange="setClipEffect('${clip.id}', 'drawTool', this.value); drawCanvas();">
-                            ${Object.entries(drawBrushes).map(([k, b]) => `<option value="${k}" ${fx.drawTool === k ? 'selected' : ''}>${b.label}</option>`).join('')}
-                        </select>
+                        <button type="button" id="${clip.id}_drawTool" onclick="toggleBrushFlyout('${clip.id}', event)" class="w-full flex items-center justify-between gap-2 text-xs py-1.5 pl-2.5 pr-2 border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-900/80 shadow-inner hover:border-brand-400 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 cursor-pointer font-bold text-surface-800 dark:text-surface-200 transition-colors">
+                            <span class="flex items-center gap-2 min-w-0">
+                                <i data-lucide="${drawBrushIcon(fx.drawTool || 'pen')}" class="w-3.5 h-3.5 shrink-0 text-brand-500"></i>
+                                <span class="truncate">${_b.label}</span>
+                            </span>
+                            <i data-lucide="chevron-down" class="w-3 h-3 shrink-0 text-surface-400"></i>
+                        </button>
                     </div>
-                    ${colorRow('drawColor', fx.drawColor || '#ff3b6b', 'Ink Color', `setDrawStyleAll('${clip.id}', 'color', this.value)`)}
-                    ${propRow('Brush Size', propSlider('drawSize', fx.drawSize || 6, 1, 60, 1, "this.value + 'px'", { setter: `setDrawStyleAll('${clip.id}', 'size', parseFloat(this.value))` }), (fx.drawSize || 6) + 'px', { reset: `<button type="button" onclick="setDrawStyleAll('${clip.id}', 'size', 6); updateSidebarPanel(); event.stopPropagation();" class="p-0.5 rounded text-surface-400 dark:text-surface-500 hover:text-brand-600 dark:hover:text-brand-400 transition-colors" title="Reset brush size"><i data-lucide="rotate-ccw" class="w-3 h-3"></i></button>` })}
+                    ${_isE ? '' : colorRow('drawColor', fx.drawColor || '#ff3b6b', 'Ink Color', `setDrawStyleAll('${clip.id}', 'color', this.value)`)}
+                    ${propRow('Size', propSlider('drawSize', fx.drawSize || _b.defSize || 6, _b.minSize, _b.maxSize, 1, "this.value + 'px'", { setter: `setDrawStyleAll('${clip.id}', 'size', parseFloat(this.value))` }), (fx.drawSize || _b.defSize || 6) + 'px', { reset: `<button type="button" onclick="setDrawStyleAll('${clip.id}', 'size', ${_b.defSize}); updateSidebarPanel(); event.stopPropagation();" class="p-0.5 rounded text-surface-400 dark:text-surface-500 hover:text-brand-600 dark:hover:text-brand-400 transition-colors" title="Reset brush size"><i data-lucide="rotate-ccw" class="w-3 h-3"></i></button>` })}
+                    ${_brushSettings}
                     ${propRow('Draw-On Reveal', propSlider('drawReveal', fx.drawReveal || 0, 0, 10, 0.1, "this.value > 0 ? parseFloat(this.value).toFixed(1) + 's' : 'Off'"), (fx.drawReveal || 0) > 0 ? parseFloat(fx.drawReveal).toFixed(1) + 's' : 'Off', { reset: propReset('drawReveal', fx.drawReveal || 0, 0) })}
                     ${(fx.drawReveal || 0) > 0 ? `<div class="text-[10px] text-brand-600 dark:text-brand-400 leading-snug">strokes draw themselves over ${parseFloat(fx.drawReveal).toFixed(1)}s after the clip starts</div>` : ''}
-                    ${fx.drawTool === 'eraser' ? `<div class="text-[10px] text-amber-600 dark:text-amber-400 leading-snug">Eraser only erases ink in this drawing — the canvas and other clips are untouched.</div>` : ''}
+                    ${_isE ? `<div class="text-[10px] text-amber-600 dark:text-amber-400 leading-snug">Eraser only erases ink in this drawing — the canvas and other clips are untouched.</div>` : ''}
                     <div class="text-[10px] text-surface-500 dark:text-surface-300 leading-snug">
-                        ${_strokes.length} stroke${_strokes.length === 1 ? '' : 's'} · color & size apply to <b>all</b> strokes
+                        ${_strokes.length} stroke${_strokes.length === 1 ? '' : 's'} · settings apply to <b>all</b> strokes
                     </div>
                     <button type="button" onclick="setDrawMode(true); if(State.selectedClipId){State.drawSessionClipId=State.selectedClipId;} updateSidebarPanel();" class="w-full py-1.5 px-2 text-[10px] font-bold rounded-lg bg-pink-50 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400 border border-pink-200 dark:border-pink-700 hover:bg-pink-100 dark:hover:bg-pink-900/50 transition-colors flex items-center justify-center gap-1.5">
                         <i data-lucide="pencil" class="w-3 h-3"></i> Continue Drawing
@@ -25215,6 +25598,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                     effects: {
                         scale: 1, rotate: 0, offsetX: 0, offsetY: 0,
                         drawTool: 'pen', drawColor: '#ff3b6b', drawSize: 6, drawOpacity: 100,
+                        drawAngle: 0, drawInkOpacity: 100, drawInkBlend: 'source-over', drawTexture: 0,
                         animIn: 'none', animOut: 'none', animLoop: 'none', animInDur: 1.0, animOutDur: 1.0, animEase: 'easeOut',
                         opacity: 100, blendMode: 'source-over'
                     }
@@ -25264,10 +25648,22 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 const cosD = Math.cos(radD), sinD = Math.sin(radD);
                 const sclD = Math.max(0.0001, (fx.scale || 1) * (aStateDraw.animScale || 1));
                 const flH = (fx.flipH ? -1 : 1), flV = (fx.flipV ? -1 : 1);
+                const toolNow = fx.drawTool || 'pen';
+                const isEraseNow = toolNow === 'eraser';
+                const bDefNow = drawBrushes[toolNow] || drawBrushes.pen;
                 clip.strokes.push({
-                    tool: fx.drawTool || 'pen',
-                    color: fx.drawColor || '#ff3b6b',
-                    size: fx.drawSize || 6,
+                    tool: toolNow,
+                    // Eraser keeps a valid color string (ink style fields don't
+                    // apply to it — setDrawStyleAll skips them on erasers).
+                    color: isEraseNow ? '#000000' : (fx.drawColor || '#ff3b6b'),
+                    size: fx.drawSize || bDefNow.defSize || 6,
+                    // Per-brush style snapshot: only kept when the brush exposes
+                    // the setting OR the user has moved it off default — keeps
+                    // stroke data lean while preserving custom looks.
+                    angle: (bDefNow.hasAngle || (fx.drawAngle || 0) > 0) ? (fx.drawAngle || 0) : undefined,
+                    inkOpacity: (bDefNow.hasInkOpacity || (fx.drawInkOpacity !== undefined && fx.drawInkOpacity !== 100)) ? (fx.drawInkOpacity !== undefined ? fx.drawInkOpacity : 100) : undefined,
+                    inkBlend: (bDefNow.hasInkBlend || (fx.drawInkBlend && fx.drawInkBlend !== 'source-over')) ? (fx.drawInkBlend || 'source-over') : undefined,
+                    texture: (bDefNow.hasTexture || (fx.drawTexture || 0) > 0) ? (fx.drawTexture || 0) : undefined,
                     points: pts2.map(p => {
                         // invert screen→local: un-rotate first, then un-scale/un-flip
                         const vx = p.x - refCx, vy = p.y - refCy;
