@@ -565,201 +565,11 @@ footer{padding:0 32px 28px;font-size:10.5px;color:#475569;font-weight:500}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/css/css.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
 
+<script src="hic-frame.js"></script>
 <script>
 /* ═══════════════════════════════════════════════════════════════
  * SVG foreignObject Renderer — verbatim port from test-renderer
  * ═══════════════════════════════════════════════════════════════ */
-class Renderer {
-    constructor(w, h) {
-        this.w = w; this.h = h;
-        this.canvas = document.createElement('canvas');
-        this.canvas.width = w; this.canvas.height = h;
-        this.ctx = this.canvas.getContext('2d');
-        this.sandbox = document.createElement('div');
-        this.sandbox.style.cssText = 'position:absolute;top:-9999px;left:-9999px;width:800px;height:450px;overflow:hidden;pointer-events:none;';
-        document.body.appendChild(this.sandbox);
-        this.css = ''; this._onFrame = null; this._ready = false;
-    }
-    async setClip(html, css, js) {
-        this.css = css || '';
-        this.sandbox.innerHTML = '<div style="width:800px;height:450px;"></div>';
-        html = await this._loadExternalScripts(html);
-        html = await this._preloadImages(html);
-        this.sandbox.innerHTML = html;
-        var _usesTw = /class="[^"]*\b(bg-|text-|flex|grid-|p[xytblr]?-|m[xytblr]?-|rounded|shadow|font-|border|min-h-|max-w-|w-|h-|gap-|mt-|mb-|tracking-|from-|to-)/.test(html) || html.indexOf('tailwindcss') !== -1;
-        if (_usesTw) {
-            var twStyle = null;
-            for (var _twWait = 0; _twWait < 20 && !twStyle; _twWait++) {
-                await new Promise(r => setTimeout(r, 50));
-                twStyle = [...document.querySelectorAll('head style')]
-                    .filter(s => (s.textContent || '').indexOf('--tw-') !== -1)
-                    .pop();
-            }
-            if (twStyle) this.css = (css || '') + '\n' + twStyle.textContent;
-        }
-        const processed = await this._embedAssets(html, this.css);
-        html = processed.html;
-        this.css = processed.css;
-        this.sandbox.innerHTML = html;
-        try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch(e) {}
-        this._onFrame = null;
-        if (js) {
-            try {
-                var fn = new Function('time', js + '\n;return typeof onFrame==="function"?onFrame:null;');
-                this._onFrame = fn();
-            } catch(e) { console.error('[Renderer] JS parse error:', e); }
-        }
-        this._ready = true;
-    }
-    async _loadExternalScripts(html) {
-        const parser = new DOMParser();
-        const doc = parser.parseFromString('<div>' + html + '</div>', 'text/html');
-        const srcs = [...doc.querySelectorAll('script[src]')].map(s => { const v = s.getAttribute('src'); s.remove(); return v; }).filter(Boolean);
-        for (const src of srcs) {
-            if (src.indexOf('tailwind') !== -1) continue;
-            if (document.querySelector('script[src="' + src + '"]')) continue;
-            await new Promise(res => {
-                const s = document.createElement('script');
-                s.src = src;
-                if (src.indexOf('jsdelivr') !== -1 || src.indexOf('crossorigin') !== -1) s.crossOrigin = 'anonymous';
-                s.onload = res; s.onerror = res;
-                document.head.appendChild(s);
-            });
-        }
-        html = doc.querySelector('div').innerHTML;
-        if (html.indexOf('tailwindcss') !== -1 || /class="[^"]*\b(bg-|text-|flex|grid-|p[xytblr]?-|m[xytblr]?-|rounded|shadow|font-|border)/.test(html)) {
-            if (!document.getElementById('tw-browser-runtime')) {
-                await new Promise(res => {
-                    const s = document.createElement('script');
-                    s.id = 'tw-browser-runtime';
-                    var _slashDocs = location.pathname.indexOf('/docs/');
-                    var _siteBase = _slashDocs > 0 ? location.pathname.slice(0, _slashDocs + 1) : '/';
-                    s.src = _siteBase + 'vendor/tailwind-browser/index.global.js';
-                    s.onload = res; s.onerror = res;
-                    document.head.appendChild(s);
-                    setTimeout(res, 3000);
-                });
-            }
-        }
-        return html;
-    }
-    async _embedAssets(html, css) {
-        const urls = [];
-        const linkRe = /<link[^>]*href=["'](https:\/\/fonts\.googleapis\.com[^"']*)["'][^>]*>/gi;
-        html = html.replace(linkRe, (_, url) => { urls.push(url.replace(/&amp;/g, '&')); return ''; });
-        const cdnLinkRe = /<link[^>]*rel=["']stylesheet["'][^>]*href=["'](https?:\/\/[^"']+)["'][^>]*>/gi;
-        const cdnLinkRe2 = /<link[^>]*href=["'](https?:\/\/[^"']+)["'][^>]*rel=["']stylesheet["'][^>]*>/gi;
-        html = html.replace(cdnLinkRe, (_, url) => { urls.push(url.replace(/&amp;/g, '&')); return ''; });
-        html = html.replace(cdnLinkRe2, (_, url) => { urls.push(url.replace(/&amp;/g, '&')); return ''; });
-        const importRe = /@import\s+(?:url\()?["']?(https:\/\/fonts\.googleapis\.com[^'\)\s]*)["']?\)?\s*;/gi;
-        css = css.replace(importRe, (_, url) => { urls.push(url.replace(/&amp;/g, '&')); return ''; });
-        let fontCss = '';
-        for (const url of urls) {
-            if (_fontCssCache[url]) { fontCss += _fontCssCache[url] + '\n'; continue; }
-            try {
-                const res = await fetch(url);
-                if (!res.ok) continue;
-                let sheet = await res.text();
-                const refs = [];
-                const urlRe = /url\(\s*['"]?([^'")]+?)['"]?\s*\)/g;
-                let mm;
-                while ((mm = urlRe.exec(sheet)) !== null) {
-                    const raw = mm[1];
-                    if (/^data:/i.test(raw)) continue;
-                    let abs = raw;
-                    if (!/^https?:\/\//i.test(raw)) {
-                        try { abs = new URL(raw, url).href; } catch(e) { continue; }
-                    }
-                    refs.push({ raw, abs });
-                }
-                const uniqAbs = Array.from(new Set(refs.map(r => r.abs)));
-                const dataMap = {};
-                await Promise.all(uniqAbs.map(async abs => {
-                    try {
-                        const r = await fetch(abs);
-                        const blob = await r.blob();
-                        dataMap[abs] = await new Promise(resolve => {
-                            const reader = new FileReader();
-                            reader.onloadend = () => resolve(reader.result);
-                            reader.readAsDataURL(blob);
-                        });
-                    } catch(e) {}
-                }));
-                refs.forEach(ref => { const d = dataMap[ref.abs]; if (d) sheet = sheet.split(ref.raw).join(d); });
-                _fontCssCache[url] = sheet;
-                fontCss += sheet + '\n';
-            } catch(e) { console.warn('[Renderer] Font fetch failed:', url); }
-        }
-        return { html, css: fontCss + '\n' + css };
-    }
-    async _preloadImages(htmlString) {
-        const parser = new DOMParser();
-        const doc = parser.parseFromString('<div>' + htmlString + '</div>', 'text/html');
-        const images = doc.querySelectorAll('img');
-        const promises = Array.from(images).map(async (img) => {
-            const src = img.getAttribute('src');
-            if (src && (src.startsWith('http://') || src.startsWith('https://'))) {
-                try {
-                    const resp = await fetch(src, { mode: 'cors' });
-                    if (!resp.ok) throw new Error('fail');
-                    const blob = await resp.blob();
-                    const dataUrl = await new Promise((res, rej) => {
-                        const reader = new FileReader();
-                        reader.onloadend = () => res(reader.result);
-                        reader.onerror = rej;
-                        reader.readAsDataURL(blob);
-                    });
-                    img.setAttribute('src', dataUrl);
-                } catch(e) {}
-            }
-        });
-        await Promise.allSettled(promises);
-        return doc.querySelector('div').innerHTML;
-    }
-    renderFrame(timeMs) {
-        if (!this._ready) return Promise.resolve(false);
-        if (this._onFrame) {
-            const origQSA = Document.prototype.querySelectorAll;
-            const origGEBI = Document.prototype.getElementById;
-            const sandbox = this.sandbox;
-            Document.prototype.querySelectorAll = function(sel) { return sandbox.querySelectorAll(sel); };
-            Document.prototype.getElementById = function(id) { return sandbox.querySelector('#' + id) || origGEBI.call(document, id); };
-            try { this._onFrame(timeMs); } catch(e) { console.error('[Renderer] onFrame error:', e); }
-            Document.prototype.querySelectorAll = origQSA;
-            Document.prototype.getElementById = origGEBI;
-        }
-        const clone = this.sandbox.cloneNode(true);
-        clone.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
-        clone.setAttribute('style', 'width:100%;height:100%;margin:0;padding:0;overflow:hidden;');
-        const domString = new XMLSerializer().serializeToString(clone);
-        const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + this.w + '" height="' + this.h + '">' +
-            '<foreignObject width="100%" height="100%">' +
-            '<style xmlns="http://www.w3.org/1999/xhtml"><![CDATA[' + this.css + ']]></style>' +
-            '<div xmlns="http://www.w3.org/1999/xhtml" style="width:' + this.w + 'px;height:' + this.h + 'px;overflow:hidden;">' +
-            domString + '</div></foreignObject></svg>';
-        return new Promise(resolve => {
-            const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
-            const img = new Image();
-            img.onload = () => { this.ctx.clearRect(0, 0, this.w, this.h); this.ctx.drawImage(img, 0, 0); resolve(true); };
-            img.onerror = () => { this.ctx.fillStyle = '#1e293b'; this.ctx.fillRect(0, 0, this.w, this.h); this.ctx.fillStyle = '#f87171'; this.ctx.font = '14px sans-serif'; this.ctx.fillText('Render Error', 16, 24); resolve(false); };
-            img.src = url;
-        });
-    }
-    drawTo(targetCtx, x, y, w, h) { targetCtx.drawImage(this.canvas, 0, 0, this.w, this.h, x, y, w, h); }
-    /* Composite onto an output-size ctx: background fill, then the design
-       raster contain-fitted and centered (single choke point for preview
-       and both export paths). */
-    drawFrame(ctx, fw, fh) {
-        ctx.clearRect(0, 0, fw, fh);
-        if (expBg !== 'transparent') { ctx.fillStyle = expBg; ctx.fillRect(0, 0, fw, fh); }
-        if (fw === W && fh === H) { this.drawTo(ctx, 0, 0, W, H); return; }
-        const k = Math.min(fw / W, fh / H);
-        const dw = Math.round(W * k), dh = Math.round(H * k);
-        ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-        this.drawTo(ctx, Math.round((fw - dw) / 2), Math.round((fh - dh) / 2), dw, dh);
-    }
-}
-const _fontCssCache = {};
 
 /* ═══════════════════════════════════════════════════════════════
  * Prompt contract + reply parser — same as test-renderer
@@ -923,25 +733,6 @@ function prettifyJs(js) {
  * ═══════════════════════════════════════════════════════════════ */
 const W = 800, H = 450; /* design space — designs choreograph against this and it never changes */
 
-/* Frame geometry: aspect + background of the OUTPUT frame (ported from the
-   test-renderer modal). The 800x450 design is contain-fitted inside the
-   frame; resolution is the frame's short side. */
-const ASPECTS = {
-    '16:9': { rw: 16, rh: 9 },
-    '9:16': { rw: 9, rh: 16 },
-    '1:1':  { rw: 1, rh: 1 },
-    '4:5':  { rw: 4, rh: 5 }
-};
-let curAspect = '16:9';
-let expBg = 'transparent';
-function frameDims(shortSide) {
-    const a = ASPECTS[curAspect] || ASPECTS['16:9'];
-    let w, h;
-    if (a.rw >= a.rh) { h = shortSide; w = Math.round(shortSide * a.rw / a.rh); }
-    else { w = shortSide; h = Math.round(shortSide * a.rh / a.rw); }
-    if (w % 2) w++; if (h % 2) h++; /* encoders want even dimensions */
-    return { w, h };
-}
 let DESIGNS = [];
 const byId = {};
 
@@ -1135,7 +926,7 @@ function pumpThumbs() {
             const canvas = card.querySelector('canvas');
             const skel = card.querySelector('.thumb-skel');
             try {
-                const r = new Renderer(W, H);
+                const r = makeHicRenderer(W, H);
                 await r.setClip(d.html || '', d.css || '', d.js || '');
                 const ok = await r.renderFrame(Math.max(0, (d.duration || 5000) - 16));
                 if (ok && canvas) r.drawTo(canvas.getContext('2d'), 0, 0, W, H);
@@ -1335,7 +1126,7 @@ function rebuildStage(html, css, js) {
         modalTime.textContent = '0.0s';
         return Promise.resolve();
     }
-    modalRenderer = new Renderer(W, H);
+    modalRenderer = makeHicRenderer(W, H);
     return modalRenderer.setClip(html, css, js).then(function() {
         return modalRenderer.renderFrame(0);
     }).then(function(ok) {
@@ -1485,7 +1276,7 @@ applyCode.addEventListener('click', async function() {
     modalPlaying = false;
     setPlayState(false);
     if (modalRenderer) { modalRenderer.sandbox.remove(); }
-    modalRenderer = new Renderer(W, H);
+    modalRenderer = makeHicRenderer(W, H);
     await modalRenderer.setClip(cmHtml.getValue(), cmCss.getValue(), cmJs.getValue());
     _lastAppliedCode = { html: cmHtml.getValue(), css: cmCss.getValue(), js: cmJs.getValue() };
     refreshClipTitle();
@@ -1747,18 +1538,15 @@ const videoCaret = document.getElementById('videoCaret');
 const videoMenu = document.getElementById('videoMenu');
 const exportSplit = document.getElementById('exportSplit');
 const FMT_META = { png: { ext: 'png', mime: 'image/png', label: 'PNG' }, jpeg: { ext: 'jpg', mime: 'image/jpeg', label: 'JPG' }, webp: { ext: 'webp', mime: 'image/webp', label: 'WebP' } };
-const EXP_PREFS_KEY = 'hicExportPrefs';
 let lastFrameFmt = 'png', lastFps = 30;
 try {
-    const saved = JSON.parse(localStorage.getItem(EXP_PREFS_KEY) || '{}');
+    const saved = readExpPrefs();
     if (FMT_META[saved.fmt]) lastFrameFmt = saved.fmt;
     if (saved.fps === 30 || saved.fps === 60) lastFps = saved.fps;
     if (RESOLUTIONS[saved.res]) resSelect.value = saved.res;
-    if (ASPECTS[saved.aspect]) curAspect = saved.aspect;
-    if (typeof saved.bg === 'string' && (saved.bg === 'transparent' || /^#[0-9a-fA-F]{6}$/.test(saved.bg))) expBg = saved.bg;
 } catch (e) {}
 function saveExpPrefs() {
-    try { localStorage.setItem(EXP_PREFS_KEY, JSON.stringify({ fmt: lastFrameFmt, fps: lastFps, res: resSelect.value, aspect: curAspect, bg: expBg })); } catch (e) {}
+    writeExpPrefs({ fmt: lastFrameFmt, fps: lastFps, res: resSelect.value });
 }
 
 /* Frame geometry UI + state → canvas (mirrors the test-renderer modal) */
@@ -1766,11 +1554,11 @@ function applyAspect() {
     const fd = frameDims(parseInt(resSelect.value) || 1080);
     modalCanvas.width = fd.w; modalCanvas.height = fd.h;
     document.getElementById('aspectSeg').querySelectorAll('.aspect-opt').forEach(function(b) {
-        b.classList.toggle('selected', b.getAttribute('data-aspect') === curAspect);
+        b.classList.toggle('selected', b.getAttribute('data-aspect') === curFrame.aspect);
     });
     const row = document.getElementById('bgRow');
-    row.querySelectorAll('.bg-swatch').forEach(function(s) { s.classList.toggle('selected', s.getAttribute('data-bg') === expBg); });
-    document.querySelector('.bg-custom').classList.toggle('selected', expBg !== 'transparent' && !row.querySelector('.bg-swatch.selected'));
+    row.querySelectorAll('.bg-swatch').forEach(function(s) { s.classList.toggle('selected', s.getAttribute('data-bg') === curFrame.bg); });
+    document.querySelector('.bg-custom').classList.toggle('selected', curFrame.bg !== 'transparent' && !row.querySelector('.bg-swatch.selected'));
     if (modalRenderer && modalRenderer._ready) {
         modalRenderer.renderFrame(parseInt(modalSlider.value) || 0).then(function(ok) { if (ok) modalRenderer.drawFrame(modalCtx, fd.w, fd.h); });
     }
@@ -1780,18 +1568,18 @@ function applyBg() { applyAspect(); }
 document.getElementById('aspectSeg').addEventListener('click', function(e) {
     const b = e.target.closest('.aspect-opt');
     if (!b || exporting) return;
-    curAspect = b.getAttribute('data-aspect');
+    curFrame.aspect = b.getAttribute('data-aspect');
     applyAspect();
 });
 document.getElementById('bgRow').addEventListener('click', function(e) {
     const s = e.target.closest('.bg-swatch');
     if (!s || exporting) return;
-    expBg = s.getAttribute('data-bg');
+    curFrame.bg = s.getAttribute('data-bg');
     applyBg();
 });
 document.getElementById('bgCustom').addEventListener('input', function() {
     if (exporting) return;
-    expBg = this.value;
+    curFrame.bg = this.value;
     applyBg();
 });
 let exporting = false;
@@ -1864,7 +1652,7 @@ async function exportFrame(fmtKey) {
     let fr = null;
     try {
         const fd = frameDims(res.n);
-        fr = new Renderer(fd.w, fd.h);
+        fr = makeHicRenderer(fd.w, fd.h);
         await fr.setClip(code.html, code.css, code.js);
         /* Uniform scale + pre-scale centering translate (transform applies
            right-to-left): the design contain-fits, never stretches. */
@@ -1881,11 +1669,11 @@ async function exportFrame(fmtKey) {
         if (!okFlag) throw new Error('raster failed');
         /* Solid bg composites UNDER the raster; transparent ships as-is */
         let out = fr.canvas;
-        if (expBg !== 'transparent') {
+        if (curFrame.bg !== 'transparent') {
             out = document.createElement('canvas');
             out.width = fd.w; out.height = fd.h;
             const octx = out.getContext('2d');
-            octx.fillStyle = expBg; octx.fillRect(0, 0, fd.w, fd.h);
+            octx.fillStyle = curFrame.bg; octx.fillRect(0, 0, fd.w, fd.h);
             octx.drawImage(fr.canvas, 0, 0);
         }
         const url = out.toDataURL(fmt.mime, 0.95);
@@ -2051,7 +1839,7 @@ async function startWebMExport() {
     modalCanvas.height = expH;
 
     if (modalRenderer) { modalRenderer.sandbox.remove(); }
-    modalRenderer = new Renderer(expW, expH);
+    modalRenderer = makeHicRenderer(expW, expH);
     await modalRenderer.setClip(code.html, code.css, code.js);
 
     const wrap = document.createElement('div');
@@ -2073,7 +1861,7 @@ async function startWebMExport() {
         recorder.onstop = function() {
             const blob = new Blob(chunks, { type: 'video/webm' });
             if (blob.size > 100) {
-                downloadBlob(blob, exportFileStem() + '_' + expW + 'x' + expH + '_' + curAspect.replace(':', '') + '.webm');
+                downloadBlob(blob, exportFileStem() + '_' + expW + 'x' + expH + '_' + curFrame.aspect.replace(':', '') + '.webm');
                 toast('WebM saved — ' + expW + '×' + expH);
             } else { toast('Export failed — try again'); }
             exporting = false;
@@ -2098,7 +1886,7 @@ async function startWebMExport() {
         try {
             const ok = await modalRenderer.renderFrame(t);
             if (ok) {
-                if (expBg !== 'transparent') { modalCtx.fillStyle = expBg; modalCtx.fillRect(0, 0, expW, expH); }
+                if (curFrame.bg !== 'transparent') { modalCtx.fillStyle = curFrame.bg; modalCtx.fillRect(0, 0, expW, expH); }
                 modalRenderer.drawTo(modalCtx, 0, 0, expW, expH);
             }
         } catch(e) { console.error('[Export] frame error:', e); }
@@ -2109,7 +1897,7 @@ async function startWebMExport() {
     await done;
 
     if (modalRenderer) { modalRenderer.sandbox.remove(); }
-    modalRenderer = new Renderer(W, H);
+    modalRenderer = makeHicRenderer(W, H);
     await modalRenderer.setClip(code.html, code.css, code.js);
     const ok = await modalRenderer.renderFrame(0);
     const fdOut = frameDims(parseInt(resSelect.value) || 1080);

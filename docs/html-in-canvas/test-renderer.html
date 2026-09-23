@@ -491,269 +491,13 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/css/css.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
 
+<script src="hic-frame.js"></script>
 <script>
 /* ═══════════════════════════════════════════════════════════════
  * SVG foreignObject Renderer
  * ═══════════════════════════════════════════════════════════════ */
-class Renderer {
-    /* w/h = raster canvas size (frame at export res, or design size for
-       preview). sw/sh = DESIGN SPACE the clip choreographs in — DOM sandbox
-       and the foreignObject content render at this size; the SVG then scales
-       it to w/h natively (sharper than raster-upscale, and it replaces the
-       old export scale-wrapper hack entirely). Defaults keep the classic
-       800x450 space so every existing caller is unchanged. */
-    constructor(w, h, sw, sh) {
-        this.w = w; this.h = h;
-        this.sw = sw || 800; this.sh = sh || 450;
-        this.canvas = document.createElement('canvas');
-        this.canvas.width = w; this.canvas.height = h;
-        this.ctx = this.canvas.getContext('2d');
-        this.sandbox = document.createElement('div');
-        this.sandbox.style.cssText = 'position:absolute;top:-9999px;left:-9999px;width:' + this.sw + 'px;height:' + this.sh + 'px;overflow:hidden;pointer-events:none;';
-        document.body.appendChild(this.sandbox);
-        this.css = ''; this._onFrame = null; this._ready = false;
-    }
 
-    async setClip(html, css, js) {
-        this.css = css || '';
-        this.sandbox.innerHTML = '<div style="width:' + this.sw + 'px;height:' + this.sh + 'px;"></div>';
-        /* 1. Load external scripts (KaTeX, marked, Tailwind CDN) in page context */
-        html = await this._loadExternalScripts(html);
-        /* 2. Inline external images as data URIs */
-        html = await this._preloadImages(html);
-        /* 3. Mount the html so the Tailwind Play CDN's MutationObserver sees the classes
-              and generates its utilities <style> — then capture that CSS for the SVG.
-              GATED: only when the clip actually uses Tailwind utilities. Once the CDN
-              runtime is loaded it emits a preflight reset stylesheet for EVERY DOM
-              change; capturing that unconditionally would append h1{font-size:inherit}
-              etc. after the preset's own CSS and collapse its typography. */
-        this.sandbox.innerHTML = html;
-        var _usesTw = /class="[^"]*\b(bg-|text-|flex|grid-|p[xytblr]?-|m[xytblr]?-|rounded|shadow|font-|border|min-h-|max-w-|w-|h-|gap-|mt-|mb-|tracking-|from-|to-)/.test(html) || html.indexOf('tailwindcss') !== -1;
-        if (_usesTw) {
-            /* v4 browser build compiles async on MutationObserver (no window global).
-               Poll for its managed <style> (identifiable by --tw- markers), then
-               capture it for the SVG. Gated on _usesTw so the preflight reset it
-               emits for every DOM change never pollutes non-Tailwind presets. */
-            var twStyle = null;
-            for (var _twWait = 0; _twWait < 20 && !twStyle; _twWait++) {
-                await new Promise(r => setTimeout(r, 50));
-                twStyle = [...document.querySelectorAll('head style')]
-                    .filter(s => (s.textContent || '').indexOf('--tw-') !== -1)
-                    .pop();
-            }
-            if (twStyle) this.css = (css || '') + '\n' + twStyle.textContent;
-        }
-        /* 4. Embed remote stylesheets (Google Fonts, KaTeX CSS) + their fonts as data URIs.
-              SVG rasterization can't load external resources, so this is what makes them work. */
-        const processed = await this._embedAssets(html, this.css);
-        html = processed.html;
-        this.css = processed.css;
-        this.sandbox.innerHTML = html;
-        /* 5. Wait for fonts to be ready so first raster isn't fallback-font */
-        try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch(e) {}
-        this._onFrame = null;
-        if (js) {
-            try {
-                /* Wrap js so onFrame returns correctly */
-                var fn = new Function('time', js + '\n;return typeof onFrame==="function"?onFrame:null;');
-                this._onFrame = fn();
-            } catch(e) { console.error('[Renderer] JS parse error:', e); }
-        }
-        this._ready = true;
-    }
 
-    /* External <script src> / <link rel=stylesheet> inside preset HTML — hoist into <head>.
-       Scripts load SEQUENTIALLY (dynamically inserted scripts don't honor defer order,
-       and auto-render must never beat katex.min.js to the global scope). */
-    async _loadExternalScripts(html) {
-        const parser = new DOMParser();
-        const doc = parser.parseFromString('<div>' + html + '</div>', 'text/html');
-        /* Stylesheets: left untouched — _embedAssets (next step in setClip) strips them from the
-           html and inlines their content + fonts as data URIs. Rewriting or hoisting them here
-           would lose the URL before the embed step can fetch it. */
-        /* Scripts: sequential chain, each waits for the previous */
-        const srcs = [...doc.querySelectorAll('script[src]')].map(s => { const v = s.getAttribute('src'); s.remove(); return v; }).filter(Boolean);
-        for (const src of srcs) {
-            if (src.indexOf('tailwind') !== -1) continue; /* CDN runtime handled separately */
-            if (document.querySelector('script[src="' + src + '"]')) continue;
-            await new Promise(res => {
-                const s = document.createElement('script');
-                s.src = src;
-                if (src.indexOf('jsdelivr') !== -1 || src.indexOf('crossorigin') !== -1) s.crossOrigin = 'anonymous';
-                s.onload = res; s.onerror = res;
-                document.head.appendChild(s);
-            });
-        }
-        html = doc.querySelector('div').innerHTML;
-        /* Tailwind runtime loaded once globally from the locally installed
-           @tailwindcss/browser (same 4.3.3 version as the app's PostCSS toolchain) —
-           no CDN, works offline, and no "should not be used in production" warning.
-           v4 sets no window global; it appends a managed <style> to <head> and
-           compiles on MutationObserver — capture happens in setClip. */
-        if (html.indexOf('tailwindcss') !== -1 || /class="[^"]*\b(bg-|text-|flex|grid-|p[xytblr]?-|m[xytblr]?-|rounded|shadow|font-|border)/.test(html)) {
-            if (!document.getElementById('tw-browser-runtime')) {
-                await new Promise(res => {
-                    const s = document.createElement('script');
-                    s.id = 'tw-browser-runtime';
-                    /* Site base derived from this page's own URL: '/studio-pro/' on
-                       GitHub Pages, '/' locally (page lives at <base>docs/...). An
-                       absolute '/vendor/...' would 404 under the Pages base. */
-                    var _slashDocs = location.pathname.indexOf('/docs/');
-                    var _siteBase = _slashDocs > 0 ? location.pathname.slice(0, _slashDocs + 1) : '/';
-                    s.src = _siteBase + 'vendor/tailwind-browser/index.global.js';
-                    s.onload = res; s.onerror = res;
-                    document.head.appendChild(s);
-                    setTimeout(res, 3000); /* don't hang offline */
-                });
-            }
-        }
-        return html;
-    }
-
-    /* Fetch remote stylesheets (Google Fonts, KaTeX CDN, any https <link rel=stylesheet>)
-       + their font files, inline everything as @font-face / url data URIs. The SVG
-       rasterizer can't load external resources, so this is what makes web fonts work. */
-    async _embedAssets(html, css) {
-        const urls = [];
-        const linkRe = /<link[^>]*href=["'](https:\/\/fonts\.googleapis\.com[^"']*)["'][^>]*>/gi;
-        html = html.replace(linkRe, (_, url) => { urls.push(url.replace(/&amp;/g, '&')); return ''; });
-        /* Any other remote stylesheet (KaTeX CSS, Tailwind builds, etc.) */
-        const cdnLinkRe = /<link[^>]*rel=["']stylesheet["'][^>]*href=["'](https?:\/\/[^"']+)["'][^>]*>/gi;
-        const cdnLinkRe2 = /<link[^>]*href=["'](https?:\/\/[^"']+)["'][^>]*rel=["']stylesheet["'][^>]*>/gi;
-        html = html.replace(cdnLinkRe, (_, url) => { urls.push(url.replace(/&amp;/g, '&')); return ''; });
-        html = html.replace(cdnLinkRe2, (_, url) => { urls.push(url.replace(/&amp;/g, '&')); return ''; });
-        const importRe = /@import\s+(?:url\()?["']?(https:\/\/fonts\.googleapis\.com[^"')\s]*)["']?\)?\s*;/gi;
-        css = css.replace(importRe, (_, url) => { urls.push(url.replace(/&amp;/g, '&')); return ''; });
-        let fontCss = '';
-        for (const url of urls) {
-            if (_fontCssCache[url]) { fontCss += _fontCssCache[url] + '\n'; continue; }
-            try {
-                const res = await fetch(url);
-                if (!res.ok) continue;
-                let sheet = await res.text();
-                /* Collect every url(...) — absolute or relative (resolved against the sheet's base URL,
-                   e.g. KaTeX ships `url(fonts/KaTeX_AMS-Regular.woff2)`) */
-                const refs = [];
-                const urlRe = /url\(\s*['"]?([^'")]+?)['"]?\s*\)/g;
-                let mm;
-                while ((mm = urlRe.exec(sheet)) !== null) {
-                    const raw = mm[1];
-                    if (/^data:/i.test(raw)) continue;
-                    let abs = raw;
-                    if (!/^https?:\/\//i.test(raw)) {
-                        try { abs = new URL(raw, url).href; } catch(e) { continue; }
-                    }
-                    refs.push({ raw, abs });
-                }
-                /* Fetch unique absolute URLs once, then replace each ORIGINAL relative/absolute
-                   occurrence in the sheet — split() on the absolute URL would miss relative paths */
-                const uniqAbs = Array.from(new Set(refs.map(r => r.abs)));
-                const dataMap = {};
-                await Promise.all(uniqAbs.map(async abs => {
-                    try {
-                        const r = await fetch(abs);
-                        const blob = await r.blob();
-                        dataMap[abs] = await new Promise(resolve => {
-                            const reader = new FileReader();
-                            reader.onloadend = () => resolve(reader.result);
-                            reader.readAsDataURL(blob);
-                        });
-                    } catch(e) {}
-                }));
-                refs.forEach(ref => { const d = dataMap[ref.abs]; if (d) sheet = sheet.split(ref.raw).join(d); });
-                _fontCssCache[url] = sheet;
-                fontCss += sheet + '\n';
-            } catch(e) { console.warn('[Renderer] Font fetch failed:', url); }
-        }
-        return { html, css: fontCss + '\n' + css };
-    }
-
-    async _preloadImages(htmlString) {
-        const parser = new DOMParser();
-        /* Wrap in a div: a bare parse hoists leading <link> into <head>, and body.innerHTML
-           would silently drop it before _embedAssets ever sees the URL */
-        const doc = parser.parseFromString('<div>' + htmlString + '</div>', 'text/html');
-        const images = doc.querySelectorAll('img');
-        const promises = Array.from(images).map(async (img) => {
-            const src = img.getAttribute('src');
-            if (src && (src.startsWith('http://') || src.startsWith('https://'))) {
-                try {
-                    const resp = await fetch(src, { mode: 'cors' });
-                    if (!resp.ok) throw new Error('fail');
-                    const blob = await resp.blob();
-                    const dataUrl = await new Promise((res, rej) => {
-                        const reader = new FileReader();
-                        reader.onloadend = () => res(reader.result);
-                        reader.onerror = rej;
-                        reader.readAsDataURL(blob);
-                    });
-                    img.setAttribute('src', dataUrl);
-                } catch(e) { /* keep original src as fallback */ }
-            }
-        });
-        await Promise.allSettled(promises);
-        return doc.querySelector('div').innerHTML;
-    }
-
-    renderFrame(timeMs) {
-        if (!this._ready) return false;
-        if (this._onFrame) {
-            const origQSA = Document.prototype.querySelectorAll;
-            const origGEBI = Document.prototype.getElementById;
-            const sandbox = this.sandbox;
-            Document.prototype.querySelectorAll = function(sel) { return sandbox.querySelectorAll(sel); };
-            Document.prototype.getElementById = function(id) { return sandbox.querySelector('#' + id) || origGEBI.call(document, id); };
-            try { this._onFrame(timeMs); } catch(e) { console.error('[Renderer] onFrame error:', e); }
-            Document.prototype.querySelectorAll = origQSA;
-            Document.prototype.getElementById = origGEBI;
-        }
-        const clone = this.sandbox.cloneNode(true);
-        clone.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
-        clone.setAttribute('style', 'width:100%;height:100%;margin:0;padding:0;overflow:hidden;');
-        const domString = new XMLSerializer().serializeToString(clone);
-        /* The raster canvas always carries the DESIGN aspect: when raster size ≠
-           design size (exports upscale for sharp text; drawFrame passes the
-           frame size when aspects match) the SVG rasterizes the design at full
-           width and the foreignObject's inner scale(k) shrinks it uniformly —
-           vector-sharp, never stretched. drawFrame is the ONLY place aspect
-           fitting happens, so this canvas can never clip the design. */
-        const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + this.w + '" height="' + this.h + '">' +
-            '<foreignObject width="100%" height="100%">' +
-            '<style xmlns="http://www.w3.org/1999/xhtml"><![CDATA[' + this.css + ']]></style>' +
-            '<div xmlns="http://www.w3.org/1999/xhtml" style="width:' + this.w + 'px;height:' + this.h + 'px;overflow:hidden;">' +
-            '<div xmlns="http://www.w3.org/1999/xhtml" style="width:' + this.sw + 'px;height:' + this.sh + 'px;overflow:hidden;transform-origin:0 0;transform:scale(' + (this.w / this.sw) + ')">' +
-            domString + '</div></div></foreignObject></svg>';
-        return new Promise(resolve => {
-            const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
-            const img = new Image();
-            img.onload = () => { this.ctx.clearRect(0, 0, this.w, this.h); this.ctx.drawImage(img, 0, 0); resolve(true); };
-            img.onerror = () => { this.ctx.fillStyle = '#1e293b'; this.ctx.fillRect(0, 0, this.w, this.h); this.ctx.fillStyle = '#f87171'; this.ctx.font = '14px sans-serif'; this.ctx.fillText('Render Error', 16, 24); resolve(false); };
-            img.src = url;
-        });
-    }
-
-    drawTo(targetCtx, x, y, w, h) { targetCtx.drawImage(this.canvas, 0, 0, this.w, this.h, x, y, w, h); }
-    /* Composite onto an output-size ctx: background fill first, then the
-       design raster contain-fitted and centered. When the frame aspect equals
-       the clip's design aspect the raster IS the frame — no bars, native
-       per-aspect design spaces fill edge-to-edge. */
-    drawFrame(ctx, fw, fh) {
-        ctx.clearRect(0, 0, fw, fh);
-        if (expBg !== 'transparent') { ctx.fillStyle = expBg; ctx.fillRect(0, 0, fw, fh); }
-        if (fw === this.w && fh === this.h) { this.drawTo(ctx, 0, 0, this.w, this.h); return; }
-        /* Contain-fit the raster (which always carries the design aspect) */
-        const k = Math.min(fw / this.w, fh / this.h);
-        const dw = Math.round(this.w * k), dh = Math.round(this.h * k);
-        ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-        this.drawTo(ctx, Math.round((fw - dw) / 2), Math.round((fh - dh) / 2), dw, dh);
-    }
-}
-
-/* Shared renderer builder: raster canvas + design space (see Renderer) */
-function makeRenderer(w, h, sw, sh) { return new Renderer(w, h, sw, sh); }
-
-/* Cache for embedded Google-Fonts stylesheets (keyed by css2 URL) — survives renderer rebuilds */
-const _fontCssCache = {};
 
 /* ═══════════════════════════════════════════════════════════════
  * PRESETS — all animations use onFrame(time) for SVG compatibility
@@ -883,44 +627,9 @@ Object.keys(PRESETS).forEach(function(k) {
  * ═══════════════════════════════════════════════════════════════ */
 const W = 800, H = 450; /* design space — presets choreograph against this and never changes */
 
-/* ═════════════════════════════════════════════════════════════
- * FRAME GEOMETRY — aspect + background of the OUTPUT frame.
- * The 800x450 design space is contain-fitted inside the frame:
- * a 9:16 export pillarboxes the design over the background color,
- * so every preset stays pixel-correct and preview === export.
- * Resolution = the frame's SHORT side ("1080p" works for every aspect).
- * ═════════════════════════════════════════════════════════════ */
-const ASPECTS = {
-    '16:9': { rw: 16, rh: 9 },
-    '9:16': { rw: 9, rh: 16 },
-    '1:1':  { rw: 1, rh: 1 },
-    '4:5':  { rw: 4, rh: 5 }
-};
-let curAspect = '16:9';
-let expBg = 'transparent'; /* 'transparent' keeps alpha in PNG/WebP exports */
-
-/* Native per-aspect DESIGN SPACES: a clip is authored against one of these
-   and choreographs in its absolute px. 16:9 keeps the historical 800x450 so
-   every existing preset stays pixel-identical. The frame aspect (curAspect)
-   is the OUTPUT shape; when it differs from the clip's design aspect the
-   design is contain-fitted (pillarbox/letterbox) — identical rule as before,
-   but native-space clips fill their frame edge-to-edge with no bars. */
-const DESIGN_SPACES = {
-    '16:9': { w: 800, h: 450 },
-    '9:16': { w: 450, h: 800 },
-    '1:1':  { w: 720, h: 720 },
-    '4:5':  { w: 640, h: 800 }
-};
-let clipDS = '16:9'; /* design space of the clip currently loaded in the modal */
-function dsDims(ds) { return DESIGN_SPACES[ds || clipDS] || DESIGN_SPACES['16:9']; }
-function frameDims(shortSide) {
-    const a = ASPECTS[curAspect] || ASPECTS['16:9'];
-    let w, h;
-    if (a.rw >= a.rh) { h = shortSide; w = Math.round(shortSide * a.rw / a.rh); }
-    else { w = shortSide; h = Math.round(shortSide * a.rh / a.rw); }
-    if (w % 2) w++; if (h % 2) h++; /* encoders want even dimensions */
-    return { w, h };
-}
+/* Frame geometry (ASPECTS / DESIGN_SPACES / curFrame / dsDims / frameDims),
+   the SVG foreignObject renderer, and export prefs now live in the shared
+   module hic-frame.js — loaded above; single source of truth for both modals. */
 const grid = document.getElementById('presetGrid');
 const modalOverlay = document.getElementById('modalOverlay');
 const modalTitle = document.getElementById('modalTitle');
@@ -954,7 +663,7 @@ for (const [key, p] of Object.entries(PRESETS)) {
     for (const [key, p] of Object.entries(PRESETS)) {
         const canvas = grid.querySelector('[data-key="' + key + '"] canvas');
         const _dsT = dsDims(p.ds && DESIGN_SPACES[p.ds] ? p.ds : '16:9');
-        const r = makeRenderer(_dsT.w, _dsT.h, _dsT.w, _dsT.h);
+        const r = makeHicRenderer(_dsT.w, _dsT.h, _dsT.w, _dsT.h);
         await r.setClip(p.html, p.css, p.js);
         /* Render near the end so all animations are in their final state */
         const endMs = (p.dur || 5) * 1000 - 16;
@@ -979,12 +688,12 @@ function openModal(key) {
        historical 16:9 stage so their absolute-px choreography never breaks —
        non-matching frames pillarbox/letterbox via drawFrame. Opening a
        native preset also switches the frame to its aspect (WYSIWYG). */
-    clipDS = p.ds && DESIGN_SPACES[p.ds] ? p.ds : '16:9';
-    if (p.ds && DESIGN_SPACES[p.ds]) curAspect = p.ds;
+    curFrame.clipDS = p.ds && DESIGN_SPACES[p.ds] ? p.ds : '16:9';
+    if (p.ds && DESIGN_SPACES[p.ds]) curFrame.aspect = p.ds;
     tabPreview.click();
     _clipTitle = clipTitleFrom(p.html);
     modalTitle.textContent = _clipTitle || p.name;
-    const _ds = dsDims(clipDS);
+    const _ds = dsDims(curFrame.clipDS);
     modalDuration.textContent = p.dur + 's • ' + _ds.w + '×' + _ds.h;
     /* Drop the previous clip's renderer BEFORE applyAspect — otherwise its
        rebuild branch (aspect changed) would async-rebuild the old renderer
@@ -1000,7 +709,7 @@ function openModal(key) {
     if (typeof resetCodeBtn !== 'undefined' && resetCodeBtn) { resetCodeBtn.classList.remove('confirm'); resetCodeBtn.disabled = true; }
     modalOverlay.classList.add('open');
     if (modalRenderer) { modalRenderer.sandbox.remove(); modalRenderer = null; }
-    modalRenderer = makeRenderer(_ds.w, _ds.h, _ds.w, _ds.h);
+    modalRenderer = makeHicRenderer(_ds.w, _ds.h, _ds.w, _ds.h);
     modalRenderer.setClip(p.html, p.css, p.js).then(() => {
         /* Auto-play the animation once clip is loaded */
         modalPlaying = true;
@@ -1310,9 +1019,9 @@ resetCodeBtn.addEventListener('click', function() {
     modalPlaying = false;
     setPlayState(false);
     if (modalRenderer) { modalRenderer.sandbox.remove(); }
-    clipDS = p.ds && DESIGN_SPACES[p.ds] ? p.ds : '16:9';
-    const _dsR = dsDims(clipDS);
-    modalRenderer = makeRenderer(_dsR.w, _dsR.h, _dsR.w, _dsR.h);
+    curFrame.clipDS = p.ds && DESIGN_SPACES[p.ds] ? p.ds : '16:9';
+    const _dsR = dsDims(curFrame.clipDS);
+    modalRenderer = makeHicRenderer(_dsR.w, _dsR.h, _dsR.w, _dsR.h);
     modalRenderer.setClip(p.html, p.css, p.js).then(function() {
         modalRenderer.renderFrame(0).then(function(ok) {
             if (ok) modalRenderer.drawFrame(modalCtx, modalCanvas.width, modalCanvas.height);
@@ -1380,9 +1089,9 @@ applyCode.addEventListener('click', async function() {
     setPlayState(false);
     /* Applied code (edit / AI paste): adopt the current frame aspect as the
        clip's design space — a 9:16 frame gets a native 450x800 stage. */
-    clipDS = DESIGN_SPACES[curAspect] ? curAspect : '16:9';
-    const _dsA = dsDims(clipDS);
-    modalRenderer = makeRenderer(_dsA.w, _dsA.h, _dsA.w, _dsA.h);
+    curFrame.clipDS = DESIGN_SPACES[curFrame.aspect] ? curFrame.aspect : '16:9';
+    const _dsA = dsDims(curFrame.clipDS);
+    modalRenderer = makeHicRenderer(_dsA.w, _dsA.h, _dsA.w, _dsA.h);
     await modalRenderer.setClip(cmHtml.getValue(), cmCss.getValue(), cmJs.getValue());
     _lastAppliedCode = { html: cmHtml.getValue(), css: cmCss.getValue(), js: cmJs.getValue() };
     refreshClipTitle();
@@ -1483,7 +1192,7 @@ function exportStandalone() {
 
     /* u003c-escape the JSON so pane code containing a literal closing script tag can't break out.
        The clip's design space travels in the payload — the runtime fits to P.w/P.h. */
-    const sd = dsDims(clipDS);
+    const sd = dsDims(curFrame.clipDS);
     const payload = JSON.stringify({ version: 1, kind: 'hic-standalone', name: name, duration: dur, w: sd.w, h: sd.h, html: code.html, css: code.css, js: code.js, fontUrls: fontUrls }).replace(/</g, '\\u003c');
 
     const RUNTIME = [
@@ -1518,7 +1227,7 @@ function exportStandalone() {
         + headTags.join('\n') + (headTags.length ? '\n' : '')
         + '<style>\n'
         + 'body{margin:0;background:#0b0f1a;min-height:100vh;display:grid;place-items:center;font-family:system-ui,sans-serif}\n'
-        + '#stage{width:' + sd.w + 'px;height:' + sd.h + 'px;position:relative;overflow:hidden;background:' + (expBg === 'transparent' ? 'transparent' : expBg) + '}\n'
+        + '#stage{width:' + sd.w + 'px;height:' + sd.h + 'px;position:relative;overflow:hidden;background:' + (curFrame.bg === 'transparent' ? 'transparent' : curFrame.bg) + '}\n'
         + '#hic-pill{position:fixed;right:12px;bottom:12px;display:flex;gap:6px;z-index:9}\n'
         + '#hic-pill button{background:rgba(30,37,51,.85);color:#cbd5e1;border:1px solid #2d3748;border-radius:7px;padding:6px 10px;font-size:11px;cursor:pointer;font-family:system-ui}\n'
         + '#hic-pill button:hover{color:#f1f5f9;border-color:#3b82f6}\n'
@@ -1803,8 +1512,8 @@ const AI_PROMPTS = [
 ];
 
 function aiBuildPrompt(want, dur) {
-    const ds = DESIGN_SPACES[curAspect] || DESIGN_SPACES['16:9'];
-    const dsKey = DESIGN_SPACES[curAspect] ? curAspect : '16:9';
+    const ds = DESIGN_SPACES[curFrame.aspect] || DESIGN_SPACES['16:9'];
+    const dsKey = DESIGN_SPACES[curFrame.aspect] ? curFrame.aspect : '16:9';
     return [
         'You are generating an HTML-in-Canvas animation for a video editor.',
         '',
@@ -1962,10 +1671,10 @@ function aiApplyReply() {
     if (parsed.css) parts.push('CSS');
     if (parsed.js) parts.push('JS');
     if (parsed.title) parts.push('&quot;' + parsed.title + '&quot;');
-    if (parsed.ds && parsed.ds !== curAspect) {
+    if (parsed.ds && parsed.ds !== curFrame.aspect) {
         /* Native design space declared by the reply — switch the frame to
            match so applyCode adopts it as the clip's design space. */
-        curAspect = parsed.ds;
+        curFrame.aspect = parsed.ds;
         applyAspect();
         parts.push(parsed.ds + ' native');
     }
@@ -2016,18 +1725,15 @@ const FMT_META = { png: { ext: 'png', mime: 'image/png', label: 'PNG' }, jpeg: {
 
 /* Persisted preferences — frame geometry (aspect/bg) rides along with the
    export prefs so a reload restores the exact preview composition. */
-const EXP_PREFS_KEY = 'hicExportPrefs';
 let lastFrameFmt = 'png', lastFps = 30;
 try {
-    const saved = JSON.parse(localStorage.getItem(EXP_PREFS_KEY) || '{}');
+    const saved = readExpPrefs();
     if (FMT_META[saved.fmt]) lastFrameFmt = saved.fmt;
     if (saved.fps === 30 || saved.fps === 60) lastFps = saved.fps;
     if (RESOLUTIONS[saved.res]) resSelect.value = saved.res;
-    if (ASPECTS[saved.aspect]) curAspect = saved.aspect;
-    if (typeof saved.bg === 'string' && (saved.bg === 'transparent' || /^#[0-9a-fA-F]{6}$/.test(saved.bg))) expBg = saved.bg;
 } catch (e) { /* corrupted prefs — use defaults */ }
 function saveExpPrefs() {
-    try { localStorage.setItem(EXP_PREFS_KEY, JSON.stringify({ fmt: lastFrameFmt, fps: lastFps, res: resSelect.value, aspect: curAspect, bg: expBg })); } catch (e) { /* storage unavailable */ }
+    writeExpPrefs({ fmt: lastFrameFmt, fps: lastFps, res: resSelect.value });
 }
 
 /* Frame geometry UI + state → canvas. Called on aspect/bg change and on
@@ -2037,19 +1743,19 @@ function applyAspect() {
     const fd = frameDims(parseInt(resSelect.value) || 1080);
     modalCanvas.width = fd.w; modalCanvas.height = fd.h;
     const seg = document.getElementById('aspectSelect');
-    seg.value = curAspect;
+    seg.value = curFrame.aspect;
     const row = document.getElementById('bgRow');
-    row.querySelectorAll('.bg-swatch').forEach(function(s) { s.classList.toggle('selected', s.getAttribute('data-bg') === expBg); });
-    document.querySelector('.bg-custom').classList.toggle('selected', expBg !== 'transparent' && !row.querySelector('.bg-swatch.selected'));
+    row.querySelectorAll('.bg-swatch').forEach(function(s) { s.classList.toggle('selected', s.getAttribute('data-bg') === curFrame.bg); });
+    document.querySelector('.bg-custom').classList.toggle('selected', curFrame.bg !== 'transparent' && !row.querySelector('.bg-swatch.selected'));
     if (modalRenderer && modalRenderer._ready && modalKey) {
         /* Aspect switch = design-space switch. Rebuild the renderer when the
            clip's design space changed (native preset opened / applied in a
            different aspect). Preview rasters stay at design size — exports
            are the ones that rasterize at frame size for sharp text. */
-        const ds = dsDims(clipDS);
+        const ds = dsDims(curFrame.clipDS);
         if (modalRenderer.sw !== ds.w || modalRenderer.sh !== ds.h) {
             modalRenderer.sandbox.remove();
-            modalRenderer = makeRenderer(ds.w, ds.h, ds.w, ds.h);
+            modalRenderer = makeHicRenderer(ds.w, ds.h, ds.w, ds.h);
             /* Recompile from the last applied code — the sandbox DOM alone
                can't recreate the onFrame function */
             const code = effectiveExportCode();
@@ -2066,19 +1772,19 @@ function applyBg() {
     applyAspect(); /* bg rides the same composite path; one refresh covers both */
 }
 document.getElementById('aspectSelect').addEventListener('change', function(e) {
-    if (exporting) { e.target.value = curAspect; return; } /* locked during export */
-    curAspect = e.target.value;
+    if (exporting) { e.target.value = curFrame.aspect; return; } /* locked during export */
+    curFrame.aspect = e.target.value;
     applyAspect();
 });
 document.getElementById('bgRow').addEventListener('click', function(e) {
     const s = e.target.closest('.bg-swatch');
     if (!s || exporting) return;
-    expBg = s.getAttribute('data-bg');
+    curFrame.bg = s.getAttribute('data-bg');
     applyBg();
 });
 document.getElementById('bgCustom').addEventListener('input', function() {
     if (exporting) return;
-    expBg = this.value;
+    curFrame.bg = this.value;
     applyBg();
 });
 
@@ -2150,9 +1856,9 @@ async function exportFrame(fmtKey) {
            sharp; at design size otherwise) and drawFrame composites bg +
            contain-fit. No scale-wrapper hacks. */
         const fd = frameDims(res.n);
-        const ds = dsDims(clipDS);
+        const ds = dsDims(curFrame.clipDS);
         const sameAspect = Math.abs((fd.w / fd.h) - (ds.w / ds.h)) < 0.004;
-        fr = makeRenderer(sameAspect ? fd.w : ds.w, sameAspect ? fd.h : ds.h, ds.w, ds.h);
+        fr = makeHicRenderer(sameAspect ? fd.w : ds.w, sameAspect ? fd.h : ds.h, ds.w, ds.h);
         await fr.setClip(code.html, code.css, code.js);
 
         const okFlag = await fr.renderFrame(t);
@@ -2162,7 +1868,7 @@ async function exportFrame(fmtKey) {
            aspects match). Transparent + matched frame ships the raster as-is
            to keep real alpha. */
         let out;
-        if (sameAspect && expBg === 'transparent') {
+        if (sameAspect && curFrame.bg === 'transparent') {
             out = fr.canvas;
         } else {
             out = document.createElement('canvas');
@@ -2228,7 +1934,7 @@ async function startWebMExport() {
     const fd = frameDims(res.n);
     const expW = fd.w;
     const expH = fd.h;
-    const ds = dsDims(clipDS);
+    const ds = dsDims(curFrame.clipDS);
     const sameAspect = Math.abs((expW / expH) - (ds.w / ds.h)) < 0.004;
 
     exporting = true;
@@ -2248,7 +1954,7 @@ async function startWebMExport() {
        upscale — text sharp at every resolution). drawFrame composites bg +
        contain-fit per frame; the wrapper hacks are gone. */
     if (modalRenderer) { modalRenderer.sandbox.remove(); }
-    modalRenderer = makeRenderer(sameAspect ? expW : ds.w, sameAspect ? expH : ds.h, ds.w, ds.h);
+    modalRenderer = makeHicRenderer(sameAspect ? expW : ds.w, sameAspect ? expH : ds.h, ds.w, ds.h);
     await modalRenderer.setClip(code.html, code.css, code.js);
 
     /* captureStream from visible canvas */
@@ -2266,7 +1972,7 @@ async function startWebMExport() {
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = exportFileStem() + '_' + expW + 'x' + expH + '_' + curAspect.replace(':', '') + '.webm';
+                a.download = exportFileStem() + '_' + expW + 'x' + expH + '_' + curFrame.aspect.replace(':', '') + '.webm';
                 document.body.appendChild(a); a.click(); document.body.removeChild(a);
                 setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
             } else { alert('Export failed — try again'); }
@@ -2312,9 +2018,9 @@ async function startWebMExport() {
        frame aspect equals the design aspect. */
     if (modalRenderer) { modalRenderer.sandbox.remove(); }
     const fdOut = frameDims(parseInt(resSelect.value) || 1080);
-    const dsOut = dsDims(clipDS);
+    const dsOut = dsDims(curFrame.clipDS);
     const sameOut = Math.abs((fdOut.w / fdOut.h) - (dsOut.w / dsOut.h)) < 0.004;
-    modalRenderer = makeRenderer(sameOut ? fdOut.w : dsOut.w, sameOut ? fdOut.h : dsOut.h, dsOut.w, dsOut.h);
+    modalRenderer = makeHicRenderer(sameOut ? fdOut.w : dsOut.w, sameOut ? fdOut.h : dsOut.h, dsOut.w, dsOut.h);
     await modalRenderer.setClip(code.html, code.css, code.js);
     const ok = await modalRenderer.renderFrame(0);
     if (ok) modalRenderer.drawFrame(modalCtx, fdOut.w, fdOut.h);

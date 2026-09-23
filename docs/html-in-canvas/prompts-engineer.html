@@ -167,7 +167,7 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
 .prompt-card.light .zoom-btn:hover{color:#1e293b;border-color:#3b82f6}
 .prompt-card.light .pc-empty,.prompt-card.light .pe-hint,.prompt-card.light .pe-info{color:#64748b}
 .prompt-card.light .pe-paste{background:#ffffff;border-color:#e2e8f0;color:#1e293b}
-.prompt-card.light .pe-stage canvas{border-color:#e2e8f0}
+.pe-stage canvas{border-color:#e2e8f0}
 .prompt-card.light .pe-tab-note,.prompt-card.light .pe-note{color:#64748b}
 .copy-bar{display:flex;gap:8px;padding:10px 14px;border-top:1px solid #1e2533;background:#111827;flex-shrink:0;flex-wrap:wrap}
 .btn-copy{flex:1;min-width:130px;background:#2563eb;color:#fff;border:none;border-radius:8px;padding:10px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Rubik',sans-serif;transition:background .15s;display:flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap}
@@ -280,7 +280,21 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
 .pe-actions{display:flex;align-items:center;gap:10px;padding:9px 16px 12px}
 .pe-info{font:600 10.5px 'Rubik',sans-serif;color:#7f92ab}
 .pe-stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:12px 16px 0}
-.pe-stage canvas{width:100%;max-width:100%;aspect-ratio:16/9;background:#000;border-radius:9px;border:1px solid #1e2533}
+.pe-stage canvas{max-width:100%;max-height:100%;border-radius:9px;border:1px solid #1e2533;background:repeating-conic-gradient(#131a28 0% 25%, #0d1117 0% 50%) 0 0/18px 18px}
+/* frame bar — aspect + background, shared hic-frame.js state (matches the other modals) */
+.pe-framebar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 16px 0}
+.pe-framebar select{background:#0f1420;border:1px solid #263042;border-radius:8px;color:#e2e8f0;font:600 11px 'Rubik',sans-serif;padding:6px 8px;cursor:pointer;outline:none}
+.pe-framebar select:focus{border-color:#5b9bff}
+.pe-framebar .pe-bgrow{display:flex;align-items:center;gap:6px}
+.pe-swatch{width:22px;height:22px;border-radius:7px;border:2px solid #263042;cursor:pointer;padding:0;background:none;display:inline-flex;align-items:center;justify-content:center}
+.pe-swatch.sel{border-color:#5b9bff;box-shadow:0 0 0 1.5px rgba(91,155,255,.45)}
+.pe-swatch[data-bg="transparent"]{background:repeating-conic-gradient(#2a3550 0% 25%, #141b2c 0% 50%) 0 0/8px 8px}
+.pe-swatch[data-bg="#ffffff"]{background:#ffffff}
+.pe-swatch[data-bg="#0b0f1a"]{background:#0b0f1a}
+.pe-swatch input{width:15px;height:15px;border:none;border-radius:4px;padding:0;cursor:pointer;background:none}
+.prompt-card.light .pe-stage canvas{border-color:#e2e8f0;background:repeating-conic-gradient(#e6ebf2 0% 25%, #f6f8fb 0% 50%) 0 0/18px 18px}
+.prompt-card.light .pe-framebar select{background:#ffffff;border-color:#e2e8f0;color:#334155}
+.prompt-card.light .pe-swatch[data-bg="transparent"]{background:repeating-conic-gradient(#dbe3ee 0% 25%, #f2f5f9 0% 50%) 0 0/8px 8px}
 .pe-controls{display:flex;align-items:center;gap:10px;padding:10px 16px 0}
 .pe-controls input[type=range]{flex:1;accent-color:#5b9bff;min-width:0}
 .pe-note{padding:6px 16px 12px;font-weight:500}
@@ -368,7 +382,21 @@ function onFrame(time) { … }
         </div>
       </div>
       <div class="pc-pane" data-pane="preview">
-        <div class="pe-stage"><canvas id="peCanvas" width="800" height="450"></canvas></div>
+        <div class="pe-stage"><canvas id="peCanvas" width="1920" height="1080"></canvas></div>
+        <div class="pe-framebar">
+          <select id="peAspect" title="Output frame aspect ratio">
+            <option value="16:9">16:9</option>
+            <option value="9:16">9:16</option>
+            <option value="1:1">1:1</option>
+            <option value="4:5">4:5</option>
+          </select>
+          <span class="pe-bgrow" id="peBgRow" title="Export/preview background">
+            <button class="pe-swatch" data-bg="transparent" title="Transparent"></button>
+            <button class="pe-swatch" data-bg="#ffffff" title="White"></button>
+            <button class="pe-swatch" data-bg="#0b0f1a" title="Dark"></button>
+            <button class="pe-swatch" data-bg="custom" title="Custom color"><input type="color" id="peBgCustom" value="#5b9bff"></button>
+          </span>
+        </div>
         <div class="pe-controls">
           <button class="mini-copy" id="pePlay">▶ Play</button>
           <input type="range" id="peScrub" min="0" max="5000" step="16" value="0">
@@ -401,6 +429,7 @@ function onFrame(time) { … }
 
 <div id="toast">Copied ✓</div>
 
+<script src="hic-frame.js"></script>
 <script>
 'use strict';
 /* ══════════════════════════════════════════════════════════════
@@ -1206,243 +1235,17 @@ function sendToGallery() {
   window.location.href = 'designs.html#new=1';
 }
 
-class Renderer {
-    constructor(w, h) {
-        this.w = w; this.h = h;
-        this.canvas = document.createElement('canvas');
-        this.canvas.width = w; this.canvas.height = h;
-        this.ctx = this.canvas.getContext('2d');
-        this.sandbox = document.createElement('div');
-        this.sandbox.style.cssText = 'position:absolute;top:-9999px;left:-9999px;width:800px;height:450px;overflow:hidden;pointer-events:none;';
-        document.body.appendChild(this.sandbox);
-        this.css = ''; this._onFrame = null; this._ready = false;
-    }
-
-    async setClip(html, css, js) {
-        this.css = css || '';
-        this.sandbox.innerHTML = '<div style="width:800px;height:450px;"></div>';
-        /* 1. Load external scripts (KaTeX, marked, Tailwind CDN) in page context */
-        html = await this._loadExternalScripts(html);
-        /* 2. Inline external images as data URIs */
-        html = await this._preloadImages(html);
-        /* 3. Mount the html so the Tailwind Play CDN's MutationObserver sees the classes
-              and generates its utilities <style> — then capture that CSS for the SVG.
-              GATED: only when the clip actually uses Tailwind utilities. Once the CDN
-              runtime is loaded it emits a preflight reset stylesheet for EVERY DOM
-              change; capturing that unconditionally would append h1{font-size:inherit}
-              etc. after the preset's own CSS and collapse its typography. */
-        this.sandbox.innerHTML = html;
-        var _usesTw = /class="[^"]*\b(bg-|text-|flex|grid-|p[xytblr]?-|m[xytblr]?-|rounded|shadow|font-|border|min-h-|max-w-|w-|h-|gap-|mt-|mb-|tracking-|from-|to-)/.test(html) || html.indexOf('tailwindcss') !== -1;
-        if (_usesTw) {
-            /* v4 browser build compiles async on MutationObserver (no window global).
-               Poll for its managed <style> (identifiable by --tw- markers), then
-               capture it for the SVG. Gated on _usesTw so the preflight reset it
-               emits for every DOM change never pollutes non-Tailwind presets. */
-            var twStyle = null;
-            for (var _twWait = 0; _twWait < 20 && !twStyle; _twWait++) {
-                await new Promise(r => setTimeout(r, 50));
-                twStyle = [...document.querySelectorAll('head style')]
-                    .filter(s => (s.textContent || '').indexOf('--tw-') !== -1)
-                    .pop();
-            }
-            if (twStyle) this.css = (css || '') + '\n' + twStyle.textContent;
-        }
-        /* 4. Embed remote stylesheets (Google Fonts, KaTeX CSS) + their fonts as data URIs.
-              SVG rasterization can't load external resources, so this is what makes them work. */
-        const processed = await this._embedAssets(html, this.css);
-        html = processed.html;
-        this.css = processed.css;
-        this.sandbox.innerHTML = html;
-        /* 5. Wait for fonts to be ready so first raster isn't fallback-font */
-        try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch(e) {}
-        this._onFrame = null;
-        if (js) {
-            try {
-                /* Wrap js so onFrame returns correctly */
-                var fn = new Function('time', js + '\n;return typeof onFrame==="function"?onFrame:null;');
-                this._onFrame = fn();
-            } catch(e) { console.error('[Renderer] JS parse error:', e); }
-        }
-        this._ready = true;
-    }
-
-    /* External <script src> / <link rel=stylesheet> inside preset HTML — hoist into <head>.
-       Scripts load SEQUENTIALLY (dynamically inserted scripts don't honor defer order,
-       and auto-render must never beat katex.min.js to the global scope). */
-    async _loadExternalScripts(html) {
-        const parser = new DOMParser();
-        const doc = parser.parseFromString('<div>' + html + '</div>', 'text/html');
-        /* Stylesheets: left untouched — _embedAssets (next step in setClip) strips them from the
-           html and inlines their content + fonts as data URIs. Rewriting or hoisting them here
-           would lose the URL before the embed step can fetch it. */
-        /* Scripts: sequential chain, each waits for the previous */
-        const srcs = [...doc.querySelectorAll('script[src]')].map(s => { const v = s.getAttribute('src'); s.remove(); return v; }).filter(Boolean);
-        for (const src of srcs) {
-            if (src.indexOf('tailwind') !== -1) continue; /* CDN runtime handled separately */
-            if (document.querySelector('script[src="' + src + '"]')) continue;
-            await new Promise(res => {
-                const s = document.createElement('script');
-                s.src = src;
-                if (src.indexOf('jsdelivr') !== -1 || src.indexOf('crossorigin') !== -1) s.crossOrigin = 'anonymous';
-                s.onload = res; s.onerror = res;
-                document.head.appendChild(s);
-            });
-        }
-        html = doc.querySelector('div').innerHTML;
-        /* Tailwind runtime loaded once globally from the locally installed
-           @tailwindcss/browser (same 4.3.3 version as the app's PostCSS toolchain) —
-           no CDN, works offline, and no "should not be used in production" warning.
-           v4 sets no window global; it appends a managed <style> to <head> and
-           compiles on MutationObserver — capture happens in setClip. */
-        if (html.indexOf('tailwindcss') !== -1 || /class="[^"]*\b(bg-|text-|flex|grid-|p[xytblr]?-|m[xytblr]?-|rounded|shadow|font-|border)/.test(html)) {
-            if (!document.getElementById('tw-browser-runtime')) {
-                await new Promise(res => {
-                    const s = document.createElement('script');
-                    s.id = 'tw-browser-runtime';
-                    /* Site base derived from this page's own URL: '/studio-pro/' on
-                       GitHub Pages, '/' locally (page lives at <base>docs/...). An
-                       absolute '/vendor/...' would 404 under the Pages base. */
-                    var _slashDocs = location.pathname.indexOf('/docs/');
-                    var _siteBase = _slashDocs > 0 ? location.pathname.slice(0, _slashDocs + 1) : '/';
-                    s.src = _siteBase + 'vendor/tailwind-browser/index.global.js';
-                    s.onload = res; s.onerror = res;
-                    document.head.appendChild(s);
-                    setTimeout(res, 3000); /* don't hang offline */
-                });
-            }
-        }
-        return html;
-    }
-
-    /* Fetch remote stylesheets (Google Fonts, KaTeX CDN, any https <link rel=stylesheet>)
-       + their font files, inline everything as @font-face / url data URIs. The SVG
-       rasterizer can't load external resources, so this is what makes web fonts work. */
-    async _embedAssets(html, css) {
-        const urls = [];
-        const linkRe = /<link[^>]*href=["'](https:\/\/fonts\.googleapis\.com[^"']*)["'][^>]*>/gi;
-        html = html.replace(linkRe, (_, url) => { urls.push(url.replace(/&amp;/g, '&')); return ''; });
-        /* Any other remote stylesheet (KaTeX CSS, Tailwind builds, etc.) */
-        const cdnLinkRe = /<link[^>]*rel=["']stylesheet["'][^>]*href=["'](https?:\/\/[^"']+)["'][^>]*>/gi;
-        const cdnLinkRe2 = /<link[^>]*href=["'](https?:\/\/[^"']+)["'][^>]*rel=["']stylesheet["'][^>]*>/gi;
-        html = html.replace(cdnLinkRe, (_, url) => { urls.push(url.replace(/&amp;/g, '&')); return ''; });
-        html = html.replace(cdnLinkRe2, (_, url) => { urls.push(url.replace(/&amp;/g, '&')); return ''; });
-        const importRe = /@import\s+(?:url\()?["']?(https:\/\/fonts\.googleapis\.com[^"')\s]*)["']?\)?\s*;/gi;
-        css = css.replace(importRe, (_, url) => { urls.push(url.replace(/&amp;/g, '&')); return ''; });
-        let fontCss = '';
-        for (const url of urls) {
-            if (_fontCssCache[url]) { fontCss += _fontCssCache[url] + '\n'; continue; }
-            try {
-                const res = await fetch(url);
-                if (!res.ok) continue;
-                let sheet = await res.text();
-                /* Collect every url(...) — absolute or relative (resolved against the sheet's base URL,
-                   e.g. KaTeX ships `url(fonts/KaTeX_AMS-Regular.woff2)`) */
-                const refs = [];
-                const urlRe = /url\(\s*['"]?([^'")]+?)['"]?\s*\)/g;
-                let mm;
-                while ((mm = urlRe.exec(sheet)) !== null) {
-                    const raw = mm[1];
-                    if (/^data:/i.test(raw)) continue;
-                    let abs = raw;
-                    if (!/^https?:\/\//i.test(raw)) {
-                        try { abs = new URL(raw, url).href; } catch(e) { continue; }
-                    }
-                    refs.push({ raw, abs });
-                }
-                /* Fetch unique absolute URLs once, then replace each ORIGINAL relative/absolute
-                   occurrence in the sheet — split() on the absolute URL would miss relative paths */
-                const uniqAbs = Array.from(new Set(refs.map(r => r.abs)));
-                const dataMap = {};
-                await Promise.all(uniqAbs.map(async abs => {
-                    try {
-                        const r = await fetch(abs);
-                        const blob = await r.blob();
-                        dataMap[abs] = await new Promise(resolve => {
-                            const reader = new FileReader();
-                            reader.onloadend = () => resolve(reader.result);
-                            reader.readAsDataURL(blob);
-                        });
-                    } catch(e) {}
-                }));
-                refs.forEach(ref => { const d = dataMap[ref.abs]; if (d) sheet = sheet.split(ref.raw).join(d); });
-                _fontCssCache[url] = sheet;
-                fontCss += sheet + '\n';
-            } catch(e) { console.warn('[Renderer] Font fetch failed:', url); }
-        }
-        return { html, css: fontCss + '\n' + css };
-    }
-
-    async _preloadImages(htmlString) {
-        const parser = new DOMParser();
-        /* Wrap in a div: a bare parse hoists leading <link> into <head>, and body.innerHTML
-           would silently drop it before _embedAssets ever sees the URL */
-        const doc = parser.parseFromString('<div>' + htmlString + '</div>', 'text/html');
-        const images = doc.querySelectorAll('img');
-        const promises = Array.from(images).map(async (img) => {
-            const src = img.getAttribute('src');
-            if (src && (src.startsWith('http://') || src.startsWith('https://'))) {
-                try {
-                    const resp = await fetch(src, { mode: 'cors' });
-                    if (!resp.ok) throw new Error('fail');
-                    const blob = await resp.blob();
-                    const dataUrl = await new Promise((res, rej) => {
-                        const reader = new FileReader();
-                        reader.onloadend = () => res(reader.result);
-                        reader.onerror = rej;
-                        reader.readAsDataURL(blob);
-                    });
-                    img.setAttribute('src', dataUrl);
-                } catch(e) { /* keep original src as fallback */ }
-            }
-        });
-        await Promise.allSettled(promises);
-        return doc.querySelector('div').innerHTML;
-    }
-
-    renderFrame(timeMs) {
-        if (!this._ready) return false;
-        if (this._onFrame) {
-            const origQSA = Document.prototype.querySelectorAll;
-            const origGEBI = Document.prototype.getElementById;
-            const sandbox = this.sandbox;
-            Document.prototype.querySelectorAll = function(sel) { return sandbox.querySelectorAll(sel); };
-            Document.prototype.getElementById = function(id) { return sandbox.querySelector('#' + id) || origGEBI.call(document, id); };
-            try { this._onFrame(timeMs); } catch(e) { console.error('[Renderer] onFrame error:', e); }
-            Document.prototype.querySelectorAll = origQSA;
-            Document.prototype.getElementById = origGEBI;
-        }
-        const clone = this.sandbox.cloneNode(true);
-        clone.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
-        clone.setAttribute('style', 'width:100%;height:100%;margin:0;padding:0;overflow:hidden;');
-        const domString = new XMLSerializer().serializeToString(clone);
-        const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + this.w + '" height="' + this.h + '">' +
-            '<foreignObject width="100%" height="100%">' +
-            '<style xmlns="http://www.w3.org/1999/xhtml"><![CDATA[' + this.css + ']]></style>' +
-            '<div xmlns="http://www.w3.org/1999/xhtml" style="width:' + this.w + 'px;height:' + this.h + 'px;overflow:hidden;">' +
-            domString + '</div></foreignObject></svg>';
-        return new Promise(resolve => {
-            const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
-            const img = new Image();
-            img.onload = () => { this.ctx.clearRect(0, 0, this.w, this.h); this.ctx.drawImage(img, 0, 0); resolve(true); };
-            img.onerror = () => { this.ctx.fillStyle = '#1e293b'; this.ctx.fillRect(0, 0, this.w, this.h); this.ctx.fillStyle = '#f87171'; this.ctx.font = '14px sans-serif'; this.ctx.fillText('Render Error', 16, 24); resolve(false); };
-            img.src = url;
-        });
-    }
-
-    drawTo(targetCtx, x, y, w, h) { targetCtx.drawImage(this.canvas, 0, 0, this.w, this.h, x, y, w, h); }
-}
-
-/* Cache for embedded Google-Fonts stylesheets (keyed by css2 URL) — survives renderer rebuilds */
-const _fontCssCache = {};
-
 
 /* ── Rail preview: reply parser (ported from test-renderer aiParseReply) ── */
 function peParseReply(text) {
-    const res = { html: '', css: '', js: '', title: '' };
+    const res = { html: '', css: '', js: '', title: '', ds: '' };
     text = (text || '').replace(/\r\n?/g, '\n').trim();
     if (!text) return res;
     const _tm = text.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
     if (_tm && _tm[1].trim()) res.title = _tm[1].replace(/\s+/g, ' ').trim().slice(0, 80);
+    /* Optional design-space declaration (matches hic contract): <!-- ds:9:16 --> right after the <title>. */
+    const _ds = text.match(/<!--\s*ds:(16:9|9:16|1:1|4:5)\s*-->/i);
+    if (_ds && DESIGN_SPACES[_ds[1]]) res.ds = _ds[1];
     const fenceRe = /\`\`\`([a-zA-Z0-9]*)[ \t]*\n([\s\S]*?)\`\`\`/g;
     const blocks = [];
     let m;
@@ -1616,7 +1419,7 @@ document.getElementById('sendGalleryBtn').addEventListener('click', sendToGaller
 
 
 /* ── Rail tabs: Prompt / Code / Preview ───────────────────────── */
-const PE_RAIL = { pane: 'prompt', code: { html: '', css: '', js: '', title: '' }, renderer: null, playing: false, raf: 0, start: 0, t0: 0 };
+const PE_RAIL = { pane: 'prompt', code: { html: '', css: '', js: '', title: '' }, ds: '16:9', renderer: null, playing: false, raf: 0, start: 0, t0: 0 };
 function peShowTab(name) {
   PE_RAIL.pane = name;
   document.querySelectorAll('.pc-tab').forEach(t => t.classList.toggle('active', t.dataset.ptab === name));
@@ -1658,8 +1461,9 @@ document.getElementById('peParseBtn').addEventListener('click', async function()
     return;
   }
   PE_RAIL.code = parsed;
+  if (parsed.ds) { PE_RAIL.ds = parsed.ds; curFrame.aspect = parsed.ds; writeExpPrefs({}); }
   if (parsed.title && S.m8.on) { S.m8.title = parsed.title; document.getElementById('fTitle').value = parsed.title; }
-  document.getElementById('peParseInfo').textContent = 'Parsed: ' + (peParseInfo() || 'empty') + (parsed.title ? ' · "' + parsed.title + '"' : '');
+  document.getElementById('peParseInfo').textContent = 'Parsed: ' + (peParseInfo() || 'empty') + (parsed.title ? ' · "' + parsed.title + '"' : '') + (parsed.ds ? ' · native ' + parsed.ds : '');
   peShowTab('preview');
   await peApplyPreview();
 });
@@ -1674,15 +1478,16 @@ async function peApplyPreview() {
   const c = PE_RAIL.code;
   const canvas = document.getElementById('peCanvas');
   const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#0d1117'; ctx.fillRect(0, 0, 800, 450);
+  peApplyFrame();
   document.getElementById('peState').textContent = 'Loading…';
   if (PE_RAIL.renderer) { try { PE_RAIL.renderer.sandbox.remove(); } catch (e) {} PE_RAIL.renderer = null; }
-  const r = new Renderer(800, 450);
+  const ds = dsDims(PE_RAIL.ds);
+  const r = makeHicRenderer(ds.w, ds.h, ds.w, ds.h);
   PE_RAIL.renderer = r;
   await r.setClip(c.html, c.css, c.js);
   document.getElementById('peScrub').max = String(peDur());
   const ok = await r.renderFrame(0);
-  if (ok) r.drawTo(ctx, 0, 0, 800, 450);
+  if (ok) PE_RAIL.renderer.drawFrame(ctx, canvas.width, canvas.height);
   document.getElementById('peState').textContent = c.title ? ('"' + c.title + '" · ' + (peParseInfo() || 'no code') + ' · ' + Math.round(peDur() / 100) / 10 + 's') : 'Loaded · ' + (peParseInfo() || 'no code');
   peStartPreview();
 }
@@ -1700,7 +1505,7 @@ function peStartPreview() {
     document.getElementById('peTime').textContent = (t / 1000).toFixed(1) + 's / ' + (dur / 1000).toFixed(1) + 's';
     if (PE_RAIL.renderer) {
       const ok = await PE_RAIL.renderer.renderFrame(t);
-      if (ok) PE_RAIL.renderer.drawTo(document.getElementById('peCanvas').getContext('2d'), 0, 0, 800, 450);
+      if (ok) PE_RAIL.renderer.drawFrame(document.getElementById('peCanvas').getContext('2d'), document.getElementById('peCanvas').width, document.getElementById('peCanvas').height);
     }
     PE_RAIL.raf = requestAnimationFrame(loop);
   };
@@ -1722,8 +1527,55 @@ document.getElementById('peScrub').addEventListener('input', function() {
   pePausePreview();
   const t = parseFloat(this.value) || 0;
   document.getElementById('peTime').textContent = (t / 1000).toFixed(1) + 's / ' + (peDur() / 1000).toFixed(1) + 's';
-  if (PE_RAIL.renderer) PE_RAIL.renderer.renderFrame(t).then(ok => { if (ok) PE_RAIL.renderer.drawTo(document.getElementById('peCanvas').getContext('2d'), 0, 0, 800, 450); });
+  if (PE_RAIL.renderer) PE_RAIL.renderer.renderFrame(t).then(ok => { if (ok) PE_RAIL.renderer.drawFrame(document.getElementById('peCanvas').getContext('2d'), document.getElementById('peCanvas').width, document.getElementById('peCanvas').height); });
 });
+
+/* ── Frame controls: aspect + background (shared curFrame from hic-frame.js, same prefs as the other modals) ── */
+function peApplyFrame() {
+  const canvas = document.getElementById('peCanvas');
+  const fd = frameDims(1080);
+  canvas.width = fd.w; canvas.height = fd.h;
+  peSyncFramebar();
+}
+function peSyncFramebar() {
+  const sel = document.getElementById('peAspect');
+  if (sel) sel.value = curFrame.aspect;
+  document.querySelectorAll('#peBgRow .pe-swatch').forEach(function(b) {
+    b.classList.toggle('sel', b.getAttribute('data-bg') === curFrame.bg);
+  });
+}
+function peRedraw() {
+  if (!PE_RAIL.renderer) return;
+  const canvas = document.getElementById('peCanvas');
+  const t = parseFloat(document.getElementById('peScrub').value) || 0;
+  PE_RAIL.renderer.renderFrame(t).then(function(ok) {
+    if (ok) PE_RAIL.renderer.drawFrame(canvas.getContext('2d'), canvas.width, canvas.height);
+  });
+}
+document.getElementById('peAspect').addEventListener('change', function() {
+  curFrame.aspect = this.value;
+  writeExpPrefs({});
+  peApplyFrame();
+  peRedraw();
+});
+document.querySelectorAll('#peBgRow .pe-swatch').forEach(function(b) {
+  b.addEventListener('click', function() {
+    if (this.getAttribute('data-bg') === 'custom') return; /* the color input owns this swatch */
+    curFrame.bg = this.getAttribute('data-bg');
+    writeExpPrefs({});
+    peSyncFramebar();
+    peRedraw();
+  });
+});
+document.getElementById('peBgCustom').addEventListener('input', function() {
+  curFrame.bg = this.value;
+  writeExpPrefs({});
+  peSyncFramebar();
+  peRedraw();
+});
+/* restore shared prefs so the panel matches the other pages' last-used frame */
+try { readExpPrefs(); } catch (e) {}
+peApplyFrame();
 /* duration edits keep the scrubber in range */
 document.getElementById('modulesCol').addEventListener('input', function(e) {
   if (e.target.id === 'fDur') document.getElementById('peScrub').max = String(peDur());
