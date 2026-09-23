@@ -1,8 +1,15 @@
 name: Sync designs gallery
 
-# Google Form → Sheet → this Action → static designs-gallery.json.
-# Runs every 6 hours and on manual dispatch; the push redeploys GitHub Pages
-# via the existing "Deploy to GitHub Pages" workflow.
+# Google Form → Sheet → this Action → designs-gallery.json on the
+# `designs-data` branch (NOT main).
+#
+# Why a data branch: this workflow commits every ~6 h, which used to force
+# every human push to main to rebase over bot commits ("fetch first"
+# rejections). The JSON now lives only on designs-data; main never receives
+# bot commits and pushes are always fast-forward. The gallery page fetches
+# the JSON live from raw.githubusercontent.com/…/designs-data/… (with the
+# stale main copy as offline fallback), so no Pages redeploy is needed for
+# gallery updates.
 
 on:
   schedule:
@@ -16,33 +23,54 @@ concurrency:
   group: sync-designs
   cancel-in-progress: false
 
+env:
+  DATA_BRANCH: designs-data
+  DATA_PATH: docs/html-in-canvas/designs-gallery.json
+
 jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout (default branch — for the sync script)
         uses: actions/checkout@v4
-        with:
-          # Commit on top of the latest default branch regardless of what triggered us
-          ref: refs/heads/${{ github.event.repository.default_branch }}
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
+      - name: Get current gallery from the data branch (seed from checkout on first run)
+        run: |
+          if git fetch origin "$DATA_BRANCH"; then
+            git show "FETCH_HEAD:$DATA_PATH" > "$DATA_PATH"
+            echo "Loaded existing gallery from $DATA_BRANCH"
+          else
+            echo "No $DATA_BRANCH yet — seeding from the default branch snapshot"
+          fi
+
       - name: Sync gallery from Google Sheet
         run: python tools/sync_designs.py
 
-      - name: Commit updated gallery (if changed)
+      - name: Commit updated gallery to the data branch (if changed)
         run: |
-          git config user.name "designs-sync-bot"
-          git config user.email "actions@users.noreply.github.com"
-          if git diff --quiet docs/html-in-canvas/designs-gallery.json; then
+          if git diff --quiet "$DATA_PATH" && [ -n "$(git rev-parse -q --verify origin/$DATA_BRANCH 2>/dev/null || true)" ] && git show "origin/$DATA_BRANCH:$DATA_PATH" | git diff --quiet "$DATA_PATH" -; then
             echo "No gallery changes — nothing to commit."
-          else
-            git add docs/html-in-canvas/designs-gallery.json
-            git commit -m "sync designs gallery from submissions [skip ci]"
-            git push
-            echo "Gallery updated and pushed — Pages redeploy will follow."
+            exit 0
           fi
+          # Build a commit that contains ONLY the gallery file, on top of the
+          # current data-branch head, using a temporary index. The default
+          # branch checkout is never modified.
+          BLOB=$(git hash-object -w "$DATA_PATH")
+          export GIT_INDEX_FILE="$RUNNER_TEMP/data-index"
+          git read-tree --empty
+          git update-index --add --cacheinfo "100644,$BLOB,$DATA_PATH"
+          TREE=$(git write-tree)
+          unset GIT_INDEX_FILE
+          PARENT=$(git rev-parse -q --verify "origin/$DATA_BRANCH" 2>/dev/null || true)
+          if [ -n "$PARENT" ]; then
+            COMMIT=$(git commit-tree "$TREE" -p "$PARENT" -m "sync designs gallery from submissions [skip ci]")
+          else
+            COMMIT=$(git commit-tree "$TREE" -m "sync designs gallery from submissions [skip ci]")
+          fi
+          git push origin "$COMMIT:refs/heads/$DATA_BRANCH"
+          echo "Gallery updated on $DATA_BRANCH — the page fetches it live, no redeploy needed."

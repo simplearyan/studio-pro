@@ -707,24 +707,40 @@ function prettifyJs(js) {
  * ═══════════════════════════════════════════════════════════════ */
 const W = 800, H = 450; /* design space — designs choreograph against this and it never changes */
 
+/* Gallery data lives on the `designs-data` branch (bot-only), so main's
+   history stays human-only and pushes never diverge. Fetch it live from the
+   branch; fall back to the stale main copy when offline / in dev. */
+const GALLERY_DATA_URL = 'https://raw.githubusercontent.com/simplearyan/studio-pro/designs-data/docs/html-in-canvas/designs-gallery.json';
+const GALLERY_DATA_SOURCES = [
+    GALLERY_DATA_URL + '?t=' + Date.now(),
+    'designs-gallery.json',
+];
+
 let DESIGNS = [];
 const byId = {};
 
-fetch('designs-gallery.json', { cache: 'no-store' })
-    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-    .then(data => {
-        DESIGNS = (data.designs || []).filter(d => d && d.id);
-        DESIGNS.forEach(d => { byId[d.id] = d; d.hasCode = !!(d.html || d.css || d.js); });
-        const fu = document.getElementById('footNote');
-        if (data.updatedAt) fu.textContent = 'Gallery updated ' + new Date(data.updatedAt).toLocaleString() + ' · ' + DESIGNS.length + ' designs';
-        buildChips();
-        renderGrid();
-        handleHash();
-    })
-    .catch(err => {
-        document.getElementById('designGrid').innerHTML =
-            '<div class="empty" style="grid-column:1/-1">Could not load designs-gallery.json — ' + String(err.message || err) + '</div>';
-    });
+(function loadGallery() {
+    const tryNext = (i) => {
+        if (i >= GALLERY_DATA_SOURCES.length) {
+            document.getElementById('designGrid').innerHTML =
+                '<div class="empty" style="grid-column:1/-1">Could not load designs-gallery.json — all sources failed (offline?)</div>';
+            return;
+        }
+        fetch(GALLERY_DATA_SOURCES[i], { cache: 'no-store' })
+            .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            .then(data => {
+                DESIGNS = (data.designs || []).filter(d => d && d.id);
+                DESIGNS.forEach(d => { byId[d.id] = d; d.hasCode = !!(d.html || d.css || d.js); });
+                const fu = document.getElementById('footNote');
+                if (data.updatedAt) fu.textContent = 'Gallery updated ' + new Date(data.updatedAt).toLocaleString() + ' · ' + DESIGNS.length + ' designs';
+                buildChips();
+                renderGrid();
+                handleHash();
+            })
+            .catch(() => tryNext(i + 1));
+    };
+    tryNext(0);
+})();
 
 /* ── Filters / search ─────────────────────────────────────────── */
 let activeTag = '';
