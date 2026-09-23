@@ -49,15 +49,12 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
 .modal-close{background:none;border:none;color:#7c8798;font-size:20px;cursor:pointer;padding:4px 10px;border-radius:6px;transition:all .15s;line-height:1}
 .modal-close:hover{background:#232b3b;color:#f1f5f9}
 .modal-body{overflow:auto;min-height:0}
+#previewPanel{display:flex;flex-direction:column;min-height:100%}
 .modal-canvas-wrap{position:relative;background:#080b10;display:flex;align-items:center;justify-content:center}
 .modal-canvas-wrap canvas{width:auto;max-width:100%;max-height:52vh;display:block}
 .modal-controls{padding:12px 20px;display:flex;gap:12px;align-items:center;border-top:1px solid #1e2533;background:#131a26;flex-wrap:wrap}
 /* Aspect segmented control + background swatches (frame geometry controls) */
-.aspect-seg{display:inline-flex;border:1px solid #2d3748;border-radius:8px;overflow:hidden;background:#0d1320}
-.aspect-opt{padding:6px 9px;font-size:11px;font-weight:600;color:#8b95a8;background:transparent;border:none;cursor:pointer;font-family:'Rubik',sans-serif;transition:all .12s;line-height:1}
-.aspect-opt + .aspect-opt{border-left:1px solid #2d3748}
-.aspect-opt:hover{color:#e2e8f0;background:#1a2334}
-.aspect-opt.selected{background:#2563eb;color:#fff}
+.aspect-select{min-width:64px}
 .bg-row{display:inline-flex;gap:5px;align-items:center;padding:4px 6px;border:1px solid #2d3748;border-radius:8px;background:#0d1320}
 .bg-swatch{width:22px;height:22px;border-radius:5px;border:1px solid #3a4353;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;transition:transform .12s, box-shadow .12s;background:#1a2334}
 .bg-swatch:hover{transform:scale(1.12)}
@@ -77,6 +74,7 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
 .slider-wrap input[type="range"]{flex:1;accent-color:#3b82f6;height:4px;min-width:80px}
 .time-label{font-size:12px;color:#94a3b8;font-variant-numeric:tabular-nums;min-width:38px;text-align:right;font-weight:500}
 .modal-info{display:flex;gap:10px;align-items:center;margin-left:auto}
+.modal-transport{display:flex;gap:12px;align-items:center;flex:1;min-width:0}
 .res-meta{display:inline-flex;align-items:center;gap:7px;background:#161d2b;border:1px solid #232b3b;border-radius:7px;padding:5px 10px}
 .res-meta svg{color:#64748b;flex-shrink:0}
 .res-meta span{font-size:11px;color:#94a3b8;font-weight:500;font-variant-numeric:tabular-nums;white-space:nowrap;letter-spacing:.2px}
@@ -229,16 +227,44 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
 @media(max-width:768px){
     .header,.grid{padding-left:16px;padding-right:16px}
     .grid{grid-template-columns:1fr 1fr}
-    .modal{margin:8px}
+    .modal-overlay{padding:12px}
+    .modal{max-height:calc(100vh - 24px)}
     .modal-controls{gap:8px;padding:10px 12px}
-    .modal-info{margin-left:0;width:100%;justify-content:space-between}
+    .modal-canvas-wrap canvas{max-height:44vh}
+    /* Icon-only export buttons on tablets: labels hide, carets stay */
+    .btn-frame-main span,.btn-export-main span{display:none}
+    .btn-frame-main,.btn-export-main{padding-left:11px;padding-right:11px}
+    .modal-info{margin-left:auto}
     .code-wrap .CodeMirror{height:60vh}
+}
+@media(max-width:560px){
+    .modal-overlay{padding:0}
+    .modal{margin:0;max-width:100vw;border-radius:0;border-left:none;border-right:none;max-height:100vh;height:100vh}
+    .modal-body{flex:1}
+    .modal-canvas-wrap{flex:1;min-height:0}
+    .modal-canvas-wrap canvas{max-height:100%;max-width:100%}
+    .modal-header{padding:12px 14px}
+    .modal-title{font-size:13px;max-width:34vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    /* Header wraps into two rows: title+close, then tabs centered */
+    .modal-header{flex-wrap:wrap;gap:6px 8px}
+    .modal-title{order:1}
+    .modal-close{order:2;margin-left:auto}
+    .seg{order:3;width:100%;display:flex;justify-content:center}
+    /* Controls stack: transport row full-width, then settings row scrolls */
+    .modal-controls{flex-direction:column;align-items:stretch;padding:10px 12px 12px;gap:8px}
+    .modal-transport{width:100%}
+    .slider-wrap{min-width:0}
+    .time-label{min-width:34px}
+    /* Settings wrap onto a second line on phones — every control stays
+       reachable (a horizontal scroll here hid the Export WebM button) */
+    .modal-info{margin-left:0;width:100%;flex-wrap:wrap;gap:6px}
+    .export-cluster{flex-wrap:wrap;row-gap:6px}
+    .res-meta{display:none} /* duration+size already visible on the canvas frame */
+    .btn-frame-main span,.btn-export-main span{display:none}
 }
 @media(max-width:480px){
     .grid{grid-template-columns:1fr}
-    .modal-controls{flex-direction:column;align-items:stretch}
-    .slider-wrap{min-width:0}
-    .modal-info{flex-wrap:wrap}
+    .slider-wrap input[type="range"]{min-width:60px}
 }
 </style>
 </head>
@@ -273,6 +299,7 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
                 <canvas id="modalCanvas" width="800" height="450"></canvas>
             </div>
             <div class="modal-controls">
+                <div class="modal-transport">
                 <button class="btn btn-play" id="modalPlayBtn">
                     <svg id="playIcon" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.14v13.72c0 .81.87 1.3 1.55.88l10.8-6.86a1.03 1.03 0 0 0 0-1.76L9.55 4.26A1.03 1.03 0 0 0 8 5.14z"/></svg>
                     <svg id="pauseIcon" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="display:none"><rect x="6" y="5" width="4" height="14" rx="1.2"/><rect x="14" y="5" width="4" height="14" rx="1.2"/></svg>
@@ -280,6 +307,7 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
                 <div class="slider-wrap">
                     <input type="range" id="modalSlider" min="0" max="5000" value="0">
                     <span class="time-label" id="modalTime">0.0s</span>
+                </div>
                 </div>
                 <div class="modal-info">
                     <div class="res-meta" title="Source duration and canvas size">
@@ -293,12 +321,12 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
                             <option value="1080" selected>1080p</option>
                             <option value="1440">1440p</option>
                         </select>
-                        <div class="aspect-seg" id="aspectSeg" role="group" aria-label="Frame aspect ratio">
-                            <button type="button" data-aspect="16:9" class="aspect-opt selected" title="Landscape 16:9">16:9</button>
-                            <button type="button" data-aspect="9:16" class="aspect-opt" title="Vertical 9:16">9:16</button>
-                            <button type="button" data-aspect="1:1" class="aspect-opt" title="Square 1:1">1:1</button>
-                            <button type="button" data-aspect="4:5" class="aspect-opt" title="Portrait 4:5">4:5</button>
-                        </div>
+                        <select id="aspectSelect" class="res-select" title="Frame aspect ratio — sets the design space for native presets and AI pastes">
+                            <option value="16:9" selected>16:9</option>
+                            <option value="9:16">9:16</option>
+                            <option value="1:1">1:1</option>
+                            <option value="4:5">4:5</option>
+                        </select>
                         <div class="bg-row" id="bgRow" title="Frame background (fills the bars around the design; Transparent keeps alpha in PNG/WebP exports)">
                             <button type="button" class="bg-swatch bg-transparent selected" data-bg="transparent" title="Transparent">
                                 <svg width="12" height="12" viewBox="0 0 12 12"><rect x="0" y="0" width="6" height="6" fill="#9aa4b2"/><rect x="6" y="6" width="6" height="6" fill="#9aa4b2"/><rect x="6" y="0" width="6" height="6" fill="#3a4353"/><rect x="0" y="6" width="6" height="6" fill="#3a4353"/></svg>
@@ -438,7 +466,7 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
                         <a class="ai-link" href="https://chatgpt.com" target="_blank" rel="noopener">ChatGPT ↗</a>
                         <a class="ai-link" href="https://claude.ai/new" target="_blank" rel="noopener">Claude ↗</a>
                     </div>
-                    <p class="ai-note">The prompt enforces the render contract: deterministic onFrame(time in ms), 800×450 design space, no CSS keyframes, no external libraries. LaTeX, markdown, Google fonts and Tailwind classes are supported natively — replies drop straight into the preview and both export paths.</p>
+                    <p class="ai-note">The prompt enforces the render contract: deterministic onFrame(time in ms), a per-aspect design space (800×450 at 16:9, 450×800 at 9:16, …), no CSS keyframes, no external libraries. LaTeX, markdown, Google fonts and Tailwind classes are supported natively — replies drop straight into the preview and both export paths.</p>
                 </div>
                 <div class="ai-view" id="aiViewPaste">
                     <p class="ai-hint">Paste the AI's whole reply below — it <strong>parses and applies automatically</strong>. Fenced <strong>```html / ```css / ```js</strong> blocks, a full HTML document, or plain markup are all understood.</p>
@@ -468,20 +496,27 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
  * SVG foreignObject Renderer
  * ═══════════════════════════════════════════════════════════════ */
 class Renderer {
-    constructor(w, h) {
+    /* w/h = raster canvas size (frame at export res, or design size for
+       preview). sw/sh = DESIGN SPACE the clip choreographs in — DOM sandbox
+       and the foreignObject content render at this size; the SVG then scales
+       it to w/h natively (sharper than raster-upscale, and it replaces the
+       old export scale-wrapper hack entirely). Defaults keep the classic
+       800x450 space so every existing caller is unchanged. */
+    constructor(w, h, sw, sh) {
         this.w = w; this.h = h;
+        this.sw = sw || 800; this.sh = sh || 450;
         this.canvas = document.createElement('canvas');
         this.canvas.width = w; this.canvas.height = h;
         this.ctx = this.canvas.getContext('2d');
         this.sandbox = document.createElement('div');
-        this.sandbox.style.cssText = 'position:absolute;top:-9999px;left:-9999px;width:800px;height:450px;overflow:hidden;pointer-events:none;';
+        this.sandbox.style.cssText = 'position:absolute;top:-9999px;left:-9999px;width:' + this.sw + 'px;height:' + this.sh + 'px;overflow:hidden;pointer-events:none;';
         document.body.appendChild(this.sandbox);
         this.css = ''; this._onFrame = null; this._ready = false;
     }
 
     async setClip(html, css, js) {
         this.css = css || '';
-        this.sandbox.innerHTML = '<div style="width:800px;height:450px;"></div>';
+        this.sandbox.innerHTML = '<div style="width:' + this.sw + 'px;height:' + this.sh + 'px;"></div>';
         /* 1. Load external scripts (KaTeX, marked, Tailwind CDN) in page context */
         html = await this._loadExternalScripts(html);
         /* 2. Inline external images as data URIs */
@@ -676,11 +711,18 @@ class Renderer {
         clone.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
         clone.setAttribute('style', 'width:100%;height:100%;margin:0;padding:0;overflow:hidden;');
         const domString = new XMLSerializer().serializeToString(clone);
+        /* The raster canvas always carries the DESIGN aspect: when raster size ≠
+           design size (exports upscale for sharp text; drawFrame passes the
+           frame size when aspects match) the SVG rasterizes the design at full
+           width and the foreignObject's inner scale(k) shrinks it uniformly —
+           vector-sharp, never stretched. drawFrame is the ONLY place aspect
+           fitting happens, so this canvas can never clip the design. */
         const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + this.w + '" height="' + this.h + '">' +
             '<foreignObject width="100%" height="100%">' +
             '<style xmlns="http://www.w3.org/1999/xhtml"><![CDATA[' + this.css + ']]></style>' +
             '<div xmlns="http://www.w3.org/1999/xhtml" style="width:' + this.w + 'px;height:' + this.h + 'px;overflow:hidden;">' +
-            domString + '</div></foreignObject></svg>';
+            '<div xmlns="http://www.w3.org/1999/xhtml" style="width:' + this.sw + 'px;height:' + this.sh + 'px;overflow:hidden;transform-origin:0 0;transform:scale(' + (this.w / this.sw) + ')">' +
+            domString + '</div></div></foreignObject></svg>';
         return new Promise(resolve => {
             const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
             const img = new Image();
@@ -692,19 +734,23 @@ class Renderer {
 
     drawTo(targetCtx, x, y, w, h) { targetCtx.drawImage(this.canvas, 0, 0, this.w, this.h, x, y, w, h); }
     /* Composite onto an output-size ctx: background fill first, then the
-       800x450 design raster contain-fitted and centered. This is the single
-       choke point for frame geometry + bg — preview and both export paths
-       call it, so they can never disagree. */
+       design raster contain-fitted and centered. When the frame aspect equals
+       the clip's design aspect the raster IS the frame — no bars, native
+       per-aspect design spaces fill edge-to-edge. */
     drawFrame(ctx, fw, fh) {
         ctx.clearRect(0, 0, fw, fh);
         if (expBg !== 'transparent') { ctx.fillStyle = expBg; ctx.fillRect(0, 0, fw, fh); }
-        if (fw === W && fh === H) { this.drawTo(ctx, 0, 0, W, H); return; }
-        const k = Math.min(fw / W, fh / H);
-        const dw = Math.round(W * k), dh = Math.round(H * k);
+        if (fw === this.w && fh === this.h) { this.drawTo(ctx, 0, 0, this.w, this.h); return; }
+        /* Contain-fit the raster (which always carries the design aspect) */
+        const k = Math.min(fw / this.w, fh / this.h);
+        const dw = Math.round(this.w * k), dh = Math.round(this.h * k);
         ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
         this.drawTo(ctx, Math.round((fw - dw) / 2), Math.round((fh - dh) / 2), dw, dh);
     }
 }
+
+/* Shared renderer builder: raster canvas + design space (see Renderer) */
+function makeRenderer(w, h, sw, sh) { return new Renderer(w, h, sw, sh); }
 
 /* Cache for embedded Google-Fonts stylesheets (keyed by css2 URL) — survives renderer rebuilds */
 const _fontCssCache = {};
@@ -808,6 +854,14 @@ const PRESETS = {
         html: '<div class="min-h-full flex items-center justify-center bg-slate-900 p-10 font-sans"><div class="w-full max-w-2xl"><h1 class="text-3xl font-extrabold text-white mb-1 tracking-tight">Tailwind in Canvas</h1><p class="text-slate-400 text-sm mb-6">Utility classes compiled to a static stylesheet — no runtime needed.</p><div class="grid grid-cols-3 gap-4"><div class="twc bg-indigo-500" id="twc0"><span class="twi">⚡</span><span class="twl">Fast</span></div><div class="twc bg-rose-500" id="twc1"><span class="twi">🎯</span><span class="twl">Precise</span></div><div class="twc bg-emerald-500" id="twc2"><span class="twi">📦</span><span class="twl">Portable</span></div></div><div class="mt-6 bg-slate-800 rounded-xl p-5 border border-slate-700" id="twBar"><div class="h-2 bg-slate-700 rounded-full overflow-hidden"><div class="h-full bg-gradient-to-r from-indigo-500 to-rose-500 rounded-full" id="twFill" style="width:0%"></div></div></div></div></div>',
         css: '.twc{border-radius:1rem;padding:22px 16px;color:#fff;display:flex;flex-direction:column;align-items:center;gap:8px;opacity:0;transform:translateY(30px) scale(.92);box-shadow:0 18px 40px -12px rgba(0,0,0,.5)}.twi{font-size:30px}.twl{font-weight:700;font-size:14px;letter-spacing:.3px}',
         js: 'function onFrame(t){for(var i=0;i<3;i++){var el=document.getElementById("twc"+i);if(el){var d=200+i*180,p=Math.max(0,Math.min((t-d)/650,1)),e=1-Math.pow(1-p,4);el.style.opacity=e;el.style.transform="translateY("+((1-e)*30)+"px) scale("+(0.92+e*0.08)+")"}}var f=document.getElementById("twFill");if(f){var fp=Math.max(0,Math.min((t-800)/1400,1));f.style.width=(fp*100)+"%"}}'
+    },
+    'story-reel': {
+        name: 'Story Reel 9:16', cat: 'social', dur: 4, ds: '9:16',
+        /* Native per-aspect design space demo: choreographs in 450x800 and
+           fills a portrait frame edge-to-edge — no pillarboxing. */
+        html: '<div id="sr"><div class="srGlow"></div><div class="srKicker" id="srK">DAILY VLOG \u00b7 EP.12</div><div class="srTitle" id="srT">Golden Hour</div><div class="srSub" id="srS">A rooftop session in Lisbon</div><div class="srBar"><div class="srFill" id="srF"></div></div></div>',
+        css: '#sr{width:100%;height:100%;background:linear-gradient(160deg,#1d1030,#0d0a1c);display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:system-ui,sans-serif;position:relative;overflow:hidden}.srGlow{position:absolute;top:-140px;left:50%;margin-left:-260px;width:520px;height:520px;border-radius:50%;background:radial-gradient(circle,rgba(255,170,80,.45),rgba(255,80,120,.12) 55%,transparent 72%);filter:blur(10px)}.srKicker{position:relative;font-size:13px;letter-spacing:5px;color:#ffb86b;font-weight:700;opacity:0}.srTitle{position:relative;font-size:64px;font-weight:800;color:#fff;letter-spacing:-1px;margin-top:14px;opacity:0;transform:translateY(30px)}.srSub{position:relative;font-size:18px;color:rgba(255,255,255,.75);margin-top:12px;font-weight:300;opacity:0}.srBar{position:absolute;bottom:56px;left:70px;right:70px;height:5px;border-radius:3px;background:rgba(255,255,255,.18);overflow:hidden}.srFill{height:100%;width:0%;background:linear-gradient(90deg,#ffb86b,#ff6b9d);border-radius:3px}',
+        js: 'function onFrame(t){var k=document.getElementById("srK"),ti=document.getElementById("srT"),s=document.getElementById("srS"),f=document.getElementById("srF");if(k){var p1=Math.max(0,Math.min((t-100)/450,1)),e1=1-Math.pow(1-p1,3);k.style.opacity=e1;k.style.transform="translateY("+((1-e1)*16)+"px)"}if(ti){var p2=Math.max(0,Math.min((t-350)/650,1)),e2=1-Math.pow(1-p2,4);ti.style.opacity=e2;ti.style.transform="translateY("+((1-e2)*30)+"px)"}if(s){var p3=Math.max(0,Math.min((t-850)/550,1)),e3=1-Math.pow(1-p3,3);s.style.opacity=e3;s.style.transform="translateY("+((1-e3)*14)+"px)"}if(f){var p4=Math.max(0,Math.min((t-1200)/2300,1));f.style.width=(p4*100)+"%"}}'
     }
 };
 
@@ -844,6 +898,21 @@ const ASPECTS = {
 };
 let curAspect = '16:9';
 let expBg = 'transparent'; /* 'transparent' keeps alpha in PNG/WebP exports */
+
+/* Native per-aspect DESIGN SPACES: a clip is authored against one of these
+   and choreographs in its absolute px. 16:9 keeps the historical 800x450 so
+   every existing preset stays pixel-identical. The frame aspect (curAspect)
+   is the OUTPUT shape; when it differs from the clip's design aspect the
+   design is contain-fitted (pillarbox/letterbox) — identical rule as before,
+   but native-space clips fill their frame edge-to-edge with no bars. */
+const DESIGN_SPACES = {
+    '16:9': { w: 800, h: 450 },
+    '9:16': { w: 450, h: 800 },
+    '1:1':  { w: 720, h: 720 },
+    '4:5':  { w: 640, h: 800 }
+};
+let clipDS = '16:9'; /* design space of the clip currently loaded in the modal */
+function dsDims(ds) { return DESIGN_SPACES[ds || clipDS] || DESIGN_SPACES['16:9']; }
 function frameDims(shortSide) {
     const a = ASPECTS[curAspect] || ASPECTS['16:9'];
     let w, h;
@@ -884,7 +953,8 @@ for (const [key, p] of Object.entries(PRESETS)) {
 (async () => {
     for (const [key, p] of Object.entries(PRESETS)) {
         const canvas = grid.querySelector('[data-key="' + key + '"] canvas');
-        const r = new Renderer(W, H);
+        const _dsT = dsDims(p.ds && DESIGN_SPACES[p.ds] ? p.ds : '16:9');
+        const r = makeRenderer(_dsT.w, _dsT.h, _dsT.w, _dsT.h);
         await r.setClip(p.html, p.css, p.js);
         /* Render near the end so all animations are in their final state */
         const endMs = (p.dur || 5) * 1000 - 16;
@@ -905,10 +975,21 @@ function openModal(key) {
     /* Fresh modal = preset code on stage; clear any previously applied
        (edited / AI-pasted) snapshot so the Code tab and exports agree */
     _lastAppliedCode = { html: '', css: '', js: '' };
+    /* A preset's own declared design space wins; legacy presets keep the
+       historical 16:9 stage so their absolute-px choreography never breaks —
+       non-matching frames pillarbox/letterbox via drawFrame. Opening a
+       native preset also switches the frame to its aspect (WYSIWYG). */
+    clipDS = p.ds && DESIGN_SPACES[p.ds] ? p.ds : '16:9';
+    if (p.ds && DESIGN_SPACES[p.ds]) curAspect = p.ds;
     tabPreview.click();
     _clipTitle = clipTitleFrom(p.html);
     modalTitle.textContent = _clipTitle || p.name;
-    modalDuration.textContent = p.dur + 's • ' + W + '×' + H;
+    const _ds = dsDims(clipDS);
+    modalDuration.textContent = p.dur + 's • ' + _ds.w + '×' + _ds.h;
+    /* Drop the previous clip's renderer BEFORE applyAspect — otherwise its
+       rebuild branch (aspect changed) would async-rebuild the old renderer
+       and race with the fresh one built below. */
+    if (modalRenderer) { modalRenderer.sandbox.remove(); modalRenderer = null; }
     applyAspect(); /* size the canvas to the persisted frame before first paint */
     modalSlider.max = p.dur * 1000;
     modalSlider.value = 0;
@@ -919,7 +1000,7 @@ function openModal(key) {
     if (typeof resetCodeBtn !== 'undefined' && resetCodeBtn) { resetCodeBtn.classList.remove('confirm'); resetCodeBtn.disabled = true; }
     modalOverlay.classList.add('open');
     if (modalRenderer) { modalRenderer.sandbox.remove(); modalRenderer = null; }
-    modalRenderer = new Renderer(W, H);
+    modalRenderer = makeRenderer(_ds.w, _ds.h, _ds.w, _ds.h);
     modalRenderer.setClip(p.html, p.css, p.js).then(() => {
         /* Auto-play the animation once clip is loaded */
         modalPlaying = true;
@@ -1229,10 +1310,12 @@ resetCodeBtn.addEventListener('click', function() {
     modalPlaying = false;
     setPlayState(false);
     if (modalRenderer) { modalRenderer.sandbox.remove(); }
-    modalRenderer = new Renderer(W, H);
+    clipDS = p.ds && DESIGN_SPACES[p.ds] ? p.ds : '16:9';
+    const _dsR = dsDims(clipDS);
+    modalRenderer = makeRenderer(_dsR.w, _dsR.h, _dsR.w, _dsR.h);
     modalRenderer.setClip(p.html, p.css, p.js).then(function() {
         modalRenderer.renderFrame(0).then(function(ok) {
-            if (ok) modalRenderer.drawTo(modalCtx, 0, 0, W, H);
+            if (ok) modalRenderer.drawFrame(modalCtx, modalCanvas.width, modalCanvas.height);
             modalSlider.value = 0;
             modalTime.textContent = '0.0s';
             modalPlaying = true;
@@ -1295,15 +1378,18 @@ applyCode.addEventListener('click', async function() {
     if (!currentPresetKey) return;
     modalPlaying = false;
     setPlayState(false);
-    if (modalRenderer) { modalRenderer.sandbox.remove(); }
-    modalRenderer = new Renderer(W, H);
+    /* Applied code (edit / AI paste): adopt the current frame aspect as the
+       clip's design space — a 9:16 frame gets a native 450x800 stage. */
+    clipDS = DESIGN_SPACES[curAspect] ? curAspect : '16:9';
+    const _dsA = dsDims(clipDS);
+    modalRenderer = makeRenderer(_dsA.w, _dsA.h, _dsA.w, _dsA.h);
     await modalRenderer.setClip(cmHtml.getValue(), cmCss.getValue(), cmJs.getValue());
     _lastAppliedCode = { html: cmHtml.getValue(), css: cmCss.getValue(), js: cmJs.getValue() };
     refreshClipTitle();
     updateUnsavedBadge();
     resetSync();
     const ok = await modalRenderer.renderFrame(0);
-    if (ok) modalRenderer.drawTo(modalCtx, 0, 0, W, H);
+    if (ok) modalRenderer.drawFrame(modalCtx, modalCanvas.width, modalCanvas.height);
     modalSlider.value = 0;
     modalTime.textContent = '0.0s';
     modalPlaying = true;
@@ -1395,8 +1481,10 @@ function exportStandalone() {
     const fontSrc = (code.css || '') + '\n' + rawHtml;
     const fontUrls = [...new Set(fontSrc.match(/https:\/\/fonts\.googleapis\.com[^\s"')\]]+/g) || [])];
 
-    /* u003c-escape the JSON so pane code containing a literal closing script tag can't break out */
-    const payload = JSON.stringify({ version: 1, kind: 'hic-standalone', name: name, duration: dur, html: code.html, css: code.css, js: code.js, fontUrls: fontUrls }).replace(/</g, '\\u003c');
+    /* u003c-escape the JSON so pane code containing a literal closing script tag can't break out.
+       The clip's design space travels in the payload — the runtime fits to P.w/P.h. */
+    const sd = dsDims(clipDS);
+    const payload = JSON.stringify({ version: 1, kind: 'hic-standalone', name: name, duration: dur, w: sd.w, h: sd.h, html: code.html, css: code.css, js: code.js, fontUrls: fontUrls }).replace(/</g, '\\u003c');
 
     const RUNTIME = [
         'var P = JSON.parse(document.getElementById("hic-code").textContent);',
@@ -1404,7 +1492,7 @@ function exportStandalone() {
         'var onFrameFn = null;',
         'try { onFrameFn = new Function("time", P.js + "\\n;return typeof onFrame==\\"function\\"?onFrame:null;")(); } catch(e) { console.error("onFrame compile error:", e); }',
         'function mount() { stage.innerHTML = P.html; var st = document.createElement("style"); st.textContent = P.css; stage.appendChild(st); }',
-        'function fit() { var s = Math.min(1, window.innerWidth / 800, window.innerHeight / 450); stage.style.transform = s < 1 ? "scale(" + s + ")" : ""; }',
+        'function fit() { var s = Math.min(1, window.innerWidth / (P.w || 800), window.innerHeight / (P.h || 450)); stage.style.transform = s < 1 ? "scale(" + s + ")" : ""; }',
         'var playing = true, t0 = null, rafId = 0;',
         'function loop(now) { if (!playing) return; if (t0 === null) t0 = now; var t = (now - t0) % P.duration; try { if (onFrameFn) onFrameFn(t); } catch(e) {} rafId = requestAnimationFrame(loop); }',
         'function start() { mount(); fit(); window.addEventListener("resize", fit); t0 = null; playing = true; rafId = requestAnimationFrame(loop); }',
@@ -1430,7 +1518,7 @@ function exportStandalone() {
         + headTags.join('\n') + (headTags.length ? '\n' : '')
         + '<style>\n'
         + 'body{margin:0;background:#0b0f1a;min-height:100vh;display:grid;place-items:center;font-family:system-ui,sans-serif}\n'
-        + '#stage{width:800px;height:450px;position:relative;overflow:hidden;background:' + (expBg === 'transparent' ? 'transparent' : expBg) + '}\n'
+        + '#stage{width:' + sd.w + 'px;height:' + sd.h + 'px;position:relative;overflow:hidden;background:' + (expBg === 'transparent' ? 'transparent' : expBg) + '}\n'
         + '#hic-pill{position:fixed;right:12px;bottom:12px;display:flex;gap:6px;z-index:9}\n'
         + '#hic-pill button{background:rgba(30,37,51,.85);color:#cbd5e1;border:1px solid #2d3748;border-radius:7px;padding:6px 10px;font-size:11px;cursor:pointer;font-family:system-ui}\n'
         + '#hic-pill button:hover{color:#f1f5f9;border-color:#3b82f6}\n'
@@ -1715,6 +1803,8 @@ const AI_PROMPTS = [
 ];
 
 function aiBuildPrompt(want, dur) {
+    const ds = DESIGN_SPACES[curAspect] || DESIGN_SPACES['16:9'];
+    const dsKey = DESIGN_SPACES[curAspect] ? curAspect : '16:9';
     return [
         'You are generating an HTML-in-Canvas animation for a video editor.',
         '',
@@ -1724,7 +1814,8 @@ function aiBuildPrompt(want, dur) {
         'HARD CONTRACT (violations break the video render):',
         '1. Deterministic time: ALL animation must be driven by a single global function onFrame(time) where time is milliseconds since the clip start (number). Same time in = same frame out, forever. The editor seeks to any time and re-renders.',
         '2. No requestAnimationFrame, no setTimeout/setInterval, no CSS @keyframes or animation: properties, no transitions. You compute every element state inside onFrame from time only.',
-        '3. The design space is exactly 800 x 450 pixels (16:9). Use absolute sizes in px; the renderer scales the whole stage to any output resolution. Use width:100%;height:100% on your root container.',
+        '3. The design space is exactly ' + ds.w + ' x ' + ds.h + ' pixels (' + ds.label + '). Use absolute sizes in px; the renderer scales the whole stage to any output resolution. Use width:100%;height:100% on your root container.',
+        '   Right after the <title> tag, add the design-space marker comment: <!-- ds:' + dsKey + ' --> — it locks the render to this stage size.',
         '4. Vanilla HTML/CSS/JS only — no bundlers, no imports, no fetch/XHR/network calls of your own. Allowed CDN exceptions (only when the design needs them): KaTeX for math and marked for markdown — load them with their <script src=\"https://cdn.jsdelivr.net/npm/...\"> tags at the top of the html block (close each tag properly).',
         '5. Images must be CORS-safe https URLs (images.unsplash.com is fine) and animated via style properties (transform/opacity/filter/clip-path) inside onFrame.',
         '6. Guard element lookups (if(el){...}) so a missing id never throws.',
@@ -1734,7 +1825,7 @@ function aiBuildPrompt(want, dur) {
         '',
         'OUTPUT FORMAT — respond with EXACTLY three fenced code blocks and nothing else:',
         '```html',
-        '<title>Short Name</title><!-- then the full markup for the 800x450 stage -->',
+        '<title>Short Name</title><!-- ds:' + dsKey + ' --><!-- then the full markup for the ' + ds.w + 'x' + ds.h + ' stage -->',
         '```',
         '```css',
         '/* all styles; root container fills 100% x 100% */',
@@ -1747,11 +1838,15 @@ function aiBuildPrompt(want, dur) {
 
 /* Tolerant parser: fenced blocks, whole HTML docs, or bare markup */
 function aiParseReply(text) {
-    const res = { html: '', css: '', js: '', title: '' };
+    const res = { html: '', css: '', js: '', title: '', ds: '' };
     text = (text || '').replace(/\r\n?/g, '\n').trim();
     if (!text) return res;
     const _tm = text.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
     if (_tm && _tm[1].trim()) res.title = _tm[1].replace(/\s+/g, ' ').trim().slice(0, 80);
+    /* Optional design-space declaration from the prompt contract:
+       <!-- ds:9:16 --> right after the <title>. 16:9 stays the default. */
+    const _ds = text.match(/<!--\s*ds:(16:9|9:16|1:1|4:5)\s*-->/i);
+    if (_ds && DESIGN_SPACES[_ds[1]]) res.ds = _ds[1];
     const fenceRe = /```([a-zA-Z0-9]*)[ \t]*\n([\s\S]*?)```/g;
     const blocks = [];
     let m;
@@ -1867,6 +1962,13 @@ function aiApplyReply() {
     if (parsed.css) parts.push('CSS');
     if (parsed.js) parts.push('JS');
     if (parsed.title) parts.push('&quot;' + parsed.title + '&quot;');
+    if (parsed.ds && parsed.ds !== curAspect) {
+        /* Native design space declared by the reply — switch the frame to
+           match so applyCode adopts it as the clip's design space. */
+        curAspect = parsed.ds;
+        applyAspect();
+        parts.push(parsed.ds + ' native');
+    }
     aiMsg('Inserted ' + parts.join(' · ') + ' — applying to stage…');
     applyCode.click(); /* renders + switches to Preview + plays */
 }
@@ -1934,24 +2036,38 @@ function saveExpPrefs() {
 function applyAspect() {
     const fd = frameDims(parseInt(resSelect.value) || 1080);
     modalCanvas.width = fd.w; modalCanvas.height = fd.h;
-    document.getElementById('aspectSeg').querySelectorAll('.aspect-opt').forEach(function(b) {
-        b.classList.toggle('selected', b.getAttribute('data-aspect') === curAspect);
-    });
+    const seg = document.getElementById('aspectSelect');
+    seg.value = curAspect;
     const row = document.getElementById('bgRow');
     row.querySelectorAll('.bg-swatch').forEach(function(s) { s.classList.toggle('selected', s.getAttribute('data-bg') === expBg); });
     document.querySelector('.bg-custom').classList.toggle('selected', expBg !== 'transparent' && !row.querySelector('.bg-swatch.selected'));
-    if (modalRenderer && modalRenderer._ready) {
-        modalRenderer.renderFrame(parseInt(modalSlider.value) || 0).then(function(ok) { if (ok) modalRenderer.drawFrame(modalCtx, fd.w, fd.h); });
+    if (modalRenderer && modalRenderer._ready && modalKey) {
+        /* Aspect switch = design-space switch. Rebuild the renderer when the
+           clip's design space changed (native preset opened / applied in a
+           different aspect). Preview rasters stay at design size — exports
+           are the ones that rasterize at frame size for sharp text. */
+        const ds = dsDims(clipDS);
+        if (modalRenderer.sw !== ds.w || modalRenderer.sh !== ds.h) {
+            modalRenderer.sandbox.remove();
+            modalRenderer = makeRenderer(ds.w, ds.h, ds.w, ds.h);
+            /* Recompile from the last applied code — the sandbox DOM alone
+               can't recreate the onFrame function */
+            const code = effectiveExportCode();
+            modalRenderer.setClip(code.html, code.css, code.js).then(function() {
+                return modalRenderer.renderFrame(parseInt(modalSlider.value) || 0);
+            }).then(function(ok) { if (ok) modalRenderer.drawFrame(modalCtx, fd.w, fd.h); });
+        } else {
+            modalRenderer.renderFrame(parseInt(modalSlider.value) || 0).then(function(ok) { if (ok) modalRenderer.drawFrame(modalCtx, fd.w, fd.h); });
+        }
     }
     saveExpPrefs();
 }
 function applyBg() {
     applyAspect(); /* bg rides the same composite path; one refresh covers both */
 }
-document.getElementById('aspectSeg').addEventListener('click', function(e) {
-    const b = e.target.closest('.aspect-opt');
-    if (!b || exporting) return;
-    curAspect = b.getAttribute('data-aspect');
+document.getElementById('aspectSelect').addEventListener('change', function(e) {
+    if (exporting) { e.target.value = curAspect; return; } /* locked during export */
+    curAspect = e.target.value;
     applyAspect();
 });
 document.getElementById('bgRow').addEventListener('click', function(e) {
@@ -2029,41 +2145,29 @@ async function exportFrame(fmtKey) {
     frameBtn.querySelector('span').textContent = 'Rendering\u2026';
     let fr = null;
     try {
-        /* Detached renderer at export resolution (sandbox is offscreen).
-           Same wrapper fix as the WebM export: scale OUR 800x450 wrapper —
-           never the preset's own first element (min-h-full / display:none
-           preset roots would break the geometry otherwise) — and CENTER it
-           in the sandbox so non-16:9 frames contain-fit instead of clipping. */
+        /* Design-space renderer: the raster carries the design aspect (at
+           frame size when the frame matches — SVG-native upscale keeps text
+           sharp; at design size otherwise) and drawFrame composites bg +
+           contain-fit. No scale-wrapper hacks. */
         const fd = frameDims(res.n);
-        fr = new Renderer(fd.w, fd.h);
+        const ds = dsDims(clipDS);
+        const sameAspect = Math.abs((fd.w / fd.h) - (ds.w / ds.h)) < 0.004;
+        fr = makeRenderer(sameAspect ? fd.w : ds.w, sameAspect ? fd.h : ds.h, ds.w, ds.h);
         await fr.setClip(code.html, code.css, code.js);
-        /* Uniform scale (never sx≠sy — that would stretch the design to the
-           frame aspect) + pre-scale translate to center: transform functions
-           apply right-to-left, so translate runs in unscaled px first. */
-        const k = Math.min(fd.w / W, fd.h / H);
-        const tx = (fd.w - k * W) / (2 * k), ty = (fd.h - k * H) / (2 * k);
-        const wrap = document.createElement('div');
-        wrap.style.cssText = 'width:' + W + 'px;height:' + H + 'px;overflow:hidden;transform-origin:0 0;transform:scale(' + k + ') translate(' + tx + 'px,' + ty + 'px);';
-        while (fr.sandbox.firstChild) { wrap.appendChild(fr.sandbox.firstChild); }
-        fr.sandbox.appendChild(wrap);
-        fr.sandbox.style.width = fd.w + 'px';
-        fr.sandbox.style.height = fd.h + 'px';
-        fr.sandbox.style.overflow = 'hidden';
 
         const okFlag = await fr.renderFrame(t);
         if (!okFlag) throw new Error('raster failed');
 
-        /* The renderer rasterized design+wrapper directly at fd.w×fd.h. For a
-           solid bg, composite the raster OVER the fill (drawImage order keeps
-           the design's own opaque regions intact); transparent ships as-is —
-           PNG/WebP keep the real alpha. */
-        let out = fr.canvas;
-        if (expBg !== 'transparent') {
+        /* Composite at the output frame: bg fill + contain-fit (identity when
+           aspects match). Transparent + matched frame ships the raster as-is
+           to keep real alpha. */
+        let out;
+        if (sameAspect && expBg === 'transparent') {
+            out = fr.canvas;
+        } else {
             out = document.createElement('canvas');
             out.width = fd.w; out.height = fd.h;
-            const octx = out.getContext('2d');
-            octx.fillStyle = expBg; octx.fillRect(0, 0, fd.w, fd.h);
-            octx.drawImage(fr.canvas, 0, 0);
+            fr.drawFrame(out.getContext('2d'), fd.w, fd.h);
         }
 
         const url = out.toDataURL(fmt.mime, 0.95);
@@ -2124,10 +2228,8 @@ async function startWebMExport() {
     const fd = frameDims(res.n);
     const expW = fd.w;
     const expH = fd.h;
-    /* Uniform scale + centering translate (see frame export) — the design is
-       contain-fitted, never stretched. */
-    const kScale = Math.min(expW / W, expH / H);
-    const kTx = (expW - kScale * W) / (2 * kScale), kTy = (expH - kScale * H) / (2 * kScale);
+    const ds = dsDims(clipDS);
+    const sameAspect = Math.abs((expW / expH) - (ds.w / ds.h)) < 0.004;
 
     exporting = true;
     exportSplit.classList.add('recording');
@@ -2141,23 +2243,13 @@ async function startWebMExport() {
     modalCanvas.width = expW;
     modalCanvas.height = expH;
 
-    /* Build renderer at export resolution with scale transform */
+    /* Design-space renderer: sandbox at the clip's native stage, raster at
+       export size when the frame matches the design aspect (SVG-native
+       upscale — text sharp at every resolution). drawFrame composites bg +
+       contain-fit per frame; the wrapper hacks are gone. */
     if (modalRenderer) { modalRenderer.sandbox.remove(); }
-    modalRenderer = new Renderer(expW, expH);
+    modalRenderer = makeRenderer(sameAspect ? expW : ds.w, sameAspect ? expH : ds.h, ds.w, ds.h);
     await modalRenderer.setClip(code.html, code.css, code.js);
-
-    /* Dedicated 800x450 scale wrapper: move ALL sandbox children into it, scale up,
-       and CENTER it so non-16:9 frames contain-fit the design instead of clipping.
-       Styling the preset's own first element breaks when that element is display:none
-       (MDX's hidden markdown source -> unscaled output) or uses min-h-full (Tailwind —
-       min-height:100% then resolves against the export sandbox, not 450px). */
-    const wrap = document.createElement('div');
-    wrap.style.cssText = 'width:' + W + 'px;height:' + H + 'px;overflow:hidden;transform-origin:0 0;transform:scale(' + kScale + ') translate(' + kTx + 'px,' + kTy + 'px);';
-    while (modalRenderer.sandbox.firstChild) { wrap.appendChild(modalRenderer.sandbox.firstChild); }
-    modalRenderer.sandbox.appendChild(wrap);
-    modalRenderer.sandbox.style.width = expW + 'px';
-    modalRenderer.sandbox.style.height = expH + 'px';
-    modalRenderer.sandbox.style.overflow = 'hidden';
 
     /* captureStream from visible canvas */
     const stream = modalCanvas.captureStream(fps);
@@ -2205,10 +2297,7 @@ async function startWebMExport() {
         modalTime.textContent = (t / 1000).toFixed(1) + 's';
         try {
             const ok = await modalRenderer.renderFrame(t);
-            if (ok) {
-                if (expBg !== 'transparent') { modalCtx.fillStyle = expBg; modalCtx.fillRect(0, 0, expW, expH); }
-                modalRenderer.drawTo(modalCtx, 0, 0, expW, expH);
-            }
+            if (ok) modalRenderer.drawFrame(modalCtx, expW, expH);
         } catch(e) { console.error('[Export] frame error:', e); }
     }
 
@@ -2217,11 +2306,15 @@ async function startWebMExport() {
     recorder.stop();
     await done;
 
-    /* Rebuild preview renderer at frame size with the exported (applied) code —
-       using the preset here would snap the stage back to the old animation */
+    /* Rebuild preview renderer with the exported (applied) code — using the
+       preset here would snap the stage back to the old animation. Design
+       space follows the clip; the raster matches the preview frame when the
+       frame aspect equals the design aspect. */
     if (modalRenderer) { modalRenderer.sandbox.remove(); }
     const fdOut = frameDims(parseInt(resSelect.value) || 1080);
-    modalRenderer = new Renderer(W, H);
+    const dsOut = dsDims(clipDS);
+    const sameOut = Math.abs((fdOut.w / fdOut.h) - (dsOut.w / dsOut.h)) < 0.004;
+    modalRenderer = makeRenderer(sameOut ? fdOut.w : dsOut.w, sameOut ? fdOut.h : dsOut.h, dsOut.w, dsOut.h);
     await modalRenderer.setClip(code.html, code.css, code.js);
     const ok = await modalRenderer.renderFrame(0);
     if (ok) modalRenderer.drawFrame(modalCtx, fdOut.w, fdOut.h);
