@@ -351,3 +351,77 @@ class HicRenderer {
 /* Shared renderer builder: raster canvas + design space (see HicRenderer).
    Pages alias this as makeRenderer so call sites stay short. */
 function makeHicRenderer(w, h, sw, sh) { return new HicRenderer(w, h, sw, sh); }
+
+/* ═══════════════════════════════════════════════════════════════════
+ * Frame controls: aspect dropdown + background swatches
+ * ═══════════════════════════════════════════════════════════════════
+ * One canonical control pair mounted by every page (test-renderer,
+ * designs gallery, prompts-engineer) so the frame UI is pixel-identical
+ * everywhere and styled from one place. */
+(function injectFrameControlsCss() {
+    if (document.getElementById('hic-frame-controls-css')) return;
+    const st = document.createElement('style');
+    st.id = 'hic-frame-controls-css';
+    st.textContent =
+        '.hic-frame-controls{display:inline-flex;gap:8px;align-items:center}' +
+        '.hic-aspect-select{background:#1e2533;color:#e2e8f0;border:1px solid #2d3748;border-radius:7px;padding:5px 8px;font:600 11px \'Rubik\',sans-serif;cursor:pointer;outline:none;min-width:64px}' +
+        '.hic-aspect-select:focus{border-color:#4a90d9}' +
+        '.hic-bg-row{display:inline-flex;gap:5px;align-items:center;padding:4px 6px;border:1px solid #2d3748;border-radius:8px;background:#0d1320}' +
+        '.hic-bg-swatch{width:22px;height:22px;border-radius:5px;border:1px solid #3a4353;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;transition:transform .12s, box-shadow .12s;background:#1a2334}' +
+        '.hic-bg-swatch:hover{transform:scale(1.12)}' +
+        '.hic-bg-swatch.selected{box-shadow:0 0 0 2px #2563eb;border-color:#2563eb}' +
+        '.hic-bg-transparent{background:repeating-conic-gradient(#3a4353 0% 25%, #1a2334 0% 50%) 0 0/8px 8px}' +
+        '.hic-bg-custom{position:relative;width:22px;height:22px;border-radius:5px;border:1px dashed #4a90d9;display:inline-block;cursor:pointer;background:conic-gradient(#ef4444,#eab308,#22c55e,#3b82f6,#a855f7,#ef4444)}' +
+        '.hic-bg-custom input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}' +
+        '.hic-bg-custom.selected{box-shadow:0 0 0 2px #2563eb;border-style:solid}';
+    document.head.appendChild(st);
+})();
+
+function mountFrameControls(host, opts) {
+    opts = opts || {};
+    host.classList.add('hic-frame-controls');
+    host.innerHTML =
+        '<select class="hic-aspect-select" title="Frame aspect ratio — sets the design space for native presets and AI pastes">' +
+            '<option value="16:9">16:9</option><option value="9:16">9:16</option>' +
+            '<option value="1:1">1:1</option><option value="4:5">4:5</option>' +
+        '</select>' +
+        '<span class="hic-bg-row" title="Frame background (fills the bars around the design; Transparent keeps alpha in PNG/WebP exports)">' +
+            '<button type="button" class="hic-bg-swatch hic-bg-transparent" data-bg="transparent" title="Transparent">' +
+                '<svg width="12" height="12" viewBox="0 0 12 12"><rect x="0" y="0" width="6" height="6" fill="#9aa4b2"/><rect x="6" y="6" width="6" height="6" fill="#9aa4b2"/><rect x="6" y="0" width="6" height="6" fill="#3a4353"/><rect x="0" y="6" width="6" height="6" fill="#3a4353"/></svg>' +
+            '</button>' +
+            '<button type="button" class="hic-bg-swatch" data-bg="#ffffff" title="White" style="background:#ffffff"></button>' +
+            '<button type="button" class="hic-bg-swatch" data-bg="#0b0f1a" title="Dark" style="background:#0b0f1a"></button>' +
+            '<label class="hic-bg-custom" title="Custom background color"><input type="color" value="#2563eb"></label>' +
+        '</span>';
+    const sel = host.querySelector('.hic-aspect-select');
+    const input = host.querySelector('.hic-bg-custom input');
+    const isLocked = function() { try { return opts.isLocked ? opts.isLocked() : false; } catch (e) { return false; } };
+    function apply(change) {
+        sync();
+        writeExpPrefs({});
+        if (change && opts.onFrame) opts.onFrame();
+    }
+    sel.addEventListener('change', function() {
+        if (isLocked()) { sel.value = curFrame.aspect; return; }
+        curFrame.aspect = sel.value;
+        apply(true);
+    });
+    host.querySelector('.hic-bg-row').addEventListener('click', function(e) {
+        const s = e.target.closest('.hic-bg-swatch');
+        if (!s || isLocked()) return;
+        curFrame.bg = s.getAttribute('data-bg');
+        apply(true);
+    });
+    input.addEventListener('input', function() {
+        if (isLocked()) return;
+        curFrame.bg = input.value;
+        apply(true);
+    });
+    function sync() {
+        sel.value = curFrame.aspect;
+        host.querySelectorAll('.hic-bg-swatch').forEach(function(s) { s.classList.toggle('selected', s.getAttribute('data-bg') === curFrame.bg); });
+        host.querySelector('.hic-bg-custom').classList.toggle('selected', curFrame.bg !== 'transparent' && !host.querySelector('.hic-bg-swatch.selected'));
+    }
+    sync();
+    return { sync: sync };
+}

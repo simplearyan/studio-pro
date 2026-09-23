@@ -53,15 +53,8 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
 .modal-canvas-wrap{position:relative;background:#080b10;display:flex;align-items:center;justify-content:center}
 .modal-canvas-wrap canvas{width:auto;max-width:100%;max-height:52vh;display:block}
 .modal-controls{padding:12px 20px;display:flex;gap:12px;align-items:center;border-top:1px solid #1e2533;background:#131a26;flex-wrap:wrap}
-/* Aspect segmented control + background swatches (frame geometry controls) */
-.aspect-select{min-width:64px}
-.bg-row{display:inline-flex;gap:5px;align-items:center;padding:4px 6px;border:1px solid #2d3748;border-radius:8px;background:#0d1320}
-.bg-swatch{width:22px;height:22px;border-radius:5px;border:1px solid #3a4353;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;transition:transform .12s, box-shadow .12s;background:#1a2334}
-.bg-swatch:hover{transform:scale(1.12)}
-.bg-swatch.selected{box-shadow:0 0 0 2px #2563eb;border-color:#2563eb}
-.bg-custom{position:relative;width:22px;height:22px;border-radius:5px;border:1px dashed #4a90d9;display:inline-block;cursor:pointer;background:conic-gradient(#ef4444,#eab308,#22c55e,#3b82f6,#a855f7,#ef4444)}
-.bg-custom input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
-.bg-custom.selected{box-shadow:0 0 0 2px #2563eb;border-style:solid}
+/* Aspect dropdown + background swatches (frame geometry controls) — shared
+   markup/CSS/behavior from hic-frame.js mountFrameControls() */
 .btn{padding:8px 14px;border-radius:8px;border:none;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;font-family:'Rubik',sans-serif;display:inline-flex;align-items:center;justify-content:center;gap:7px;line-height:1}
 .btn svg{display:block;flex-shrink:0}
 .btn-play{background:#2563eb;color:#fff;box-shadow:0 1px 3px rgba(37,99,235,.3);padding:9px 13px}
@@ -321,22 +314,7 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
                             <option value="1080" selected>1080p</option>
                             <option value="1440">1440p</option>
                         </select>
-                        <select id="aspectSelect" class="res-select" title="Frame aspect ratio — sets the design space for native presets and AI pastes">
-                            <option value="16:9" selected>16:9</option>
-                            <option value="9:16">9:16</option>
-                            <option value="1:1">1:1</option>
-                            <option value="4:5">4:5</option>
-                        </select>
-                        <div class="bg-row" id="bgRow" title="Frame background (fills the bars around the design; Transparent keeps alpha in PNG/WebP exports)">
-                            <button type="button" class="bg-swatch bg-transparent selected" data-bg="transparent" title="Transparent">
-                                <svg width="12" height="12" viewBox="0 0 12 12"><rect x="0" y="0" width="6" height="6" fill="#9aa4b2"/><rect x="6" y="6" width="6" height="6" fill="#9aa4b2"/><rect x="6" y="0" width="6" height="6" fill="#3a4353"/><rect x="0" y="6" width="6" height="6" fill="#3a4353"/></svg>
-                            </button>
-                            <button type="button" class="bg-swatch" data-bg="#ffffff" title="White" style="background:#ffffff"></button>
-                            <button type="button" class="bg-swatch" data-bg="#0b0f1a" title="Dark" style="background:#0b0f1a"></button>
-                            <label class="bg-custom" title="Custom background color">
-                                <input type="color" id="bgCustom" value="#2563eb">
-                            </label>
-                        </div>
+                        <span id="frameControls"></span>
                         <div class="export-split" id="frameSplit">
                             <button class="btn btn-frame-main" id="frameBtn" title="Save current frame (PNG)">
                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
@@ -1742,11 +1720,7 @@ function saveExpPrefs() {
 function applyAspect() {
     const fd = frameDims(parseInt(resSelect.value) || 1080);
     modalCanvas.width = fd.w; modalCanvas.height = fd.h;
-    const seg = document.getElementById('aspectSelect');
-    seg.value = curFrame.aspect;
-    const row = document.getElementById('bgRow');
-    row.querySelectorAll('.bg-swatch').forEach(function(s) { s.classList.toggle('selected', s.getAttribute('data-bg') === curFrame.bg); });
-    document.querySelector('.bg-custom').classList.toggle('selected', curFrame.bg !== 'transparent' && !row.querySelector('.bg-swatch.selected'));
+    if (frameControls) frameControls.sync();
     if (modalRenderer && modalRenderer._ready && modalKey) {
         /* Aspect switch = design-space switch. Rebuild the renderer when the
            clip's design space changed (native preset opened / applied in a
@@ -1771,21 +1745,12 @@ function applyAspect() {
 function applyBg() {
     applyAspect(); /* bg rides the same composite path; one refresh covers both */
 }
-document.getElementById('aspectSelect').addEventListener('change', function(e) {
-    if (exporting) { e.target.value = curFrame.aspect; return; } /* locked during export */
-    curFrame.aspect = e.target.value;
-    applyAspect();
-});
-document.getElementById('bgRow').addEventListener('click', function(e) {
-    const s = e.target.closest('.bg-swatch');
-    if (!s || exporting) return;
-    curFrame.bg = s.getAttribute('data-bg');
-    applyBg();
-});
-document.getElementById('bgCustom').addEventListener('input', function() {
-    if (exporting) return;
-    curFrame.bg = this.value;
-    applyBg();
+/* Aspect + background controls: mounted from hic-frame.js (shared UI across
+   all three pages). var so boot-time applyAspect() calls before this line are
+   a safe no-op for syncing. */
+var frameControls = mountFrameControls(document.getElementById('frameControls'), {
+    isLocked: function() { return !!exporting; },
+    onFrame: applyAspect
 });
 
 let exporting = false;

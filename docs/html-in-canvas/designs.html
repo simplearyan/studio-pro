@@ -107,19 +107,8 @@ footer{padding:0 32px 28px;font-size:10.5px;color:#475569;font-weight:500}
 .modal-body{overflow:auto;min-height:0}
 .modal-canvas-wrap{position:relative;background:#080b10;display:flex;align-items:center;justify-content:center}
 .modal-canvas-wrap canvas{width:auto;max-width:100%;max-height:52vh;display:block}
-/* Aspect segmented control + background swatches (frame geometry controls) */
-.aspect-seg{display:inline-flex;border:1px solid #2d3748;border-radius:8px;overflow:hidden;background:#0d1320}
-.aspect-opt{padding:6px 9px;font-size:11px;font-weight:600;color:#8b95a8;background:transparent;border:none;cursor:pointer;font-family:'Rubik',sans-serif;transition:all .12s;line-height:1}
-.aspect-opt + .aspect-opt{border-left:1px solid #2d3748}
-.aspect-opt:hover{color:#e2e8f0;background:#1a2334}
-.aspect-opt.selected{background:#2563eb;color:#fff}
-.bg-row{display:inline-flex;gap:5px;align-items:center;padding:4px 6px;border:1px solid #2d3748;border-radius:8px;background:#0d1320}
-.bg-swatch{width:22px;height:22px;border-radius:5px;border:1px solid #3a4353;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;transition:transform .12s, box-shadow .12s;background:#1a2334}
-.bg-swatch:hover{transform:scale(1.12)}
-.bg-swatch.selected{box-shadow:0 0 0 2px #2563eb;border-color:#2563eb}
-.bg-custom{position:relative;width:22px;height:22px;border-radius:5px;border:1px dashed #4a90d9;display:inline-block;cursor:pointer;background:conic-gradient(#ef4444,#eab308,#22c55e,#3b82f6,#a855f7,#ef4444)}
-.bg-custom input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
-.bg-custom.selected{box-shadow:0 0 0 2px #2563eb;border-style:solid}
+/* Aspect dropdown + background swatches (frame geometry controls) — shared
+   markup/CSS/behavior from hic-frame.js mountFrameControls() */
 .modal-controls{padding:12px 20px;display:flex;gap:12px;align-items:center;border-top:1px solid #1e2533;background:#131a26;flex-wrap:wrap}
 .btn{padding:8px 14px;border-radius:8px;border:none;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;font-family:'Rubik',sans-serif;display:inline-flex;align-items:center;justify-content:center;gap:7px;line-height:1}
 .btn svg{display:block;flex-shrink:0}
@@ -378,22 +367,7 @@ footer{padding:0 32px 28px;font-size:10.5px;color:#475569;font-weight:500}
                             <option value="1080" selected>1080p</option>
                             <option value="1440">1440p</option>
                         </select>
-                        <div class="aspect-seg" id="aspectSeg" role="group" aria-label="Frame aspect ratio">
-                            <button type="button" data-aspect="16:9" class="aspect-opt selected" title="Landscape 16:9">16:9</button>
-                            <button type="button" data-aspect="9:16" class="aspect-opt" title="Vertical 9:16">9:16</button>
-                            <button type="button" data-aspect="1:1" class="aspect-opt" title="Square 1:1">1:1</button>
-                            <button type="button" data-aspect="4:5" class="aspect-opt" title="Portrait 4:5">4:5</button>
-                        </div>
-                        <div class="bg-row" id="bgRow" title="Frame background (fills the bars around the design; Transparent keeps alpha in PNG/WebP exports)">
-                            <button type="button" class="bg-swatch bg-transparent selected" data-bg="transparent" title="Transparent">
-                                <svg width="12" height="12" viewBox="0 0 12 12"><rect x="0" y="0" width="6" height="6" fill="#9aa4b2"/><rect x="6" y="6" width="6" height="6" fill="#9aa4b2"/><rect x="6" y="0" width="6" height="6" fill="#3a4353"/><rect x="0" y="6" width="6" height="6" fill="#3a4353"/></svg>
-                            </button>
-                            <button type="button" class="bg-swatch" data-bg="#ffffff" title="White" style="background:#ffffff"></button>
-                            <button type="button" class="bg-swatch" data-bg="#0b0f1a" title="Dark" style="background:#0b0f1a"></button>
-                            <label class="bg-custom" title="Custom background color">
-                                <input type="color" id="bgCustom" value="#2563eb">
-                            </label>
-                        </div>
+                        <span id="frameControls"></span>
                         <div class="export-split" id="frameSplit">
                             <button class="btn btn-frame-main" id="frameBtn" title="Save current frame (PNG)">
                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
@@ -1553,34 +1527,19 @@ function saveExpPrefs() {
 function applyAspect() {
     const fd = frameDims(parseInt(resSelect.value) || 1080);
     modalCanvas.width = fd.w; modalCanvas.height = fd.h;
-    document.getElementById('aspectSeg').querySelectorAll('.aspect-opt').forEach(function(b) {
-        b.classList.toggle('selected', b.getAttribute('data-aspect') === curFrame.aspect);
-    });
-    const row = document.getElementById('bgRow');
-    row.querySelectorAll('.bg-swatch').forEach(function(s) { s.classList.toggle('selected', s.getAttribute('data-bg') === curFrame.bg); });
-    document.querySelector('.bg-custom').classList.toggle('selected', curFrame.bg !== 'transparent' && !row.querySelector('.bg-swatch.selected'));
+    if (frameControls) frameControls.sync();
     if (modalRenderer && modalRenderer._ready) {
         modalRenderer.renderFrame(parseInt(modalSlider.value) || 0).then(function(ok) { if (ok) modalRenderer.drawFrame(modalCtx, fd.w, fd.h); });
     }
     saveExpPrefs();
 }
 function applyBg() { applyAspect(); }
-document.getElementById('aspectSeg').addEventListener('click', function(e) {
-    const b = e.target.closest('.aspect-opt');
-    if (!b || exporting) return;
-    curFrame.aspect = b.getAttribute('data-aspect');
-    applyAspect();
-});
-document.getElementById('bgRow').addEventListener('click', function(e) {
-    const s = e.target.closest('.bg-swatch');
-    if (!s || exporting) return;
-    curFrame.bg = s.getAttribute('data-bg');
-    applyBg();
-});
-document.getElementById('bgCustom').addEventListener('input', function() {
-    if (exporting) return;
-    curFrame.bg = this.value;
-    applyBg();
+/* Aspect + background controls: mounted from hic-frame.js (shared UI across
+   all three pages). var so boot-time applyAspect() calls before this line are
+   a safe no-op for syncing. */
+var frameControls = mountFrameControls(document.getElementById('frameControls'), {
+    isLocked: function() { return !!exporting; },
+    onFrame: applyAspect
 });
 let exporting = false;
 
