@@ -12,8 +12,13 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<!-- Icons are inline SVGs using official Material Design icon paths — same
+     visual language as Material Symbols but with zero network dependency
+     (a font-subset experiment FOUT'd raw ligature names like "ExPORT WEBM
+     into the buttons when the glyph font lagged or failed to load). -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/dracula.min.css">
+<script>document.fonts.ready.then(function(){ document.documentElement.classList.add('fonts-ready'); });</script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-system,sans-serif;min-height:100vh}
@@ -47,10 +52,16 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
 /* Portrait mode (9:16) — Shorts-style tall player: the modal narrows so the
    stage fills the height instead of pillarboxing a wide modal with black bars. */
 .modal.portrait-mode{max-width:480px}
-.modal-header{padding:14px 20px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #1e2533;flex-shrink:0}
-.modal-title{font-size:15px;font-weight:700;color:#f1f5f9;font-family:'Rubik',sans-serif;letter-spacing:-.2px}
-.modal-close{background:none;border:none;color:#7c8798;font-size:20px;cursor:pointer;padding:4px 10px;border-radius:6px;transition:all .15s;line-height:1}
+.modal-header{padding:10px 16px;display:flex;justify-content:space-between;align-items:center;gap:12px;border-bottom:1px solid #1e2533;flex-shrink:0}
+/* YT watch-page pattern: title block (title + small meta line under it) on the
+   left, pill tabs centered, close right. The meta line absorbs the duration/
+   canvas info so the toolbar doesn't have to carry it on narrow modals. */
+.mh-titleblock{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1 1 0}
+.modal-title{font-size:14.5px;font-weight:700;color:#f1f5f9;font-family:'Rubik',sans-serif;letter-spacing:-.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mh-meta{font-size:10.5px;font-weight:500;color:#64748b;font-family:'Rubik',sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.modal-close{background:none;border:none;color:#7c8798;font-size:20px;cursor:pointer;padding:5px 8px;border-radius:6px;transition:all .15s;line-height:1;display:flex;align-items:center}
 .modal-close:hover{background:#232b3b;color:#f1f5f9}
+.modal-close svg{display:block}
 .modal-body{overflow:auto;min-height:0;display:flex;flex-direction:column;flex:1 1 auto}
 #previewPanel{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}
 /* ── Player zone — YouTube-style: the stage is the hero, controls live in a
@@ -89,9 +100,16 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
 .ov-total{opacity:.75}
 /* Native range kept for keyboard/a11y — visually hidden */
 .sr-slider{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
-/* ── Slim toolbar under the stage: meta left, export cluster right ── */
-.modal-toolbar{padding:9px 16px;display:flex;gap:12px;align-items:center;border-top:1px solid #1e2533;background:#131a26;flex-wrap:wrap}
-.modal-toolbar .res-meta{margin-right:auto}
+/* ── Toolbar: two-side flex — the no-cutoff guarantee ──
+   Duration/size moved to the header meta line; this row is just controls:
+   format (resolution, aspect, background) left, exports right. Clusters
+   wrap internally at ALL widths (flex items refuse to shrink below content
+   — what cut Export WebM off in portrait mode), so rows stack inside the
+   bar but no control ever leaves the modal. */
+.modal-toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 16px;border-top:1px solid #1e2533;background:#131a26}
+.modal-toolbar .modal-info{min-width:0}
+.tbar-right{display:flex;justify-content:flex-end;min-width:0}
+.tbar-cluster{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
 /* Aspect dropdown + background swatches (frame geometry controls) — shared
    markup/CSS/behavior from hic-frame.js mountFrameControls() */
 .btn{padding:8px 14px;border-radius:8px;border:none;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;font-family:'Rubik',sans-serif;display:inline-flex;align-items:center;justify-content:center;gap:7px;line-height:1}
@@ -99,7 +117,7 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
 .btn-apply{background:#4f46e5;color:#fff;box-shadow:0 1px 3px rgba(79,70,229,.35)}
 .btn-apply:hover{background:#4338ca;box-shadow:0 2px 6px rgba(79,70,229,.4)}
 .modal-info{display:flex;gap:10px;align-items:center}
-.res-meta{display:inline-flex;align-items:center;gap:7px;background:#161d2b;border:1px solid #232b3b;border-radius:7px;padding:5px 10px}
+.res-meta{display:inline-flex;align-items:center;gap:7px;background:#161d2b;border:1px solid #232b3b;border-radius:7px;padding:5px 10px;max-width:100%;overflow:hidden}
 .res-meta svg{color:#64748b;flex-shrink:0}
 .res-meta span{font-size:11px;color:#94a3b8;font-weight:500;font-variant-numeric:tabular-nums;white-space:nowrap;letter-spacing:.2px}
 /* Resolution dropdown — custom menu (opens upward, same pattern as the
@@ -262,9 +280,8 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
     .modal-toolbar{gap:8px;padding:9px 12px}
     .player-zone{min-height:220px}
     /* Icon-only export buttons on tablets: labels hide, carets stay */
-    .btn-frame-main span,.btn-export-main span{display:none}
+    .btn-frame-main .btn-label,.btn-export-main .btn-label{display:none}
     .btn-frame-main,.btn-export-main{padding-left:11px;padding-right:11px}
-    .modal-info{margin-left:auto}
     .code-wrap .CodeMirror{height:60vh}
 }
 @media(max-width:560px){
@@ -273,21 +290,23 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
     .modal-body{flex:1}
     .player-zone{flex:1;min-height:0}
     .modal-header{padding:12px 14px}
-    .modal-title{font-size:13px;max-width:34vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .modal-title{font-size:13px}
     /* Header wraps into two rows: title+close, then tabs centered */
     .modal-header{flex-wrap:wrap;gap:6px 8px}
-    .modal-title{order:1}
+    .mh-titleblock{order:1;flex:1 1 auto}
     .modal-close{order:2;margin-left:auto}
     .seg{order:3;width:100%;display:flex;justify-content:center}
-    /* Toolbar wraps — every control stays reachable (a horizontal scroll here
-       once hid the Export WebM button) */
-    .modal-toolbar{flex-wrap:wrap;row-gap:6px}
-    .modal-toolbar .res-meta{display:none} /* duration+size shown in the overlay time row */
-    .modal-toolbar .modal-info{width:100%}
-    .export-cluster{flex-wrap:wrap;row-gap:6px}
+    /* Toolbar: clusters stack as centered rows, wrapping internally
+       (Export WebM once overflowed off the modal here) */
+    .modal-toolbar{flex-direction:column;row-gap:6px}
     .ov-center-play{width:60px;height:60px}
     .ov-transport{padding:22px 8px 4px}
-    .btn-frame-main span,.btn-export-main span{display:none}
+    .btn-frame-main .btn-label,.btn-export-main .btn-label{display:none}
+}
+/* Portrait modal (9:16 Shorts player) — the 480px modal gets the intentional
+   two-row toolbar: exports on top, frame format below. */
+@media(min-width:561px){
+    .modal.portrait-mode .modal-toolbar{flex-direction:column-reverse;row-gap:6px}
 }
 @media(max-width:480px){
     .grid{grid-template-columns:1fr}
@@ -311,20 +330,23 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
 <div class="modal-overlay" id="modalOverlay">
     <div class="modal">
         <div class="modal-header">
-            <span class="modal-title" id="modalTitle">Preset</span>
+            <div class="mh-titleblock">
+                <span class="modal-title" id="modalTitle">Preset</span>
+                <span class="mh-meta" id="mhMeta"></span>
+            </div>
             <div class="seg">
                 <button class="tab-btn active" id="tabPreview">Preview</button>
                 <button class="tab-btn" id="tabCode">Code</button>
                 <button class="tab-btn" id="tabAi">AI</button>
             </div>
-            <button class="modal-close" id="modalClose">&times;</button>
+            <button class="modal-close" id="modalClose" title="Close (Esc)"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></button>
         </div>
         <div class="modal-body">
         <div id="previewPanel">
             <div class="player-zone" id="playerZone">
                 <canvas id="modalCanvas" width="800" height="450"></canvas>
                 <button class="ov-center-play" id="ovCenterPlay" title="Play" aria-label="Play">
-                    <svg width="30" height="30" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.14v13.72c0 .81.87 1.3 1.55.88l10.8-6.86a1.03 1.03 0 0 0 0-1.76L9.55 4.26A1.03 1.03 0 0 0 8 5.14z"/></svg>
+                    <svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
                 </button>
                 <div class="ov-transport">
                     <div class="ov-progress" id="ovProgress" aria-hidden="true">
@@ -334,15 +356,15 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
                     <div class="ov-row">
                         <div class="ov-left">
                             <button class="ov-btn" id="modalPlayBtn" title="Play">
-                                <svg id="playIcon" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.14v13.72c0 .81.87 1.3 1.55.88l10.8-6.86a1.03 1.03 0 0 0 0-1.76L9.55 4.26A1.03 1.03 0 0 0 8 5.14z"/></svg>
-                                <svg id="pauseIcon" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="display:none"><rect x="6" y="5" width="4" height="14" rx="1.2"/><rect x="14" y="5" width="4" height="14" rx="1.2"/></svg>
+                                <svg id="playIcon" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+                                <svg id="pauseIcon" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="display:none"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
                             </button>
                             <input type="range" id="modalSlider" class="sr-slider" min="0" max="5000" value="0" aria-label="Seek">
                             <span class="ov-time"><span id="modalTime">0:00</span><span class="ov-sep">/</span><span class="ov-total" id="ovTotal">0:05</span></span>
                         </div>
                         <div class="ov-right">
-                            <button class="ov-btn" id="ovFullscreen" title="Fullscreen">
-                                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+                            <button class="ov-btn" id="ovFullscreen" title="Fullscreen (F)">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
                             </button>
                         </div>
                     </div>
@@ -350,66 +372,66 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
             </div>
             <div class="modal-toolbar">
                 <div class="modal-info">
-                    <div class="res-meta" title="Source duration and canvas size">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg>
-                        <span id="modalDuration"></span>
-                    </div>
-                    <div class="export-cluster">
+                    <div class="tbar-cluster">
                         <div class="export-split" id="resSplit" title="Export resolution (frame & video)">
                             <button type="button" class="res-btn" id="resBtn" aria-haspopup="listbox">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M7 15v-4m5 4v-6m5 6v-3"/></svg>
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" style="color:#64748b" aria-hidden="true"><path d="M21 3H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h5v2h8v-2h5c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 14H3V5h18v12z"/></svg>
                                 <span id="resCur">1080p</span>
-                                <svg class="res-caret-svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                                <svg class="res-caret-svg" width="15" height="15" viewBox="0 0 24 24" fill="currentColor" style="color:#64748b" aria-hidden="true"><path d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z"/></svg>
                             </button>
                             <div class="export-menu" id="resMenu" role="listbox" aria-label="Export resolution">
                                 <div class="export-menu-label">Export resolution</div>
-                                <button class="export-item res-opt" role="option" data-res="480"><svg class="fmt-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>480p<em>fast</em></button>
-                                <button class="export-item res-opt" role="option" data-res="720"><svg class="fmt-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>720p<em>HD</em></button>
-                                <button class="export-item res-opt selected" role="option" data-res="1080"><svg class="fmt-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>1080p<em>Full HD</em></button>
-                                <button class="export-item res-opt" role="option" data-res="1440"><svg class="fmt-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>1440p<em>2K</em></button>
+                                <button class="export-item res-opt" role="option" data-res="480"><svg class="fmt-check" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>480p<em>fast</em></button>
+                                <button class="export-item res-opt" role="option" data-res="720"><svg class="fmt-check" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>720p<em>HD</em></button>
+                                <button class="export-item res-opt selected" role="option" data-res="1080"><svg class="fmt-check" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>1080p<em>Full HD</em></button>
+                                <button class="export-item res-opt" role="option" data-res="1440"><svg class="fmt-check" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>1440p<em>2K</em></button>
                             </div>
                         </div>
                         <span id="frameControls"></span>
+                    </div>
+                </div>
+                <div class="tbar-right">
+                    <div class="tbar-cluster">
                         <div class="export-split" id="frameSplit">
                             <button class="btn btn-frame-main" id="frameBtn" title="Save current frame (PNG)">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-                                <span>Save Frame</span>
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 15.2a3.2 3.2 0 100-6.4 3.2 3.2 0 000 6.4z"/><path d="M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15a5 5 0 110-10 5 5 0 010 10z"/></svg>
+                                <span class="btn-label">Save Frame</span>
                             </button>
                             <button class="frame-caret" id="frameCaret" title="Frame format" aria-haspopup="true">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z"/></svg>
                             </button>
                             <div class="export-menu" id="frameMenu">
                                 <div class="export-menu-label">Save current frame as</div>
                                 <button class="export-item fmt-opt selected" data-frame-fmt="png">
-                                    <svg class="fmt-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                    <svg class="fmt-check" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
                                     PNG<em>lossless</em>
                                 </button>
                                 <button class="export-item fmt-opt" data-frame-fmt="jpeg">
-                                    <svg class="fmt-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                    <svg class="fmt-check" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
                                     JPG<em>small</em>
                                 </button>
                                 <button class="export-item fmt-opt" data-frame-fmt="webp">
-                                    <svg class="fmt-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                    <svg class="fmt-check" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
                                     WebP<em>smallest</em>
                                 </button>
                             </div>
                         </div>
                         <div class="export-split" id="exportSplit">
                             <button class="btn btn-export-main" id="exportBtn" title="Record video (WebM 30fps)">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
-                                <span>Export WebM</span>
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>
+                                <span class="btn-label">Export WebM</span>
                             </button>
                             <button class="export-caret" id="videoCaret" title="Video options" aria-haspopup="true">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z"/></svg>
                             </button>
                             <div class="export-menu" id="videoMenu">
                                 <div class="export-menu-label">Video settings</div>
                                 <button class="export-item fps-opt selected" data-fps="30">
-                                    <svg class="fmt-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                    <svg class="fmt-check" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
                                     30 fps<em>standard</em>
                                 </button>
                                 <button class="export-item fps-opt" data-fps="60">
-                                    <svg class="fmt-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                    <svg class="fmt-check" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
                                     60 fps<em>smoother</em>
                                 </button>
                             </div>
@@ -418,6 +440,7 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
                 </div>
             </div>
         </div>
+        </div><!-- /previewPanel -->
         <div id="codePanel" style="display:none">
             <div class="code-tabs">
                 <button class="code-tab active" data-lang="html"><span class="lang-dot"></span>HTML</button>
@@ -454,11 +477,11 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
                         <div class="code-export-menu" id="exportCodeMenu">
                             <div class="export-menu-label">Export current code as</div>
                             <button class="export-item" data-exp-json>
-                                <svg class="fmt-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                <svg class="fmt-check" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
                                 Code file (.json)<em>re-importable</em>
                                 </button>
                             <button class="export-item" data-exp-html>
-                                <svg class="fmt-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                <svg class="fmt-check" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
                                 Standalone page (.html)<em>open in browser</em>
                             </button>
                         </div>
@@ -670,7 +693,6 @@ const modalCanvas = document.getElementById('modalCanvas');
 const modalPlayBtn = document.getElementById('modalPlayBtn');
 const modalSlider = document.getElementById('modalSlider');
 const modalTime = document.getElementById('modalTime');
-const modalDuration = document.getElementById('modalDuration');
 const modalClose = document.getElementById('modalClose');
 const modalCtx = modalCanvas.getContext('2d');
 let modalRenderer = null;
@@ -727,7 +749,7 @@ function openModal(key) {
     _clipTitle = clipTitleFrom(p.html);
     modalTitle.textContent = _clipTitle || p.name;
     const _ds = dsDims(curFrame.clipDS);
-    modalDuration.textContent = p.dur + 's • ' + _ds.w + '×' + _ds.h;
+    document.getElementById('mhMeta').textContent = p.dur + 's · ' + _ds.w + '×' + _ds.h;
     /* Drop the previous clip's renderer BEFORE applyAspect — otherwise its
        rebuild branch (aspect changed) would async-rebuild the old renderer
        and race with the fresh one built below. */
@@ -1074,6 +1096,10 @@ function refreshClipTitle() {
     if (currentPresetKey) {
         const p = PRESETS[currentPresetKey];
         modalTitle.textContent = fromCode || ((p && p.name) || currentPresetKey);
+        if (p && typeof p.dur === 'number') {
+            const _ds = dsDims(curFrame.clipDS);
+            document.getElementById('mhMeta').textContent = p.dur + 's · ' + _ds.w + '×' + _ds.h;
+        }
     }
 }
 function exportFileStem() {
