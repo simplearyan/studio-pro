@@ -17,7 +17,6 @@
      (a font-subset experiment FOUT'd raw ligature names like "ExPORT WEBM
      into the buttons when the glyph font lagged or failed to load). -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/dracula.min.css">
 <script>document.fonts.ready.then(function(){ document.documentElement.classList.add('fonts-ready'); });</script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -114,8 +113,8 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
    markup/CSS/behavior from hic-frame.js mountFrameControls() */
 .btn{padding:8px 14px;border-radius:8px;border:none;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;font-family:'Rubik',sans-serif;display:inline-flex;align-items:center;justify-content:center;gap:7px;line-height:1}
 .btn svg{display:block;flex-shrink:0}
-.btn-apply{background:#4f46e5;color:#fff;box-shadow:0 1px 3px rgba(79,70,229,.35)}
-.btn-apply:hover{background:#4338ca;box-shadow:0 2px 6px rgba(79,70,229,.4)}
+.btn-apply{background:#059669;color:#fff;box-shadow:0 1px 3px rgba(5,150,105,.35)}
+.btn-apply:hover{background:#047857;box-shadow:0 2px 6px rgba(5,150,105,.4)}
 .modal-info{display:flex;gap:10px;align-items:center}
 .res-meta{display:inline-flex;align-items:center;gap:7px;background:#161d2b;border:1px solid #232b3b;border-radius:7px;padding:5px 10px;max-width:100%;overflow:hidden}
 .res-meta svg{color:#64748b;flex-shrink:0}
@@ -171,11 +170,52 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
 .tab-btn.active{color:#f1f5f9;background:#334155}
 
 /* CodeMirror wrapper */
-.code-wrap{display:none;overflow:auto}
+/* Panels fill the modal body as flex columns — the editor/AI content grows
+   from the header down instead of floating under a fixed-height void. */
+#codePanel,#aiPanel{display:flex;flex-direction:column;flex:1 1 auto;min-height:0}
+/* Editor wrapper: flex-grow box; CodeMirror gets height:100% via its own
+   option, so the editor fills the panel exactly (a content-height sizer
+   used to leave dead voids above/below when a sub-tab initialized hidden). */
+.code-wrap{display:none;flex:1;min-height:0;overflow:hidden}
 .code-wrap.active{display:block}
-.code-wrap .CodeMirror{height:max(420px,52vh);border-radius:0 0 10px 10px}
+.code-wrap .CodeMirror{height:100%;border-radius:0 0 10px 10px}
+/* VS Code Dark+ look: #1e1e1e surface, Consolas-first stack (VS Code's
+   Windows default), 13px/1.6 — and the authentic Dark+ token palette. */
+.CodeMirror{background:#1e1e1e !important;color:#d4d4d4 !important;font-family:Consolas,'Cascadia Code',ui-monospace,Menlo,monospace !important;font-size:13px;line-height:1.6}
+.CodeMirror-gutters{background:#1e1e1e !important;border-right:1px solid #282828 !important}
+.CodeMirror-linenumber{color:#858585 !important;font-size:12px}
+.CodeMirror-cursor{border-left:2px solid #aeafad !important}
+.CodeMirror-selected{background:#264f78 !important}
+.CodeMirror-activeline-background{background:#282828 !important}
+.cm-s-hic-dark.CodeMirror{background:#1e1e1e;color:#d4d4d4}
+.cm-s-hic-dark .CodeMirror-gutters{background:#1e1e1e;border-right:1px solid #282828}
+.cm-s-hic-dark .CodeMirror-linenumber{color:#858585}
+.cm-s-hic-dark .CodeMirror-selected{background:#264f78}
+.cm-s-hic-dark .cm-tag{color:#569cd6}
+.cm-s-hic-dark .cm-attribute{color:#9cdcfe}
+.cm-s-hic-dark .cm-string{color:#ce9178}
+.cm-s-hic-dark .cm-string-2{color:#ce9178}
+.cm-s-hic-dark .cm-keyword{color:#569cd6}
+.cm-s-hic-dark .cm-def{color:#dcdcaa}
+.cm-s-hic-dark .cm-variable{color:#9cdcfe}
+.cm-s-hic-dark .cm-variable-2{color:#9cdcfe}
+.cm-s-hic-dark .cm-number{color:#b5cea8}
+.cm-s-hic-dark .cm-comment{color:#6a9955;font-style:normal}
+.cm-s-hic-dark .cm-property{color:#9cdcfe}
+.cm-s-hic-dark .cm-atom{color:#569cd6}
+.cm-s-hic-dark .cm-operator{color:#d4d4d4}
+.cm-s-hic-dark .cm-qualifier{color:#d7ba7d}
+.cm-s-hic-dark .cm-builtin{color:#dcdcaa}
 
-.code-tabs{padding:10px 16px 0;display:flex;gap:4px;align-items:center;border-bottom:1px solid #1e2533;flex-wrap:wrap}
+/* ── Code toolbar: uniform M3 chips, one row — tabs left, actions right ──
+   One tonal chip style for every action (32px, radius 8, #1e2533 fill) with
+   Apply as the single filled-green primary and Reset as a quiet text button;
+   the old row mixed six different shapes and tones. */
+.code-tabs{padding:8px 14px;flex-shrink:0;display:flex;gap:4px;align-items:center;border-bottom:1px solid #1e2533;flex-wrap:wrap;row-gap:6px}
+.code-tabs .code-right{margin-left:auto;display:flex;align-items:center;gap:5px;flex-wrap:wrap;row-gap:6px}
+.btn-code-io,.btn-reset,.btn-export-code{background:#1e2533;color:#cbd5e1;border:1px solid #2d3748;padding:0 10px;height:30px;font-size:11px}
+.btn-code-io:hover,.btn-export-code:hover:not(:disabled){background:#2d3748;color:#f1f5f9;border-color:#3b4a63}
+.btn-code-io:disabled,.btn-export-code:disabled{opacity:.65;cursor:default}
 .code-tab{display:inline-flex;align-items:center;gap:7px;padding:8px 14px;border:none;border-bottom:2px solid transparent;background:none;font-size:11px;font-weight:600;cursor:pointer;color:#7c8798;transition:all .15s;letter-spacing:.2px;font-family:'Rubik',sans-serif;margin-bottom:-1px}
 .code-tab .lang-dot{width:6px;height:6px;border-radius:50%;background:#475569;transition:background .15s}
 .code-tab:hover{color:#cbd5e1}
@@ -187,21 +227,15 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
 .code-tab.active[data-lang="css"] .lang-dot{background:#60a5fa}
 .code-tab.active[data-lang="js"]{border-bottom-color:#fbbf24}
 .code-tab.active[data-lang="js"] .lang-dot{background:#fbbf24}
-.code-tabs .code-right{margin-left:auto;display:flex;align-items:center;gap:4px}
-.btn-code-io{background:#1e2533;color:#cbd5e1;border:1px solid #2d3748;padding:8px 9px;font-size:11px}
-.btn-code-io:hover{background:#2d3748;color:#f1f5f9;border-color:#3b82f6}
-.btn-code-io:disabled{opacity:.65;cursor:default}
-.btn-reset{background:#1e2533;color:#cbd5e1;border:1px solid #2d3748;padding:8px 9px;font-size:11px}
-.btn-reset:hover:not(:disabled){background:#2d1a1c;color:#fca5a5;border-color:#dc2626}
+.btn-reset{background:none;border-color:transparent;color:#64748b}
+.btn-reset:hover:not(:disabled){background:#1e2533;color:#cbd5e1;border-color:transparent}
 .btn-reset.confirm{background:#7f1d1d;color:#fee2e2;border-color:#dc2626}
 
 /* Code export split — .json payload or standalone .html page */
 .code-export-split{position:relative;display:flex;align-items:stretch}
-.btn-export-code{background:#1e2533;color:#cbd5e1;border:1px solid #2d3748;border-radius:8px 0 0 8px;padding:8px 9px;font-size:11px}
-.btn-export-code:hover:not(:disabled){background:#2d3748;color:#f1f5f9;border-color:#3b82f6}
-.btn-export-code:disabled{opacity:.65;cursor:default}
+.btn-export-code{border-radius:8px 0 0 8px;border-right:none}
 .code-export-caret{background:#1e2533;border:1px solid #2d3748;border-left:none;border-radius:0 8px 8px 0;color:#cbd5e1;padding:0 7px;cursor:pointer;display:flex;align-items:center;transition:background .15s}
-.code-export-caret:hover:not(:disabled){background:#2d3748;color:#f1f5f9;border-color:#3b82f6}
+.code-export-caret:hover:not(:disabled){background:#2d3748;color:#f1f5f9;border-color:#3b4a63}
 .code-export-caret:disabled{opacity:.65;cursor:default}
 .code-export-caret svg{transition:transform .15s}
 .code-export-caret.open svg{transform:rotate(180deg)}
@@ -237,40 +271,42 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
 .code-hint{padding:6px 16px 8px;font-size:10.5px;color:#64748b;font-weight:500;letter-spacing:.2px;border-bottom:1px solid #1e2533}
 .code-hint strong{color:#94a3b8;font-weight:600}
 
-/* AI tab — two sub-tabs: Get Code / Paste Reply */
-.ai-wrap{padding:14px 20px 16px;height:max(420px,52vh);display:flex;flex-direction:column;overflow:hidden}
-.ai-sub{display:flex;gap:6px;padding-bottom:10px;border-bottom:1px solid #1e2533;margin-bottom:10px;flex-shrink:0}
-.ai-sub-btn{padding:6px 16px;border-radius:7px;border:1px solid transparent;background:none;font-size:11px;font-weight:600;cursor:pointer;color:#7c8798;transition:all .15s;font-family:'Rubik',sans-serif;letter-spacing:.2px;white-space:nowrap}
+/* AI tab — segmented sub-tabs (same pills as the modal header), one calm
+   centered column; chips auto-fill the width, actions follow the app-wide
+   color grammar (violet copy, green apply). */
+.ai-wrap{padding:12px 20px 16px;flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;max-width:780px;margin:0 auto;width:100%}
+.ai-sub{display:flex;align-items:center;gap:8px;padding-bottom:10px;border-bottom:1px solid #1e2533;margin-bottom:10px;flex-shrink:0}
+.ai-sub-btn{padding:6px 16px;border-radius:20px;border:none;background:#161d2b;font-size:11px;font-weight:600;cursor:pointer;color:#7c8798;transition:all .15s;font-family:'Rubik',sans-serif;letter-spacing:.2px;white-space:nowrap}
 .ai-sub-btn:hover{color:#cbd5e1}
 .ai-sub-btn.active{color:#f1f5f9;background:#334155}
+.ai-status{margin-left:auto;font-size:10.5px;font-weight:500;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ai-view{display:none;flex:1;min-height:0;flex-direction:column;gap:10px;overflow-y:auto}
 .ai-view.active{display:flex}
 .ai-step-label{font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#64748b;font-family:'Rubik',sans-serif;flex-shrink:0}
 .ai-hint{font-size:10.5px;color:#64748b;font-weight:500;letter-spacing:.2px;flex-shrink:0}
 .ai-hint strong{color:#94a3b8;font-weight:600}
-.ai-chips{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:6px}
-.ai-chip{display:flex;align-items:stretch;background:#161d2b;border:1px solid #2d3748;border-radius:8px;overflow:hidden;transition:border-color .15s}
+.ai-chips{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:7px}
+.ai-chip{display:flex;align-items:stretch;background:#161d2b;border:1px solid #2d3748;border-radius:9px;overflow:hidden;transition:border-color .15s}
 .ai-chip:hover{border-color:#7c3aed}
-.ai-chip-main{flex:1;background:none;border:none;text-align:left;padding:6px 9px;cursor:pointer;font-family:'Rubik',sans-serif;min-width:0}
-.ai-chip-main .t{display:block;font-size:11px;font-weight:600;color:#e2e8f0;line-height:1.35}
+.ai-chip-main{flex:1;background:none;border:none;text-align:left;padding:7px 10px;cursor:pointer;font-family:'Rubik',sans-serif;min-width:0}
+.ai-chip-main .t{display:block;font-size:11.5px;font-weight:600;color:#e2e8f0;line-height:1.35}
 .ai-chip-main .d{display:block;font-size:9.5px;color:#64748b;line-height:1.35;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 .ai-chip-main:hover .t{color:#fff}
 .ai-chip-copy{background:none;border:none;border-left:1px solid #2d3748;color:#64748b;padding:0 8px;cursor:pointer;display:flex;align-items:center;transition:all .15s;flex-shrink:0}
 .ai-chip-copy:hover{color:#a78bfa;background:#1f2937}
 .ai-textarea{width:100%;box-sizing:border-box;background:#0d1420;border:1px solid #2d3748;border-radius:8px;padding:9px 11px;font-size:11.5px;color:#e2e8f0;outline:none;resize:vertical;font-family:'Rubik',sans-serif;line-height:1.5}
 .ai-textarea:focus{border-color:#7c3aed}
-.ai-textarea.mono{font-family:ui-monospace,'Cascadia Code',Consolas,monospace;font-size:11px;color:#cbd5e1}
-.ai-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;flex-shrink:0}
+.ai-textarea.mono{font-family:ui-monospace,'Cascadia Code','JetBrains Mono',Consolas,monospace;font-size:11px;color:#cbd5e1}
+.ai-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;flex-shrink:0;margin-top:auto;padding-top:10px}
 .btn-ai-copy{background:#7c3aed;color:#fff}
 .btn-ai-copy:hover{background:#6d28d9}
 .btn-ai-apply{background:#059669;color:#fff}
 .btn-ai-apply:hover{background:#047857}
-.btn-ai-clear{background:#1e2533;color:#cbd5e1;border:1px solid #2d3748}
-.btn-ai-clear:hover{background:#2d3748;color:#f1f5f9}
-.ai-link{font-size:11px;font-weight:600;color:#94a3b8;text-decoration:none;border:1px solid #2d3748;border-radius:7px;padding:7px 11px;transition:all .15s;font-family:'Rubik',sans-serif}
-.ai-link:hover{color:#e2e8f0;border-color:#3b82f6}
-.ai-status{font-size:11px;font-weight:500;color:#94a3b8}
-.ai-note{font-size:10px;line-height:1.6;color:#64748b;margin:2px 0 0}
+.btn-ai-clear{background:none;color:#64748b;border:1px solid transparent}
+.btn-ai-clear:hover{background:#1e2533;color:#cbd5e1}
+.ai-link{font-size:11px;font-weight:600;color:#94a3b8;text-decoration:none;border:1px solid #2d3748;border-radius:20px;padding:6px 12px;transition:all .15s;font-family:'Rubik',sans-serif}
+.ai-link:hover{color:#e2e8f0;border-color:#3b4a63}
+.ai-note{font-size:10px;line-height:1.5;color:#56637a;margin:0}
 
 @media(max-width:768px){
     .header,.grid{padding-left:16px;padding-right:16px}
@@ -282,7 +318,6 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
     /* Icon-only export buttons on tablets: labels hide, carets stay */
     .btn-frame-main .btn-label,.btn-export-main .btn-label{display:none}
     .btn-frame-main,.btn-export-main{padding-left:11px;padding-right:11px}
-    .code-wrap .CodeMirror{height:60vh}
 }
 @media(max-width:560px){
     .modal-overlay{padding:0}
@@ -302,11 +337,21 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
     .ov-center-play{width:60px;height:60px}
     .ov-transport{padding:22px 8px 4px}
     .btn-frame-main .btn-label,.btn-export-main .btn-label{display:none}
+    /* Code/AI tabs: intentional stacked rows, controls stay tappable */
+    .code-tabs{padding:8px 12px}
+    .code-tabs .code-right{width:100%;justify-content:flex-start}
+    .ai-wrap{padding:12px 14px 16px}
+    .ai-chips{grid-template-columns:1fr 1fr}
+    .ai-sub{flex-wrap:wrap}
+    .ai-status{width:100%;margin-left:0}
+    .ai-actions .btn{flex:1 1 auto;justify-content:center}
 }
 /* Portrait modal (9:16 Shorts player) — the 480px modal gets the intentional
    two-row toolbar: exports on top, frame format below. */
 @media(min-width:561px){
     .modal.portrait-mode .modal-toolbar{flex-direction:column-reverse;row-gap:6px}
+    .modal.portrait-mode .ai-chips{grid-template-columns:1fr 1fr}
+    .modal.portrait-mode .ai-wrap{padding:12px 16px 16px}
 }
 @media(max-width:480px){
     .grid{grid-template-columns:1fr}
@@ -439,7 +484,6 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
                     </div>
                 </div>
             </div>
-        </div>
         </div><!-- /previewPanel -->
         <div id="codePanel" style="display:none">
             <div class="code-tabs">
@@ -525,8 +569,7 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
                     <p class="ai-note">The prompt enforces the render contract: deterministic onFrame(time in ms), a per-aspect design space (800×450 at 16:9, 450×800 at 9:16, …), no CSS keyframes, no external libraries. LaTeX, markdown, Google fonts and Tailwind classes are supported natively — replies drop straight into the preview and both export paths.</p>
                 </div>
                 <div class="ai-view" id="aiViewPaste">
-                    <p class="ai-hint">Paste the AI's whole reply below — it <strong>parses and applies automatically</strong>. Fenced <strong>```html / ```css / ```js</strong> blocks, a full HTML document, or plain markup are all understood.</p>
-                    <textarea id="aiReply" class="ai-textarea mono" style="flex:1;min-height:180px" placeholder="Paste everything the AI returned here…"></textarea>
+                    <textarea id="aiReply" class="ai-textarea mono" style="flex:1;min-height:160px" placeholder="Paste the AI's whole reply — ```html / ```css / ```js blocks, a full HTML document, or plain markup all parse and apply automatically…"></textarea>
                     <div class="ai-actions">
                         <button type="button" class="btn btn-ai-apply" id="aiApplyBtn">
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.1 6.4 6.4 1.6-6.4 1.6L12 18l-2.1-6.4-6.4-1.6 6.4-1.6z"/></svg>
@@ -1114,16 +1157,12 @@ function updateUnsavedBadge() {
     unsavedBadge.classList.toggle('on', dirty);
 }
 
-/* Initialize CodeMirror editors */
-const cmHtml = CodeMirror.fromTextArea(document.getElementById('codeHtml'), {
-    mode: 'htmlmixed', theme: 'dracula', lineNumbers: true, tabSize: 2, lineWrapping: true
-});
-const cmCss = CodeMirror.fromTextArea(document.getElementById('codeCss'), {
-    mode: 'css', theme: 'dracula', lineNumbers: true, tabSize: 2, lineWrapping: true
-});
-const cmJs = CodeMirror.fromTextArea(document.getElementById('codeJs'), {
-    mode: 'javascript', theme: 'dracula', lineNumbers: true, tabSize: 2, lineWrapping: true
-});
+/* Initialize CodeMirror editors — Dracula tokenizer softened to the modal's
+   slate palette via the cm overrides in CSS (surface, gutters, token tones). */
+const cmOpts = { theme: 'hic-dark', height: '100%', lineNumbers: true, tabSize: 2, lineWrapping: true };
+const cmHtml = CodeMirror.fromTextArea(document.getElementById('codeHtml'), Object.assign({ mode: 'htmlmixed' }, cmOpts));
+const cmCss = CodeMirror.fromTextArea(document.getElementById('codeCss'), Object.assign({ mode: 'css' }, cmOpts));
+const cmJs = CodeMirror.fromTextArea(document.getElementById('codeJs'), Object.assign({ mode: 'javascript' }, cmOpts));
 
 /* Track edits for the Unsaved badge */
 [cmHtml, cmCss, cmJs].forEach(function(cm) { cm.on('change', updateUnsavedBadge); });
