@@ -324,213 +324,9 @@ footer{padding:0 32px 28px;font-size:10.5px;color:#475569;font-weight:500}
 <div id="cardMenu"></div>
 
 <!-- ── Preview modal (ported from test-renderer) ─────────────────── -->
-<div class="modal-overlay" id="modalOverlay">
-    <div class="modal">
-        <div class="modal-header">
-            <div class="mh-left">
-                <span class="modal-title" id="modalTitle">Design</span>
-                <div class="mh-copy">
-                    <button class="btn-code-io" id="copyPromptHdr" title="Copy the full AI prompt (brief + render contract)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
-                    <button class="btn-code-io" id="copyCodeHdr" title="Copy the code as fenced html/css/js blocks"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></button>
-                </div>
-            </div>
-            <div class="seg">
-                <button class="tab-btn active" id="tabPreview">Preview</button>
-                <button class="tab-btn" id="tabCode">Code</button>
-                <button class="tab-btn" id="tabAi">AI</button>
-            </div>
-            <button class="modal-close" id="modalClose">&times;</button>
-        </div>
-        <div class="modal-body">
-        <div id="previewPanel">
-            <div class="modal-canvas-wrap">
-                <canvas id="modalCanvas" width="800" height="450"></canvas>
-            </div>
-            <div class="modal-controls">
-                <button class="btn btn-play" id="modalPlayBtn">
-                    <svg id="playIcon" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.14v13.72c0 .81.87 1.3 1.55.88l10.8-6.86a1.03 1.03 0 0 0 0-1.76L9.55 4.26A1.03 1.03 0 0 0 8 5.14z"/></svg>
-                    <svg id="pauseIcon" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="display:none"><rect x="6" y="5" width="4" height="14" rx="1.2"/><rect x="14" y="5" width="4" height="14" rx="1.2"/></svg>
-                </button>
-                <div class="slider-wrap">
-                    <input type="range" id="modalSlider" min="0" max="5000" value="0">
-                    <span class="time-label" id="modalTime">0.0s</span>
-                </div>
-                <div class="modal-info">
-                    <div class="res-meta" title="Source duration and canvas size">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg>
-                        <span id="modalDuration"></span>
-                    </div>
-                    <div class="export-cluster">
-                        <select id="resSelect" class="res-select" title="Export resolution (frame &amp; video)">
-                            <option value="480">480p</option>
-                            <option value="720">720p</option>
-                            <option value="1080" selected>1080p</option>
-                            <option value="1440">1440p</option>
-                        </select>
-                        <span id="frameControls"></span>
-                        <div class="export-split" id="frameSplit">
-                            <button class="btn btn-frame-main" id="frameBtn" title="Save current frame (PNG)">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-                                <span>Save Frame</span>
-                            </button>
-                            <button class="frame-caret" id="frameCaret" title="Frame format" aria-haspopup="true">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-                            </button>
-                            <div class="export-menu" id="frameMenu">
-                                <div class="export-menu-label">Save current frame as</div>
-                                <button class="export-item fmt-opt selected" data-frame-fmt="png"><svg class="fmt-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>PNG<em>lossless</em></button>
-                                <button class="export-item fmt-opt" data-frame-fmt="jpeg"><svg class="fmt-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>JPG<em>small</em></button>
-                                <button class="export-item fmt-opt" data-frame-fmt="webp"><svg class="fmt-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>WebP<em>smallest</em></button>
-                            </div>
-                        </div>
-                        <div class="export-split" id="exportSplit">
-                            <button class="btn btn-export-main" id="exportBtn" title="Record video (WebM 30fps)">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
-                                <span>Export WebM</span>
-                            </button>
-                            <button class="export-caret" id="videoCaret" title="Video options" aria-haspopup="true">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-                            </button>
-                            <div class="export-menu" id="videoMenu">
-                                <div class="export-menu-label">Video settings</div>
-                                <button class="export-item fps-opt selected" data-fps="30"><svg class="fmt-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>30 fps<em>standard</em></button>
-                                <button class="export-item fps-opt" data-fps="60"><svg class="fmt-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>60 fps<em>smoother</em></button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div id="codePanel" style="display:none">
-            <div class="code-tabs">
-                <button class="code-tab active" data-lang="html"><span class="lang-dot"></span>HTML</button>
-                <button class="code-tab" data-lang="css"><span class="lang-dot"></span>CSS</button>
-                <button class="code-tab" data-lang="js"><span class="lang-dot"></span>JS</button>
-                <span class="unsaved-badge" id="unsavedBadge"><span class="dot"></span>Unsaved</span>
-                <div class="code-right">
-                    <div class="code-export-split">
-                        <button class="btn btn-export-code" id="exportCodeBtn" title="Download the three panes as a reusable .json code file">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                            Export
-                        </button>
-                        <button class="code-export-caret" id="exportCodeCaret" title="Export options" aria-haspopup="true">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-                        </button>
-                        <div class="code-export-menu" id="exportCodeMenu">
-                            <div class="export-menu-label">Export current code as</div>
-                            <button class="export-item" data-exp-json><svg class="fmt-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Code file (.json)<em>re-importable</em></button>
-                            <button class="export-item" data-exp-html><svg class="fmt-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Standalone page (.html)<em>open in browser</em></button>
-                        </div>
-                    </div>
-                    <button class="btn btn-reset" id="resetCodeBtn" title="Discard applied edits and restore the original design code" disabled>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
-                        Reset
-                    </button>
-                    <button class="btn btn-apply" id="applyCode" title="Render the panes on the stage and play">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                        Apply
-                    </button>
-                </div>
-            </div>
-            <p class="code-hint">Edits are sandboxed — <strong>Apply</strong> renders them on the stage. Reopen the design to reset.</p>
-            <div class="code-wrap active" id="cmHtmlWrap"><textarea id="codeHtml"></textarea></div>
-            <div class="code-wrap" id="cmCssWrap"><textarea id="codeCss"></textarea></div>
-            <div class="code-wrap" id="cmJsWrap"><textarea id="codeJs"></textarea></div>
-        </div>
-        <div id="aiPanel" style="display:none">
-            <div class="ai-wrap">
-                <div class="ai-sub">
-                    <button type="button" class="ai-sub-btn active" id="aiSubGet">Get AI Code</button>
-                    <button type="button" class="ai-sub-btn" id="aiSubPaste">Paste Reply</button>
-                    <span class="ai-status" id="aiStatus"></span>
-                </div>
-                <div class="ai-view active" id="aiViewGet">
-                    <div class="ai-step-label">1 · This design's brief (edit freely)</div>
-                    <textarea id="aiWant" class="ai-textarea" rows="5" placeholder="Describe what you want — e.g. A kinetic-typography intro: the word STUDIO slams in letter by letter."></textarea>
-                    <div class="ai-actions">
-                        <button type="button" class="btn btn-ai-copy" id="aiCopyBtn">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                            Copy AI Prompt
-                        </button>
-                        <a class="ai-link" href="https://gemini.google.com/app" target="_blank" rel="noopener">Gemini ↗</a>
-                        <a class="ai-link" href="https://chatgpt.com" target="_blank" rel="noopener">ChatGPT ↗</a>
-                        <a class="ai-link" href="https://claude.ai/new" target="_blank" rel="noopener">Claude ↗</a>
-                    </div>
-                    <p class="ai-note">The prompt enforces the render contract: deterministic onFrame(time in ms), 800×450 design space, no CSS keyframes. LaTeX, markdown, Google fonts and Tailwind are supported — replies drop straight into the preview and both export paths.</p>
-                </div>
-                <div class="ai-view" id="aiViewPaste">
-                    <p class="ai-hint">Paste the AI's whole reply — it <strong>parses and applies automatically</strong>.</p>
-                    <textarea id="aiReply" class="ai-textarea mono" style="flex:1;min-height:180px" placeholder="Paste everything the AI returned here…"></textarea>
-                    <div class="ai-actions">
-                        <button type="button" class="btn btn-ai-apply" id="aiApplyBtn">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.1 6.4 6.4 1.6-6.4 1.6L12 18l-2.1-6.4-6.4-1.6 6.4-1.6z"/></svg>
-                            Parse &amp; Apply
-                        </button>
-                        <button type="button" class="btn btn-ai-clear" id="aiClearBtn">Clear</button>
-                        <button type="button" class="btn btn-ai-submit" id="aiSubmitBtn" title="Submit this design to the public gallery">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-                            Submit to Gallery
-                        </button>
-                    </div>
-                </div>
-                <div class="ai-view" id="aiViewSubmit">
-                    <p class="ai-hint">Review the submission, fill in the credits, then publish. It appears in the gallery after the next sync (~every 6 h).</p>
-                    <div class="submit-summary" id="submitSummary"></div>
-                    <div class="submit-grid">
-                        <div class="submit-field" id="sfTitle">
-                            <label>Title <span class="req">*</span></label>
-                            <input type="text" id="subTitle" maxlength="60" placeholder="e.g. Neon City Rush">
-                            <div class="ferr">Title is required (2–60 chars).</div>
-                        </div>
-                        <div class="submit-field" id="sfCreator">
-                            <label>Creator <span class="req">*</span></label>
-                            <input type="text" id="subCreator" maxlength="40" placeholder="your display name">
-                            <div class="ferr">Creator name is required.</div>
-                        </div>
-                        <div class="submit-field full" id="sfTags">
-                            <label>Tags</label>
-                            <input type="text" id="subTags" maxlength="80" placeholder="comma separated, e.g. fonts, latex, tailwind">
-                        </div>
-                        <div class="submit-field full" id="sfPrompt">
-                            <label>Prompt brief <span class="req">*</span></label>
-                            <textarea id="subPrompt" rows="4" placeholder="The creative brief only — the render contract is attached automatically when someone copies it."></textarea>
-                            <div class="ferr">A brief is required so others can regenerate this design.</div>
-                        </div>
-                        <div class="submit-field" id="sfDuration">
-                            <label>Duration (ms)</label>
-                            <input type="text" id="subDuration" inputmode="numeric" placeholder="5000">
-                            <div class="ferr">Duration must be a number between 500 and 60000.</div>
-                        </div>
-                        <div class="submit-field full" id="sfHtml">
-                            <label>HTML <span class="req">*</span></label>
-                            <textarea id="subHtml" class="mono" rows="6" placeholder="&lt;title&gt;Name&lt;/title&gt; then the stage markup"></textarea>
-                            <div class="ferr">HTML must start with a &lt;title&gt; tag (max 30k chars).</div>
-                        </div>
-                        <div class="submit-field full" id="sfCss">
-                            <label>CSS</label>
-                            <textarea id="subCss" class="mono" rows="5"></textarea>
-                            <div class="ferr">CSS is over the 30k char limit.</div>
-                        </div>
-                        <div class="submit-field full" id="sfJs">
-                            <label>JS <span class="req">*</span></label>
-                            <textarea id="subJs" class="mono" rows="6" placeholder="function onFrame(time) { … }"></textarea>
-                            <div class="ferr">JS must define onFrame(time), compile cleanly, and avoid rAF/setTimeout/keyframes (max 30k chars).</div>
-                        </div>
-                    </div>
-                    <div class="submit-actions">
-                        <button type="button" class="btn btn-ai-submit" id="subPostBtn" style="flex:1">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-                            Publish to Gallery
-                        </button>
-                        <button type="button" class="btn btn-ai-clear" id="subBackBtn">Back</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-        </div>
-    </div>
-</div>
+<div id="hicModalMount"></div>
 
+<div id="toast"></div>
 <div id="toast"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
@@ -540,6 +336,7 @@ footer{padding:0 32px 28px;font-size:10.5px;color:#475569;font-weight:500}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
 
 <script src="hic-frame.js"></script>
+<script src="hic-modal.js"></script>
 <script>
 /* ═══════════════════════════════════════════════════════════════
  * SVG foreignObject Renderer — verbatim port from test-renderer
@@ -1000,32 +797,8 @@ function downloadBlob(blob, name) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
- * MODAL — ported from test-renderer, design-aware
+ * MODAL — shared component (hic-modal.js), design-aware wiring
  * ═══════════════════════════════════════════════════════════════ */
-const modalOverlay = document.getElementById('modalOverlay');
-const modalTitle = document.getElementById('modalTitle');
-const modalCanvas = document.getElementById('modalCanvas');
-const modalPlayBtn = document.getElementById('modalPlayBtn');
-const modalSlider = document.getElementById('modalSlider');
-const modalTime = document.getElementById('modalTime');
-const modalDuration = document.getElementById('modalDuration');
-const modalClose = document.getElementById('modalClose');
-const modalCtx = modalCanvas.getContext('2d');
-const tabPreview = document.getElementById('tabPreview');
-const tabCode = document.getElementById('tabCode');
-const tabAi = document.getElementById('tabAi');
-const previewPanel = document.getElementById('previewPanel');
-const codePanel = document.getElementById('codePanel');
-const aiPanel = document.getElementById('aiPanel');
-const applyCode = document.getElementById('applyCode');
-const copyPromptHdr = document.getElementById('copyPromptHdr');
-const copyCodeHdr = document.getElementById('copyCodeHdr');
-const unsavedBadge = document.getElementById('unsavedBadge');
-const resetCodeBtn = document.getElementById('resetCodeBtn');
-
-let modalRenderer = null;
-let modalPlaying = false;
-let modalStart = 0;
 let currentDesignId = null;
 let _lastAppliedCode = { html: '', css: '', js: '' };
 let _clipTitle = '';
@@ -1040,362 +813,187 @@ function exportFileStem() {
     const base = _clipTitle || (byId[currentDesignId] || {}).title || 'design';
     return base.replace(/[^a-z0-9_-]+/gi, '_').replace(/^_+|_+$/g, '') || 'design';
 }
+function effectiveExportCode() {
+    if (_lastAppliedCode.html || _lastAppliedCode.css || _lastAppliedCode.js) return _lastAppliedCode;
+    const d = byId[currentDesignId];
+    return { html: (d && d.html) || '', css: (d && d.css) || '', js: (d && d.js) || '' };
+}
 function refreshClipTitle() {
-    _clipTitle = clipTitleFrom((cmHtml && cmHtml.getValue()) || '');
+    _clipTitle = clipTitleFrom(modalApi.getEditors().html);
     if (currentDesignId) {
         const d = byId[currentDesignId];
-        modalTitle.textContent = _clipTitle || (d && d.title) || currentDesignId;
+        modalApi.setTitle(_clipTitle || (d && d.title) || currentDesignId);
     }
 }
 
-const cmHtml = CodeMirror.fromTextArea(document.getElementById('codeHtml'), { mode: 'htmlmixed', theme: 'dracula', lineNumbers: true, tabSize: 2, lineWrapping: true });
-const cmCss = CodeMirror.fromTextArea(document.getElementById('codeCss'), { mode: 'css', theme: 'dracula', lineNumbers: true, tabSize: 2, lineWrapping: true });
-const cmJs = CodeMirror.fromTextArea(document.getElementById('codeJs'), { mode: 'javascript', theme: 'dracula', lineNumbers: true, tabSize: 2, lineWrapping: true });
+/* Bootstrap deferred to end-of-script (TDZ: opts reference consts like
+   SUBMIT_VIEW_HTML declared further down) */
+var modalApi = null;
+function _bootstrapModal() {
+    modalApi = createHicModal({
+    /* clip adapter — page owns the stage/state */
+    getClip: function() { return null; },
+    getStageCode: function() { return (_lastAppliedCode.html || _lastAppliedCode.css || _lastAppliedCode.js) ? _lastAppliedCode : null; },
+    applyCode: function(code, src) {
+        _lastAppliedCode = code;
+        refreshClipTitle();
+    },
+    prettify: function(code) {
+        return { html: prettifyHtml(code.html || ''), css: prettifyCss(code.css || ''), js: prettifyJs(code.js || '') };
+    },
+    onEditorsChange: function(code) { if (currentDesignId) saveDraft(); },
 
-function updateUnsavedBadge() {
-    if (!currentDesignId) { unsavedBadge.classList.remove('on'); return; }
-    const dirty = cmHtml.getValue() !== _lastAppliedCode.html
-        || cmCss.getValue() !== _lastAppliedCode.css
-        || cmJs.getValue() !== _lastAppliedCode.js;
-    unsavedBadge.classList.toggle('on', dirty);
-}
-[cmHtml, cmCss, cmJs].forEach(function(cm) { cm.on('change', updateUnsavedBadge); });
+    /* prompt / AI */
+    buildPrompt: function(brief) {
+        const d = byId[currentDesignId];
+        return aiBuildPrompt(brief || '(no extra description — propose something tasteful)', designDur(d));
+    },
+    aiNote: 'The prompt enforces the render contract: deterministic onFrame(time in ms), 800×450 design space, no CSS keyframes. LaTeX, markdown, Google fonts and Tailwind are supported — replies drop straight into the preview and both export paths.',
+    parseReply: aiParseReply,
+    onAiCode: function(code, parsed) {
+        if (parsed && parsed.dur) {
+            const d = byId[currentDesignId];
+            if (d) d.duration = parsed.dur;
+        }
+    },
 
-function resetSync() {
-    const d = byId[currentDesignId];
-    if (!d) { resetCodeBtn.disabled = true; resetCodeBtn.classList.remove('confirm'); return; }
-    resetCodeBtn.disabled = !(
-        (_lastAppliedCode.html || _lastAppliedCode.css || _lastAppliedCode.js)
-        && (cmHtml.getValue() !== prettifyHtml(d.html || '')
-            || cmCss.getValue() !== prettifyCss(d.css || '')
-            || cmJs.getValue() !== prettifyJs(d.js || ''))
-    );
-    if (resetCodeBtn.disabled) resetCodeBtn.classList.remove('confirm');
-}
-[cmHtml, cmCss, cmJs].forEach(function(cm) { cm.on('change', resetSync); });
+    /* header buttons — copy prompt / copy code / submit (submit injected below) */
+    headerButtons: [
+        { id: 'copyPromptHdr', title: 'Copy the full AI prompt (brief + render contract)', svg: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
+          onClick: function(api) { if (currentDesignId) copyPrompt(currentDesignId); } },
+        { id: 'copyCodeHdr', title: 'Copy the code as fenced html/css/js blocks', svg: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>',
+          onClick: function(api) { if (currentDesignId) copyFenced(currentDesignId); } },
+        { id: 'submitHdrBtn', title: 'Submit this design to the public gallery', svg: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>',
+          onClick: function(api) { api.showTab('ai'); openSubmitView(); } }
+    ],
 
-const RESET_ICON = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg> ';
-resetCodeBtn.addEventListener('click', function() {
-    const d = byId[currentDesignId];
-    if (resetCodeBtn.disabled || !d) return;
-    if (!resetCodeBtn.classList.contains('confirm')) {
-        resetCodeBtn.classList.add('confirm');
-        resetCodeBtn.innerHTML = RESET_ICON + 'Sure?';
-        setTimeout(function() { resetCodeBtn.classList.remove('confirm'); resetCodeBtn.innerHTML = RESET_ICON + 'Reset'; }, 2200);
-        return;
+    codeFeatures: { gallery: false, import: true },
+
+    /* extra AI sub-view: Submit to Gallery (form preserved from the old page) */
+    aiViews: [{
+        id: 'submit', label: 'Submit to Gallery',
+        build: function(body, api) {
+            body.innerHTML = SUBMIT_VIEW_HTML;
+            wireSubmitView(body, api);
+        }
+    }],
+
+    /* CDN-aware standalone (core builder; hic-frame/CodeMirror etc. handled by the component) */
+    buildStandalone: null,
+
+    placeholder: function(ctx, w, h) {
+        ctx.fillStyle = '#0d1420';
+        ctx.fillRect(0, 0, w, h);
+        ctx.fillStyle = '#64748b';
+        ctx.font = '600 16px Rubik, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('No code yet — use the AI tab to generate it', w / 2, h / 2);
+        ctx.textAlign = 'left';
+    },
+    hasStageCode: function() {
+        const d = byId[currentDesignId];
+        return !!(d && (d.html || d.css || d.js));
     }
-    resetCodeBtn.classList.remove('confirm');
-    resetCodeBtn.innerHTML = RESET_ICON + 'Reset';
-    _lastAppliedCode = { html: '', css: '', js: '' };
-    cmHtml.setValue(prettifyHtml(d.html || ''));
-    cmCss.setValue(prettifyCss(d.css || ''));
-    cmJs.setValue(prettifyJs(d.js || ''));
-    _lastAppliedCode = { html: cmHtml.getValue(), css: cmCss.getValue(), js: cmJs.getValue() };
-    refreshClipTitle();
-    updateUnsavedBadge();
-    resetSync();
-    rebuildStage(d.html || '', d.css || '', d.js || '');
-});
-
-function rebuildStage(html, css, js) {
-    modalPlaying = false;
-    setPlayState(false);
-    if (modalRenderer) { modalRenderer.sandbox.remove(); }
-    const d = byId[currentDesignId];
-    if (!(html || css || js)) {
-        /* prompt-only design: neutral placeholder, no renderer */
-        modalRenderer = null;
-        modalCtx.fillStyle = '#0d1420';
-        modalCtx.fillRect(0, 0, W, H);
-        modalCtx.fillStyle = '#64748b';
-        modalCtx.font = '600 16px Rubik, sans-serif';
-        modalCtx.textAlign = 'center';
-        modalCtx.fillText('No code yet — use the AI tab to generate it', W / 2, H / 2);
-        modalCtx.textAlign = 'left';
-        modalSlider.value = 0;
-        modalTime.textContent = '0.0s';
-        return Promise.resolve();
-    }
-    modalRenderer = makeHicRenderer(W, H);
-    return modalRenderer.setClip(html, css, js).then(function() {
-        return modalRenderer.renderFrame(0);
-    }).then(function(ok) {
-        if (ok) modalRenderer.drawFrame(modalCtx, modalCanvas.width, modalCanvas.height);
-        modalSlider.value = 0;
-        modalTime.textContent = '0.0s';
-        modalPlaying = true;
-        modalStart = performance.now();
-        setPlayState(true);
-        tickModal();
     });
 }
 
+/* ── open / close (page API kept for card grid) ─────────────────── */
 function openDesign(id) {
     const d = byId[id];
     if (!d) return;
     currentDesignId = id;
     _lastAppliedCode = { html: '', css: '', js: '' };
-    showTab(d.hasCode ? 'preview' : 'ai');
     _clipTitle = clipTitleFrom(d.html || '');
-    modalTitle.textContent = _clipTitle || d.title || id;
-    const dur = designDur(d);
-    modalSlider.max = dur;
-    modalSlider.value = 0;
-    modalTime.textContent = '0.0s';
-    modalDuration.textContent = (dur / 1000) + 's • ' + W + '×' + H;
-    applyAspect(); /* size the canvas to the persisted frame before first paint */
-    modalPlaying = false;
-    setPlayState(false);
-    unsavedBadge.classList.remove('on');
-    resetCodeBtn.classList.remove('confirm');
-    resetCodeBtn.disabled = true;
-    copyPromptHdr.disabled = false;
-    copyCodeHdr.disabled = !d.hasCode;
-    document.getElementById('aiWant').value = d.prompt || '';
-    modalOverlay.classList.add('open');
-    rebuildStage(d.html || '', d.css || '', d.js || '');
+    modalApi.aiWant(''); /* cleared here; filled with d.prompt after open */
+    modalApi.open({
+        name: d.title || id,
+        dur: designDur(d) / 1000,
+        html: d.html || '', css: d.css || '', js: d.js || '',
+        startTab: d.hasCode ? 'preview' : 'ai'
+    });
+    const aiWantEl = modalApi.root.querySelector('.aiwant');
+    if (aiWantEl) aiWantEl.value = d.prompt || '';
+    if (typeof _pendingOpenHook === 'function') { const h = _pendingOpenHook; _pendingOpenHook = null; h(); }
 }
-function closeModal() {
-    modalPlaying = false;
-    modalOverlay.classList.remove('open');
-    currentDesignId = null;
-}
-modalClose.addEventListener('click', closeModal);
-modalOverlay.addEventListener('click', function(e) { if (e.target === modalOverlay) closeModal(); });
-document.addEventListener('keydown', function(e) { if (e.key === 'Escape') { closeModal(); cardMenu.classList.remove('open'); closeMenus(); } });
+function closeModal() { modalApi.close(); }
 
-function setPlayState(playing) {
-    const playIcon = document.getElementById('playIcon');
-    const pauseIcon = document.getElementById('pauseIcon');
-    if (playing) {
-        playIcon.style.display = 'none';
-        pauseIcon.style.display = '';
-        modalPlayBtn.title = 'Pause';
-        modalPlayBtn.classList.add('playing');
-    } else {
-        playIcon.style.display = '';
-        pauseIcon.style.display = 'none';
-        modalPlayBtn.title = 'Play';
-        modalPlayBtn.classList.remove('playing');
-    }
-}
-modalPlayBtn.addEventListener('click', function() {
-    if (!modalRenderer) return;
-    if (modalPlaying) {
-        modalPlaying = false;
-        setPlayState(false);
-    } else {
-        modalPlaying = true;
-        modalStart = performance.now() - parseInt(modalSlider.value);
-        setPlayState(true);
-        tickModal();
-    }
-});
-modalSlider.addEventListener('input', function() {
-    if (modalPlaying) return;
-    const t = parseInt(this.value);
-    modalTime.textContent = (t / 1000).toFixed(1) + 's';
-    if (modalRenderer && modalRenderer._ready) {
-        modalRenderer.renderFrame(t).then(ok => { if (ok) modalRenderer.drawFrame(modalCtx, modalCanvas.width, modalCanvas.height); });
-    }
-});
-async function tickModal() {
-    const d = byId[currentDesignId];
-    const dur = designDur(d);
-    while (modalPlaying && currentDesignId) {
-        const t = (performance.now() - modalStart) % dur;
-        modalSlider.value = Math.floor(t);
-        modalTime.textContent = (t / 1000).toFixed(1) + 's';
-        try {
-            if (modalRenderer && modalRenderer._ready) {
-                const ok = await modalRenderer.renderFrame(t);
-                if (ok) modalRenderer.drawFrame(modalCtx, modalCanvas.width, modalCanvas.height);
-            }
-        } catch(e) { console.error('[Modal] render error:', e); }
-        await new Promise(r => requestAnimationFrame(r));
-    }
-}
-
-/* ── Tabs ─────────────────────────────────────────────────────── */
-function showTab(name) {
-    [tabPreview, tabCode, tabAi].forEach(function(t) { t.classList.remove('active'); });
-    previewPanel.style.display = 'none';
-    codePanel.style.display = 'none';
-    aiPanel.style.display = 'none';
-    if (name === 'preview') { tabPreview.classList.add('active'); previewPanel.style.display = ''; }
-    else if (name === 'code') { tabCode.classList.add('active'); codePanel.style.display = ''; }
-    else { tabAi.classList.add('active'); aiPanel.style.display = ''; }
-}
-tabPreview.addEventListener('click', function() { showTab('preview'); });
-tabAi.addEventListener('click', function() { showTab('ai'); });
-tabCode.addEventListener('click', function() {
-    showTab('code');
-    const d = byId[currentDesignId];
-    if (d) {
-        if (_lastAppliedCode.html || _lastAppliedCode.css || _lastAppliedCode.js) {
-            cmHtml.setValue(_lastAppliedCode.html);
-            cmCss.setValue(_lastAppliedCode.css);
-            cmJs.setValue(_lastAppliedCode.js);
-        } else {
-            cmHtml.setValue(prettifyHtml(d.html || ''));
-            cmCss.setValue(prettifyCss(d.css || ''));
-            cmJs.setValue(prettifyJs(d.js || ''));
-            _lastAppliedCode = { html: cmHtml.getValue(), css: cmCss.getValue(), js: cmJs.getValue() };
-        }
-        updateUnsavedBadge();
-        resetSync();
-        setTimeout(function() { cmHtml.refresh(); cmCss.refresh(); cmJs.refresh(); }, 50);
-    }
-});
-
-function switchCodeLang(lang) {
-    document.querySelectorAll('.code-tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.code-wrap').forEach(e => e.classList.remove('active'));
-    document.querySelector('[data-lang="' + lang + '"]').classList.add('active');
-    var wrap = lang === 'html' ? 'cmHtmlWrap' : lang === 'css' ? 'cmCssWrap' : 'cmJsWrap';
-    document.getElementById(wrap).classList.add('active');
-    var cm = lang === 'html' ? cmHtml : lang === 'css' ? cmCss : cmJs;
-    setTimeout(function() { cm.refresh(); }, 10);
-}
-document.querySelectorAll('.code-tab').forEach(function(btn) {
-    btn.addEventListener('click', function() { switchCodeLang(btn.dataset.lang); });
-});
-
-applyCode.addEventListener('click', async function() {
-    if (!currentDesignId) return;
-    modalPlaying = false;
-    setPlayState(false);
-    if (modalRenderer) { modalRenderer.sandbox.remove(); }
-    modalRenderer = makeHicRenderer(W, H);
-    await modalRenderer.setClip(cmHtml.getValue(), cmCss.getValue(), cmJs.getValue());
-    _lastAppliedCode = { html: cmHtml.getValue(), css: cmCss.getValue(), js: cmJs.getValue() };
-    refreshClipTitle();
-    updateUnsavedBadge();
-    resetSync();
-    const ok = await modalRenderer.renderFrame(0);
-    if (ok) modalRenderer.drawTo(modalCtx, 0, 0, W, H);
-    modalSlider.value = 0;
-    modalTime.textContent = '0.0s';
-    modalPlaying = true;
-    modalStart = performance.now();
-    setPlayState(true);
-    showTab('preview');
-    tickModal();
-});
-
-/* ── Header copy actions ──────────────────────────────────────── */
-copyPromptHdr.addEventListener('click', function() { if (currentDesignId) copyPrompt(currentDesignId); });
-copyCodeHdr.addEventListener('click', function() { if (currentDesignId) copyFenced(currentDesignId); });
-
-/* ── AI tab ───────────────────────────────────────────────────── */
-const aiWant = document.getElementById('aiWant');
-const aiReply = document.getElementById('aiReply');
-const aiStatus = document.getElementById('aiStatus');
-function aiMsg(html) { aiStatus.innerHTML = html || ''; }function aiShowView(name) {
-    document.getElementById('aiSubGet').classList.toggle('active', name === 'get');
-    document.getElementById('aiSubPaste').classList.toggle('active', name === 'paste');
-    document.getElementById('aiViewGet').classList.toggle('active', name === 'get');
-    document.getElementById('aiViewPaste').classList.toggle('active', name === 'paste');
-    document.getElementById('aiViewSubmit').classList.toggle('active', name === 'submit');
-    if (name === 'paste') setTimeout(function() { aiReply.focus(); }, 30);
-}
-document.getElementById('aiSubGet').addEventListener('click', function() { aiShowView('get'); });
-document.getElementById('aiSubPaste').addEventListener('click', function() { aiShowView('paste'); });
-
-function aiCurrentDur() { return designDur(byId[currentDesignId]); }
-document.getElementById('aiCopyBtn').addEventListener('click', function() {
-    var want = (aiWant.value || '').trim() || '(no extra description — propose something tasteful)';
-    copyText(aiBuildPrompt(want, aiCurrentDur()), 'Prompt copied — paste it into Gemini / ChatGPT / Claude, then paste the reply below.');
-    aiShowView('paste');
-});
-function aiApplyReply() {
-    if (!currentDesignId) return;
-    var parsed = aiParseReply(aiReply.value || '');
-    if (!parsed.html && !parsed.css && !parsed.js) {
-        aiMsg('Could not find any code in the pasted text. Paste the AI\'s full reply.');
-        return;
-    }
-    cmHtml.setValue(prettifyHtml(parsed.html || ''));
-    cmCss.setValue(prettifyCss(parsed.css || ''));
-    cmJs.setValue(prettifyJs(parsed.js || ''));
-    var parts = [];
-    if (parsed.html) parts.push('HTML');
-    if (parsed.css) parts.push('CSS');
-    if (parsed.js) parts.push('JS');
-    if (parsed.title) parts.push('&quot;' + parsed.title + '&quot;');
-    aiMsg('Inserted ' + parts.join(' · ') + ' — applying to stage…');
-    applyCode.click();
-}
-document.getElementById('aiApplyBtn').addEventListener('click', aiApplyReply);
-document.getElementById('aiClearBtn').addEventListener('click', function() { aiReply.value = ''; aiMsg(''); });
-aiReply.addEventListener('paste', function() {
-    setTimeout(function() { if ((aiReply.value || '').trim()) aiApplyReply(); }, 60);
-});
-
-/* ═════════════════════════════════════════════════════════════
- * SUBMIT TO GALLERY (Phase C) — invisible Google Form POST
- * ═════════════════════════════════════════════════════════════ */
-/* Google Forms acts as the database; a GitHub Action syncs the linked Sheet
- * into designs-gallery.json every ~6 h. See DESIGNS-GALLERY-PLAN.md. */
+/* ── SUBMIT TO GALLERY view (form preserved; wires into the component) ── */
 const FORM = {
     id: '1FAIpQLSf31WIC2A2ioBgolMM7OSKeqb9vnT3njNs4U41pofPClAWsng',
     entries: {
-        title: 'entry.2036550004',
-        creator: 'entry.673665515',
-        tags: 'entry.2080048560',
-        prompt: 'entry.1575482696',
-        duration: 'entry.1415136671',
-        html: 'entry.907794936',
-        css: 'entry.1692215303',
-        js: 'entry.1301616407'
+        title: 'entry.2036550004', creator: 'entry.673665515', tags: 'entry.2080048560',
+        prompt: 'entry.1575482696', duration: 'entry.1415136671',
+        html: 'entry.907794936', css: 'entry.1692215303', js: 'entry.1301616407'
     }
 };
-
 const DRAFT_KEY = 'hicDesignDraft';
-const aiSubmitBtn = document.getElementById('aiSubmitBtn');
-const subBackBtn = document.getElementById('subBackBtn');
-const subPostBtn = document.getElementById('subPostBtn');
+const SUBMIT_VIEW_HTML = `
+    <p class="hicm-chint" style="border:none;padding:0">Review the submission, fill in the credits, then publish. It appears in the gallery after the next sync (~every 6 h).</p>
+    <div class="submit-summary" id="submitSummary"></div>
+    <div class="submit-grid">
+        <div class="submit-field" id="sfTitle"><label>Title <span class="req">*</span></label><input type="text" id="subTitle" maxlength="60" placeholder="e.g. Neon City Rush"><div class="ferr">Title is required (2–60 chars).</div></div>
+        <div class="submit-field" id="sfCreator"><label>Creator <span class="req">*</span></label><input type="text" id="subCreator" maxlength="40" placeholder="your display name"><div class="ferr">Creator name is required.</div></div>
+        <div class="submit-field full" id="sfTags"><label>Tags</label><input type="text" id="subTags" maxlength="80" placeholder="comma separated, e.g. fonts, latex, tailwind"></div>
+        <div class="submit-field full" id="sfPrompt"><label>Prompt brief <span class="req">*</span></label><textarea id="subPrompt" rows="4" placeholder="The creative brief only — the render contract is attached automatically when someone copies it."></textarea><div class="ferr">A brief is required so others can regenerate this design.</div></div>
+        <div class="submit-field" id="sfDuration"><label>Duration (ms)</label><input type="text" id="subDuration" inputmode="numeric" placeholder="5000"><div class="ferr">Duration must be a number between 500 and 60000.</div></div>
+        <div class="submit-field full" id="sfHtml"><label>HTML <span class="req">*</span></label><textarea id="subHtml" class="mono" rows="6" placeholder="&lt;title&gt;Name&lt;/title&gt; then the stage markup"></textarea><div class="ferr">HTML must start with a &lt;title&gt; tag (max 30k chars).</div></div>
+        <div class="submit-field full" id="sfCss"><label>CSS</label><textarea id="subCss" class="mono" rows="5"></textarea></div>
+        <div class="submit-field full" id="sfJs"><label>JS</label><textarea id="subJs" class="mono" rows="5"></textarea></div>
+    </div>
+    <div class="submit-actions">
+        <button type="button" class="btn-ai-quiet" id="subBackBtn">Back</button>
+        <button type="button" class="btn-ai-apply" id="subPostBtn"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg> Publish to Gallery</button>
+    </div>`;
 
-/* Persist the current modal code/brief so a refresh (or failed POST) never
- * loses work. Restored into the draft the next time + New is used. */
-function saveDraft() {
-    if (!currentDesignId) return;
-    try {
-        localStorage.setItem(DRAFT_KEY, JSON.stringify({
-            prompt: document.getElementById('aiWant').value || '',
-            html: cmHtml.getValue(), css: cmCss.getValue(), js: cmJs.getValue(),
-            savedAt: Date.now()
-        }));
-    } catch (e) { /* storage unavailable */ }
+function wireSubmitView(body, api) {
+    const subBackBtn = body.querySelector('#subBackBtn');
+    const subPostBtn = body.querySelector('#subPostBtn');
+    subBackBtn.addEventListener('click', function() { api.showAiView('paste'); });
+    subPostBtn.addEventListener('click', function() {
+        const s = {
+            title: body.querySelector('#subTitle').value.trim(),
+            creator: body.querySelector('#subCreator').value.trim(),
+            tags: body.querySelector('#subTags').value.trim(),
+            prompt: body.querySelector('#subPrompt').value.trim(),
+            duration: body.querySelector('#subDuration').value.trim(),
+            html: body.querySelector('#subHtml').value,
+            css: body.querySelector('#subCss').value,
+            js: body.querySelector('#subJs').value
+        };
+        const errs = validateSubmission(s);
+        markFields(body, errs);
+        if (Object.keys(errs).length) { toast('Fix the highlighted fields first'); return; }
+        try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ prompt: s.prompt, html: s.html, css: s.css, js: s.js, savedAt: Date.now() })); } catch (e) {}
+        const f = new FormData();
+        f.append(FORM.entries.title, s.title);
+        f.append(FORM.entries.creator, s.creator);
+        f.append(FORM.entries.tags, s.tags);
+        f.append(FORM.entries.prompt, s.prompt);
+        f.append(FORM.entries.duration, s.duration);
+        f.append(FORM.entries.html, s.html);
+        f.append(FORM.entries.css, s.css);
+        f.append(FORM.entries.js, s.js);
+        subPostBtn.disabled = true;
+        subPostBtn.textContent = 'Publishing…';
+        fetch('https://docs.google.com/forms/d/e/' + FORM.id + '/formResponse', { method: 'POST', mode: 'no-cors', body: f })
+            .then(function() { toast('Submitted! It lands in the gallery after the next sync (≤ 6 h).'); api.setStatus('Queued for the gallery — check back after the next sync.'); api.showAiView('get'); })
+            .catch(function() { toast('Submit may have failed — a local backup was saved. Try again later.'); })
+            .finally(function() { subPostBtn.disabled = false; subPostBtn.innerHTML = SUBMIT_ICON_SVG + ' Publish to Gallery'; });
+    });
 }
-function loadDraft() {
-    try { return JSON.parse(localStorage.getItem(DRAFT_KEY)); } catch (e) { return null; }
-}
+const SUBMIT_ICON_SVG = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>';
 
-function aiShowView(name) {
-    document.getElementById('aiSubGet').classList.toggle('active', name === 'get');
-    document.getElementById('aiSubPaste').classList.toggle('active', name === 'paste');
-    document.getElementById('aiViewGet').classList.toggle('active', name === 'get');
-    document.getElementById('aiViewPaste').classList.toggle('active', name === 'paste');
-    document.getElementById('aiViewSubmit').classList.toggle('active', name === 'submit');
-    if (name === 'paste') setTimeout(function() { aiReply.focus(); }, 30);
-}
-
-/* The code the submission would carry: applied edits, else the design's own,
- * else whatever is currently in the panes (draft flow) */
 function submitCandidateCode() {
     if (_lastAppliedCode.html || _lastAppliedCode.css || _lastAppliedCode.js) return _lastAppliedCode;
     const d = byId[currentDesignId];
     if (d && (d.html || d.css || d.js)) return { html: d.html, css: d.css, js: d.js };
-    return { html: cmHtml.getValue(), css: cmCss.getValue(), js: cmJs.getValue() };
+    return modalApi.getEditors();
 }
-
 function validJs(js) {
     if (!/\bonFrame\s*\(/.test(js)) return false;
     if (/\brequestAnimationFrame\b|\bsetTimeout\b|\bsetInterval\b/.test(js)) return false;
     try { new Function(js); return true; } catch (e) { return false; }
 }
-
 function validateSubmission(s) {
     const errs = {};
     if (!s.title || s.title.length < 2 || s.title.length > 60) errs.title = 1;
@@ -1408,482 +1006,53 @@ function validateSubmission(s) {
     if (!validJs(s.js || '') || (s.js || '').length > 30000) errs.js = 1;
     return errs;
 }
-
-function markFields(errs) {
-    document.getElementById('sfTitle').classList.toggle('bad', !!errs.title);
-    document.getElementById('sfCreator').classList.toggle('bad', !!errs.creator);
-    document.getElementById('sfPrompt').classList.toggle('bad', !!errs.prompt);
-    document.getElementById('sfDuration').classList.toggle('bad', !!errs.duration);
-    document.getElementById('sfHtml').classList.toggle('bad', !!errs.html);
-    document.getElementById('sfCss').classList.toggle('bad', !!errs.css);
-    document.getElementById('sfJs').classList.toggle('bad', !!errs.js);
+function markFields(body, errs) {
+    [['sfTitle', 'title'], ['sfCreator', 'creator'], ['sfPrompt', 'prompt'], ['sfDuration', 'duration'], ['sfHtml', 'html'], ['sfCss', 'css'], ['sfJs', 'js']]
+        .forEach(function(pair) { const el = body.querySelector('#' + pair[0]); if (el) el.classList.toggle('bad', !!errs[pair[1]]); });
 }
-
 function openSubmitView() {
     if (!currentDesignId) return;
     const d = byId[currentDesignId];
     const code = submitCandidateCode();
     const parsed = clipTitleFrom(code.html);
-    /* Pre-fill from the design/draft */
-    document.getElementById('subTitle').value = parsed || (d._draft ? '' : (d.title || ''));
-    document.getElementById('subCreator').value = d._draft ? '' : (d.creator === 'studio' ? '' : (d.creator || ''));
-    document.getElementById('subTags').value = (d.tags || []).filter(t => t !== 'draft' && t !== 'prompt').join(', ');
-    document.getElementById('subPrompt').value = (d.prompt && d.prompt !== '(rendered design — code included)') ? d.prompt : (document.getElementById('aiWant').value || '');
-    document.getElementById('subDuration').value = String(designDur(d));
-    document.getElementById('subHtml').value = code.html || '';
-    document.getElementById('subCss').value = code.css || '';
-    document.getElementById('subJs').value = code.js || '';
-    const hasCode = !!(code.html || code.css || code.js);
-    aiSubmitBtn.disabled = !hasCode;
-    /* Summary of what's on stage */
+    const body = modalApi.root.querySelector('[data-ai="submit"]');
+    if (!body) return;
+    body.querySelector('#subTitle').value = parsed || (d._draft ? '' : (d.title || ''));
+    body.querySelector('#subCreator').value = d._draft ? '' : (d.creator === 'studio' ? '' : (d.creator || ''));
+    body.querySelector('#subTags').value = (d.tags || []).filter(t => t !== 'draft' && t !== 'prompt').join(', ');
+    body.querySelector('#subPrompt').value = (d.prompt && d.prompt !== '(rendered design — code included)') ? d.prompt : (modalApi.root.querySelector('.aiwant').value || '');
+    body.querySelector('#subDuration').value = String(designDur(d));
+    body.querySelector('#subHtml').value = code.html || '';
+    body.querySelector('#subCss').value = code.css || '';
+    body.querySelector('#subJs').value = code.js || '';
     const kb = n => (n / 1024).toFixed(1) + ' KB';
-    document.getElementById('submitSummary').innerHTML =
+    body.querySelector('#submitSummary').innerHTML =
         'Submitting: <b>' + esc(parsed || d.title || 'Untitled') + '</b> — ' +
-        'HTML ' + kb((code.html || '').length) + ' · CSS ' + kb((code.css || '').length) + ' · JS ' + kb((code.js || '').length) +
-        (hasCode ? '' : ' <span class="warn">⚠ no code yet — paste an AI reply first</span>');
-    markFields({});
-    aiShowView('submit');
+        'HTML ' + kb((code.html || '').length) + ' · CSS ' + kb((code.css || '').length) + ' · JS ' + kb((code.js || '').length);
+    markFields(body, {});
+    modalApi.showAiView('submit');
 }
 
-aiSubmitBtn.addEventListener('click', openSubmitView);
-/* Also reachable from the modal header copy row on gallery designs */
-document.getElementById('copyPromptHdr').insertAdjacentHTML('afterend',
-    '<button class="btn-code-io" id="submitHdrBtn" title="Submit this design to the public gallery"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>');
-document.getElementById('submitHdrBtn').addEventListener('click', function() { showTab('ai'); openSubmitView(); });
-subBackBtn.addEventListener('click', function() { aiShowView('paste'); });
-
-subPostBtn.addEventListener('click', function() {
-    const s = {
-        title: document.getElementById('subTitle').value.trim(),
-        creator: document.getElementById('subCreator').value.trim(),
-        tags: document.getElementById('subTags').value.trim(),
-        prompt: document.getElementById('subPrompt').value.trim(),
-        duration: document.getElementById('subDuration').value.trim(),
-        html: document.getElementById('subHtml').value,
-        css: document.getElementById('subCss').value,
-        js: document.getElementById('subJs').value
-    };
-    const errs = validateSubmission(s);
-    markFields(errs);
-    if (Object.keys(errs).length) {
-        toast('Fix the highlighted fields first');
-        return;
-    }
-    /* Always keep a local backup — no-cors POSTs can't be confirmed */
-    try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ prompt: s.prompt, html: s.html, css: s.css, js: s.js, savedAt: Date.now() })); } catch (e) {}
-
-    const body = new FormData();
-    body.append(FORM.entries.title, s.title);
-    body.append(FORM.entries.creator, s.creator);
-    body.append(FORM.entries.tags, s.tags);
-    body.append(FORM.entries.prompt, s.prompt);
-    body.append(FORM.entries.duration, s.duration);
-    body.append(FORM.entries.html, s.html);
-    body.append(FORM.entries.css, s.css);
-    body.append(FORM.entries.js, s.js);
-
-    subPostBtn.disabled = true;
-    subPostBtn.textContent = 'Publishing…';
-    /* no-cors: the opaque response can't be read, but Google accepts the POST */
-    fetch('https://docs.google.com/forms/d/e/' + FORM.id + '/formResponse', {
-        method: 'POST',
-        mode: 'no-cors',
-        body: body
-    }).then(function() {
-        toast('Submitted! It lands in the gallery after the next sync (≤ 6 h).');
-        aiMsg('Queued for the gallery — check back after the next sync.');
-        aiShowView('get');
-    }).catch(function() {
-        toast('Submit may have failed — a local backup was saved. Try again later.');
-    }).finally(function() {
-        subPostBtn.disabled = false;
-        subPostBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg> Publish to Gallery';
-    });
-});
-
-/* Draft autosave while the modal is open (throttled) */
-let _draftTimer = 0;
-[cmHtml, cmCss, cmJs].forEach(function(cm) {
-    cm.on('change', function() {
-        if (!currentDesignId) return;
-        clearTimeout(_draftTimer);
-        _draftTimer = setTimeout(saveDraft, 1200);
-    });
-});
-
-/* ── Exports ──────────────────────────────────────────────────── */
-const resSelect = document.getElementById('resSelect');
-const RESOLUTIONS = {
-    '480': { w: 854, h: 480, n: 480 },
-    '720': { w: 1280, h: 720, n: 720 },
-    '1080': { w: 1920, h: 1080, n: 1080 },
-    '1440': { w: 2560, h: 1440, n: 1440 }
-};
-const frameBtn = document.getElementById('frameBtn');
-const frameCaret = document.getElementById('frameCaret');
-const frameMenu = document.getElementById('frameMenu');
-const frameSplit = document.getElementById('frameSplit');
-const exportBtn = document.getElementById('exportBtn');
-const videoCaret = document.getElementById('videoCaret');
-const videoMenu = document.getElementById('videoMenu');
-const exportSplit = document.getElementById('exportSplit');
-const FMT_META = { png: { ext: 'png', mime: 'image/png', label: 'PNG' }, jpeg: { ext: 'jpg', mime: 'image/jpeg', label: 'JPG' }, webp: { ext: 'webp', mime: 'image/webp', label: 'WebP' } };
-let lastFrameFmt = 'png', lastFps = 30;
-try {
-    const saved = readExpPrefs();
-    if (FMT_META[saved.fmt]) lastFrameFmt = saved.fmt;
-    if (saved.fps === 30 || saved.fps === 60) lastFps = saved.fps;
-    if (RESOLUTIONS[saved.res]) resSelect.value = saved.res;
-} catch (e) {}
-function saveExpPrefs() {
-    writeExpPrefs({ fmt: lastFrameFmt, fps: lastFps, res: resSelect.value });
-}
-
-/* Frame geometry UI + state → canvas (mirrors the test-renderer modal) */
-function applyAspect() {
-    const fd = frameDims(parseInt(resSelect.value) || 1080);
-    modalCanvas.width = fd.w; modalCanvas.height = fd.h;
-    if (frameControls) frameControls.sync();
-    if (modalRenderer && modalRenderer._ready) {
-        modalRenderer.renderFrame(parseInt(modalSlider.value) || 0).then(function(ok) { if (ok) modalRenderer.drawFrame(modalCtx, fd.w, fd.h); });
-    }
-    saveExpPrefs();
-}
-function applyBg() { applyAspect(); }
-/* Aspect + background controls: mounted from hic-frame.js (shared UI across
-   all three pages). var so boot-time applyAspect() calls before this line are
-   a safe no-op for syncing. */
-var frameControls = mountFrameControls(document.getElementById('frameControls'), {
-    isLocked: function() { return !!exporting; },
-    onFrame: applyAspect
-});
-let exporting = false;
-
-const exportCodeMenu = document.getElementById('exportCodeMenu');
-const exportCodeCaret = document.getElementById('exportCodeCaret');
-
-function anyMenuOpen() {
-    return frameMenu.classList.contains('open') || videoMenu.classList.contains('open') || exportCodeMenu.classList.contains('open');
-}
-function closeMenus() {
-    frameMenu.classList.remove('open'); frameCaret.classList.remove('open');
-    videoMenu.classList.remove('open'); videoCaret.classList.remove('open');
-    exportCodeMenu.classList.remove('open'); exportCodeCaret.classList.remove('open');
-}
-frameCaret.addEventListener('click', function(e) {
-    e.stopPropagation();
-    const open = frameMenu.classList.contains('open');
-    closeMenus();
-    if (!open) { frameMenu.classList.add('open'); frameCaret.classList.add('open'); }
-});
-videoCaret.addEventListener('click', function(e) {
-    e.stopPropagation();
-    const open = videoMenu.classList.contains('open');
-    closeMenus();
-    if (!open) { videoMenu.classList.add('open'); videoCaret.classList.add('open'); }
-});
-exportCodeCaret.addEventListener('click', function(e) {
-    e.stopPropagation();
-    const open = exportCodeMenu.classList.contains('open');
-    closeMenus();
-    if (!open) { exportCodeMenu.classList.add('open'); exportCodeCaret.classList.add('open'); }
-});
-document.addEventListener('click', function(e) {
-    if (anyMenuOpen() && !e.target.closest('.export-cluster') && !e.target.closest('.code-export-split')) closeMenus();
-});
-resSelect.addEventListener('change', function() { applyAspect(); }); /* resolution also resizes the frame canvas */
-
-function refreshExportUI() {
-    frameMenu.querySelectorAll('.fmt-opt').forEach(function(el) {
-        el.classList.toggle('selected', el.getAttribute('data-frame-fmt') === lastFrameFmt);
-    });
-    videoMenu.querySelectorAll('.fps-opt').forEach(function(el) {
-        el.classList.toggle('selected', parseInt(el.getAttribute('data-fps')) === lastFps);
-    });
-    frameBtn.title = 'Save current frame (' + FMT_META[lastFrameFmt].label + ')';
-    exportBtn.title = 'Record video (WebM ' + lastFps + 'fps)';
-}
-refreshExportUI();
-
-function effectiveExportCode() {
-    if (_lastAppliedCode.html || _lastAppliedCode.css || _lastAppliedCode.js) return _lastAppliedCode;
-    const d = byId[currentDesignId];
-    return { html: (d && d.html) || '', css: (d && d.css) || '', js: (d && d.js) || '' };
-}
-
-async function exportFrame(fmtKey) {
-    const d = byId[currentDesignId];
-    if (!d || exporting) return;
-    const code = effectiveExportCode();
-    if (!(code.html || code.css || code.js)) { toast('No code to export yet — generate it from the AI tab first'); return; }
-    const res = RESOLUTIONS[resSelect.value] || RESOLUTIONS['1080'];
-    const fmt = FMT_META[fmtKey] || FMT_META.png;
-    const t = parseInt(modalSlider.value);
-
-    exporting = true;
-    closeMenus();
-    [frameBtn, frameCaret, exportBtn, videoCaret, resSelect].forEach(function(el) { el.disabled = true; });
-    frameBtn.querySelector('span').textContent = 'Rendering\u2026';
-    let fr = null;
+/* ── Draft autosave ─────────────────────────────────────────────── */
+function saveDraft() {
+    if (!currentDesignId) return;
     try {
-        const fd = frameDims(res.n);
-        fr = makeHicRenderer(fd.w, fd.h);
-        await fr.setClip(code.html, code.css, code.js);
-        /* Uniform scale + pre-scale centering translate (transform applies
-           right-to-left): the design contain-fits, never stretches. */
-        const k = Math.min(fd.w / W, fd.h / H);
-        const tx = (fd.w - k * W) / (2 * k), ty = (fd.h - k * H) / (2 * k);
-        const wrap = document.createElement('div');
-        wrap.style.cssText = 'width:' + W + 'px;height:' + H + 'px;overflow:hidden;transform-origin:0 0;transform:scale(' + k + ') translate(' + tx + 'px,' + ty + 'px);';
-        while (fr.sandbox.firstChild) { wrap.appendChild(fr.sandbox.firstChild); }
-        fr.sandbox.appendChild(wrap);
-        fr.sandbox.style.width = fd.w + 'px';
-        fr.sandbox.style.height = fd.h + 'px';
-        fr.sandbox.style.overflow = 'hidden';
-        const okFlag = await fr.renderFrame(t);
-        if (!okFlag) throw new Error('raster failed');
-        /* Solid bg composites UNDER the raster; transparent ships as-is */
-        let out = fr.canvas;
-        if (curFrame.bg !== 'transparent') {
-            out = document.createElement('canvas');
-            out.width = fd.w; out.height = fd.h;
-            const octx = out.getContext('2d');
-            octx.fillStyle = curFrame.bg; octx.fillRect(0, 0, fd.w, fd.h);
-            octx.drawImage(fr.canvas, 0, 0);
-        }
-        const url = out.toDataURL(fmt.mime, 0.95);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = exportFileStem() + '_frame_' + t + 'ms_' + fd.w + 'x' + fd.h + '.' + fmt.ext;
-        document.body.appendChild(a); a.click(); document.body.removeChild(a);
-        lastFrameFmt = fmtKey;
-        saveExpPrefs();
-        toast('Frame saved — ' + fd.w + '×' + fd.h + ' ' + fmt.label);
-    } catch (e) {
-        console.error('[FrameExport]', e);
-        toast('Frame export failed — try again');
-    } finally {
-        if (fr && fr.sandbox) fr.sandbox.remove();
-        exporting = false;
-        [frameBtn, frameCaret, exportBtn, videoCaret, resSelect].forEach(function(el) { el.disabled = false; });
-        refreshExportUI();
-        frameBtn.querySelector('span').textContent = 'Save Frame';
-    }
+        localStorage.setItem(DRAFT_KEY, JSON.stringify({
+            prompt: modalApi.root.querySelector('.aiwant').value || '',
+            html: modalApi.getEditors().html, css: modalApi.getEditors().css, js: modalApi.getEditors().js,
+            savedAt: Date.now()
+        }));
+    } catch (e) { /* storage unavailable */ }
 }
-frameBtn.addEventListener('click', function() { exportFrame(lastFrameFmt); });
-frameMenu.querySelectorAll('.fmt-opt').forEach(function(item) {
-    item.addEventListener('click', function() { closeMenus(); exportFrame(item.getAttribute('data-frame-fmt')); });
-});
-videoMenu.querySelectorAll('.fps-opt').forEach(function(item) {
-    item.addEventListener('click', function() {
-        lastFps = parseInt(item.getAttribute('data-fps'));
-        saveExpPrefs();
-        refreshExportUI();
-    });
-});
-
-/* Code tab export: JSON + standalone */
-function exportJson() {
-    if (!currentDesignId) return;
-    const payload = {
-        version: 1,
-        kind: 'hic-code',
-        name: _clipTitle || (byId[currentDesignId] || {}).title || 'design',
-        duration: aiCurrentDur(),
-        html: cmHtml.getValue(),
-        css: cmCss.getValue(),
-        js: cmJs.getValue()
-    };
-    downloadBlob(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }), exportFileStem() + '_code.json');
+function loadDraft() {
+    try { return JSON.parse(localStorage.getItem(DRAFT_KEY)); } catch (e) { return null; }
 }
 
-function exportStandalone() {
-    if (!currentDesignId) return;
-    const d = byId[currentDesignId];
-    const code = effectiveExportCode();
-    if (!(code.html || code.css || code.js)) { toast('No code to export yet — generate it from the AI tab first'); return; }
-    const name = _clipTitle || (d && d.title) || currentDesignId;
-    const dur = aiCurrentDur();
-
-    const tmp = document.createElement('div');
-    tmp.innerHTML = code.html || '';
-    const headTags = [...tmp.querySelectorAll('script[src]')]
-        .map(s => s.getAttribute('src'))
-        .filter(src => src && src.indexOf('tailwind') === -1)
-        .map(src => '<scr' + 'ipt src="' + src + '"></scr' + 'ipt>');
-    [...tmp.querySelectorAll('link[rel="stylesheet"]')].forEach(l => {
-        const href = l.getAttribute('href');
-        if (href) headTags.push('<link rel="stylesheet" href="' + href + '">');
-    });
-    const rawHtml = code.html || '';
-    const usesTw = rawHtml.indexOf('tailwindcss') !== -1 || /class="[^"]*\b(bg-|text-|flex|grid-|p[xytblr]?-|m[xytblr]?-|rounded|shadow|font-|border|min-h-|max-w-|w-|h-|gap-|mt-|mb-|tracking-|from-|to-)/.test(rawHtml);
-    if (usesTw && !/<script[^>]*src="[^"]*cdn\.tailwindcss\.com/.test(rawHtml)) {
-        headTags.push('<scr' + 'ipt src="https://cdn.tailwindcss.com"></scr' + 'ipt>');
-    }
-    const libHint = rawHtml + '\n' + (code.css || '') + '\n' + (code.js || '');
-    if (/window\.marked|marked\.parse/.test(libHint) && !libHint.includes('marked.min.js')) {
-        headTags.push('<scr' + 'ipt src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></scr' + 'ipt>');
-    }
-    if (/window\.renderMathInElement|katex\.min\.css/.test(libHint) && !libHint.includes('katex.min.js')) {
-        headTags.push('<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">');
-        headTags.push('<scr' + 'ipt src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></scr' + 'ipt>');
-        headTags.push('<scr' + 'ipt src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></scr' + 'ipt>');
-    }
-    const fontSrc = (code.css || '') + '\n' + rawHtml;
-    const fontUrls = [...new Set(fontSrc.match(/https:\/\/fonts\.googleapis\.com[^\s"'\)\]]+/g) || [])];
-
-    const payload = JSON.stringify({ version: 1, kind: 'hic-standalone', name: name, duration: dur, html: code.html, css: code.css, js: code.js, fontUrls: fontUrls }).replace(/</g, '\\u003c');
-
-    const RUNTIME = [
-        'var P = JSON.parse(document.getElementById("hic-code").textContent);',
-        'var stage = document.getElementById("stage");',
-        'var onFrameFn = null;',
-        'try { onFrameFn = new Function("time", P.js + "\\n;return typeof onFrame==\\"function\\"?onFrame:null;")(); } catch(e) { console.error("onFrame compile error:", e); }',
-        'function mount() { stage.innerHTML = P.html; var st = document.createElement("style"); st.textContent = P.css; stage.appendChild(st); }',
-        'function fit() { var s = Math.min(1, window.innerWidth / 800, window.innerHeight / 450); stage.style.transform = s < 1 ? "scale(" + s + ")" : ""; }',
-        'var playing = true, t0 = null, rafId = 0;',
-        'function loop(now) { if (!playing) return; if (t0 === null) t0 = now; var t = (now - t0) % P.duration; try { if (onFrameFn) onFrameFn(t); } catch(e) {} rafId = requestAnimationFrame(loop); }',
-        'function start() { mount(); fit(); window.addEventListener("resize", fit); t0 = null; playing = true; rafId = requestAnimationFrame(loop); }',
-        'document.getElementById("hic-pause").addEventListener("click", function() { playing = !playing; this.textContent = playing ? "Pause" : "Play"; if (playing) { t0 = null; rafId = requestAnimationFrame(loop); } else cancelAnimationFrame(rafId); });',
-        'document.getElementById("hic-restart").addEventListener("click", function() { mount(); t0 = null; });',
-        'if (P.fontUrls.length) { P.fontUrls.forEach(function(u) { var l = document.createElement("link"); l.rel = "stylesheet"; l.href = u; document.head.appendChild(l); }); }',
-        'start();',
-        'window.HIC = { play: function() { if (!playing) document.getElementById("hic-pause").click(); }, pause: function() { if (playing) document.getElementById("hic-pause").click(); }, restart: function() { document.getElementById("hic-restart").click(); }, seek: function(ms) { t0 = performance.now() - ms; try { if (onFrameFn) onFrameFn(((ms % P.duration) + P.duration) % P.duration); } catch(e) {} } };'
-    ].join('\n');
-
-    const FAVICON_EMOJIS = ['🎨', '🎹', '⭐', '👉', '😶‍🌫️', '🤯', '👀', '🤟', '🤌', '👌', '👍', '🤘', '☝️', '✌️'];
-    const favEmoji = FAVICON_EMOJIS[Math.floor(Math.random() * FAVICON_EMOJIS.length)];
-    const favSvg = '<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>' + encodeURIComponent(favEmoji) + '</text></svg>';
-
-    const page = '<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n'
-        + '<meta name="viewport" content="width=device-width, initial-scale=1.0">\n'
-        + '<link rel="icon" href="data:image/svg+xml,' + favSvg + '">\n'
-        + '<title>' + String(name).replace(/&/g, '&amp;').replace(/</g, '&lt;') + ' \u2014 HIC Animation</title>\n'
-        + headTags.join('\n') + (headTags.length ? '\n' : '')
-        + '<style>\n'
-        + 'body{margin:0;background:#0b0f1a;min-height:100vh;display:grid;place-items:center;font-family:system-ui,sans-serif}\n'
-        + '#stage{width:800px;height:450px;position:relative;overflow:hidden;background:transparent}\n'
-        + '#hic-pill{position:fixed;right:12px;bottom:12px;display:flex;gap:6px;z-index:9}\n'
-        + '#hic-pill button{background:rgba(30,37,51,.85);color:#cbd5e1;border:1px solid #2d3748;border-radius:7px;padding:6px 10px;font-size:11px;cursor:pointer;font-family:system-ui}\n'
-        + '#hic-pill button:hover{color:#f1f5f9;border-color:#3b82f6}\n'
-        + '</style>\n</head>\n<body>\n<div id="stage"></div>\n'
-        + '<div id="hic-pill"><button id="hic-pause">Pause</button><button id="hic-restart">Restart</button></div>\n'
-        + '<scr' + 'ipt type="application/json" id="hic-code">' + payload + '</scr' + 'ipt>\n'
-        + '<scr' + 'ipt>\n' + RUNTIME + '\n</scr' + 'ipt>\n</body>\n</html>';
-
-    downloadBlob(new Blob([page], { type: 'text/html' }), exportFileStem() + '_standalone.html');
-}
-
-document.getElementById('exportCodeBtn').addEventListener('click', exportJson);
-exportCodeMenu.addEventListener('click', function(e) {
-    const item = e.target.closest('[data-exp-json],[data-exp-html]');
-    if (!item) return;
-    e.stopPropagation();
-    closeMenus();
-    if (item.hasAttribute('data-exp-json')) exportJson(); else exportStandalone();
-});
-
-/* ── WebM export (wall-clock paced) ───────────────────────────── */
-exportBtn.addEventListener('click', startWebMExport);
-
-async function startWebMExport() {
-    if (exporting) return;
-    const d = byId[currentDesignId];
-    if (!d) return;
-    const code = effectiveExportCode();
-    if (!(code.html || code.css || code.js)) { toast('No code to export yet — generate it from the AI tab first'); return; }
-    const dur = designDur(d) / 1000;
-    const fps = lastFps;
-    const res = RESOLUTIONS[resSelect.value] || RESOLUTIONS['1080'];
-    const fd = frameDims(res.n);
-    const expW = fd.w;
-    const expH = fd.h;
-    /* Uniform scale + pre-scale centering translate — contain-fit, no stretch */
-    const kScale = Math.min(expW / W, expH / H);
-    const kTx = (expW - kScale * W) / (2 * kScale), kTy = (expH - kScale * H) / (2 * kScale);
-
-    exporting = true;
-    exportSplit.classList.add('recording');
-    closeMenus();
-    [frameBtn, frameCaret, exportBtn, videoCaret, resSelect].forEach(function(el) { el.disabled = true; });
-    exportBtn.querySelector('span').textContent = 'Recording\u2026';
-    modalPlaying = false;
-    setPlayState(false);
-
-    modalCanvas.width = expW;
-    modalCanvas.height = expH;
-
-    if (modalRenderer) { modalRenderer.sandbox.remove(); }
-    modalRenderer = makeHicRenderer(expW, expH);
-    await modalRenderer.setClip(code.html, code.css, code.js);
-
-    const wrap = document.createElement('div');
-    wrap.style.cssText = 'width:' + W + 'px;height:' + H + 'px;overflow:hidden;transform-origin:0 0;transform:scale(' + kScale + ') translate(' + kTx + 'px,' + kTy + 'px);';
-    while (modalRenderer.sandbox.firstChild) { wrap.appendChild(modalRenderer.sandbox.firstChild); }
-    modalRenderer.sandbox.appendChild(wrap);
-    modalRenderer.sandbox.style.width = expW + 'px';
-    modalRenderer.sandbox.style.height = expH + 'px';
-    modalRenderer.sandbox.style.overflow = 'hidden';
-
-    const stream = modalCanvas.captureStream(fps);
-    let mimeType = 'video/webm;codecs=vp9';
-    if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
-    const recorder = new MediaRecorder(stream, { mimeType: mimeType });
-    const chunks = [];
-    recorder.ondataavailable = function(e) { if (e.data && e.data.size > 0) chunks.push(e.data); };
-
-    const done = new Promise(function(resolve) {
-        recorder.onstop = function() {
-            const blob = new Blob(chunks, { type: 'video/webm' });
-            if (blob.size > 100) {
-                downloadBlob(blob, exportFileStem() + '_' + expW + 'x' + expH + '_' + curFrame.aspect.replace(':', '') + '.webm');
-                toast('WebM saved — ' + expW + '×' + expH);
-            } else { toast('Export failed — try again'); }
-            exporting = false;
-            exportSplit.classList.remove('recording');
-            [frameBtn, frameCaret, exportBtn, videoCaret, resSelect].forEach(function(el) { el.disabled = false; });
-            exportBtn.querySelector('span').textContent = 'Export WebM';
-            modalCanvas.width = frameDims(parseInt(resSelect.value) || 1080).w;
-            modalCanvas.height = frameDims(parseInt(resSelect.value) || 1080).h;
-            resolve();
-        };
-    });
-
-    recorder.start();
-
-    const wallStart = performance.now();
-    for (let frame = 0; frame < dur * fps; frame++) {
-        const t = (frame / fps) * 1000;
-        const delay = wallStart + t - performance.now();
-        await new Promise(function(r) { if (delay > 0) setTimeout(r, delay); else requestAnimationFrame(r); });
-        modalSlider.value = Math.floor(t);
-        modalTime.textContent = (t / 1000).toFixed(1) + 's';
-        try {
-            const ok = await modalRenderer.renderFrame(t);
-            if (ok) {
-                if (curFrame.bg !== 'transparent') { modalCtx.fillStyle = curFrame.bg; modalCtx.fillRect(0, 0, expW, expH); }
-                modalRenderer.drawTo(modalCtx, 0, 0, expW, expH);
-            }
-        } catch(e) { console.error('[Export] frame error:', e); }
-    }
-
-    await new Promise(function(r) { setTimeout(r, Math.max(50, 1000 / fps)); });
-    recorder.stop();
-    await done;
-
-    if (modalRenderer) { modalRenderer.sandbox.remove(); }
-    modalRenderer = makeHicRenderer(W, H);
-    await modalRenderer.setClip(code.html, code.css, code.js);
-    const ok = await modalRenderer.renderFrame(0);
-    const fdOut = frameDims(parseInt(resSelect.value) || 1080);
-    if (ok) modalRenderer.drawFrame(modalCtx, fdOut.w, fdOut.h);
-}
-
-/* ── Deep links: designs.html#design=<id> · #new=1 ───────────── */
+/* ── Deep links: designs.html#design=<id> · #new=1 ─────────────── */
 function handleHash() {
     if (/#new=1/.test(location.hash)) {
         history.replaceState(null, '', location.pathname);
-        openNewDesign(); /* consumes any pe_handoff brief from Prompt Engineer */
+        openNewDesign();
         return;
     }
     const m = (location.hash || '').match(/#design=([A-Za-z0-9_-]+)/);
@@ -1891,18 +1060,12 @@ function handleHash() {
 }
 window.addEventListener('hashchange', handleHash);
 
-/* ── New design (+ button): empty draft workspace ─────────────── */
-/* A virtual design (not in DESIGNS/gallery) the user fills by pasting an AI
- * reply (AI tab) or code (Code tab). Behaves exactly like a gallery design:
- * preview, edits, frame/WebM/standalone exports all work. Phase C will add
- * the submit-to-gallery step on top of this draft. */
+/* ── New design (+ button): empty draft workspace ──────────────── */
 const NEW_DESIGN_ID = '__draft__';
 const newDesignBtn = document.getElementById('newDesignBtn');
 newDesignBtn.addEventListener('click', openNewDesign);
 function openNewDesign() {
     const saved = loadDraft();
-    /* Handoff from prompts-engineer.html (To Gallery button) wins over the
-       stored draft brief so the freshly-built brief is what lands here */
     let handoff = null;
     try {
         handoff = JSON.parse(localStorage.getItem('pe_handoff') || 'null');
@@ -1922,10 +1085,12 @@ function openNewDesign() {
         _draft: true
     };
     openDesign(NEW_DESIGN_ID);
-    /* Drafts start on the AI tab with focus on the brief box */
-    showTab('ai');
-    setTimeout(function() { document.getElementById('aiWant').focus(); }, 60);
 }
+
+/* Modal must be created last — its option callbacks reference consts
+   declared above (SUBMIT_VIEW_HTML, openSubmitView, …) */
+_bootstrapModal();
+
 </script>
 </body>
 </html>

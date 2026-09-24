@@ -25,6 +25,11 @@
  *   parseReply(text)     → { html, css, js, dur?, ds? } | null (default provided)
  *   onAiCode(code, meta) → called after Parse & Apply (meta may carry ds/name)
  *   onOpen / onClose     → lifecycle hooks
+ *   onEditorsChange(code)→ fired (throttled) on any editor edit (draft autosave)
+ *   prettify(code)       → { html, css, js } formatter applied before editors fill
+ *   buildStandalone(code,title,dur) → page-specific standalone HTML (overrides core)
+ *   placeholder(ctx,w,h) → paint instead of the renderer when the clip has no code
+ *   hasStageCode()       → false = clip is prompt-only (AI tab opens first)
  * ═══════════════════════════════════════════════════════════════════════ */
 
 (function() {
@@ -382,7 +387,7 @@ function createHicModal(opts) {
         cplay: $('.hicm-cplay'), playBtn: $('.hicm-obtn.play'), playIcon: $('.hicm-obtn.play svg:first-child'),
         pauseIcon: $('.hicm-obtn.play svg:last-child'), slider: $('.hicm-sr'), time: $('.hicm-time .cur'),
         total: $('.hicm-total'), progress: $('.hicm-progress'), fill: $('.hicm-fill'), dot: $('.hicm-dot'), fsBtn: $('.hicm-obtn.fs'),
-        resBtn: $('.hicm-resbtn'), resMenu: $('.hicm-resmenu'), resCur: $('.rescur'),
+        resBtn: $('.hicm-resbtn'), resMenu: $('.resmenu'), resCur: $('.rescur'),
         frameHost: $('.hicm-framehost'), frameBtn: $('.framebtn'), frameCaret: $('.framecaret'), frameMenu: $('.framemenu'),
         vBtn: $('.vbtn'), vCaret: $('.vcaret'), vMenu: $('.vmenu'), vSplit: $('[data-split=video]'),
         panels: {}, tabs: $$('.hicm-tab'),
@@ -422,7 +427,7 @@ function createHicModal(opts) {
         el.fill.style.width = pct + '%'; el.dot.style.left = pct + '%';
     }
     function anyMenuOpen() { return $$('.hicm-menu.open').length > 0 || (el.galMenu && el.galMenu.classList.contains('open')); }
-    function closeMenus() { $$('.hicm-menu.open').forEach(function(m) { m.classList.remove('open'); }); $$('.hicm-caret.open,.hicm-vcaret.open,.hicm-resbtn.open,.cecaret.open'.split(',').join(',.')).forEach(function(c) { c.classList.remove('open'); }); if (el.galMenu) el.galMenu.classList.remove('open'); }
+    function closeMenus() { $$('.hicm-menu.open').forEach(function(m) { m.classList.remove('open'); }); $$('.hicm-caret.open, .hicm-vcaret.open, .hicm-resbtn.open, .cecaret.open').forEach(function(c) { c.classList.remove('open'); }); if (el.galMenu) el.galMenu.classList.remove('open'); }
 
     /* ── render loop ── */
     async function tick() {
@@ -632,10 +637,17 @@ function createHicModal(opts) {
     }
 
     /* ── CodeMirror editors ── */
+    var draftTimer = 0;
     ['html', 'css', 'js'].forEach(function(lang) {
         var wrap = root.querySelector('[data-wrap="' + lang + '"] textarea');
         cm[lang] = CodeMirror.fromTextArea(wrap, { theme: 'hic-dark', height: '100%', lineNumbers: true, tabSize: 2, lineWrapping: true, mode: lang === 'html' ? 'htmlmixed' : lang });
-        cm[lang].on('change', updateBadge);
+        cm[lang].on('change', function() {
+            updateBadge();
+            if (opts.onEditorsChange) {
+                clearTimeout(draftTimer);
+                draftTimer = setTimeout(function() { opts.onEditorsChange(api.getEditors()); }, 1200);
+            }
+        });
     });
     function updateBadge() {
         if (!clip) return;
@@ -645,8 +657,12 @@ function createHicModal(opts) {
         el.badges.classList.toggle('on', dirty);
         el.resetBtn.disabled = !dirty;
     }
+    function prettified(code) {
+        if (!opts.prettify) return code;
+        try { return opts.prettify(code); } catch (e) { return code; }
+    }
     function fillEditors() {
-        var code = applied || { html: clip.html, css: clip.css, js: clip.js };
+        var code = prettified(applied || { html: clip.html, css: clip.css, js: clip.js });
         if (cm.html.getValue() !== code.html) cm.html.setValue(code.html);
         if (cm.css.getValue() !== code.css) cm.css.setValue(code.css);
         if (cm.js.getValue() !== code.js) cm.js.setValue(code.js);
@@ -700,8 +716,9 @@ function createHicModal(opts) {
         setTimeout(function() { URL.revokeObjectURL(a.href); }, 4000);
     }
     function buildStandalone(code) {
+        if (opts.buildStandalone) return opts.buildStandalone(code, el.title.textContent, (clip && clip.dur || 5) * 1000);
         var emoji = ['🎨','🎹','⭐','👉','🤯','👀','🤟','🤌','👌','👍','🤘','☝️','✌️'][Math.floor(Math.random() * 13)];
-        return '<!DOCTYPE html>\n<html>\n<head>\n<meta charset="utf-8">\n<title>' + el.title.textContent + '</title>\n<link rel="icon" href="data:image/svg+xml,<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 100 100\'><text y=\'.9em\' font-size=\'90\'>' + emoji + '</text></svg>">\n<style>html,body{margin:0;height:100%;overflow:hidden}' + code.css + '</style>\n</head>\n<body>\n' + code.html + '\n<script>\n' + code.js + '\n;(function(){var t0=performance.now();function loop(){var t=performance.now()-t0;try{onFrame(t%((clip&&clip.dur||5)*1000))}catch(e){}requestAnimationFrame(loop)}loop();})();\n<\/script>\n</body>\n</html>';
+        return '<!DOCTYPE html>\n<html>\n<head>\n<meta charset="utf-8">\n<title>' + el.title.textContent + '</title>\n<link rel="icon" href="data:image/svg+xml,<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 100 100\'><text y=\'.9em\' font-size=\'90\'>' + emoji + '</text></svg>">\n<style>html,body{margin:0;height:100%;overflow:hidden}' + code.css + '</style>\n</head>\n<body>\n' + code.html + '\n<script>\n' + code.js + '\n;(function(){var t0=performance.now();function loop(){var t=performance.now()-t0;try{onFrame(t)}catch(e){}requestAnimationFrame(loop)}loop();})();\n<\/script>\n</body>\n</html>';
     }
 
     /* import */
@@ -780,6 +797,9 @@ function createHicModal(opts) {
     }
     el.aiCopy.addEventListener('click', function() { copyText(opts.buildPrompt ? opts.buildPrompt(el.aiWant.value.trim()) : el.aiWant.value.trim()); setStatus('Full prompt copied — paste it into your AI'); });
     el.aiClear.addEventListener('click', function() { el.aiReply.value = ''; setStatus(''); });
+    el.aiReply.addEventListener('paste', function() {
+        setTimeout(function() { if ((el.aiReply.value || '').trim()) el.aiParse.click(); }, 60);
+    });
     el.aiParse.addEventListener('click', function() {
         var text = el.aiReply.value;
         if (!text.trim()) { setStatus('Paste the AI reply first'); return; }
@@ -838,11 +858,18 @@ function createHicModal(opts) {
             el.slider.value = 0; el.time.textContent = '0:00'; syncProgress(0);
             open = true;
             root.classList.add('open');
-            showTab('preview');
+            var startTab = c.startTab || (opts.hasStageCode && !opts.hasStageCode() ? 'ai' : 'preview');
+            showTab(startTab);
+            if (startTab === 'ai') setTimeout(function() { el.aiWant.focus(); }, 60);
             cm.html.setValue(''); cm.css.setValue(''); cm.js.setValue('');
             if (renderer) { renderer.sandbox.remove(); renderer = null; }
             applyFrame();
-            makeRenderer().then(function() { seekTo(0); });
+            var hasCode = c.html || c.css || c.js;
+            if (hasCode) {
+                makeRenderer().then(function() { seekTo(0); });
+            } else if (opts.placeholder) {
+                opts.placeholder(el.ctx, el.canvas.width, el.canvas.height);
+            }
             galRender();
             if (opts.onOpen) opts.onOpen(clip);
         },
@@ -859,6 +886,11 @@ function createHicModal(opts) {
         getEditors: function() { return { html: cm.html.getValue(), css: cm.css.getValue(), js: cm.js.getValue() }; },
         setEditors: function(code) { cm.html.setValue(code.html); cm.css.setValue(code.css); cm.js.setValue(code.js); },
         showTab: showTab,
+        showAiView: function(name) {
+            aiSubBtns.forEach(function(x) { x.classList.toggle('active', x.getAttribute('data-aiview') === name); });
+            $$('.hicm-aiview').forEach(function(v) { v.classList.toggle('active', v.getAttribute('data-ai') === name); });
+        },
+        aiWant: function(v) { if (v === undefined) return el.aiWant.value; el.aiWant.value = v; },
         setStatus: setStatus,
         copyText: copyText,
         download: download,
