@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   build-and-deploy:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # pinned: ubuntu-latest migrates to Ubuntu 26 on 2026-10-19
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -27,13 +27,13 @@ jobs:
       # run was triggered by a tag push — otherwise a tag-triggered checkout
       # would build the tag itself as the live root site.
       - name: Checkout (root = default branch)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5 # node24 runtime
         with:
           ref: refs/heads/${{ github.event.repository.default_branch }}
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5 # node24 runtime
         with:
           node-version: 22
           cache: npm
@@ -90,13 +90,13 @@ jobs:
           done
 
       - name: Setup Pages
-        uses: actions/configure-pages@v4
+        uses: actions/configure-pages@v6 # node24 runtime
 
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5 # node24 runtime
         with:
           path: dist
 
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5 # node24 runtime
