@@ -43,37 +43,75 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
 /* Modal */
 .modal-overlay{position:fixed;inset:0;background:rgba(4,7,14,.78);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);z-index:1000;display:none;align-items:center;justify-content:center;padding:24px}
 .modal-overlay.open{display:flex}
-.modal{background:#111827;border-radius:16px;border:1px solid #232b3b;max-width:960px;width:100%;overflow:hidden;box-shadow:0 25px 60px -12px rgba(0,0,0,.7);max-height:calc(100vh - 48px);display:flex;flex-direction:column}
+.modal{background:#111827;border-radius:16px;border:1px solid #232b3b;max-width:960px;width:100%;overflow:hidden;box-shadow:0 25px 60px -12px rgba(0,0,0,.7);max-height:calc(100vh - 48px);height:calc(100vh - 48px);display:flex;flex-direction:column;transition:max-width .25s}
+/* Portrait mode (9:16) — Shorts-style tall player: the modal narrows so the
+   stage fills the height instead of pillarboxing a wide modal with black bars. */
+.modal.portrait-mode{max-width:480px}
 .modal-header{padding:14px 20px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #1e2533;flex-shrink:0}
 .modal-title{font-size:15px;font-weight:700;color:#f1f5f9;font-family:'Rubik',sans-serif;letter-spacing:-.2px}
 .modal-close{background:none;border:none;color:#7c8798;font-size:20px;cursor:pointer;padding:4px 10px;border-radius:6px;transition:all .15s;line-height:1}
 .modal-close:hover{background:#232b3b;color:#f1f5f9}
-.modal-body{overflow:auto;min-height:0}
-#previewPanel{display:flex;flex-direction:column;min-height:100%}
-.modal-canvas-wrap{position:relative;background:#080b10;display:flex;align-items:center;justify-content:center}
-.modal-canvas-wrap canvas{width:auto;max-width:100%;max-height:52vh;display:block}
-.modal-controls{padding:12px 20px;display:flex;gap:12px;align-items:center;border-top:1px solid #1e2533;background:#131a26;flex-wrap:wrap}
+.modal-body{overflow:auto;min-height:0;display:flex;flex-direction:column;flex:1 1 auto}
+#previewPanel{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}
+/* ── Player zone — YouTube-style: the stage is the hero, controls live in a
+   gradient overlay inside it and auto-hide while playing. The canvas is
+   absolutely centered (inset+margin:auto) so both max constraints resolve
+   against the zone's real box, and an explicit aspect-ratio keeps the box
+   sized by the canvas's intrinsic dimensions. ── */
+.player-zone{position:relative;flex:1 1 auto;min-height:0;background:#080b10;overflow:hidden}
+.player-zone canvas{position:absolute;inset:0;margin:auto;max-width:100%;max-height:100%;display:block}
+.player-zone:fullscreen{border-radius:0}
+.player-zone:fullscreen canvas{max-height:100vh;max-width:100vw}
+/* Center play glyph (paused state) — fades out when playing */
+.ov-center-play{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:74px;height:74px;border-radius:50%;border:none;background:rgba(8,11,16,.55);backdrop-filter:blur(3px);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:6;transition:opacity .25s,transform .25s;box-shadow:0 4px 24px rgba(0,0,0,.4)}
+.ov-center-play:hover{background:rgba(8,11,16,.72);transform:translate(-50%,-50%) scale(1.06)}
+.player-zone.playing .ov-center-play{opacity:0;transform:translate(-50%,-50%) scale(1.25);pointer-events:none}
+/* Overlay transport container: gradient, auto-hide while playing */
+.ov-transport{position:absolute;left:0;right:0;bottom:0;padding:26px 12px 6px;background:linear-gradient(to top,rgba(0,0,0,.72) 0%,rgba(0,0,0,.35) 55%,transparent 100%);opacity:1;transition:opacity .3s ease;z-index:7;pointer-events:none}
+.ov-transport>*{pointer-events:auto}
+.player-zone.playing .ov-transport{opacity:0}
+.player-zone.playing:hover .ov-transport,.player-zone.playing.seeking .ov-transport{opacity:1}
+/* YT-style thin progress bar: 3px track, 5px on hover, scrubber dot scales in */
+.ov-progress{position:relative;height:16px;display:flex;align-items:center;cursor:pointer;margin-bottom:2px;touch-action:none}
+.ov-track{width:100%;height:3px;background:rgba(255,255,255,.28);border-radius:2px;overflow:hidden;transition:height .12s ease}
+.ov-progress:hover .ov-track{height:5px}
+.ov-fill{height:100%;width:0%;background:#3b82f6;border-radius:2px}
+.ov-dot{position:absolute;top:50%;left:0;width:13px;height:13px;background:#3b82f6;border-radius:50%;transform:translate(-50%,-50%) scale(0);transition:transform .12s ease;box-shadow:0 1px 4px rgba(0,0,0,.5);pointer-events:none}
+.ov-progress:hover .ov-dot,.ov-progress.dragging .ov-dot{transform:translate(-50%,-50%) scale(1)}
+/* Overlay control row */
+.ov-row{display:flex;justify-content:space-between;align-items:center;height:38px;padding:0 2px}
+.ov-left,.ov-right{display:flex;align-items:center;gap:2px}
+.ov-btn{background:none;border:none;color:#fff;padding:7px;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:.92;transition:opacity .15s,background .15s}
+.ov-btn:hover{opacity:1;background:rgba(255,255,255,.12)}
+.ov-btn svg{display:block}
+.ov-time{color:#fff;font-size:12px;font-weight:500;margin-left:6px;letter-spacing:.3px;user-select:none;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ov-time .ov-sep{opacity:.65;margin:0 4px}
+.ov-total{opacity:.75}
+/* Native range kept for keyboard/a11y — visually hidden */
+.sr-slider{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+/* ── Slim toolbar under the stage: meta left, export cluster right ── */
+.modal-toolbar{padding:9px 16px;display:flex;gap:12px;align-items:center;border-top:1px solid #1e2533;background:#131a26;flex-wrap:wrap}
+.modal-toolbar .res-meta{margin-right:auto}
 /* Aspect dropdown + background swatches (frame geometry controls) — shared
    markup/CSS/behavior from hic-frame.js mountFrameControls() */
 .btn{padding:8px 14px;border-radius:8px;border:none;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;font-family:'Rubik',sans-serif;display:inline-flex;align-items:center;justify-content:center;gap:7px;line-height:1}
 .btn svg{display:block;flex-shrink:0}
-.btn-play{background:#2563eb;color:#fff;box-shadow:0 1px 3px rgba(37,99,235,.3);padding:9px 13px}
-.btn-play:hover{background:#1d4ed8}
-.btn-play.playing{background:#334155;box-shadow:none}
-.btn-play.playing:hover{background:#3f4a5f}
 .btn-apply{background:#4f46e5;color:#fff;box-shadow:0 1px 3px rgba(79,70,229,.35)}
 .btn-apply:hover{background:#4338ca;box-shadow:0 2px 6px rgba(79,70,229,.4)}
-.slider-wrap{flex:1;display:flex;align-items:center;gap:10px;min-width:180px}
-.slider-wrap input[type="range"]{flex:1;accent-color:#3b82f6;height:4px;min-width:80px}
-.time-label{font-size:12px;color:#94a3b8;font-variant-numeric:tabular-nums;min-width:38px;text-align:right;font-weight:500}
-.modal-info{display:flex;gap:10px;align-items:center;margin-left:auto}
-.modal-transport{display:flex;gap:12px;align-items:center;flex:1;min-width:0}
+.modal-info{display:flex;gap:10px;align-items:center}
 .res-meta{display:inline-flex;align-items:center;gap:7px;background:#161d2b;border:1px solid #232b3b;border-radius:7px;padding:5px 10px}
 .res-meta svg{color:#64748b;flex-shrink:0}
 .res-meta span{font-size:11px;color:#94a3b8;font-weight:500;font-variant-numeric:tabular-nums;white-space:nowrap;letter-spacing:.2px}
-.res-select{background:#1e2533;color:#e2e8f0;border:1px solid #2d3748;border-radius:7px;padding:5px 8px;font-size:11px;font-weight:600;cursor:pointer;outline:none}
-.res-select:focus{border-color:#3b82f6}
-.res-select option{background:#1e2533;color:#e2e8f0}
+/* Resolution dropdown — custom menu (opens upward, same pattern as the
+   export menus) instead of a native <select> whose popup clipped at the
+   bottom viewport edge once the modal went full-height. */
+.res-btn{background:#1e2533;color:#e2e8f0;border:1px solid #2d3748;border-radius:7px;padding:5px 9px;font-size:11px;font-weight:600;cursor:pointer;outline:none;display:inline-flex;align-items:center;gap:6px;font-family:'Rubik',sans-serif;transition:border-color .15s}
+.res-btn:hover{border-color:#3b4a63}
+.res-btn:focus-visible{border-color:#3b82f6}
+.res-btn:disabled{opacity:.65;cursor:default}
+.res-btn svg{color:#64748b}
+.res-btn.open .res-caret-svg{transform:rotate(180deg)}
+.res-btn .res-caret-svg{transition:transform .15s}
 .export-cluster{display:flex;align-items:stretch;gap:8px}
 .btn-frame-main{background:#1e2533;color:#cbd5e1;border:1px solid #2d3748;border-radius:8px 0 0 8px}
 .btn-frame-main:hover{background:#2d3748;color:#f1f5f9;border-color:#3b82f6}
@@ -105,8 +143,7 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
 .export-item.selected{color:#f1f5f9}
 .export-item svg{color:#94a3b8;flex-shrink:0}
 .export-menu-sep{height:1px;background:#242e40;margin:5px 4px}
-.export-menu-res{padding:2px 10px 8px}
-.export-menu-res .res-select{width:100%}
+
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.7}}
 
 /* Tabs — segmented control for Preview/Code */
@@ -222,8 +259,8 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
     .grid{grid-template-columns:1fr 1fr}
     .modal-overlay{padding:12px}
     .modal{max-height:calc(100vh - 24px)}
-    .modal-controls{gap:8px;padding:10px 12px}
-    .modal-canvas-wrap canvas{max-height:44vh}
+    .modal-toolbar{gap:8px;padding:9px 12px}
+    .player-zone{min-height:220px}
     /* Icon-only export buttons on tablets: labels hide, carets stay */
     .btn-frame-main span,.btn-export-main span{display:none}
     .btn-frame-main,.btn-export-main{padding-left:11px;padding-right:11px}
@@ -234,8 +271,7 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
     .modal-overlay{padding:0}
     .modal{margin:0;max-width:100vw;border-radius:0;border-left:none;border-right:none;max-height:100vh;height:100vh}
     .modal-body{flex:1}
-    .modal-canvas-wrap{flex:1;min-height:0}
-    .modal-canvas-wrap canvas{max-height:100%;max-width:100%}
+    .player-zone{flex:1;min-height:0}
     .modal-header{padding:12px 14px}
     .modal-title{font-size:13px;max-width:34vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     /* Header wraps into two rows: title+close, then tabs centered */
@@ -243,21 +279,18 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
     .modal-title{order:1}
     .modal-close{order:2;margin-left:auto}
     .seg{order:3;width:100%;display:flex;justify-content:center}
-    /* Controls stack: transport row full-width, then settings row scrolls */
-    .modal-controls{flex-direction:column;align-items:stretch;padding:10px 12px 12px;gap:8px}
-    .modal-transport{width:100%}
-    .slider-wrap{min-width:0}
-    .time-label{min-width:34px}
-    /* Settings wrap onto a second line on phones — every control stays
-       reachable (a horizontal scroll here hid the Export WebM button) */
-    .modal-info{margin-left:0;width:100%;flex-wrap:wrap;gap:6px}
+    /* Toolbar wraps — every control stays reachable (a horizontal scroll here
+       once hid the Export WebM button) */
+    .modal-toolbar{flex-wrap:wrap;row-gap:6px}
+    .modal-toolbar .res-meta{display:none} /* duration+size shown in the overlay time row */
+    .modal-toolbar .modal-info{width:100%}
     .export-cluster{flex-wrap:wrap;row-gap:6px}
-    .res-meta{display:none} /* duration+size already visible on the canvas frame */
+    .ov-center-play{width:60px;height:60px}
+    .ov-transport{padding:22px 8px 4px}
     .btn-frame-main span,.btn-export-main span{display:none}
 }
 @media(max-width:480px){
     .grid{grid-template-columns:1fr}
-    .slider-wrap input[type="range"]{min-width:60px}
 }
 </style>
 </head>
@@ -288,32 +321,54 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
         </div>
         <div class="modal-body">
         <div id="previewPanel">
-            <div class="modal-canvas-wrap">
+            <div class="player-zone" id="playerZone">
                 <canvas id="modalCanvas" width="800" height="450"></canvas>
-            </div>
-            <div class="modal-controls">
-                <div class="modal-transport">
-                <button class="btn btn-play" id="modalPlayBtn">
-                    <svg id="playIcon" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.14v13.72c0 .81.87 1.3 1.55.88l10.8-6.86a1.03 1.03 0 0 0 0-1.76L9.55 4.26A1.03 1.03 0 0 0 8 5.14z"/></svg>
-                    <svg id="pauseIcon" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="display:none"><rect x="6" y="5" width="4" height="14" rx="1.2"/><rect x="14" y="5" width="4" height="14" rx="1.2"/></svg>
+                <button class="ov-center-play" id="ovCenterPlay" title="Play" aria-label="Play">
+                    <svg width="30" height="30" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.14v13.72c0 .81.87 1.3 1.55.88l10.8-6.86a1.03 1.03 0 0 0 0-1.76L9.55 4.26A1.03 1.03 0 0 0 8 5.14z"/></svg>
                 </button>
-                <div class="slider-wrap">
-                    <input type="range" id="modalSlider" min="0" max="5000" value="0">
-                    <span class="time-label" id="modalTime">0.0s</span>
+                <div class="ov-transport">
+                    <div class="ov-progress" id="ovProgress" aria-hidden="true">
+                        <div class="ov-track"><div class="ov-fill" id="ovFill"></div></div>
+                        <div class="ov-dot" id="ovDot"></div>
+                    </div>
+                    <div class="ov-row">
+                        <div class="ov-left">
+                            <button class="ov-btn" id="modalPlayBtn" title="Play">
+                                <svg id="playIcon" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.14v13.72c0 .81.87 1.3 1.55.88l10.8-6.86a1.03 1.03 0 0 0 0-1.76L9.55 4.26A1.03 1.03 0 0 0 8 5.14z"/></svg>
+                                <svg id="pauseIcon" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="display:none"><rect x="6" y="5" width="4" height="14" rx="1.2"/><rect x="14" y="5" width="4" height="14" rx="1.2"/></svg>
+                            </button>
+                            <input type="range" id="modalSlider" class="sr-slider" min="0" max="5000" value="0" aria-label="Seek">
+                            <span class="ov-time"><span id="modalTime">0:00</span><span class="ov-sep">/</span><span class="ov-total" id="ovTotal">0:05</span></span>
+                        </div>
+                        <div class="ov-right">
+                            <button class="ov-btn" id="ovFullscreen" title="Fullscreen">
+                                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+                            </button>
+                        </div>
+                    </div>
                 </div>
-                </div>
+            </div>
+            <div class="modal-toolbar">
                 <div class="modal-info">
                     <div class="res-meta" title="Source duration and canvas size">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg>
                         <span id="modalDuration"></span>
                     </div>
                     <div class="export-cluster">
-                        <select id="resSelect" class="res-select" title="Export resolution (frame & video)">
-                            <option value="480">480p</option>
-                            <option value="720">720p</option>
-                            <option value="1080" selected>1080p</option>
-                            <option value="1440">1440p</option>
-                        </select>
+                        <div class="export-split" id="resSplit" title="Export resolution (frame & video)">
+                            <button type="button" class="res-btn" id="resBtn" aria-haspopup="listbox">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M7 15v-4m5 4v-6m5 6v-3"/></svg>
+                                <span id="resCur">1080p</span>
+                                <svg class="res-caret-svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                            </button>
+                            <div class="export-menu" id="resMenu" role="listbox" aria-label="Export resolution">
+                                <div class="export-menu-label">Export resolution</div>
+                                <button class="export-item res-opt" role="option" data-res="480"><svg class="fmt-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>480p<em>fast</em></button>
+                                <button class="export-item res-opt" role="option" data-res="720"><svg class="fmt-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>720p<em>HD</em></button>
+                                <button class="export-item res-opt selected" role="option" data-res="1080"><svg class="fmt-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>1080p<em>Full HD</em></button>
+                                <button class="export-item res-opt" role="option" data-res="1440"><svg class="fmt-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>1440p<em>2K</em></button>
+                            </div>
+                        </div>
                         <span id="frameControls"></span>
                         <div class="export-split" id="frameSplit">
                             <button class="btn btn-frame-main" id="frameBtn" title="Save current frame (PNG)">
@@ -680,9 +735,12 @@ function openModal(key) {
     applyAspect(); /* size the canvas to the persisted frame before first paint */
     modalSlider.max = p.dur * 1000;
     modalSlider.value = 0;
-    modalTime.textContent = '0.0s';
+    modalTime.textContent = fmtTime(0);
+    ovTotal.textContent = fmtTime(p.dur * 1000);
+    ovSyncProgress(0);
     modalPlaying = false;
     setPlayState(false);
+    playerZone.classList.remove('playing');
     unsavedBadge.classList.remove('on');
     if (typeof resetCodeBtn !== 'undefined' && resetCodeBtn) { resetCodeBtn.classList.remove('confirm'); resetCodeBtn.disabled = true; }
     modalOverlay.classList.add('open');
@@ -741,8 +799,57 @@ window.addEventListener('hashchange', handleAiWantHash);
    are declared further down (a synchronous call here would hit the TDZ). */
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', handleAiWantHash);
 else setTimeout(handleAiWantHash, 0);
+/* ── Overlay transport helpers (YouTube-style player) ─────────────── */
+const playerZone = document.getElementById('playerZone');
+const ovFill = document.getElementById('ovFill');
+const ovDot = document.getElementById('ovDot');
+const ovTotal = document.getElementById('ovTotal');
+const ovProgress = document.getElementById('ovProgress');
+const ovCenterPlay = document.getElementById('ovCenterPlay');
+const ovFullscreen = document.getElementById('ovFullscreen');
+
+function fmtTime(ms) {
+    const s = Math.floor(ms / 1000);
+    return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+}
+
+/* Reflect a time (ms) on the overlay progress bar */
+function ovSyncProgress(ms) {
+    const dur = parseFloat(modalSlider.max) || 1;
+    const pct = Math.max(0, Math.min(100, (ms / dur) * 100));
+    ovFill.style.width = pct + '%';
+    ovDot.style.left = pct + '%';
+}
+
 modalOverlay.addEventListener('click', function(e) { if (e.target === modalOverlay) closeModal(); });
-document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeModal(); });
+
+/* ── Keyboard shortcuts (YT pattern; only while the modal is open) ──
+   Space play/pause · ←/→ ±1s · F fullscreen · Esc closes menu first,
+   then modal. Text inputs always keep normal typing. */
+document.addEventListener('keydown', function(e) {
+    if (!modalOverlay.classList.contains('open')) return;
+    const tag = (e.target && e.target.tagName || '').toLowerCase();
+    const typing = tag === 'input' || tag === 'textarea' || (e.target && e.target.isContentEditable);
+    if (e.key === 'Escape') {
+        if (anyMenuOpen()) { closeMenus(); return; }
+        if (!document.fullscreenElement) closeModal();
+        return; /* fullscreen's own Esc handler exits fullscreen */
+    }
+    if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === ' ') { e.preventDefault(); modalPlayBtn.click(); }
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        const dur = parseFloat(modalSlider.max) || 0;
+        const t = Math.max(0, Math.min(dur, (parseInt(modalSlider.value) || 0) + (e.key === 'ArrowRight' ? 1000 : -1000)));
+        modalSlider.value = String(t);
+        modalTime.textContent = fmtTime(t);
+        ovSyncProgress(t);
+        if (modalRenderer && modalRenderer._ready) {
+            modalRenderer.renderFrame(t).then(ok => { if (ok) modalRenderer.drawFrame(modalCtx, modalCanvas.width, modalCanvas.height); });
+        }
+    }
+    else if (e.key === 'f' || e.key === 'F') { ovFullscreen.click(); }
+});
 
 modalPlayBtn.addEventListener('click', function() {
         if (modalPlaying) {
@@ -759,7 +866,8 @@ modalPlayBtn.addEventListener('click', function() {
 modalSlider.addEventListener('input', function() {
     if (modalPlaying) return;
     const t = parseInt(this.value);
-    modalTime.textContent = (t / 1000).toFixed(1) + 's';
+    modalTime.textContent = fmtTime(t);
+    ovSyncProgress(t);
     if (modalRenderer && modalRenderer._ready) {
         modalRenderer.renderFrame(t).then(ok => {
             if (ok) modalRenderer.drawFrame(modalCtx, modalCanvas.width, modalCanvas.height);
@@ -767,12 +875,51 @@ modalSlider.addEventListener('input', function() {
     }
 });
 
+/* ── Overlay progress bar: pointer-based click/drag seek (YT pattern) ── */
+(function() {
+    let dragging = false;
+    const seekFromEvent = function(e) {
+        const rect = ovProgress.getBoundingClientRect();
+        const frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+        const dur = parseFloat(modalSlider.max) || 0;
+        const t = Math.round(frac * dur);
+        modalSlider.value = String(t);
+        modalTime.textContent = fmtTime(t);
+        ovSyncProgress(t);
+        if (modalRenderer && modalRenderer._ready) {
+            modalRenderer.renderFrame(t).then(ok => {
+                if (ok) modalRenderer.drawFrame(modalCtx, modalCanvas.width, modalCanvas.height);
+            });
+        }
+    };
+    ovProgress.addEventListener('pointerdown', function(e) {
+        dragging = true;
+        ovProgress.classList.add('dragging');
+        ovProgress.setPointerCapture(e.pointerId);
+        seekFromEvent(e);
+    });
+    ovProgress.addEventListener('pointermove', function(e) { if (dragging) seekFromEvent(e); });
+    const endDrag = function() { dragging = false; ovProgress.classList.remove('dragging'); };
+    ovProgress.addEventListener('pointerup', endDrag);
+    ovProgress.addEventListener('pointercancel', endDrag);
+})();
+
+/* Center play glyph — same toggle as the overlay button */
+ovCenterPlay.addEventListener('click', function() { modalPlayBtn.click(); });
+
+/* Fullscreen on the player zone (YT pattern: only the stage goes fullscreen) */
+ovFullscreen.addEventListener('click', function() {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else playerZone.requestFullscreen().catch(function() {});
+});
+
 async function tickModal() {
     const dur = (PRESETS[modalKey] || {}).dur || 5;
     while (modalPlaying && modalKey) {
         const t = (performance.now() - modalStart) % (dur * 1000);
         modalSlider.value = Math.floor(t);
-        modalTime.textContent = (t / 1000).toFixed(1) + 's';
+        modalTime.textContent = fmtTime(t);
+        ovSyncProgress(t);
         try {
             if (modalRenderer && modalRenderer._ready) {
                 const ok = await modalRenderer.renderFrame(t);
@@ -904,13 +1051,13 @@ function setPlayState(playing) {
         playIcon.style.display = 'none';
         pauseIcon.style.display = '';
         modalPlayBtn.title = 'Pause';
-        modalPlayBtn.classList.add('playing');
     } else {
         playIcon.style.display = '';
         pauseIcon.style.display = 'none';
         modalPlayBtn.title = 'Play';
-        modalPlayBtn.classList.remove('playing');
     }
+    /* playing class drives BOTH the auto-hide overlay and the center glyph */
+    playerZone.classList.toggle('playing', !!playing);
 }
 
 /* Unsaved-changes badge: CodeMirror 'change' events vs the last applied snapshot */
@@ -1672,7 +1819,19 @@ aiReply.addEventListener('paste', function() {
     }, 60);
 });
 
-const resSelect = document.getElementById('resSelect');
+/* Resolution is a custom upward-opening menu now (native <select> popups open
+   downward and clipped at the viewport once the modal went full-height).
+   resState.value keeps the export code paths unchanged. */
+const resState = { value: '1080' };
+const resBtn = document.getElementById('resBtn');
+const resMenu = document.getElementById('resMenu');
+const resSplit = document.getElementById('resSplit');
+function setRes(v) {
+    if (!RESOLUTIONS[v] || resState.value === v) return;
+    resState.value = v;
+    document.getElementById('resCur').textContent = RESOLUTIONS[v].n + 'p';
+    resMenu.querySelectorAll('.res-opt').forEach(function(o) { o.classList.toggle('selected', o.getAttribute('data-res') === v); });
+}
 const RESOLUTIONS = {
     '480': { w: 854, h: 480, n: 480 },
     '720': { w: 1280, h: 720, n: 720 },
@@ -1708,18 +1867,20 @@ try {
     const saved = readExpPrefs();
     if (FMT_META[saved.fmt]) lastFrameFmt = saved.fmt;
     if (saved.fps === 30 || saved.fps === 60) lastFps = saved.fps;
-    if (RESOLUTIONS[saved.res]) resSelect.value = saved.res;
+    if (RESOLUTIONS[saved.res]) setRes(saved.res);
 } catch (e) { /* corrupted prefs — use defaults */ }
 function saveExpPrefs() {
-    writeExpPrefs({ fmt: lastFrameFmt, fps: lastFps, res: resSelect.value });
+    writeExpPrefs({ fmt: lastFrameFmt, fps: lastFps, res: resState.value });
 }
 
 /* Frame geometry UI + state → canvas. Called on aspect/bg change and on
    modal open; the modal canvas always renders at the current FRAME size and
    drawFrame() handles bg + contain-fit of the design raster. */
 function applyAspect() {
-    const fd = frameDims(parseInt(resSelect.value) || 1080);
+    const fd = frameDims(parseInt(resState.value) || 1080);
     modalCanvas.width = fd.w; modalCanvas.height = fd.h;
+    /* Shorts-style portrait player for 9:16 (and other tall frames) */
+    document.querySelector('.modal').classList.toggle('portrait-mode', fd.h > fd.w);
     if (frameControls) frameControls.sync();
     if (modalRenderer && modalRenderer._ready && modalKey) {
         /* Aspect switch = design-space switch. Rebuild the renderer when the
@@ -1756,8 +1917,9 @@ var frameControls = mountFrameControls(document.getElementById('frameControls'),
 let exporting = false;
 
 /* Shared menu helpers — each button owns its menu; opening one closes the other */
-function anyMenuOpen() { return frameMenu.classList.contains('open') || videoMenu.classList.contains('open') || galleryMenu.classList.contains('open') || exportCodeMenu.classList.contains('open'); }
+function anyMenuOpen() { return resMenu.classList.contains('open') || frameMenu.classList.contains('open') || videoMenu.classList.contains('open') || galleryMenu.classList.contains('open') || exportCodeMenu.classList.contains('open'); }
 function closeMenus() {
+    resMenu.classList.remove('open'); resBtn.classList.remove('open');
     frameMenu.classList.remove('open'); frameCaret.classList.remove('open');
     videoMenu.classList.remove('open'); videoCaret.classList.remove('open');
     galleryMenu.classList.remove('open');
@@ -1778,7 +1940,24 @@ videoCaret.addEventListener('click', function(e) {
 document.addEventListener('click', function(e) {
     if (anyMenuOpen() && !exportCluster.contains(e.target)) closeMenus();
 });
-resSelect.addEventListener('change', function() { applyAspect(); }); /* resolution also resizes the frame canvas */
+/* Resolution menu — opens upward like the export menus; picking an option
+   resizes the frame canvas (same behavior the old select's change event had). */
+resBtn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    closeMenus();
+    resMenu.classList.toggle('open');
+    resBtn.classList.toggle('open');
+});
+resMenu.addEventListener('click', function(e) {
+    const item = e.target.closest('.res-opt');
+    if (!item) return;
+    e.stopPropagation();
+    closeMenus();
+    setRes(item.getAttribute('data-res'));
+    applyAspect();
+});
+document.addEventListener('click', function(e) { if (!resSplit.contains(e.target)) { resMenu.classList.remove('open'); resBtn.classList.remove('open'); } });
+document.addEventListener('keydown', function(e) { if (e.key === 'Escape') { resMenu.classList.remove('open'); resBtn.classList.remove('open'); } });
 
 /* Selection state (checkmarks + tooltips) */
 function refreshExportUI() {
@@ -1806,13 +1985,13 @@ async function exportFrame(fmtKey) {
     if (!currentPresetKey || !PRESETS[currentPresetKey] || exporting) return;
     const p = PRESETS[currentPresetKey];
     const code = effectiveExportCode();
-    const res = RESOLUTIONS[resSelect.value] || RESOLUTIONS['1080'];
+    const res = RESOLUTIONS[resState.value] || RESOLUTIONS['1080'];
     const fmt = FMT_META[fmtKey] || FMT_META.png;
     const t = parseInt(modalSlider.value); /* current playhead position, ms */
 
     exporting = true;
     closeMenus();
-    [frameBtn, frameCaret, exportBtn, videoCaret, resSelect].forEach(function(el) { el.disabled = true; });
+    [frameBtn, frameCaret, exportBtn, videoCaret, resBtn].forEach(function(el) { el.disabled = true; });
     frameBtn.querySelector('span').textContent = 'Rendering\u2026';
     let fr = null;
     try {
@@ -1854,7 +2033,7 @@ async function exportFrame(fmtKey) {
     } finally {
         if (fr && fr.sandbox) fr.sandbox.remove();
         exporting = false;
-        [frameBtn, frameCaret, exportBtn, videoCaret, resSelect].forEach(function(el) { el.disabled = false; });
+        [frameBtn, frameCaret, exportBtn, videoCaret, resBtn].forEach(function(el) { el.disabled = false; });
         refreshExportUI();
         frameBtn.querySelector('span').textContent = 'Save Frame';
     }
@@ -1895,7 +2074,7 @@ async function startWebMExport() {
     const fps = lastFps;
 
     /* Get export resolution + frame size for the current aspect */
-    const res = RESOLUTIONS[resSelect.value] || RESOLUTIONS['1080'];
+    const res = RESOLUTIONS[resState.value] || RESOLUTIONS['1080'];
     const fd = frameDims(res.n);
     const expW = fd.w;
     const expH = fd.h;
@@ -1905,7 +2084,7 @@ async function startWebMExport() {
     exporting = true;
     exportSplit.classList.add('recording');
     closeMenus();
-    [frameBtn, frameCaret, exportBtn, videoCaret, resSelect].forEach(function(el) { el.disabled = true; });
+    [frameBtn, frameCaret, exportBtn, videoCaret, resBtn].forEach(function(el) { el.disabled = true; });
     exportBtn.querySelector('span').textContent = 'Recording\u2026';
     modalPlaying = false;
     setPlayState(false);
@@ -1943,11 +2122,11 @@ async function startWebMExport() {
             } else { alert('Export failed — try again'); }
             exporting = false;
             exportSplit.classList.remove('recording');
-            [frameBtn, frameCaret, exportBtn, videoCaret, resSelect].forEach(function(el) { el.disabled = false; });
+            [frameBtn, frameCaret, exportBtn, videoCaret, resBtn].forEach(function(el) { el.disabled = false; });
             exportBtn.querySelector('span').textContent = 'Export WebM';
             /* Restore preview canvas to the current frame size */
-            modalCanvas.width = frameDims(parseInt(resSelect.value) || 1080).w;
-            modalCanvas.height = frameDims(parseInt(resSelect.value) || 1080).h;
+            modalCanvas.width = frameDims(parseInt(resState.value) || 1080).w;
+            modalCanvas.height = frameDims(parseInt(resState.value) || 1080).h;
             resolve();
         };
     });
@@ -1982,7 +2161,7 @@ async function startWebMExport() {
        space follows the clip; the raster matches the preview frame when the
        frame aspect equals the design aspect. */
     if (modalRenderer) { modalRenderer.sandbox.remove(); }
-    const fdOut = frameDims(parseInt(resSelect.value) || 1080);
+    const fdOut = frameDims(parseInt(resState.value) || 1080);
     const dsOut = dsDims(curFrame.clipDS);
     const sameOut = Math.abs((fdOut.w / fdOut.h) - (dsOut.w / dsOut.h)) < 0.004;
     modalRenderer = makeHicRenderer(sameOut ? fdOut.w : dsOut.w, sameOut ? fdOut.h : dsOut.h, dsOut.w, dsOut.h);

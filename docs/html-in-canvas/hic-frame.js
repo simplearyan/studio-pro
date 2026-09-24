@@ -364,8 +364,25 @@ function makeHicRenderer(w, h, sw, sh) { return new HicRenderer(w, h, sw, sh); }
     st.id = 'hic-frame-controls-css';
     st.textContent =
         '.hic-frame-controls{display:inline-flex;gap:8px;align-items:center}' +
-        '.hic-aspect-select{background:#1e2533;color:#e2e8f0;border:1px solid #2d3748;border-radius:7px;padding:5px 8px;font:600 11px \'Rubik\',sans-serif;cursor:pointer;outline:none;min-width:64px}' +
-        '.hic-aspect-select:focus{border-color:#4a90d9}' +
+        /* ── Aspect dropdown: custom menu that opens UPWARD — the toolbar sits at
+           the bottom of a full-height modal, and native <select> popups always
+           open downward, getting clipped by the viewport edge. ── */
+        '.hic-dd{position:relative;display:inline-flex}' +
+        '.hic-aspect-btn{background:#1e2533;color:#e2e8f0;border:1px solid #2d3748;border-radius:7px;padding:5px 9px;font:600 11px \'Rubik\',sans-serif;cursor:pointer;outline:none;display:inline-flex;align-items:center;gap:5px;min-width:64px;justify-content:space-between;transition:border-color .15s}' +
+        '.hic-aspect-btn:hover{border-color:#3b4a63}' +
+        '.hic-aspect-btn:focus-visible{border-color:#4a90d9}' +
+        '.hic-aspect-btn:disabled{opacity:.65;cursor:default}' +
+        '.hic-aspect-btn svg{transition:transform .15s;color:#64748b}' +
+        '.hic-aspect-btn.open svg{transform:rotate(180deg)}' +
+        '.hic-menu{position:absolute;left:0;bottom:calc(100% + 8px);background:#161d2b;border:1px solid #2d3748;border-radius:10px;min-width:150px;padding:5px;box-shadow:0 12px 32px rgba(0,0,0,.55);display:none;z-index:80}' +
+        '.hic-menu.open{display:block}' +
+        '.hic-menu-label{font-size:9.5px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#64748b;padding:6px 10px 4px;font-family:\'Rubik\',sans-serif}' +
+        '.hic-menu-item{display:flex;align-items:center;gap:8px;width:100%;background:none;border:none;border-radius:7px;color:#cbd5e1;font:600 12px \'Rubik\',sans-serif;padding:7px 10px;cursor:pointer;text-align:left;transition:background .12s}' +
+        '.hic-menu-item:hover{background:#1f2937}' +
+        '.hic-menu-item em{font-style:normal;font-weight:500;font-size:10px;color:#64748b;margin-left:auto}' +
+        '.hic-menu-item .hic-check{width:13px;height:13px;flex-shrink:0;color:#3b82f6;visibility:hidden}' +
+        '.hic-menu-item.selected{color:#f1f5f9}' +
+        '.hic-menu-item.selected .hic-check{visibility:visible}' +
         '.hic-bg-row{display:inline-flex;gap:5px;align-items:center;padding:4px 6px;border:1px solid #2d3748;border-radius:8px;background:#0d1320}' +
         '.hic-bg-swatch{width:22px;height:22px;border-radius:5px;border:1px solid #3a4353;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;transition:transform .12s, box-shadow .12s;background:#1a2334}' +
         '.hic-bg-swatch:hover{transform:scale(1.12)}' +
@@ -381,10 +398,21 @@ function mountFrameControls(host, opts) {
     opts = opts || {};
     host.classList.add('hic-frame-controls');
     host.innerHTML =
-        '<select class="hic-aspect-select" title="Frame aspect ratio — sets the design space for native presets and AI pastes">' +
-            '<option value="16:9">16:9</option><option value="9:16">9:16</option>' +
-            '<option value="1:1">1:1</option><option value="4:5">4:5</option>' +
-        '</select>' +
+        /* ── Aspect: custom dropdown whose menu opens UPWARD (bottom toolbar;
+           native <select> popups open downward and clip at the viewport). ── */
+        '<span class="hic-dd">' +
+            '<button type="button" class="hic-aspect-btn" title="Frame aspect ratio — sets the design space for native presets and AI pastes" aria-haspopup="listbox">' +
+                '<span class="hic-aspect-cur">16:9</span>' +
+                '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>' +
+            '</button>' +
+            '<span class="hic-menu" role="listbox" aria-label="Frame aspect ratio">' +
+                '<div class="hic-menu-label">Frame aspect</div>' +
+                '<button type="button" class="hic-menu-item" role="option" data-aspect="16:9"><svg class="hic-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>16:9 Landscape<em>YouTube</em></button>' +
+                '<button type="button" class="hic-menu-item" role="option" data-aspect="9:16"><svg class="hic-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>9:16 Portrait<em>Shorts</em></button>' +
+                '<button type="button" class="hic-menu-item" role="option" data-aspect="1:1"><svg class="hic-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>1:1 Square<em>Feed</em></button>' +
+                '<button type="button" class="hic-menu-item" role="option" data-aspect="4:5"><svg class="hic-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>4:5 Portrait<em>Post</em></button>' +
+            '</span>' +
+        '</span>' +
         '<span class="hic-bg-row" title="Frame background (fills the bars around the design; Transparent keeps alpha in PNG/WebP exports)">' +
             '<button type="button" class="hic-bg-swatch hic-bg-transparent" data-bg="transparent" title="Transparent">' +
                 '<svg width="12" height="12" viewBox="0 0 12 12"><rect x="0" y="0" width="6" height="6" fill="#9aa4b2"/><rect x="6" y="6" width="6" height="6" fill="#9aa4b2"/><rect x="6" y="0" width="6" height="6" fill="#3a4353"/><rect x="0" y="6" width="6" height="6" fill="#3a4353"/></svg>' +
@@ -393,7 +421,8 @@ function mountFrameControls(host, opts) {
             '<button type="button" class="hic-bg-swatch" data-bg="#0b0f1a" title="Dark" style="background:#0b0f1a"></button>' +
             '<label class="hic-bg-custom" title="Custom background color"><input type="color" value="#2563eb"></label>' +
         '</span>';
-    const sel = host.querySelector('.hic-aspect-select');
+    const selBtn = host.querySelector('.hic-aspect-btn');
+    const selMenu = host.querySelector('.hic-menu');
     const input = host.querySelector('.hic-bg-custom input');
     const isLocked = function() { try { return opts.isLocked ? opts.isLocked() : false; } catch (e) { return false; } };
     function apply(change) {
@@ -401,11 +430,29 @@ function mountFrameControls(host, opts) {
         writeExpPrefs({});
         if (change && opts.onFrame) opts.onFrame();
     }
-    sel.addEventListener('change', function() {
-        if (isLocked()) { sel.value = curFrame.aspect; return; }
-        curFrame.aspect = sel.value;
+    function setMenu(open) {
+        selMenu.classList.toggle('open', open);
+        selBtn.classList.toggle('open', open);
+        selBtn.setAttribute('aria-expanded', String(open));
+    }
+    selBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (isLocked()) return;
+        setMenu(!selMenu.classList.contains('open'));
+    });
+    selMenu.addEventListener('click', function(e) {
+        e.stopPropagation();
+        const item = e.target.closest('.hic-menu-item');
+        if (!item || isLocked()) return;
+        setMenu(false);
+        if (item.getAttribute('data-aspect') === curFrame.aspect) return;
+        curFrame.aspect = item.getAttribute('data-aspect');
         apply(true);
     });
+    /* Outside click + Escape close (stopPropagation on the dropdown keeps
+       its own clicks out of this) */
+    document.addEventListener('click', function() { setMenu(false); });
+    document.addEventListener('keydown', function(e) { if (e.key === 'Escape') setMenu(false); });
     host.querySelector('.hic-bg-row').addEventListener('click', function(e) {
         const s = e.target.closest('.hic-bg-swatch');
         if (!s || isLocked()) return;
@@ -418,7 +465,8 @@ function mountFrameControls(host, opts) {
         apply(true);
     });
     function sync() {
-        sel.value = curFrame.aspect;
+        host.querySelector('.hic-aspect-cur').textContent = curFrame.aspect;
+        selMenu.querySelectorAll('.hic-menu-item').forEach(function(item) { item.classList.toggle('selected', item.getAttribute('data-aspect') === curFrame.aspect); });
         host.querySelectorAll('.hic-bg-swatch').forEach(function(s) { s.classList.toggle('selected', s.getAttribute('data-bg') === curFrame.bg); });
         host.querySelector('.hic-bg-custom').classList.toggle('selected', curFrame.bg !== 'transparent' && !host.querySelector('.hic-bg-swatch.selected'));
     }
