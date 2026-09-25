@@ -13,34 +13,40 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/dracula.min.css">
 <style>
+:root{--bg:#0b0f1a;--surface:#141922;--surface-2:#1c2433;--surface-3:#232b3b;--border:#1e2533;--text:#f1f5f9;--text-2:#94a3b8;--text-3:#64748b;--accent:#2563eb;--radius-s:8px;--radius-m:12px;--radius-l:16px}
+.page-shell{max-width:1440px;margin:0 auto}
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-system,sans-serif;min-height:100vh}
 
 /* ── Top app bar — 3-zone grid: brand | centered search | actions ── */
-.topbar{position:sticky;top:0;z-index:100;background:rgba(11,15,26,.92);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid #1a1f2e;padding:12px 32px;display:grid;grid-template-columns:1fr minmax(220px,380px) 1fr;align-items:center;gap:12px}
+.topbar{position:sticky;top:0;z-index:100;background:rgba(11,15,26,.92);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--border);padding:10px 24px;display:grid;grid-template-columns:1fr minmax(220px,560px) 1fr;align-items:center;gap:12px}
 .brand{display:flex;align-items:baseline;gap:10px;min-width:0}
-.brand h1{font-size:19px;font-weight:800;letter-spacing:-.4px;color:#f1f5f9;white-space:nowrap}
-.brand .sub{font-size:11px;color:#7c8ba3;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.count-pill{background:#1e2533;border:1px solid #2d3748;color:#a5b4c8;font-size:10.5px;font-weight:700;padding:2px 9px;border-radius:20px;font-variant-numeric:tabular-nums;flex-shrink:0}
-.top-actions{display:flex;align-items:center;gap:10px;justify-self:end}
-.searchbox{display:flex;align-items:center;gap:9px;background:#1c2433;border:1px solid #33405a;border-radius:10px;padding:8px 13px;min-width:0;transition:border-color .15s,background .15s;box-shadow:inset 0 1px 2px rgba(0,0,0,.25)}
-.searchbox:focus-within{border-color:#60a5fa;background:#212b3d}
-.searchbox svg{color:#8ca3c0;flex-shrink:0}
-.searchbox input{background:none;border:none;outline:none;color:#f1f5f9;font-size:12.5px;font-family:'Rubik',sans-serif;width:100%;font-weight:500}
-.searchbox input::placeholder{color:#8ca3c0;opacity:1}
-.btn-io{background:#1e2533;color:#cbd5e1;border:1px solid #2d3748;border-radius:8px;padding:8px 13px;font-size:11.5px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:7px;font-family:'Rubik',sans-serif;white-space:nowrap;transition:all .15s}
-.btn-io:hover{background:#2d3748;color:#f1f5f9;border-color:#3b82f6}
-.btn-plus{background:#2563eb;border-color:#2563eb;color:#fff;box-shadow:0 1px 3px rgba(37,99,235,.35)}
+.brand h1{font-size:19px;font-weight:800;letter-spacing:-.4px;color:var(--text);white-space:nowrap}
+.count-num{color:var(--text-3);font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;flex-shrink:0}
+.top-actions{display:flex;align-items:center;gap:6px;justify-self:end}
+.searchbox{display:flex;align-items:center;gap:9px;background:var(--surface-2);border:1px solid var(--surface-3);border-radius:999px;padding:0 15px;height:36px;min-width:0;transition:border-color .15s,background .15s}
+.searchbox:focus-within{border-color:var(--text-2);background:var(--surface-3)}
+.searchbox svg{color:var(--text-2);flex-shrink:0}
+.searchbox input{background:none;border:none;outline:none;color:var(--text);font-size:13px;font-family:'Rubik',sans-serif;width:100%;font-weight:500}
+.searchbox input::placeholder{color:var(--text-2);opacity:1}
+.search-slash{font-size:10.5px;font-weight:700;color:var(--text-3);border:1px solid var(--surface-3);border-radius:5px;padding:1px 6px;flex-shrink:0;font-family:'Rubik',sans-serif;background:var(--surface)}
+.searchbox:focus-within .search-slash{display:none}
+.gbtn{background:none;border:none;color:var(--text-2);width:34px;height:34px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;text-decoration:none;transition:all .15s;flex-shrink:0}
+.gbtn:hover{background:var(--surface-2);color:var(--text)}
+.btn-io{background:var(--surface-2);color:var(--text);border:1px solid transparent;border-radius:999px;height:36px;padding:0 15px;font-size:13px;font-weight:500;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:7px;font-family:'Rubik',sans-serif;white-space:nowrap;transition:all .15s}
+.btn-io:hover{background:var(--surface-3)}
+.btn-plus{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
 .btn-plus:hover{background:#1d4ed8;border-color:#1d4ed8;color:#fff}
-@media(max-width:960px){.brand .sub{display:none}}
+@media(max-width:960px){.search-slash{display:none}}
 
 /* ── Studio / Community / All segmented toggle ────────────── */
-.seg-toggle{display:flex;background:#161d2b;border:1px solid #2d3748;border-radius:9px;padding:3px;gap:2px}
-.seg-toggle button{padding:6px 13px;border:none;border-radius:6px;background:transparent;color:#7c8ba3;font-size:11px;font-weight:600;cursor:pointer;font-family:'Rubik',sans-serif;letter-spacing:.2px;transition:all .15s;white-space:nowrap}
-.seg-toggle button:hover{color:#cbd5e1}
-.seg-toggle button.on{background:#334155;color:#f1f5f9}
-.seg-toggle button.on.community-on{background:#7c3aed}
-.seg-toggle .segn{opacity:.65;font-size:9.5px;margin-left:4px;font-variant-numeric:tabular-nums}
+.seg-toggle{display:flex;gap:6px}
+.seg-toggle button{padding:0 12px;height:30px;border-radius:var(--radius-s);border:none;background:transparent;color:var(--text-2);font-size:12px;font-weight:500;cursor:pointer;font-family:'Rubik',sans-serif;letter-spacing:.2px;transition:all .15s;white-space:nowrap;display:inline-flex;align-items:center;gap:4px}
+.seg-toggle button:hover{background:var(--surface-2);color:var(--text)}
+.seg-toggle button.on{background:#e2e8f0;color:#0b0f1a;font-weight:600}
+.seg-toggle button.on .view-dot{background:#a78bfa}
+.seg-toggle .view-dot{width:6px;height:6px;border-radius:50%;background:#7c3aed;flex-shrink:0}
+.seg-toggle .segn{opacity:.55;font-size:10px;font-variant-numeric:tabular-nums}
 
 /* Community empty state */
 .com-empty{grid-column:1/-1;display:flex;flex-direction:column;align-items:center;gap:12px;padding:70px 24px;text-align:center}
@@ -52,40 +58,42 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
 /* relative time on community cards */
 .rel-time{font-variant-numeric:tabular-nums}
 
-/* ── Filter chips ────────────────────────────────────────────── */
-.chips-row{display:flex;gap:7px;padding:14px 32px 2px;flex-wrap:wrap;align-items:center}
-.chip{background:#161d2b;border:1px solid #2d3748;border-radius:20px;padding:5px 13px;font-size:11px;font-weight:600;color:#94a3b8;cursor:pointer;font-family:'Rubik',sans-serif;letter-spacing:.2px;transition:all .15s;text-transform:capitalize}
-.chip:hover{border-color:#3b82f6;color:#cbd5e1}
-.chip.on{background:#2563eb;border-color:#2563eb;color:#fff}
-.chip .n{opacity:.65;font-size:10px;margin-left:4px;font-variant-numeric:tabular-nums}
+/* ── Filter chips — single scrollable row ────────────────────── */
+.chips-row{display:flex;gap:12px;align-items:center;padding:14px 24px 2px;flex-wrap:nowrap}
+.chips-scroll{display:flex;gap:7px;align-items:center;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none;-webkit-overflow-scrolling:touch;flex:1;min-width:0;scroll-behavior:smooth}
+.chips-scroll::-webkit-scrollbar{display:none}
+.chip{background:var(--surface-2);border:1px solid transparent;border-radius:var(--radius-s);padding:0 13px;height:30px;font-size:12px;font-weight:500;color:var(--text);cursor:pointer;font-family:'Rubik',sans-serif;letter-spacing:.2px;transition:all .15s;text-transform:capitalize;white-space:nowrap;flex-shrink:0}
+.chip:hover{background:var(--surface-3)}
+.chip.on{background:#e2e8f0;color:#0b0f1a;font-weight:600}
 
-/* ── Card grid ───────────────────────────────────────────────── */
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px;padding:14px 32px 40px}
-.dcard{background:#141922;border-radius:12px;overflow:hidden;border:1px solid #1e2533;cursor:pointer;transition:border-color .2s,box-shadow .2s,transform .2s;display:flex;flex-direction:column}
-.dcard:hover{border-color:#3b82f6;box-shadow:0 0 0 1px #3b82f630;transform:translateY(-1px)}
-.thumb-wrap{position:relative;aspect-ratio:16/9;background:#080b10;overflow:hidden}
+/* ── Card grid — YouTube pattern: chrome-less cards ──────────── */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:22px 16px;padding:16px 24px 40px}
+.dcard{position:relative;border-radius:var(--radius-m);overflow:hidden;cursor:pointer;display:flex;flex-direction:column;outline:none}
+.dcard:hover .thumb-wrap{filter:brightness(1.06)}
+.dcard:focus-visible{box-shadow:0 0 0 2px var(--accent)}
+.thumb-wrap{position:relative;aspect-ratio:16/9;background:var(--bg);border-radius:var(--radius-m);overflow:hidden;transition:filter .15s}
 .thumb-wrap canvas{width:100%;height:100%;display:block}
 .thumb-skel{position:absolute;inset:0;background:linear-gradient(110deg,#0d1420 30%,#141d2e 45%,#0d1420 60%);background-size:200% 100%;animation:skel 1.4s infinite}
 @keyframes skel{to{background-position:-200% 0}}
 .thumb-ph{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;text-align:center;padding:18px}
-.thumb-ph .big{font-size:19px;font-weight:700;color:#f1f5f9;line-height:1.25;letter-spacing:-.3px}
+.thumb-ph .big{font-size:19px;font-weight:700;color:var(--text);line-height:1.25;letter-spacing:-.3px}
 .thumb-ph .tagp{font-size:9px;font-weight:800;letter-spacing:1.5px;color:#c084fc;background:rgba(192,132,252,.12);border:1px solid rgba(192,132,252,.35);padding:3px 10px;border-radius:20px}
-.dcard-body{padding:11px 14px 12px;display:flex;flex-direction:column;gap:8px}
-.dcard-title{font-size:13.5px;font-weight:600;color:#f1f5f9;letter-spacing:-.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.dcard-meta{display:flex;align-items:center;gap:6px;font-size:10.5px;color:#64748b;font-weight:500}
-.dcard-meta .dot{width:3px;height:3px;border-radius:50%;background:#334155}
-.dcard-tags{display:flex;gap:5px;flex-wrap:wrap}
-.minitag{font-size:9px;font-weight:700;letter-spacing:.4px;padding:2px 8px;border-radius:12px;background:#1f2937;color:#9ca3af;text-transform:uppercase}
-.dcard-actions{display:flex;gap:6px;margin-top:2px}
-.cbtn{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;background:#1a212e;border:1px solid #263042;color:#94a3b8;border:none;border-radius:8px;padding:7px 0;font-size:10.5px;font-weight:600;cursor:pointer;font-family:'Rubik',sans-serif;transition:all .15s}
-.cbtn:hover{background:#232b3b;color:#f1f5f9;border-color:#3b82f6}
-.cbtn:disabled{opacity:.4;cursor:default}
-.cbtn:disabled:hover{background:#1a212e;color:#94a3b8;border-color:#263042}
-.cbtn.primary{background:#2563eb;border-color:#2563eb;color:#fff}
-.cbtn.primary:hover{background:#1d4ed8}
-.cbtn.kebab{flex:0 0 30px}
-.empty{padding:60px 32px;text-align:center;color:#64748b;font-size:13px;font-weight:500}
-footer{padding:0 32px 28px;font-size:10.5px;color:#475569;font-weight:500}
+.thumb-hud{position:absolute;top:6px;right:6px;display:flex;gap:4px;opacity:0;transition:opacity .12s ease}
+.dcard:hover .thumb-hud,.dcard:focus-within .thumb-hud{opacity:1}
+.thumb-hud .hud-btn{width:28px;height:28px;border-radius:7px;border:none;background:rgba(8,11,16,.68);color:#fff;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:background .12s;padding:0}
+.thumb-hud .hud-btn:hover{background:rgba(8,11,16,.92)}
+.thumb-hud .hud-btn:disabled{opacity:.35;cursor:default}
+.dur-pill{position:absolute;right:6px;bottom:6px;background:rgba(0,0,0,.8);color:#fff;font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;padding:2px 6px;border-radius:4px;letter-spacing:.3px}
+.dcard:hover .dur-pill{opacity:0}
+.dcard-body{padding:10px 2px 0;display:flex;flex-direction:column;gap:3px}
+.dcard-title{font-size:14px;font-weight:600;color:var(--text);letter-spacing:-.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dcard:hover .dcard-title{color:#fff}
+.dcard-meta{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-2);font-weight:400}
+.dcard-meta .dot{width:3px;height:3px;border-radius:50%;background:var(--surface-3);flex-shrink:0}
+.dcard-meta .dtag{text-transform:capitalize}
+.rel-time{font-variant-numeric:tabular-nums}
+.empty{padding:60px 32px;text-align:center;color:var(--text-3);font-size:13px;font-weight:500}
+footer{padding:0 24px 28px;font-size:10.5px;color:var(--text-3);font-weight:500}
 
 /* floating per-card menu */
 #cardMenu{position:fixed;z-index:500;background:#161d2b;border:1px solid #2d3748;border-radius:10px;padding:6px;min-width:190px;box-shadow:0 12px 32px rgba(0,0,0,.55);display:none}
@@ -257,9 +265,9 @@ footer{padding:0 32px 28px;font-size:10.5px;color:#475569;font-weight:500}
     .brand{grid-row:1;grid-column:1}
     .top-actions{grid-row:1;grid-column:2}
     .searchbox{grid-row:2;grid-column:1/-1;width:100%}
-    .seg-toggle button{padding:6px 10px}
-    .grid{padding:12px 16px 32px;grid-template-columns:1fr 1fr}
-    .chips-row{padding:12px 16px 0}
+    .grid{padding:12px 16px 32px;grid-template-columns:1fr 1fr;gap:16px 10px}
+    .chips-row{padding:12px 16px 0;gap:8px}
+    .seg-toggle button{padding:0 10px}
     .searchbox{min-width:0;flex:1}
     .modal{margin:8px}
     .modal-controls{gap:8px;padding:10px 12px}
@@ -271,7 +279,7 @@ footer{padding:0 32px 28px;font-size:10.5px;color:#475569;font-weight:500}
 @media(max-width:480px){
     .grid{grid-template-columns:1fr}
     .plus-label{display:none}
-    .btn-plus{padding:8px 10px}
+    .btn-plus{padding:0 11px}
     .brand h1{font-size:17px}
     .modal-controls{flex-direction:column;align-items:stretch}
     .slider-wrap{min-width:0}
@@ -279,57 +287,60 @@ footer{padding:0 32px 28px;font-size:10.5px;color:#475569;font-weight:500}
     .mh-copy{display:none}
     footer{padding:0 16px 20px}
 }
+@media(prefers-reduced-motion:reduce){
+    .thumb-skel{animation:none;background:var(--surface-2)}
+    .thumb-hud,.thumb-wrap{transition:none}
+    .thumb-hud{opacity:1}
+}
 </style>
 </head>
 <body>
+<div class="page-shell">
 
 <div class="topbar">
     <div class="brand">
         <h1>Design Gallery</h1>
-        <span class="count-pill" id="countPill">0</span>
-        <span class="sub">prompts &amp; code for HTML-in-Canvas animations</span>
+        <span class="count-num" id="countPill">0</span>
     </div>
     <div class="top-actions">
         <div class="searchbox">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
-            <input id="searchInput" type="text" placeholder="Search designs, creators, tags…" autocomplete="off">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
+            <input id="searchInput" type="text" placeholder="Search designs" autocomplete="off">
+            <span class="search-slash" title="Press / to search">/</span>
         </div>
         <button class="btn-io btn-plus" id="newDesignBtn" title="New design — paste a prompt or code and preview it">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             <span class="plus-label">New</span>
         </button>
-        <a class="btn-io" href="test-renderer.html" title="Open the test renderer">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-            Test Renderer
+        <a class="gbtn" href="test-renderer.html" title="Open the test renderer" aria-label="Open the test renderer">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.14v13.72c0 .81.87 1.3 1.55.88l10.8-6.86a1.03 1.03 0 0 0 0-1.76L9.55 4.26A1.03 1.03 0 0 0 8 5.14z"/></svg>
         </a>
-        <a class="btn-io" href="prompts-engineer.html" title="Build a prompt visually">
-            🪄
+        <a class="gbtn" href="prompts-engineer.html" title="Build a prompt visually" aria-label="Build a prompt visually">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4V2"/><path d="M15 16v-2"/><path d="M8 9h2"/><path d="M20 9h2"/><path d="M17.8 11.8L19 13"/><path d="M17.8 6.2L19 5"/><path d="M12.2 6.2L11 5"/><path d="M12.2 11.8L11 13"/><path d="M15 7a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/><path d="M3 21l9-9"/></svg>
         </a>
     </div>
 </div>
 
-<div class="chips-row" style="justify-content:space-between">
-    <div id="chipsRow" style="display:flex;gap:7px;flex-wrap:wrap;align-items:center"></div>
+<div class="chips-row">
+    <div class="chips-scroll" id="chipsRow"></div>
     <div class="seg-toggle" id="segToggle">
         <button data-view="studio" class="on">Studio<span class="segn" id="nStudio"></span></button>
-        <button data-view="community">Community<span class="segn" id="nCommunity"></span></button>
+        <button data-view="community">Community<span class="view-dot" aria-hidden="true"></span><span class="segn" id="nCommunity"></span></button>
         <button data-view="all">All<span class="segn" id="nAll"></span></button>
     </div>
 </div>
 <div class="grid" id="designGrid"></div>
 <div class="empty" id="emptyState" hidden>No designs match your search.</div>
-<footer id="footNote"></footer>
+<footer id="footNote">prompts &amp; code for HTML-in-Canvas animations</footer>
 
 <!-- floating per-card menu -->
 <div id="cardMenu"></div>
 
 <!-- ── Preview modal (ported from test-renderer) ─────────────────── -->
-<div id="hicModalMount"></div>
+<div id="hicModalMount"></div><div id="toast"></div>
+</div>
 
-<div id="toast"></div>
-<div id="toast"></div>
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/htmlmixed/htmlmixed.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/xml/xml.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/css/css.min.js"></script>
@@ -572,13 +583,17 @@ function buildChips() {
     DESIGNS.forEach(d => (d.tags || []).forEach(t => { counts[t] = (counts[t] || 0) + 1; }));
     const row = document.getElementById('chipsRow');
     const tags = Object.keys(counts).sort();
-    row.innerHTML = '<button class="chip on" data-tag="">All<span class="n">' + DESIGNS.length + '</span></button>' +
-        tags.map(t => '<button class="chip" data-tag="' + t + '">' + t + '<span class="n">' + counts[t] + '</span></button>').join('');
+    row.innerHTML = '<button class="chip on" data-tag="" aria-pressed="true">All</button>' +
+        tags.map(t => '<button class="chip" data-tag="' + t + '" aria-pressed="false">' + t + '</button>').join('');
     row.addEventListener('click', function(e) {
         const chip = e.target.closest('.chip');
         if (!chip) return;
         activeTag = chip.getAttribute('data-tag');
-        row.querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c === chip));
+        row.querySelectorAll('.chip').forEach(c => {
+            const on = c === chip;
+            c.classList.toggle('on', on);
+            c.setAttribute('aria-pressed', on ? 'true' : 'false');
+        });
         renderGrid();
     });
 }
@@ -586,15 +601,25 @@ document.getElementById('searchInput').addEventListener('input', function() {
     query = this.value.trim().toLowerCase();
     renderGrid();
 });
+/* "/" focuses search; Esc clears + blurs */
+document.addEventListener('keydown', function(e) {
+    if (e.key === '/' && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName) && !document.activeElement.isContentEditable) {
+        e.preventDefault();
+        document.getElementById('searchInput').focus();
+    }
+});
+document.getElementById('searchInput').addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        if (this.value) { this.value = ''; query = ''; renderGrid(); }
+        this.blur();
+    }
+});
 /* Studio / Community / All segmented toggle */
 document.getElementById('segToggle').addEventListener('click', function(e) {
     const btn = e.target.closest('button[data-view]');
     if (!btn) return;
     activeView = btn.getAttribute('data-view');
-    this.querySelectorAll('button').forEach(b => {
-        b.classList.toggle('on', b === btn);
-        b.classList.toggle('community-on', b === btn && activeView === 'community');
-    });
+    this.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === btn));
     renderGrid();
 });
 function matches(d) {
@@ -643,6 +668,9 @@ function renderGrid() {
         const card = document.createElement('div');
         card.className = 'dcard';
         card.dataset.id = d.id;
+        card.setAttribute('role', 'button');
+        card.setAttribute('tabindex', '0');
+        card.setAttribute('aria-label', 'Preview ' + (d.title || d.id));
         const hue = phHue(d.title || d.id);
         card.innerHTML =
             '<div class="thumb-wrap">' +
@@ -650,18 +678,20 @@ function renderGrid() {
                 ? '<div class="thumb-skel"></div><canvas width="' + W + '" height="' + H + '"></canvas>'
                 : '<div class="thumb-ph" style="background:linear-gradient(135deg,hsl(' + hue + ',45%,14%),hsl(' + ((hue + 60) % 360) + ',50%,9%))">' +
                   '<span class="big">' + esc(d.title) + '</span><span class="tagp">PROMPT BRIEF</span></div>') +
+              '<div class="thumb-hud">' +
+                '<button class="hud-btn" data-act="copy-prompt" title="Copy AI prompt" aria-label="Copy AI prompt"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>' +
+                '<button class="hud-btn" data-act="copy-code" title="Copy fenced code" aria-label="Copy fenced code"' + (d.hasCode ? '' : ' disabled') + '><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></button>' +
+                '<button class="hud-btn" data-act="more" title="More" aria-label="More options"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg></button>' +
+              '</div>' +
+              (d.hasCode ? '<span class="dur-pill">' + Math.round((d.duration || 5000) / 1000) + 's</span>' : '') +
             '</div>' +
             '<div class="dcard-body">' +
               '<div class="dcard-title">' + esc(d.title) + '</div>' +
-              '<div class="dcard-meta"><span>@' + esc(d.creator || 'studio') + '</span><span class="dot"></span><span>' + Math.round((d.duration || 5000) / 1000) + 's</span>' +
-              (isCommunity(d) && relTime(d.createdAt) ? '<span class="dot"></span><span class="rel-time" title="' + esc(d.createdAt || '') + '">' + relTime(d.createdAt) + '</span>' : '') +
-              '</div>' +
-              '<div class="dcard-tags">' + (d.tags || []).map(t => '<span class="minitag">' + esc(t) + '</span>').join('') + '</div>' +
-              '<div class="dcard-actions">' +
-                '<button class="cbtn primary" data-act="preview"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.14v13.72c0 .81.87 1.3 1.55.88l10.8-6.86a1.03 1.03 0 0 0 0-1.76L9.55 4.26A1.03 1.03 0 0 0 8 5.14z"/></svg>Preview</button>' +
-                '<button class="cbtn" data-act="copy-prompt" title="Copy AI prompt"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Prompt</button>' +
-                '<button class="cbtn" data-act="copy-code" title="Copy fenced code"' + (d.hasCode ? '' : ' disabled') + '><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>Code</button>' +
-                '<button class="cbtn kebab" data-act="more" title="More"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg></button>' +
+              '<div class="dcard-meta">' +
+                '<span>@' + esc(d.creator || 'studio') + '</span>' +
+                (d.hasCode ? '<span class="dot"></span><span>' + Math.round((d.duration || 5000) / 1000) + 's</span>' : '') +
+                ((d.tags && d.tags.length) ? '<span class="dot"></span><span class="dtag">' + d.tags.map(esc).join(', ') + '</span>' : '') +
+                (isCommunity(d) && relTime(d.createdAt) ? '<span class="dot"></span><span class="rel-time" title="' + esc(d.createdAt || '') + '">' + relTime(d.createdAt) + '</span>' : '') +
               '</div>' +
             '</div>';
         card.addEventListener('click', function(e) {
@@ -676,6 +706,12 @@ function renderGrid() {
                 return;
             }
             openDesign(d.id);
+        });
+        card.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                openDesign(d.id);
+            }
         });
         gridEl.appendChild(card);
         if (d.hasCode) {
@@ -767,7 +803,27 @@ function toast(msg) {
     t._h = setTimeout(() => t.classList.remove('on'), 2200);
 }
 function copyText(text, okMsg) {
-    navigator.clipboard.writeText(text).then(() => toast(okMsg)).catch(() => toast('Copy failed'));
+    const done = () => toast(okMsg);
+    const fail = () => toast('Copy failed');
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done).catch(() => legacyCopy(text) ? done() : fail());
+    } else {
+        legacyCopy(text) ? done() : fail();
+    }
+}
+/* Async Clipboard API needs document focus; a temp textarea + execCommand still
+ * works from backgrounded/electron windows (same fallback hic-modal.js uses). */
+function legacyCopy(text) {
+    try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+        document.body.appendChild(ta);
+        ta.focus(); ta.select();
+        const ok = document.execCommand('copy');
+        ta.remove();
+        return ok;
+    } catch (e) { return false; }
 }
 function copyPrompt(id) {
     const d = byId[id];

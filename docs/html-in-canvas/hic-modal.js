@@ -640,7 +640,7 @@ function createHicModal(opts) {
     var draftTimer = 0;
     ['html', 'css', 'js'].forEach(function(lang) {
         var wrap = root.querySelector('[data-wrap="' + lang + '"] textarea');
-        cm[lang] = CodeMirror.fromTextArea(wrap, { theme: 'hic-dark', height: '100%', lineNumbers: true, tabSize: 2, lineWrapping: true, mode: lang === 'html' ? 'htmlmixed' : lang });
+        cm[lang] = CodeMirror.fromTextArea(wrap, { theme: 'hic-dark', height: '100%', lineNumbers: true, lineWrapping: true, tabSize: 2, mode: lang === 'html' ? 'htmlmixed' : (lang === 'js' ? 'javascript' : lang) });
         cm[lang].on('change', function() {
             updateBadge();
             if (opts.onEditorsChange) {
@@ -674,12 +674,28 @@ function createHicModal(opts) {
         $$('.hicm-cwrap').forEach(function(w) { w.classList.toggle('active', w.getAttribute('data-wrap') === curLang); });
         setTimeout(function() { cm[curLang].refresh(); }, 10);
     }); });
+    /* Apply engine (ported from the test-renderer): edited/AI code renders at
+     * the CURRENT frame aspect — a 9:16 frame gets a native 450x800 stage —
+     * and a <title> in the code refreshes the display name. */
+    function applyCodeToStage(code, after) {
+        setPlayState(false);
+        curFrame.clipDS = DESIGN_SPACES[curFrame.aspect] ? curFrame.aspect : '16:9';
+        if (renderer) { renderer.sandbox.remove(); renderer = null; }
+        var ds = dsDims(curFrame.clipDS);
+        var tm = (code.html || '').match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+        if (tm && tm[1].trim()) el.title.textContent = tm[1].replace(/\s+/g, ' ').trim().slice(0, 80);
+        renderer = makeHicRenderer(ds.w, ds.h, ds.w, ds.h);
+        return renderer.setClip(code.html, code.css, code.js).then(function() {
+            seekTo(0);
+            if (after) after();
+        });
+    }
     el.applyBtn.addEventListener('click', function() {
         var code = { html: cm.html.getValue(), css: cm.css.getValue(), js: cm.js.getValue() };
         applied = code;
         if (opts.applyCode) opts.applyCode(code, 'edit');
         updateBadge();
-        rebuildStage(function() { showTab('preview'); setPlayState(true); start = performance.now(); tick(); });
+        applyCodeToStage(code, function() { showTab('preview'); setPlayState(true); start = performance.now(); tick(); });
         setStatus('Applied to stage');
     });
     el.resetBtn.addEventListener('click', function() {
@@ -745,19 +761,49 @@ function createHicModal(opts) {
     }
 
     /* gallery */
+    function galByteSize(s) {
+        var n = 0, i;
+        for (i = 0; i < s.length; i++) n += s.charCodeAt(i) > 127 ? 2 : 1;
+        return n < 1024 ? n + ' B' : (n / 1024).toFixed(1) + ' KB';
+    }
     function galRender() {
         if (!feats.gallery || !opts.gallery) return;
         var items = opts.gallery.list();
         el.galCount.textContent = items.length;
         el.galList.innerHTML = items.length ? '' : '<div class="hicm-gempty">No saved variants yet.<br>Edit the code and save it here.</div>';
-        items.forEach(function(s) {
-            var d = document.createElement('div'); d.className = 'hicm-gitem';
-            d.innerHTML = '<div class="hicm-ginfo"><div class="hicm-gname"></div><div class="hicm-gmeta">' + new Date(s.at).toLocaleDateString() + '</div></div>' +
-                '<button class="hicm-gact" data-gload title="Load into editors"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></button>' +
+        items.forEach(function(s, i) {
+            var d = document.createElement('div'); d.className = 'hicm-gitem'; d.title = 'Click to load into the panes';
+            var meta = (s.src || 'custom') + ' · ' + galByteSize((s.html || '') + (s.css || '') + (s.js || ''));
+            d.innerHTML = '<div class="hicm-ginfo"><div class="hicm-gname"></div><div class="hicm-gmeta"></div></div>' +
+                '<button class="hicm-gact" data-gdl title="Download as .json"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>' +
+                '<button class="hicm-gact" data-gren title="Rename"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg></button>' +
                 '<button class="hicm-gact danger" data-gdel title="Delete"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>';
             d.querySelector('.hicm-gname').textContent = s.name;
-            d.querySelector('[data-gload]').addEventListener('click', function(ev) { ev.stopPropagation(); cm.html.setValue(s.html); cm.css.setValue(s.css); cm.js.setValue(s.js); setStatus('Loaded "' + s.name + '" — Apply to preview'); });
-            d.querySelector('[data-gdel]').addEventListener('click', function(ev) { ev.stopPropagation(); opts.gallery.remove(s.id); galRender(); });
+            d.querySelector('.hicm-gmeta').textContent = meta;
+            d.addEventListener('click', function(ev) {
+                ev.stopPropagation();
+                if (ev.target.closest('[data-gdl]')) {
+                    download(JSON.stringify({ hicCode: true, name: s.name, dur: clip && clip.dur, html: s.html, css: s.css, js: s.js }, null, 2), s.name.replace(/[^a-z0-9_-]+/gi, '_') + '_code.json', 'application/json');
+                } else if (ev.target.closest('[data-gren]')) {
+                    var info = d.querySelector('.hicm-ginfo');
+                    if (info.querySelector('.hicm-gren')) return;
+                    var inp = document.createElement('input'); inp.type = 'text'; inp.className = 'hicm-gren'; inp.value = s.name; inp.maxLength = 60;
+                    info.replaceWith(inp); inp.focus(); inp.select();
+                    var done = function(commit) {
+                        if (commit) { var nn = (inp.value || '').trim(); if (nn && nn !== s.name && opts.gallery.rename) opts.gallery.rename(s.id || i, nn); }
+                        galRender();
+                    };
+                    inp.addEventListener('keydown', function(e2) { if (e2.key === 'Enter') done(true); else if (e2.key === 'Escape') done(false); e2.stopPropagation(); });
+                    inp.addEventListener('blur', function() { done(true); });
+                } else if (ev.target.closest('[data-gdel]')) {
+                    var del = ev.target.closest('[data-gdel]');
+                    if (del.classList.contains('confirm')) { opts.gallery.remove(s.id || i); galRender(); }
+                    else { del.classList.add('confirm'); del.textContent = 'Sure?'; setTimeout(function() { galRender(); }, 2200); }
+                } else {
+                    cm.html.setValue(s.html || ''); cm.css.setValue(s.css || ''); cm.js.setValue(s.js || '');
+                    closeMenus(); setStatus('Loaded "' + s.name + '" — Apply to preview');
+                }
+            });
             el.galList.appendChild(d);
         });
     }
@@ -804,26 +850,60 @@ function createHicModal(opts) {
         var text = el.aiReply.value;
         if (!text.trim()) { setStatus('Paste the AI reply first'); return; }
         var parsed = opts.parseReply ? opts.parseReply(text) : defaultParseReply(text);
-        if (!parsed || !parsed.html) { setStatus('Could not parse — need ```html block or markup'); return; }
-        applied = { html: parsed.html, css: parsed.css || '', js: parsed.js || '' };
+        if (!parsed || (!parsed.html && !parsed.css && !parsed.js)) { setStatus('Could not find any code in the pasted text.'); return; }
+        if (parsed.title) el.title.textContent = parsed.title;
+        if (parsed.ds && DESIGN_SPACES[parsed.ds]) { curFrame.aspect = parsed.ds; curFrame.clipDS = parsed.ds; applyFrame(); }
+        applied = { html: parsed.html || '', css: parsed.css || '', js: parsed.js || '' };
         el.aiReply.value = '';
         if (opts.applyCode) opts.applyCode(applied, 'ai');
         if (opts.onAiCode) opts.onAiCode(applied, parsed);
-        rebuildStage(function() { showTab('preview'); setPlayState(true); start = performance.now(); tick(); });
-        setStatus('Applied AI code to stage');
+        applyCodeToStage(applied, function() { showTab('preview'); setPlayState(true); start = performance.now(); tick(); });
+        var parts = [];
+        if (parsed.html) parts.push('HTML');
+        if (parsed.css) parts.push('CSS');
+        if (parsed.js) parts.push('JS');
+        if (parsed.title) parts.push('"' + parsed.title + '"');
+        if (parsed.ds) parts.push(parsed.ds + ' native');
+        setStatus('Inserted ' + parts.join(' · ') + ' — applied to stage');
     });
+    /* Tolerant reply parser — ported from the test-renderer: fenced blocks,
+     * whole HTML docs (keeping <head> CDN refs), bare markup, title + ds marker. */
     function defaultParseReply(text) {
-        var h = text.match(/```html\n([\s\S]*?)```/), c = text.match(/```css\n([\s\S]*?)```/), j = text.match(/```js\n([\s\S]*?)```/);
-        if (h) return { html: h[1], css: c ? c[1] : '', js: j ? j[1] : '' };
-        var doc = text.match(/<!DOCTYPE[\s\S]*<\/html>/i);
-        if (doc) {
-            var d = doc[0];
-            var style = d.match(/<style>([\s\S]*?)<\/style>/i), script = d.match(/<script>([\s\S]*?)<\/script>/i);
-            var body = d.replace(/<style>[\s\S]*?<\/style>/i, '').replace(/<script>[\s\S]*?<\/script>/i, '').replace(/<\/?(?:html|head|body)[^>]*>/gi, '').replace(/<title>[\s\S]*?<\/title>/i, '').replace(/<link[^>]*>/gi, '').replace(/<meta[^>]*>/gi, '');
-            return { html: body.trim(), css: style ? style[1] : '', js: script ? script[1] : '' };
+        var res = { html: '', css: '', js: '', title: '', ds: '' };
+        text = (text || '').replace(/\r\n?/g, '\n').trim();
+        if (!text) return res;
+        var _tm = text.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+        if (_tm && _tm[1].trim()) res.title = _tm[1].replace(/\s+/g, ' ').trim().slice(0, 80);
+        var _ds = text.match(/<!--\s*ds:(16:9|9:16|1:1|4:5)\s*-->/i);
+        if (_ds && DESIGN_SPACES[_ds[1]]) res.ds = _ds[1];
+        var fenceRe = /```([a-zA-Z0-9]*)[ \t]*\n([\s\S]*?)```/g;
+        var blocks = [], m;
+        while ((m = fenceRe.exec(text)) !== null) blocks.push({ lang: (m[1] || '').toLowerCase(), code: m[2].trim() });
+        var looksCss = function(s) { return /(^|\n)\s*[.#@a-zA-Z\[][^{};]*\{[^}]*:/.test(s) && !/</.test(s); };
+        var looksJs = function(s) { return /\b(function|onFrame|=>|var |let |const |document\.)/.test(s) && !/^\s*</.test(s); };
+        var looksHtml = function(s) { return /^\s*<\/?[a-zA-Z!]/.test(s); };
+        if (blocks.length) {
+            blocks.forEach(function(b) {
+                if (b.lang === 'css' || (!b.lang && looksCss(b.code))) res.css += (res.css ? '\n\n' : '') + b.code;
+                else if (b.lang === 'js' || b.lang === 'javascript' || (!b.lang && looksJs(b.code) && !looksHtml(b.code))) res.js += (res.js ? '\n\n' : '') + b.code;
+                else res.html += (res.html ? '\n' : '') + b.code;
+            });
+        } else {
+            var s = text;
+            s = s.replace(/<style[^>]*>([\s\S]*?)<\/style>/gi, function(_, css) { res.css += (res.css ? '\n\n' : '') + css.trim(); return ''; });
+            s = s.replace(/<script(?![^>]*(?:\bsrc=|type="application\/json"))[^>]*>([\s\S]*?)<\/script>/gi, function(_, js) { res.js += (res.js ? '\n\n' : '') + js.trim(); return ''; });
+            s = s.replace(/<!DOCTYPE[^>]*>/i, '').replace(/<\/?html[^>]*>/gi, '').replace(/<head[^>]*>([\s\S]*?)<\/head>/gi, function(_, head) {
+                var keep = Array.from(head.matchAll(/<(script\b[^>]*\bsrc=[^>]*>[\s\S]*?<\/script>|link\b[^>]*\brel=[^>]*stylesheet[^>]*>)/gi)).map(function(x) { return x[0]; }).join('\n');
+                return keep ? '\n' + keep + '\n' : '';
+            }).replace(/<\/?body[^>]*>/gi, '').replace(/<meta[^>]*>/gi, '').replace(/<title[^>]*>[\s\S]*?<\/title>/gi, '');
+            res.html = s.trim();
         }
-        if (/<div|<section|<h\d|<span/i.test(text)) return { html: text.trim(), css: '', js: '' };
-        return null;
+        if (res.html && /<style|<script/i.test(res.html)) {
+            res.html = res.html.replace(/<style[^>]*>([\s\S]*?)<\/style>/gi, function(_, css) { res.css += (res.css ? '\n\n' : '') + css.trim(); return ''; });
+            res.html = res.html.replace(/<script(?![^>]*(?:\bsrc=|type="application\/json"))[^>]*>([\s\S]*?)<\/script>/gi, function(_, js) { res.js += (res.js ? '\n\n' : '') + js.trim(); return ''; });
+            res.html = res.html.trim();
+        }
+        return res;
     }
 
     /* ── stage rebuild ── */
