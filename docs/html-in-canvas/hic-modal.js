@@ -554,18 +554,26 @@ function createHicModal(opts) {
         if (exporting || !clip) return;
         exporting = true; lock(true);
         try {
-            var res = RESOLUTIONS[resState.value] || RESOLUTIONS['1080'];
             var fd = frameDims(parseInt(resState.value) || 1080);
             var ds = dsDims(curFrame.clipDS);
-            var r = makeHicRenderer(fd.w, fd.h, ds.w, ds.h);
+            /* Raster native frame size when aspects match (SVG-native upscale
+             * keeps text sharp); design size otherwise, composited by
+             * drawFrame's contain-fit (ported from the test-renderer). */
+            var sameAspect = Math.abs((fd.w / fd.h) - (ds.w / ds.h)) < 0.004;
+            var r = makeHicRenderer(sameAspect ? fd.w : ds.w, sameAspect ? fd.h : ds.h, ds.w, ds.h);
             var code = applied || { html: clip.html, css: clip.css, js: clip.js };
             r.setClip(code.html, code.css, code.js).then(function() {
                 return r.renderFrame(parseInt(el.slider.value) || 0);
             }).then(function(ok) {
                 if (!ok) throw new Error('render failed');
-                var out = document.createElement('canvas');
-                out.width = fd.w; out.height = fd.h;
-                r.drawFrame(out.getContext('2d'), fd.w, fd.h);
+                /* Transparent + matched frame ships the raster as-is to keep real alpha */
+                var out;
+                if (sameAspect && curFrame.bg === 'transparent') { out = r.canvas; }
+                else {
+                    out = document.createElement('canvas');
+                    out.width = fd.w; out.height = fd.h;
+                    r.drawFrame(out.getContext('2d'), fd.w, fd.h);
+                }
                 var mime = FMT_META[frameFmt].mime;
                 out.toBlob(function(blob) {
                     var a = document.createElement('a');
@@ -584,47 +592,68 @@ function createHicModal(opts) {
     }
     function lock(on) { [el.frameBtn, el.frameCaret, el.vBtn, el.vCaret, el.resBtn].forEach(function(b) { if (b) b.disabled = on; }); }
 
-    /* ── Export WebM ── */
+    /* ── Export WebM — wall-clock-paced recording (ported from the
+     * test-renderer). MediaRecorder timestamps frames by when the canvas
+     * actually changes, so frame N must be drawn ~N/fps seconds after start;
+     * rendering flat-out compresses the timeline (a 3s choreography lands as
+     * a ~1.5s double-speed video). Codec falls back VP9 -> webm; the raster
+     * is native frame size on aspect match, design size + contain-fit else. */
     el.vBtn.addEventListener('click', function() {
         if (exporting || !clip) return;
         exporting = true; lock(true); el.vSplit.classList.add('rec');
-        setPlayState(false);
-        var res = RESOLUTIONS[resState.value] || RESOLUTIONS['1080'];
+        setPlayState(false); closeMenus();
         var fd = frameDims(parseInt(resState.value) || 1080);
         var ds = dsDims(curFrame.clipDS);
-        var r = makeHicRenderer(fd.w, fd.h, ds.w, ds.h);
+        var sameAspect = Math.abs((fd.w / fd.h) - (ds.w / ds.h)) < 0.004;
+        var r = makeHicRenderer(sameAspect ? fd.w : ds.w, sameAspect ? fd.h : ds.h, ds.w, ds.h);
         var code = applied || { html: clip.html, css: clip.css, js: clip.js };
         var dur = (clip.dur || 5) * 1000;
         var out = document.createElement('canvas'); out.width = fd.w; out.height = fd.h;
         var octx = out.getContext('2d');
-        var stream = out.captureStream(0);
-        var track = stream.getVideoTracks()[0];
-        var rec = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9', videoBitsPerSecond: 8000000 });
+        var stream = out.captureStream(fps);
+        var mimeType = 'video/webm;codecs=vp9';
+        if (window.MediaRecorder && !MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
+        var rec = new MediaRecorder(stream, { mimeType: mimeType, videoBitsPerSecond: 8000000 });
         var chunks = [];
-        rec.ondataavailable = function(e) { if (e.data.size) chunks.push(e.data); };
-        rec.onstop = function() {
-            var blob = new Blob(chunks, { type: 'video/webm' });
-            var a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = exportStem() + '_webm_' + fd.w + 'x' + fd.h + '.webm';
-            a.click(); setTimeout(function() { URL.revokeObjectURL(a.href); }, 6000);
-            r.sandbox.remove(); exporting = false; el.vSplit.classList.remove('rec'); lock(false);
-        };
-        r.setClip(code.html, code.css, code.js).then(function() {
+        rec.ondataavailable = function(e) { if (e.data && e.data.size) chunks.push(e.data); };
+        var stopped = new Promise(function(resolve) {
+            rec.onstop = function() {
+                var blob = new Blob(chunks, { type: 'video/webm' });
+                if (blob.size > 100) {
+                    var a = document.createElement('a');
+                    a.href = URL.createObjectURL(blob);
+                    a.download = exportStem() + '_' + fd.w + 'x' + fd.h + '_' + String(curFrame.aspect || '').replace(':', '') + '.webm';
+                    a.click(); setTimeout(function() { URL.revokeObjectURL(a.href); }, 6000);
+                } else setStatus('Export failed \u2014 try again');
+                r.sandbox.remove(); exporting = false; el.vSplit.classList.remove('rec'); lock(false);
+                resolve();
+            };
+        });
+        var run = r.setClip(code.html, code.css, code.js).then(function() {
             rec.start();
-            var stepMs = 1000 / fps;
-            var t = 0;
-            function frame() {
-                if (t > dur) { rec.stop(); return; }
-                r.renderFrame(t).then(function(ok) {
-                    if (ok) r.drawFrame(octx, fd.w, fd.h);
-                    track.requestFrame ? track.requestFrame() : null;
-                    t += stepMs;
-                    setTimeout(frame, 12);
-                });
-            }
-            frame();
-        }).catch(function(err) { console.error('[hic-modal] webm export:', err); try { rec.stop(); } catch(e2) {} r.sandbox.remove(); exporting = false; el.vSplit.classList.remove('rec'); lock(false); });
+            var wallStart = performance.now();
+            var total = Math.round(dur / 1000 * fps);
+            var chain = Promise.resolve();
+            var loop = function(frame) {
+                if (frame >= total) return Promise.resolve();
+                var t = (frame / fps) * 1000;
+                var delay = wallStart + t - performance.now();
+                return new Promise(function(rs) { if (delay > 0) setTimeout(rs, delay); else requestAnimationFrame(rs); })
+                    .then(function() { return r.renderFrame(t); })
+                    .then(function(ok) { if (ok) r.drawFrame(octx, fd.w, fd.h); })
+                    .then(function() { return loop(frame + 1); });
+            };
+            return loop(0).then(function() {
+                /* Let the compositor capture the final frame before stopping */
+                return new Promise(function(rs) { setTimeout(rs, Math.max(50, 1000 / fps)); });
+            }).then(function() { rec.stop(); return stopped; });
+        });
+        run.catch(function(err) {
+            console.error('[hic-modal] webm export:', err);
+            try { rec.stop(); } catch (e2) {}
+            setStatus('Export failed');
+            r.sandbox.remove(); exporting = false; el.vSplit.classList.remove('rec'); lock(false);
+        });
     });
 
     /* ── tabs ── */
@@ -652,7 +681,11 @@ function createHicModal(opts) {
     function updateBadge() {
         if (!clip) return;
         var code = { html: cm.html.getValue(), css: cm.css.getValue(), js: cm.js.getValue() };
-        var base = applied || { html: clip.html, css: clip.css, js: clip.js };
+        /* Baseline is what fillEditors actually put in the editors — the
+         * PRETTIFIED clip — not the raw clip. Comparing against raw made the
+         * Unsaved badge light up immediately on open whenever a prettify
+         * hook was configured. */
+        var base = prettified(applied || { html: clip.html, css: clip.css, js: clip.js });
         var dirty = code.html !== base.html || code.css !== base.css || code.js !== base.js;
         el.badges.classList.toggle('on', dirty);
         el.resetBtn.disabled = !dirty;
