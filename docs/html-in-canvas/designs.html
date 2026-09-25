@@ -33,6 +33,17 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
 .searchbox:focus-within .search-slash{display:none}
 .gbtn{background:none;border:none;color:var(--text-2);width:34px;height:34px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;text-decoration:none;transition:all .15s;flex-shrink:0}
 .gbtn:hover{background:var(--surface-2);color:var(--text)}
+.bottom-bar{display:none;position:fixed;left:0;right:0;bottom:0;z-index:200;background:var(--surface);border-top:1px solid var(--border);align-items:stretch}
+.bbar-item{position:relative;flex:1;display:none;flex-direction:column;align-items:center;justify-content:center;gap:3px;background:none;border:none;color:var(--text-2);font-size:9.5px;font-weight:500;font-family:'Rubik',sans-serif;cursor:pointer;padding:4px 0;min-width:0}
+.bbar-item svg{width:21px;height:21px}
+.bbar-item.on{color:var(--text)}
+.bbar-item.on::after{content:'';position:absolute;bottom:3px;width:4px;height:4px;border-radius:50%;background:var(--text)}
+.bbar-create{display:none;width:40px;height:40px;border-radius:50%;background:var(--accent);color:#fff;align-items:center;justify-content:center;flex:0 0 auto;margin:0 5px;box-shadow:0 2px 10px rgba(37,99,235,.3);border:none;cursor:pointer;transition:transform .12s;align-self:center}
+.bbar-create:active{transform:scale(.94)}
+.bbar-create svg{width:18px;height:18px}
+.search-open-btn{display:none}
+.search-back{display:none;align-items:center;justify-content:center;background:none;border:none;color:var(--text);width:32px;height:32px;border-radius:50%;cursor:pointer;flex-shrink:0;padding:0}
+.search-back:hover{background:var(--surface-3)}
 .btn-io{background:var(--surface-2);color:var(--text);border:1px solid transparent;border-radius:999px;height:36px;padding:0 15px;font-size:13px;font-weight:500;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:7px;font-family:'Rubik',sans-serif;white-space:nowrap;transition:all .15s}
 .btn-io:hover{background:var(--surface-3)}
 .btn-plus{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
@@ -260,27 +271,43 @@ footer{padding:0 24px 28px;font-size:10.5px;color:var(--text-3);font-weight:500}
 #toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
 
 @media(max-width:768px){
-    /* two-row navbar: brand + actions on row 1, search spans row 2 */
-    .topbar{padding:10px 16px;grid-template-columns:auto 1fr;row-gap:10px}
-    .brand{grid-row:1;grid-column:1}
-    .top-actions{grid-row:1;grid-column:2}
-    .searchbox{grid-row:2;grid-column:1/-1;width:100%}
-    .grid{padding:12px 16px 32px;grid-template-columns:1fr 1fr;gap:16px 10px}
-    .chips-row{padding:12px 16px 0;gap:8px}
-    .seg-toggle button{padding:0 10px}
-    .searchbox{min-width:0;flex:1}
+    /* mobile: single-row header (brand + ghost tools); searchbox only in search-mode;
+       create/view controls move to the bottom bar */
+    .topbar{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 12px}
+    .brand h1{font-size:16.5px}
+    .searchbox{display:none}
+    body.search-mode .searchbox{display:flex;flex:1}
+    body.search-mode .btn-plus,body.search-mode .gbtn{display:none}
+    body.search-mode .searchbox > svg{display:none}
+    body.search-mode .search-back{display:inline-flex}
+    .btn-plus{display:none}
+    .gbtn{width:32px;height:32px}
+    .chips-row{padding:10px 12px 0}
+    .seg-toggle{display:none}
+    .chip{height:34px;padding:0 14px}
+    .grid{padding:12px 12px 32px;grid-template-columns:1fr 1fr;gap:16px 10px}
     .modal{margin:8px}
     .modal-controls{gap:8px;padding:10px 12px}
     .modal-info{margin-left:0;width:100%;justify-content:space-between}
     .modal-title{max-width:150px;font-size:13px}
     .code-wrap .CodeMirror{height:60vh}
     footer{padding:0 16px 24px}
+    .page-shell{padding-bottom:calc(64px + env(safe-area-inset-bottom))}
+    #toast{bottom:calc(72px + env(safe-area-inset-bottom))}
+    .bottom-bar{display:flex;height:calc(58px + env(safe-area-inset-bottom));padding-bottom:env(safe-area-inset-bottom)}
+    .bbar-item{display:flex}
+    .bbar-create{display:flex}
+    .search-open-btn{display:inline-flex}
+}
+/* touch: no hover — card HUD must be visible without hovering */
+@media(hover:none){
+    .thumb-hud{opacity:1}
+    .thumb-hud .hud-btn{width:32px;height:32px}
+    .dcard:hover .dur-pill{opacity:1}
 }
 @media(max-width:480px){
     .grid{grid-template-columns:1fr}
-    .plus-label{display:none}
-    .btn-plus{padding:0 11px}
-    .brand h1{font-size:17px}
+    .brand h1{font-size:16px}
     .modal-controls{flex-direction:column;align-items:stretch}
     .slider-wrap{min-width:0}
     .modal-info{flex-wrap:wrap}
@@ -304,6 +331,7 @@ footer{padding:0 24px 28px;font-size:10.5px;color:var(--text-3);font-weight:500}
     </div>
     <div class="top-actions">
         <div class="searchbox">
+            <button class="search-back" id="searchBackBtn" aria-label="Close search"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg></button>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
             <input id="searchInput" type="text" placeholder="Search designs" autocomplete="off">
             <span class="search-slash" title="Press / to search">/</span>
@@ -318,8 +346,31 @@ footer{padding:0 24px 28px;font-size:10.5px;color:var(--text-3);font-weight:500}
         <a class="gbtn" href="prompts-engineer.html" title="Build a prompt visually" aria-label="Build a prompt visually">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4V2"/><path d="M15 16v-2"/><path d="M8 9h2"/><path d="M20 9h2"/><path d="M17.8 11.8L19 13"/><path d="M17.8 6.2L19 5"/><path d="M12.2 6.2L11 5"/><path d="M12.2 11.8L11 13"/><path d="M15 7a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/><path d="M3 21l9-9"/></svg>
         </a>
+        <button class="gbtn search-open-btn" aria-label="Search designs">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
+        </button>
     </div>
 </div>
+
+<!-- Mobile bottom navigation (YouTube app pattern) — visible ≤768px.
+     Home = all designs (studio + community); views sync via setView(). -->
+<nav class="bottom-bar" aria-label="Mobile navigation">
+    <button class="bbar-item" data-view="all" data-home aria-pressed="false" aria-label="Home — all designs">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 10.5 9-7.5 9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>
+        <span>Home</span>
+    </button>
+    <button class="bbar-item on" data-view="studio" aria-pressed="true" aria-label="Studio designs">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M3 12h18"/></svg>
+        <span>Studio</span>
+    </button>
+    <button class="bbar-create" aria-label="New design">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    </button>
+    <button class="bbar-item" data-view="community" aria-pressed="false" aria-label="Community designs">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18z"/></svg>
+        <span>Community</span>
+    </button>
+</nav>
 
 <div class="chips-row">
     <div class="chips-scroll" id="chipsRow"></div>
@@ -601,27 +652,14 @@ document.getElementById('searchInput').addEventListener('input', function() {
     query = this.value.trim().toLowerCase();
     renderGrid();
 });
-/* "/" focuses search; Esc clears + blurs */
 document.addEventListener('keydown', function(e) {
     if (e.key === '/' && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName) && !document.activeElement.isContentEditable) {
         e.preventDefault();
         document.getElementById('searchInput').focus();
     }
 });
-document.getElementById('searchInput').addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') {
-        if (this.value) { this.value = ''; query = ''; renderGrid(); }
-        this.blur();
-    }
-});
-/* Studio / Community / All segmented toggle */
-document.getElementById('segToggle').addEventListener('click', function(e) {
-    const btn = e.target.closest('button[data-view]');
-    if (!btn) return;
-    activeView = btn.getAttribute('data-view');
-    this.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === btn));
-    renderGrid();
-});
+/* Studio / Community / All segmented toggle — handler lives near the
+   mobile-bar block below (setView), which also drives the bottom bar */
 function matches(d) {
     if (activeView === 'studio' && isCommunity(d)) return false;
     if (activeView === 'community' && !isCommunity(d)) return false;
@@ -1115,6 +1153,59 @@ function handleHash() {
     if (m && byId[m[1]]) openDesign(m[1]);
 }
 window.addEventListener('hashchange', handleHash);
+
+/* ── Mobile bottom bar (YouTube app pattern) + expanding search ── */
+function setView(view) {
+    activeView = view;
+    document.querySelectorAll('#segToggle button').forEach(b => b.classList.toggle('on', b.getAttribute('data-view') === view));
+    document.querySelectorAll('.bbar-item[data-view]').forEach(b => {
+        const on = b.getAttribute('data-view') === view;
+        b.classList.toggle('on', on);
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    renderGrid();
+}
+document.getElementById('segToggle').addEventListener('click', function(e) {
+    const btn = e.target.closest('button[data-view]');
+    if (btn) setView(btn.getAttribute('data-view'));
+});
+document.querySelector('.bottom-bar').addEventListener('click', function(e) {
+    if (e.target.closest('.bbar-create')) { newDesignBtn.click(); return; }
+    const item = e.target.closest('.bbar-item');
+    if (!item) return;
+    const view = item.getAttribute('data-view');
+    if (!view) return;
+    setView(view);
+    /* Home doubles as "back to top" of the combined feed */
+    if (item.hasAttribute('data-home')) window.scrollTo({ top: 0, behavior: 'smooth' });
+});
+/* Header search icon (mobile): toggle the full-width search bar */
+document.querySelector('.search-open-btn').addEventListener('click', () => toggleSearchMode());
+function toggleSearchMode(on) {
+    const body = document.body;
+    const turningOn = on === undefined ? !body.classList.contains('search-mode') : on;
+    body.classList.toggle('search-mode', turningOn);
+    const si = document.getElementById('searchInput');
+    if (turningOn) {
+        si.focus({ preventScroll: true });
+    } else if (document.activeElement === si) si.blur();
+}
+document.getElementById('searchBackBtn').addEventListener('click', () => toggleSearchMode(false));
+/* Desktop-only shortcuts (mobile uses the visible buttons); / focuses search */
+document.addEventListener('keydown', function(e) {
+    if (e.key === '/' && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName) && !document.activeElement.isContentEditable) {
+        e.preventDefault();
+        if (window.matchMedia('(max-width:768px)').matches) toggleSearchMode(true);
+        else document.getElementById('searchInput').focus();
+    }
+    if (e.key === 'Escape' && document.body.classList.contains('search-mode')) toggleSearchMode(false);
+});
+document.getElementById('searchInput').addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        if (this.value) { this.value = ''; query = ''; renderGrid(); }
+        toggleSearchMode(false);
+    }
+});
 
 /* ── New design (+ button): empty draft workspace ──────────────── */
 const NEW_DESIGN_ID = '__draft__';
