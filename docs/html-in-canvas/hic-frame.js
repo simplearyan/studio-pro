@@ -297,12 +297,19 @@ class HicRenderer {
         if (!this._ready) return false;
         if (this._onFrame) {
             const origQSA = Document.prototype.querySelectorAll;
+            const origQS = Document.prototype.querySelector;
             const origGEBI = Document.prototype.getElementById;
             const sandbox = this.sandbox;
             Document.prototype.querySelectorAll = function(sel) { return sandbox.querySelectorAll(sel); };
+            /* Clips that grab single nodes via document.querySelector('.foo') must
+               also resolve inside the sandbox. Unscoped, a fresh export renderer's
+               onFrame never finds its elements (blank export) — or worse, styles
+               whichever sandbox appended to the document first (the live modal). */
+            Document.prototype.querySelector = function(sel) { return sandbox.querySelector(sel) || origQS.call(document, sel); };
             Document.prototype.getElementById = function(id) { return sandbox.querySelector('#' + id) || origGEBI.call(document, id); };
             try { this._onFrame(timeMs); } catch(e) { console.error('[Renderer] onFrame error:', e); }
             Document.prototype.querySelectorAll = origQSA;
+            Document.prototype.querySelector = origQS;
             Document.prototype.getElementById = origGEBI;
         }
         const clone = this.sandbox.cloneNode(true);

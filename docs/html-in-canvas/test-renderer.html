@@ -591,6 +591,8 @@ body{background:#0b0f1a;color:#e2e8f0;font-family:'Rubik',system-ui,-apple-syste
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
 
 <script src="hic-frame.js"></script>
+<script src="hic-storyboard.js"></script>
+<script src="fix-webm-duration.js"></script>
 <script>
 /* ═══════════════════════════════════════════════════════════════
  * SVG foreignObject Renderer
@@ -756,6 +758,40 @@ for (const [key, p] of Object.entries(PRESETS)) {
     grid.appendChild(card);
 }
 
+/* IITM Storyboard card — compiles the canonical pq-001 storyboard through
+ * hic-storyboard.js and opens it like any preset. When served from the
+ * studio-pro-editor origin the storyboard is fetched from the IITM repo
+ * folder; otherwise the card opens a file-pick fallback. */
+(function mountStoryboardCard() {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.dataset.key = '__storyboard';
+    card.innerHTML = '<canvas width="' + W + '" height="' + H + '"></canvas>' +
+        '<div class="card-label"><span class="card-name">IITM Storyboard</span></div>';
+    card.addEventListener('click', async () => {
+        if (window.__lastStoryboard) { openStoryboardModal(window.__lastStoryboard); return; }
+        /* try the IITM repo path (vite serves design_concepts/ as root); the
+           card keeps working offline via file-pick when the fetch 404s */
+        try {
+            const resp = await fetch('/studios/IITM/content/subjects/probability/pq-001/storyboard.json');
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            window.__lastStoryboard = await resp.json();
+            openStoryboardModal(window.__lastStoryboard);
+        } catch (e) {
+            const inp = document.createElement('input');
+            inp.type = 'file'; inp.accept = '.json,application/json';
+            inp.onchange = () => {
+                const f = inp.files[0]; if (!f) return;
+                const rd = new FileReader();
+                rd.onload = () => { try { window.__lastStoryboard = JSON.parse(rd.result); openStoryboardModal(window.__lastStoryboard); } catch (er) { console.error(er); } };
+                rd.readAsText(f);
+            };
+            inp.click();
+        }
+    });
+    grid.appendChild(card);
+})();
+
 /* Render last frame (end state) per card for better thumbnails */
 (async () => {
     for (const [key, p] of Object.entries(PRESETS)) {
@@ -828,6 +864,45 @@ function closeModal() {
 
 modalClose.addEventListener('click', closeModal);
 
+/* ── Storyboard deep link: …/test-renderer.html#storyboard=<b64url> ────
+ * Decodes a storyboard JSON, compiles it into a self-contained onFrame clip
+ * via hic-storyboard.js, and opens it through the normal preset path — so
+ * preview, scrub, Code tab, and the wall-clock WebM export all work
+ * unchanged. This is the render-pipeline seam: site/CLI generate
+ * storyboards, the test-renderer renders them. Also mounted as a preset
+ * card ("IITM Storyboard") for no-deep-link use. */
+function openStoryboardModal(sbJson) {
+    let sb;
+    try { sb = (typeof sbJson === 'string') ? JSON.parse(sbJson) : sbJson; }
+    catch (e) { console.error('[TR] storyboard parse:', e); return false; }
+    if (!window.hicStoryboard || !sb || !Array.isArray(sb.scenes)) return false;
+    let clip;
+    try { clip = hicStoryboard.compileStoryboard(sb); }
+    catch (e) { console.error('[TR] storyboard compile:', e); return false; }
+    PRESETS.__storyboard = {
+        name: clip.name || 'Storyboard',
+        dur: clip.dur || 15,
+        ds: clip.ds,
+        html: clip.html, css: clip.css, js: clip.js
+    };
+    /* Card thumbnail for the injected preset (same lazy-thumbnail path as
+       every other card — the card grid renders end frames on load). */
+    const _card = grid.querySelector('[data-key="__storyboard"]');
+    if (_card) { delete _card.dataset.thumbdone; }
+    openModal('__storyboard');
+    return true;
+}
+function handleStoryboardHash() {
+    const m = (location.hash || '').match(/#storyboard=([A-Za-z0-9\-_]+)/);
+    if (!m) return false;
+    let json = '';
+    try { json = decodeURIComponent(escape(atob(m[1].replace(/-/g, '+').replace(/_/g, '/')))); } catch (e) { json = ''; }
+    const ok = json && openStoryboardModal(json);
+    if (ok) history.replaceState(null, '', location.pathname);
+    return ok;
+}
+window.addEventListener('hashchange', handleStoryboardHash);
+
 /* ── Deep links: prompts-engineer.html#aiwant=<b64>&dur=<ms> ──── */
 /* Opens a "custom" modal with no preset code behind it — the user pastes
  * the AI reply (AI tab) or code (Code tab), then exports exactly like any
@@ -864,6 +939,10 @@ window.addEventListener('hashchange', handleAiWantHash);
    are declared further down (a synchronous call here would hit the TDZ). */
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', handleAiWantHash);
 else setTimeout(handleAiWantHash, 0);
+/* Storyboard hash uses the same deferred pattern (openModal TDZ safety);
+   #storyboard wins when both hashes are somehow present. */
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', handleStoryboardHash);
+else setTimeout(handleStoryboardHash, 0);
 /* ── Overlay transport helpers (YouTube-style player) ─────────────── */
 const playerZone = document.getElementById('playerZone');
 const ovFill = document.getElementById('ovFill');
@@ -1737,7 +1816,7 @@ function aiBuildPrompt(want, dur) {
 
 /* Tolerant parser: fenced blocks, whole HTML docs, or bare markup */
 function aiParseReply(text) {
-    const res = { html: '', css: '', js: '', title: '', ds: '' };
+    const res = { html: '', css: '', js: '', title: '', ds: '', dur: 0 };
     text = (text || '').replace(/\r\n?/g, '\n').trim();
     if (!text) return res;
     const _tm = text.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
@@ -1746,6 +1825,11 @@ function aiParseReply(text) {
        <!-- ds:9:16 --> right after the <title>. 16:9 stays the default. */
     const _ds = text.match(/<!--\s*ds:(16:9|9:16|1:1|4:5)\s*-->/i);
     if (_ds && DESIGN_SPACES[_ds[1]]) res.ds = _ds[1];
+    /* Optional duration marker from the IITM site's copy format:
+       <!-- dur:17500 --> (ms) — sets the clip's timeline length so a paste
+       from the astro player keeps its storyboard duration. */
+    const _durM = text.match(/<!--\s*dur:(\d{1,6})\s*-->/i);
+    if (_durM) res.dur = Math.max(1, Math.min(60, parseInt(_durM[1], 10) / 1000));
     const fenceRe = /```([a-zA-Z0-9]*)[ \t]*\n([\s\S]*?)```/g;
     const blocks = [];
     let m;
@@ -1847,7 +1931,12 @@ document.getElementById('aiCopyBtn').addEventListener('click', function() {
 
 /* Parse reply → CodeMirror panes → auto-apply to the stage */
 function aiApplyReply() {
-    if (!currentPresetKey) return;
+    if (!currentPresetKey) {
+        /* Paste with no modal open (e.g. straight from the IITM site's
+           Copy code button) — spin up a blank custom stage first so the
+           paste lands somewhere; the reply's ds/dur markers then shape it. */
+        openCustomModal('', 0);
+    }
     var parsed = aiParseReply(aiReply.value || '');
     if (!parsed.html && !parsed.css && !parsed.js) {
         aiMsg('Could not find any code in the pasted text. Paste the AI\'s full reply.');
@@ -1867,6 +1956,16 @@ function aiApplyReply() {
         curFrame.aspect = parsed.ds;
         applyAspect();
         parts.push(parsed.ds + ' native');
+    }
+    if (parsed.dur) {
+        /* Duration marker (IITM site copy format) — resize the timeline so
+           scrubbing, playback and export all match the pasted clip. */
+        PRESETS[currentPresetKey].dur = parsed.dur;
+        modalSlider.max = parsed.dur * 1000;
+        ovTotal.textContent = fmtTime(parsed.dur * 1000);
+        var _dsMeta = dsDims(curFrame.clipDS);
+        document.getElementById('mhMeta').textContent = parsed.dur + 's · ' + _dsMeta.w + '×' + _dsMeta.h;
+        parts.push(parsed.dur + 's');
     }
     aiMsg('Inserted ' + parts.join(' · ') + ' — applying to stage…');
     applyCode.click(); /* renders + switches to Preview + plays */
@@ -2170,20 +2269,33 @@ async function startWebMExport() {
     const stream = modalCanvas.captureStream(fps);
     let mimeType = 'video/webm;codecs=vp9';
     if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
-    const recorder = new MediaRecorder(stream, { mimeType: mimeType });
+    /* 8Mbps target — matches hic-modal's recorder so export size/quality is
+       content-independent (Chrome's default sags on complex clips) */
+    const recorder = new MediaRecorder(stream, { mimeType: mimeType, videoBitsPerSecond: 8000000 });
     const chunks = [];
     recorder.ondataavailable = function(e) { if (e.data && e.data.size > 0) chunks.push(e.data); };
 
     const done = new Promise(function(resolve) {
         recorder.onstop = function() {
-            const blob = new Blob(chunks, { type: 'video/webm' });
-            if (blob.size > 100) {
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = exportFileStem() + '_' + expW + 'x' + expH + '_' + curFrame.aspect.replace(':', '') + '.webm';
-                document.body.appendChild(a); a.click(); document.body.removeChild(a);
-                setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
+            const raw = new Blob(chunks, { type: 'video/webm' });
+            if (raw.size > 100) {
+                /* MediaRecorder never writes the WebM Duration element, so
+                 * players can't seek/scale progress (scrubber stuck at 0).
+                 * Patch it in with the known clip length before download. */
+                const finish = function(blob) {
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = exportFileStem() + '_' + expW + 'x' + expH + '_' + curFrame.aspect.replace(':', '') + '.webm';
+                    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                    setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
+                };
+                if (window.ysFixWebmDuration) {
+                    /* dur + the 1s end-state hold below = the stream's real span */
+                    ysFixWebmDuration(raw, Math.round(dur * 1000) + 1000).then(finish).catch(function(e) {
+                        console.warn('[Export] duration patch failed, saving raw:', e); finish(raw);
+                    });
+                } else finish(raw);
             } else { alert('Export failed — try again'); }
             exporting = false;
             exportSplit.classList.remove('recording');
@@ -2199,25 +2311,35 @@ async function startWebMExport() {
     recorder.start();
 
     /* Render each frame at export resolution to visible canvas.
-       Paced in WALL-CLOCK time: MediaRecorder timestamps frames by when the
-       canvas actually changes, so frame N must be drawn ~N/fps seconds after
-       start. Rendering flat-out (one rAF per frame) compresses the timeline —
-       a 3s choreography lands in a ~1.5s video playing at double speed. */
+       MediaRecorder stamps frames with the time the canvas CHANGED, so the
+       only way content and container stay in sync is to drive onFrame with
+       the ACTUAL elapsed wall time: whatever frame lands whenever, its
+       phase is correct for its timestamp. (Pacing an idealized 1/fps grid
+       desyncs the moment a raster overruns its slot — complex SVG frames
+       take 50-200ms at 1080p — and the video stretches while the Duration
+       element stays nominal, which makes players quit early or scrub wrong.)
+       Frame RATE is whatever the machine sustains; the timeline is exact. */
     const wallStart = performance.now();
-    for (let frame = 0; frame < dur * fps; frame++) {
-        const t = (frame / fps) * 1000;
-        const delay = wallStart + t - performance.now();
-        await new Promise(function(r) { if (delay > 0) setTimeout(r, delay); else requestAnimationFrame(r); });
+    const durMs = dur * 1000;
+    while (true) {
+        const t = performance.now() - wallStart;
+        if (t >= durMs) break;
         modalSlider.value = Math.floor(t);
         modalTime.textContent = (t / 1000).toFixed(1) + 's';
         try {
-            const ok = await modalRenderer.renderFrame(t);
+            const ok = await modalRenderer.renderFrame(Math.min(t, durMs - 1));
             if (ok) modalRenderer.drawFrame(modalCtx, expW, expH);
         } catch(e) { console.error('[Export] frame error:', e); }
+        await new Promise(function(r) { requestAnimationFrame(r); });
     }
 
-    /* Let the compositor capture the final frame before stopping */
-    await new Promise(function(r) { setTimeout(r, Math.max(50, 1000 / fps)); });
+    /* Hold the completed end-state for ~1s (a clean tail; included in the
+       patched Duration) so the video never ends mid-motion. */
+    {
+        const ok = await modalRenderer.renderFrame(durMs - 1);
+        if (ok) modalRenderer.drawFrame(modalCtx, expW, expH);
+    }
+    await new Promise(function(r) { setTimeout(r, 1000); });
     recorder.stop();
     await done;
 

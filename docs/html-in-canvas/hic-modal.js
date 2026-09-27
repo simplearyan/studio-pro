@@ -618,12 +618,23 @@ function createHicModal(opts) {
         rec.ondataavailable = function(e) { if (e.data && e.data.size) chunks.push(e.data); };
         var stopped = new Promise(function(resolve) {
             rec.onstop = function() {
-                var blob = new Blob(chunks, { type: 'video/webm' });
-                if (blob.size > 100) {
-                    var a = document.createElement('a');
-                    a.href = URL.createObjectURL(blob);
-                    a.download = exportStem() + '_' + fd.w + 'x' + fd.h + '_' + String(curFrame.aspect || '').replace(':', '') + '.webm';
-                    a.click(); setTimeout(function() { URL.revokeObjectURL(a.href); }, 6000);
+                var raw = new Blob(chunks, { type: 'video/webm' });
+                if (raw.size > 100) {
+                    /* MediaRecorder never writes the WebM Duration element, so
+                     * players can't seek/scale progress (scrubber stuck at 0).
+                     * Patch it in with the known clip length before download. */
+                    var finish = function(blob) {
+                        var a = document.createElement('a');
+                        a.href = URL.createObjectURL(blob);
+                        a.download = exportStem() + '_' + fd.w + 'x' + fd.h + '_' + String(curFrame.aspect || '').replace(':', '') + '.webm';
+                        a.click(); setTimeout(function() { URL.revokeObjectURL(a.href); }, 6000);
+                    };
+                    if (window.ysFixWebmDuration) {
+                        /* dur + the 1s end-state hold below = the stream's real span */
+                        ysFixWebmDuration(raw, Math.round(dur) + 1000).then(finish).catch(function(e) {
+                            console.warn('[hic-modal] duration patch failed, saving raw:', e); finish(raw);
+                        });
+                    } else finish(raw);
                 } else setStatus('Export failed \u2014 try again');
                 r.sandbox.remove(); exporting = false; el.vSplit.classList.remove('rec'); lock(false);
                 resolve();
@@ -631,21 +642,27 @@ function createHicModal(opts) {
         });
         var run = r.setClip(code.html, code.css, code.js).then(function() {
             rec.start();
+            /* Drive onFrame with ACTUAL elapsed wall time: MediaRecorder
+               stamps frames when the canvas changes, so whatever frame lands
+               whenever must carry the phase for its own timestamp. (An
+               idealized 1/fps grid desyncs as soon as a raster overruns its
+               slot; the stream then stretches while the patched Duration
+               stays nominal — players quit early or scrub wrong.) */
             var wallStart = performance.now();
-            var total = Math.round(dur / 1000 * fps);
-            var chain = Promise.resolve();
-            var loop = function(frame) {
-                if (frame >= total) return Promise.resolve();
-                var t = (frame / fps) * 1000;
-                var delay = wallStart + t - performance.now();
-                return new Promise(function(rs) { if (delay > 0) setTimeout(rs, delay); else requestAnimationFrame(rs); })
-                    .then(function() { return r.renderFrame(t); })
-                    .then(function(ok) { if (ok) r.drawFrame(octx, fd.w, fd.h); })
-                    .then(function() { return loop(frame + 1); });
+            var tick = function() {
+                var t = performance.now() - wallStart;
+                if (t >= dur) {
+                    return r.renderFrame(dur - 1).then(function(ok) { if (ok) r.drawFrame(octx, fd.w, fd.h); });
+                }
+                return r.renderFrame(Math.min(t, dur - 1)).then(function(ok) {
+                    if (ok) r.drawFrame(octx, fd.w, fd.h);
+                    return new Promise(function(rs) { requestAnimationFrame(rs); });
+                }).then(tick);
             };
-            return loop(0).then(function() {
-                /* Let the compositor capture the final frame before stopping */
-                return new Promise(function(rs) { setTimeout(rs, Math.max(50, 1000 / fps)); });
+            return tick().then(function() {
+                /* Hold the completed end-state ~1s (included in the patched
+                   Duration) so the video never ends mid-motion. */
+                return new Promise(function(rs) { setTimeout(rs, 1000); });
             }).then(function() { rec.stop(); return stopped; });
         });
         run.catch(function(err) {
