@@ -1,13 +1,31 @@
 # Commit Conventions
 
-## Author credit — no Codebuff co-author
+## Author credit — no tool attribution of any kind
 
 The owner of this repo is **aryan** (`simplearyan <aryanphone00620@gmail.com>`).
 
-Do **NOT** add a `Co-Authored-By: Codebuff` trailer or a "🤖 Generated with
-Codebuff" footer to commit messages. Commits should be authored by the user
-only — GitHub shows any `Co-Authored-By` line as an extra co-author, and the
-owner does not want Codebuff credited.
+Commits are authored by the user only. **Do NOT add any tool or AI credit to a
+commit message** — no `Co-Authored-By` trailer, no "Generated with …" footer, no
+emoji signature, and no `---` separator line that exists only to sit above one.
+GitHub renders a `Co-Authored-By` line as an extra co-author on every commit it
+touches, and the owner does not want an assistant credited.
+
+This covers every tool, named or not — Codebuff, Freebuff, Cursor, Copilot,
+Claude, or whatever comes next. Concrete strings to strip if a harness inserts
+them:
+
+```
+🤖 Generated with Codebuff
+Generated with Freebuff
+Co-Authored-By: Codebuff <noreply@codebuff.com>
+Made with … · Assisted by … · Signed-off-by: <a bot>
+```
+
+Some harnesses append a footer automatically. Remove it from the message before
+the commit lands — there is no "clean it up later", because later never comes.
+
+The rule is not specific to this repo: follow it in every repo you touch. The
+IITM repo states the same rule in `../IITM/COMMIT.md`.
 
 Commit messages: keep the existing style — a concise subject line, then a
 short body describing the *why* and *what* of the change. No tool credit

@@ -69,6 +69,14 @@ Tell us **what problem** you're solving and **how you imagine it working** — a
 4. **Test your change manually** — the app is interactive, so click through: add clips, generate markdown, play the timeline, export.
 5. Push and open a PR with a clear title + description.
 
+### Commit messages
+
+A concise imperative subject, then a short body saying *why*. And **no tool or AI
+attribution, ever** — no `🤖 Generated with …` line, no `Co-Authored-By` trailer for a
+bot, no "Made with …" footer, no emoji signature. Commits here belong to the person who
+wrote the change. Agents get this wrong by default; if your tool appends a footer,
+strip it before the commit lands. Full rules: [`docs/commit-conventions.md`](docs/commit-conventions.md).
+
 ---
 
 ## 📏 Code Conventions

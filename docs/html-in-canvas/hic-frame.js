@@ -375,25 +375,25 @@ function makeHicRenderer(w, h, sw, sh) { return new HicRenderer(w, h, sw, sh); }
            the bottom of a full-height modal, and native <select> popups always
            open downward, getting clipped by the viewport edge. ── */
         '.hic-dd{position:relative;display:inline-flex}' +
-        '.hic-aspect-btn{background:#1e2533;color:#e2e8f0;border:1px solid #2d3748;border-radius:7px;padding:5px 9px;font:600 11px \'Rubik\',sans-serif;cursor:pointer;outline:none;display:inline-flex;align-items:center;gap:5px;min-width:64px;justify-content:space-between;transition:border-color .15s}' +
-        '.hic-aspect-btn:hover{border-color:#3b4a63}' +
-        '.hic-aspect-btn:focus-visible{border-color:#4a90d9}' +
+        '.hic-aspect-btn{background:var(--md-surface-container-highest, #262e40);color:var(--md-on-surface, #e4e1ec);border:1px solid var(--md-outline-variant, #3a3f4e);border-radius:7px;padding:5px 9px;font:600 11px \'Rubik\',sans-serif;cursor:pointer;outline:none;display:inline-flex;align-items:center;gap:5px;min-width:64px;justify-content:space-between;transition:border-color .15s}' +
+        '.hic-aspect-btn:hover{border-color:var(--md-outline, #8e9099)}' +
+        '.hic-aspect-btn:focus-visible{border-color:var(--md-primary, #cfbcff)}' +
         '.hic-aspect-btn:disabled{opacity:.65;cursor:default}' +
-        '.hic-aspect-btn svg{transition:transform .15s;color:#64748b}' +
+        '.hic-aspect-btn svg{transition:transform .15s;color:var(--md-outline, #8e9099)}' +
         '.hic-aspect-btn.open svg{transform:rotate(180deg)}' +
-        '.hic-menu{position:absolute;left:0;bottom:calc(100% + 8px);background:#161d2b;border:1px solid #2d3748;border-radius:10px;min-width:150px;padding:5px;box-shadow:0 12px 32px rgba(0,0,0,.55);display:none;z-index:80}' +
+        '.hic-menu{position:absolute;left:0;bottom:calc(100% + 8px);background:var(--md-surface-container-high, #1c2230);border:1px solid var(--md-outline-variant, #3a3f4e);border-radius:10px;min-width:150px;padding:5px;box-shadow:0 12px 32px rgba(0,0,0,.55);display:none;z-index:80}' +
         '.hic-menu.open{display:block}' +
-        '.hic-menu-label{font-size:9.5px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#64748b;padding:6px 10px 4px;font-family:\'Rubik\',sans-serif}' +
-        '.hic-menu-item{display:flex;align-items:center;gap:8px;width:100%;background:none;border:none;border-radius:7px;color:#cbd5e1;font:600 12px \'Rubik\',sans-serif;padding:7px 10px;cursor:pointer;text-align:left;transition:background .12s}' +
-        '.hic-menu-item:hover{background:#1f2937}' +
-        '.hic-menu-item em{font-style:normal;font-weight:500;font-size:10px;color:#64748b;margin-left:auto}' +
-        '.hic-menu-item .hic-check{width:13px;height:13px;flex-shrink:0;color:#3b82f6;visibility:hidden}' +
-        '.hic-menu-item.selected{color:#f1f5f9}' +
+        '.hic-menu-label{font-size:9.5px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--md-outline, #8e9099);padding:6px 10px 4px;font-family:\'Rubik\',sans-serif}' +
+        '.hic-menu-item{display:flex;align-items:center;gap:8px;width:100%;background:none;border:none;border-radius:7px;color:var(--md-on-surface, #e4e1ec);font:600 12px \'Rubik\',sans-serif;padding:7px 10px;cursor:pointer;text-align:left;transition:background .12s}' +
+        '.hic-menu-item:hover{background:var(--md-surface-container-highest, #262e40)}' +
+        '.hic-menu-item em{font-style:normal;font-weight:500;font-size:10px;color:var(--md-outline, #8e9099);margin-left:auto}' +
+        '.hic-menu-item .hic-check{width:13px;height:13px;flex-shrink:0;color:var(--md-primary, #cfbcff);visibility:hidden}' +
+        '.hic-menu-item.selected{color:var(--md-on-surface, #e4e1ec)}' +
         '.hic-menu-item.selected .hic-check{visibility:visible}' +
-        '.hic-bg-row{display:inline-flex;gap:5px;align-items:center;padding:4px 6px;border:1px solid #2d3748;border-radius:8px;background:#0d1320}' +
-        '.hic-bg-swatch{width:22px;height:22px;border-radius:5px;border:1px solid #3a4353;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;transition:transform .12s, box-shadow .12s;background:#1a2334}' +
+        '.hic-bg-row{display:inline-flex;gap:5px;align-items:center;padding:4px 6px;border:1px solid var(--md-outline-variant, #3a3f4e);border-radius:8px;background:var(--md-surface-container-lowest, #0a0c11)}' +
+        '.hic-bg-swatch{width:22px;height:22px;border-radius:5px;border:1px solid var(--md-outline, #8e9099);cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;transition:transform .12s, box-shadow .12s;background:var(--md-surface-container-high, #1c2230)}' +
         '.hic-bg-swatch:hover{transform:scale(1.12)}' +
-        '.hic-bg-swatch.selected{box-shadow:0 0 0 2px #2563eb;border-color:#2563eb}' +
+        '.hic-bg-swatch.selected{box-shadow:0 0 0 2px #2563eb;border-color:var(--md-primary, #cfbcff)}' +
         '.hic-bg-transparent{background:repeating-conic-gradient(#3a4353 0% 25%, #1a2334 0% 50%) 0 0/8px 8px}' +
         '.hic-bg-custom{position:relative;width:22px;height:22px;border-radius:5px;border:1px dashed #4a90d9;display:inline-block;cursor:pointer;background:conic-gradient(#ef4444,#eab308,#22c55e,#3b82f6,#a855f7,#ef4444)}' +
         '.hic-bg-custom input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}' +
@@ -424,8 +424,8 @@ function mountFrameControls(host, opts) {
             '<button type="button" class="hic-bg-swatch hic-bg-transparent" data-bg="transparent" title="Transparent">' +
                 '<svg width="12" height="12" viewBox="0 0 12 12"><rect x="0" y="0" width="6" height="6" fill="#9aa4b2"/><rect x="6" y="6" width="6" height="6" fill="#9aa4b2"/><rect x="6" y="0" width="6" height="6" fill="#3a4353"/><rect x="0" y="6" width="6" height="6" fill="#3a4353"/></svg>' +
             '</button>' +
-            '<button type="button" class="hic-bg-swatch" data-bg="#ffffff" title="White" style="background:#ffffff"></button>' +
-            '<button type="button" class="hic-bg-swatch" data-bg="#0b0f1a" title="Dark" style="background:#0b0f1a"></button>' +
+            '<button type="button" class="hic-bg-swatch" data-bg="#ffffff" title="White" style="background:var(--md-hic-dd-bg, #161d2b)"></button>' +
+            '<button type="button" class="hic-bg-swatch" data-bg="#0b0f1a" title="Dark" style="background:var(--md-surface, #0f1117)"></button>' +
             '<label class="hic-bg-custom" title="Custom background color"><input type="color" value="#2563eb"></label>' +
         '</span>';
     const selBtn = host.querySelector('.hic-aspect-btn');

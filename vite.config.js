@@ -24,7 +24,17 @@ export default defineConfig({
         { src: 'docs/html-in-canvas/designs.html', dest: 'docs/html-in-canvas', rename: { stripBase: true } },
         { src: 'docs/html-in-canvas/designs-gallery.json', dest: 'docs/html-in-canvas', rename: { stripBase: true } },
         /* /prompts-engineer builder page (Phase A of PROMPTS-ENGINEER-PLAN.md) */
-        { src: 'docs/html-in-canvas/prompts-engineer.html', dest: 'docs/html-in-canvas', rename: { stripBase: true } }
+        { src: 'docs/html-in-canvas/prompts-engineer.html', dest: 'docs/html-in-canvas', rename: { stripBase: true } },
+        /* The shared HIC libs the pages above load by RELATIVE path. Without
+           these the deployed pages 404 their own engine (hic-frame.js is
+           referenced by all three), so the gallery renders blank and logs
+           "mountFrameControls is not defined". hic-theme.* is the Material 3
+           token layer those pages resolve every --md-* colour from. */
+        { src: 'docs/html-in-canvas/hic-*.js', dest: 'docs/html-in-canvas', rename: { stripBase: true } },
+        { src: 'docs/html-in-canvas/hic-theme.css', dest: 'docs/html-in-canvas', rename: { stripBase: true } },
+        /* WebM duration patcher — loaded by designs.html and test-renderer.html
+           for the export toolbar, same relative-path story as the libs above. */
+        { src: 'docs/html-in-canvas/fix-webm-duration.js', dest: 'docs/html-in-canvas', rename: { stripBase: true } }
       ]
     }),
     VitePWA({

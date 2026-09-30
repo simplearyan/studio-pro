@@ -1,0 +1,109 @@
+/* ═════════════════════════════════════════════════════════════════════
+ * hic-theme.css — shared M3 token layer for the html-in-canvas pages.
+ *
+ * Light + dark palettes identical to prompts-engineer.html (same
+ * localStorage key: hic_theme). Pages opt in by linking this file and
+ * replacing hardcoded colors with var(--md-*, fallback) — the fallbacks
+ * are the legacy dark values, so un-themed rules stay correct in dark.
+ * Boot script: see hicThemeBoot() in each page (system default → user
+ * override), toggle button carries .hic-theme-toggle.
+ * ═════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --md-primary: #6d4fc1;
+  --md-on-primary: #ffffff;
+  --md-primary-container: #e9deff;
+  --md-on-primary-container: #22005d;
+  --md-primary-dim: #6d4fc14d;
+  --md-secondary-container: #e8def8;
+  --md-on-secondary-container: #1d192b;
+  --md-surface: #fbfaff;
+  --md-surface-container-lowest: #ffffff;
+  --md-surface-container-low: #f5f2fb;
+  --md-surface-container: #efecf7;
+  --md-surface-container-high: #e9e6f2;
+  --md-surface-container-highest: #e3e0ed;
+  --md-topbar: rgba(251, 250, 255, .92);
+  --md-on-surface: #1b1b21;
+  --md-on-surface-variant: #47464f;
+  --md-outline: #6b6c76;
+  --md-outline-variant: #c6c5d0;
+  --md-success: #146c2e;
+  --md-on-success: #ffffff;
+  --md-success-container: #b6f2c1;
+  --md-warning: #7a5900;
+  --md-warning-container: #ffdf99;
+  --md-error: #b3261e;
+  --md-error-container: #f9dedc;
+  --md-tertiary: #6d52a8;
+  --md-elev-1: 0 1px 2px rgba(0,0,0,.14), 0 1px 3px rgba(0,0,0,.08);
+  --md-elev-2: 0 1px 2px rgba(0,0,0,.16), 0 2px 6px rgba(0,0,0,.10);
+  --md-elev-3: 0 4px 8px rgba(0,0,0,.14), 0 8px 24px rgba(0,0,0,.12);
+  --md-stage-a: #e6ebf2;
+  --md-stage-b: #f6f8fb;
+  --md-hic-dd-bg: #ffffff;            /* hic-frame popovers/menus */
+  --md-hic-dd-item-hover: #f0edf8;
+  --md-hic-chip-on: #e8def8;
+  --md-hic-chip-on-ink: #1d192b;
+  color-scheme: light;
+}
+
+html[data-theme="dark"] {
+  --md-primary: #cfbcff;
+  --md-on-primary: #381e72;
+  --md-primary-container: #4f28a8;
+  --md-on-primary-container: #e9deff;
+  --md-primary-dim: #cfbcff40;
+  --md-secondary-container: #4a4458;
+  --md-on-secondary-container: #e8def8;
+  --md-surface: #0f1117;
+  --md-surface-container-lowest: #0a0c11;
+  --md-surface-container-low: #131720;
+  --md-surface-container: #161b26;
+  --md-surface-container-high: #1c2230;
+  --md-surface-container-highest: #262e40;
+  --md-topbar: rgba(15, 17, 23, .92);
+  --md-on-surface: #e4e1ec;
+  --md-on-surface-variant: #a3a1b3;
+  --md-outline: #8e9099;
+  --md-outline-variant: #3a3f4e;
+  --md-success: #7ddb96;
+  --md-on-success: #002105;
+  --md-success-container: #00531f;
+  --md-warning: #f8c555;
+  --md-warning-container: #584100;
+  --md-error: #ffb4ab;
+  --md-error-container: #93000a;
+  --md-tertiary: #d6bcfa;
+  --md-elev-1: 0 1px 2px rgba(0,0,0,.5), 0 1px 3px rgba(0,0,0,.35);
+  --md-elev-2: 0 1px 2px rgba(0,0,0,.55), 0 2px 6px rgba(0,0,0,.4);
+  --md-elev-3: 0 4px 8px rgba(0,0,0,.5), 0 8px 24px rgba(0,0,0,.45);
+  --md-stage-a: #131a28;
+  --md-stage-b: #0d1117;
+  --md-hic-dd-bg: #161d2b;
+  --md-hic-dd-item-hover: #1e2533;
+  --md-hic-chip-on: #1e3a5f;
+  --md-hic-chip-on-ink: #e2e8f0;
+  color-scheme: dark;
+}
+
+/* Theme transition after first paint (page adds .md-theme-anim) */
+@media (prefers-reduced-motion: no-preference) {
+  html.md-theme-anim body,
+  html.md-theme-anim .topbar,
+  html.md-theme-anim .modal-overlay,
+  html.md-theme-anim .grid,
+  html.md-theme-anim .card {
+    transition: background-color .25s cubic-bezier(.2, 0, 0, 1),
+                color .25s cubic-bezier(.2, 0, 0, 1),
+                border-color .25s cubic-bezier(.2, 0, 0, 1);
+  }
+}
+
+/* ── Shared theme toggle button (icon swaps via data-theme) ────────── */
+.hic-theme-toggle{background:var(--md-surface-container-highest,#1e2533);color:var(--md-on-surface,#e2e8f0);border:1px solid var(--md-outline-variant,#2d3748);border-radius:999px;width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:background .15s,border-color .15s;flex-shrink:0;padding:0}
+.hic-theme-toggle:hover{border-color:var(--md-outline,#3b4a63)}
+.hic-theme-toggle:focus-visible{outline:3px solid var(--md-primary,#3b82f6);outline-offset:2px}
+.hic-theme-toggle .msr{font-family:'Material Symbols Rounded';font-weight:normal;font-style:normal;line-height:1;letter-spacing:normal;text-transform:none;white-space:nowrap;direction:ltr;-webkit-font-smoothing:antialiased;font-variation-settings:'FILL' 1,'wght' 500,'GRAD' 0,'opsz' 24;font-size:17px;user-select:none}
+html[data-theme="light"] .hic-theme-toggle .msr::before{content:'dark_mode'}
+html[data-theme="dark"] .hic-theme-toggle .msr::before{content:'light_mode'}
