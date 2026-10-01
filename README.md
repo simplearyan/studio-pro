@@ -1,23 +1,82 @@
-# 🎬 Studio Pro — Browser Video Editor
+<div align="center">
 
-A powerful, **100% in-browser** video editor and motion-graphics builder. No accounts, no servers, no uploads — your project stays on your machine. Build multi-track timelines from text, shapes, images, video, audio, math equations, **HTML clips**, **HTML-in-Canvas** animations, ink and hand-drawn annotations, and scenes, generate entire slideshows from **Markdown scripts**, and export finished MP4/WebM videos right from the browser.
+# 🎬 Studio Pro
 
-> **Live site:** https://simplearyan.github.io/studio-pro/
-> **GitHub repo:** https://github.com/simplearyan/studio-pro
+**A pro-feeling video editor and motion-graphics studio that runs entirely in your browser.**
+
+No accounts. No uploads. No backend. Build a timeline from text, shapes, images, video, audio,
+math, ink and **HTML-in-Canvas** clips — then export MP4/WebM without your project ever leaving
+your machine.
+
+[![Live demo](https://img.shields.io/badge/live-demo-7c3aed?style=for-the-badge)](https://simplearyan.github.io/studio-pro/)
+[![License: MPL 2.0](https://img.shields.io/badge/license-MPL--2.0-blue?style=for-the-badge)](LICENSE)
+[![Chromium](https://img.shields.io/badge/Chromium-required-4285F4?style=for-the-badge)](https://www.google.com/chrome/)
+
+</div>
 
 ---
 
-## ✨ Highlights
+### ▶️ A Breath of Air
 
-- **Single-file editor** — everything runs in the browser (Vite + Tailwind CSS 4 + MediaBunny).
-- **HTML clips** — write raw HTML/CSS/JS, preview live on canvas, export to video. Like Remotion, but browser-native.
-- **HTML-in-Canvas (HIC)** — frame-exact HTML/CSS/JS animation driven by one `onFrame(t)` function, rasterized through SVG `foreignObject`. 12 presets, a code editor, and a built-in AI prompt builder.
-- **Ink & hand-drawn annotations** — a 20-brush ink engine (pen → sumi-e fude → watercolor) plus 18 stampable hand-drawn elements (circle, box, arrow, underline…) with draw-on reveal.
-- **Markdown → video generator** — write a script, get a full timeline of clips in seconds.
-- **Code → video automation** — AI agents write JavaScript compositions, Puppeteer renders them to MP4.
-- **Two math engines** — LaTeX equations as crisp images (MathJax) *or* as smooth editable vector shapes.
-- **MediaBunny turbo export** — WebCodecs-based MP4/WebM encoding that's dramatically faster than standard MediaRecorder (Chrome/Edge/Opera).
-- **Deep per-clip styling** — stroke/outline, drop shadows, 3D extrude, textures, backgrounds, letter-by-letter text editing, and 30+ animation presets.
+A 26-second film — four **HTML-in-Canvas** clips written as plain HTML/CSS, rendered to MP4 by
+the terminal automation pipeline. It is the same code you can read, edit and re-render.
+
+![A Breath of Air — a 26-second HTML-in-Canvas film about global and Indian air pollution](docs/media/pollution-story.gif)
+
+> Source: [`automation/html-in-canvas/examples/pollution-story.js`](automation/html-in-canvas/examples/pollution-story.js) ·
+> static frames: [`docs/media/pollution-story-poster.png`](docs/media/pollution-story-poster.png)
+
+---
+
+## 🧭 Contents
+
+- [Why Studio Pro](#-why-studio-pro)
+- [Quick start](#-quick-start)
+- [The interface](#-the-interface)
+- [HTML-in-Canvas — the HTML engine](#-html-in-canvas--the-html-engine)
+- [Code → video automation](#-code--video-automation)
+- [Everything else it does](#-everything-else-it-does)
+- [Export](#-export)
+- [Tech stack](#-tech-stack)
+- [Project structure](#-project-structure)
+- [Docs & contributing](#-docs--contributing)
+
+---
+
+## 💡 Why Studio Pro
+
+- **Nothing leaves your machine.** The editor is a static site; projects live in `localStorage`
+  and files you choose. There is no server to trust.
+- **HTML is a first-class clip type.** Write real HTML/CSS and get frame-exact video out of
+  it — the same idea as Remotion, but browser-native and live on the canvas as you type.
+- **Deterministic by construction.** Every animated clip is a pure function of time, so seeking,
+  previewing and exporting all agree. Re-rendering gives you the same frames.
+- **An agent can drive it.** One `StudioPro.html(…)` call creates a clip; a small CLI renders a
+  whole composition to MP4, headless.
+- **Zero setup.** `npm install && npm run dev`. No database, no accounts, no build step before
+  you can edit.
+
+---
+
+## 🚀 Quick Start
+
+```bash
+git clone https://github.com/simplearyan/studio-pro.git
+cd studio-pro
+npm install
+npm run dev            # → http://localhost:3000
+```
+
+Then, in the app: press `T` to add text, `✦` to add an **HTML-in-Canvas** clip, or open the
+**Markdown** tab, pick a preset and hit **Generate** for an instant timeline.
+
+```bash
+npm run build          # production build → dist/
+npm run preview        # serve the built site locally
+```
+
+> **Browser:** MediaBunny (WebCodecs) exports need a Chromium browser (Chrome, Edge, Opera).
+> The standard MediaRecorder export works everywhere.
 
 ---
 
@@ -25,401 +84,215 @@ A powerful, **100% in-browser** video editor and motion-graphics builder. No acc
 
 | Area | What it does |
 |---|---|
-| **Top toolbar** | Add clips (Text `T`, HTML, **HTML-in-Canvas** `✦`, WAAPI, Shapes, Image, Video, Audio, Math `Σ`, **Draw** `✏`, **Annotation** `✍`, Scene), undo/redo, export, settings |
-| **Canvas preview** | Live preview with selectable/movable/resizable clips, frame-by-frame playback |
-| **Timeline (bottom)** | Multi-track editor with playhead, zoom, ripple/push-trim, blade tool, per-track heights |
-| **Sidebar** | Six panels: **Properties** (with a **Basic · Adjust · Effects · Media** section list and an **Ink** card on draw clips) · **Animations · Audio · Presets · Captions · Markdown** |
+| **Top toolbar** | Add clips — Text, **HTML-in-Canvas** `✦`, Shapes, Image, Video, Audio, Math `Σ`, Draw `✏`, Annotation `✍`, Scene — plus undo/redo, export and settings |
+| **Canvas preview** | Live preview with selectable, movable, resizable clips and frame-by-frame playback |
+| **Timeline (bottom)** | Multi-track editor with playhead, zoom, ripple/push-trim, blade, and per-track heights |
+| **Sidebar** | Six panels: Properties (Basic · Adjust · Effects · Media, plus an Ink card on draw clips) · Animations · Audio · Presets · Captions · Markdown |
 
 ---
 
-## 🧩 Elements & Clips
+## 🖼️ HTML-in-Canvas — the HTML engine
 
-Add any of these from the header, or via Markdown generation:
-
-- **Text** — per-letter styling (each character independently styled), backgrounds with border-radius + opacity, stroke, drop shadow, 3D extrude, textures.
-- **HTML** — write raw HTML/CSS/JS directly. Live preview on canvas. Preset templates (Gradient, Glass, Minimal, Chart, Wisteria, Aurora, Neon, Sunset, Mesh, Ocean). Modal code editor for clean editing.
-- **HTML-in-Canvas** — the frame-exact HTML engine (see below). Deterministic `onFrame(t)` animation, 12 presets, code editor with mobile tabs and an AI prompt builder.
-- **Shapes** — rectangle, ellipse, triangle, star, line, arrows, callouts… with fill/stroke/effects/textures.
-- **Image** — paste a URL or upload a file; optional timeline thumbnail previews.
-- **Video** — URL or file; auto-linked audio track; mock placeholder while loading.
-- **Audio** — file or from the built-in audio library; volume/pan/effects, waveform thumbnails.
-- **Math (image)** — LaTeX via MathJax, cached to an image; fill, stroke, drop shadow, 3D extrude.
-- **Math (vector)** — same equations rendered as *vector shapes* — infinitely smooth scaling, no raster flicker.
-- **Scene** — group clips into a reusable composition; transparency and opaque-background modes.
-- **Ink (draw)** — freehand strokes with 20 brushes, from a plain pen to chisel, dry-erase, wet marker, sumi-e fude, watercolor and airbrush.
-- **Annotation elements** — 18 hand-drawn emphasis marks stamped as a draw clip at the playhead (or dragged onto the canvas), each with a draw-on reveal.
-
-### Styling depth (Properties panel)
-
-- Fill / stroke / outline width & color
-- Drop shadow (color, blur, offset, opacity)
-- **3D extrude** shadow with adjustable depth
-- **Textures** — grain, carbon, paper, leather, neon grid… (plus upload your own)
-- Backgrounds for text with radius + opacity
-- Blend modes, flip, rotation, scale, opacity, aspect ratio presets (9:16, 16:9, 1:1, 4:5…)
-- Per-letter editing for text clips (fonts, color, weight per character)
-
----
-
-## 🌐 HTML Clips
-
-Write raw HTML/CSS/JS and see it render live on the canvas. Export it to video like any other clip.
-
-### Features
-
-- **Live preview** — HTML renders in an iframe, captured to canvas via html2canvas
-- **10 preset templates** — one-click professional designs (Gradient, Glass, Wisteria, Aurora, etc.)
-- **Modal code editor** — clean editing experience with live preview
-- **Google Fonts** — load any Google Font from the sidebar, use in HTML clips
-- **Border radius & stroke** — works like other clip types
-- **Drag & resize** — select on canvas, move with mouse, resize with handles
-- **Pre-render** — clips pre-render on project load for faster seeking
-
-### HTML Clip Workflow
-
-1. Click **HTML** in the toolbar to add a clip
-2. Select it on the timeline to open the sidebar
-3. Edit HTML/CSS/JS in the Properties panel (or click the code icon for modal editor)
-4. Choose a preset template or write your own
-5. See it live on the canvas
-6. Export to video — html2canvas captures each frame
-
-### Known Limitations
-
-- `backdrop-filter` may not render correctly in html2canvas
-- Cross-origin images require CORS headers
-- CSS `animation` is static (captured at current frame, not seekable)
-- Future: WAAPI system will make animations deterministically seekable
-
----
-
-## 🖼️ HTML-in-Canvas (HIC)
-
-A second HTML engine — the one built for frame-exact video. Instead of capturing a live iframe with html2canvas, a HIC clip is a **pure function of time**: you write a single `onFrame(t)`, and the editor rasterizes that frame through SVG `foreignObject` at the canvas resolution. Same time in → same pixels out, at any seek position or export resolution.
-
-### The contract
+An HTML-in-Canvas (**HIC**) clip is a **pure function of time**. You write one `onFrame(t)` and the
+editor rasterizes that frame through SVG `foreignObject` at the canvas resolution. Same `t` in,
+same pixels out — at any seek position or export resolution.
 
 ```js
-function onFrame(t) {                             // t = ms since the clip started
+function onFrame(t) {                       // t = milliseconds since the clip started
   el.style.transform = 'translateY(' + Math.sin(t / 400) * 20 + 'px)';
 }
 ```
 
-- **No `requestAnimationFrame`, no `setTimeout`/`setInterval`, no CSS `@keyframes` or `transition`** — every element state is computed inside `onFrame` from `t` alone.
-- Design space is a fixed **800 × 450** (16:9); the renderer scales the whole stage to any output resolution.
-- **Vanilla HTML/CSS/JS only** — no imports, no external libraries. Guard your lookups (`if (el) { … }`) so a missing id never throws.
-- Images must be CORS-safe `https` URLs; they are inlined to base64 before the SVG render.
+- **No `requestAnimationFrame`, no `setTimeout`, no live CSS animation** — every moving part is
+  computed from `t` alone. That is what makes export frame-exact.
+- **Design space is a fixed 800 × 450 (16:9)**, scaled by the renderer to any output size.
+- **Vanilla HTML/CSS/JS only** — no imports, no external libraries. Guard lookups (`if (el) { … }`)
+  so a missing id never throws.
+- **Prefer `@keyframes`?** Write plain CSS keyframes and the editor compiles them into a
+  deterministic `onFrame` for you (see below).
 
-### What's in the box
+### The preset library (19)
 
-- **12 presets** — Google Clean, Gradient Hero, Neo-Brutal, iOS Glass, Data Chart, Stagger Grid, Fireship Terminal, Material You, iOS Gradient, Vox Title, Text Reveal, Google Search.
-- **HIC code editor** — HTML / CSS / JS panes, live preview at the design space, mobile Preview/Code tabs, and a built-in **Format** button (three hand-written formatters, no third-party libs).
-- **AI tab** — documents the clip contract, offers 12 prompt chips (Counter Stats, Quote Reveal, Neon Glitch Intro, Subscribe Outro, Particle Constellation…), assembles the full prompt, and takes the three fenced blocks back into the panes.
-- **Pre-render before export** — HIC clips are pre-rendered ahead of the render pump, including the FTRT path, so seeking and export never race an async capture.
-- **Per-clip effects** — everything a normal clip gets: stroke/outline, shadow, border radius, blend, transform, and in/out/loop animation presets.
+13 hand-built presets — *Blank, Google Clean, Gradient Hero, Neo-Brutal, iOS Glass, Data Chart,
+Stagger Grid, Fireship Terminal, Material You, iOS Gradient, Vox Title, Text Reveal, Google
+Search* — plus 7 ported keyframe presets. Each is a working composition you can open, tweak and
+export.
+
+### In the editor
+
+- **HIC code editor** — HTML / CSS / JS panes, live preview, mobile Preview/Code tabs, and a
+  built-in **Format** button (three hand-written formatters, no third-party libs).
+- **AI tab** — documents the clip contract, offers prompt chips (counter stats, quote reveal,
+  neon-glitch intro, subscribe outro, particle constellation…), assembles the prompt, and takes
+  the fenced blocks back into the panes.
+- **Pre-render before export** — HIC clips rasterize ahead of the render pump (including the
+  fast frame-index path), so seeking and export never race an async capture.
+- **Per-clip effects** — stroke, shadow, radius, blend, transform and the usual animation presets.
+
+### `@keyframes` → `onFrame` (the WAAPI adapter)
+
+CSS `@keyframes` in a HIC clip are compiled into a deterministic `onFrame(t)` by
+[`src/engines/hic/adapters/waapi.js`](src/engines/hic/adapters/waapi.js), so they scrub and export
+frame-exact. The Web Animations API itself turned out *not* to work here: a HIC clip rasterizes
+from a **detached** `foreignObject` where the clip's CSS is never applied, so `document.getAnimations()`
+has nothing to seek. Compiling the keyframes into `onFrame` is what made them seekable.
+
+| | Legacy html2canvas clips | HTML-in-Canvas clips |
+|---|---|---|
+| DOM → pixels | `html2canvas` over a live iframe | SVG `foreignObject` raster |
+| Speed | ~200–500 ms / frame | ~5–15 ms / frame |
+| Animation | frozen at the captured frame | `onFrame(t)`, seekable and deterministic |
+| Export accuracy | approximate | frame-exact |
 
 ### The shared HIC layer
 
-`docs/html-in-canvas/` holds the standalone HIC pages and the libraries they and the editor are built from:
+[`docs/html-in-canvas/`](docs/html-in-canvas/) holds the standalone HIC pages and the libraries
+they and the editor share:
 
 | File | What it does |
 |---|---|
-| `hic-frame.js` | Aspect / design-space tables, frame geometry, and the `HicRenderer` SVG engine |
-| `hic-modal.js` | The full preview modal — player shell, overlay transport, export toolbar, Code tab, AI tab |
-| `hic-storyboard.js` | Storyboard → clip compiler: a storyboard JSON becomes a self-contained HIC clip whose `onFrame(t)` *is* the interpolator |
-| `hic-theme.js` · `hic-theme.css` | Shared theme boot + toggle (runs pre-paint, so no light flash on dark-first visits) |
-| `designs.html` · `test-renderer.html` · `prompts-engineer.html` | Standalone tools: design gallery, renderer test bench, AI prompt engineer |
-
-### How this differs from HTML clips
-
-| | HTML clips | HTML-in-Canvas |
-|---|---|---|
-| Capture | html2canvas over a live iframe | SVG `foreignObject` at canvas resolution |
-| Animation | CSS animation, captured at the current frame | `onFrame(t)` — deterministic and seekable |
-| Seeking | Re-captures the iframe | Pure function of `t`, instant |
-| Export accuracy | Approximate | Frame-exact |
-
-### Known limitations
-
-- The whole clip is driven by one `onFrame(t)`, so CSS animations and transitions are ignored — anything that moves must be computed from `t`.
-- Cross-origin images need CORS headers; fonts and scripts must be vendored or web-safe.
-- Text is laid out by the browser's HTML engine, so line breaking can shift slightly between the editor preview and an export at a very different resolution.
+| [`hic-frame.js`](docs/html-in-canvas/hic-frame.js) | Aspect / design-space tables, frame geometry, the `HicRenderer` SVG engine |
+| [`hic-modal.js`](docs/html-in-canvas/hic-modal.js) | The preview modal — player shell, transport, export toolbar, Code tab, AI tab |
+| [`hic-storyboard.js`](docs/html-in-canvas/hic-storyboard.js) | Storyboard → clip compiler: JSON becomes a self-contained HIC clip |
+| [`hic-theme.js`](docs/html-in-canvas/hic-theme.js) · [`hic-theme.css`](docs/html-in-canvas/hic-theme.css) | Shared theme boot + toggle |
+| [`designs.html`](docs/html-in-canvas/designs.html) · [`test-renderer.html`](docs/html-in-canvas/test-renderer.html) · [`prompts-engineer.html`](docs/html-in-canvas/prompts-engineer.html) | Standalone tools: design gallery, renderer test bench, AI prompt engineer |
 
 ---
 
-## ✍️ Ink & Hand-Drawn Annotations
+## 🤖 Code → video automation
 
-Two ways to draw on the timeline: freehand with the **Draw** tool, or stamp a ready-made **hand-drawn element** from the annotation library. Both produce a normal **draw clip**, so selection, trimming, reveal, effects, grouping, copy/paste and export all come for free.
+The same HIC clips render headless from the terminal, so an AI agent (or a CI job) can produce
+video without touching the UI.
 
-### Brushes (20)
+```bash
+cd automation && npm install
+
+# Deterministic: a standalone page per clip + CDP screenshots + ffmpeg  (default)
+node html-in-canvas/render.js html-in-canvas/examples/pollution-story.js
+
+# Parity: drive the running editor and let its own export pump render
+node html-in-canvas/render.js html-in-canvas/examples/pollution-story.js -m editor -e ftrt
+```
+
+### How the showcase was made
+
+1. **Write** a composition — four clips, each a `div` with a gradient background and CSS
+   `@keyframes` entrances ([`examples/pollution-story.js`](automation/html-in-canvas/examples/pollution-story.js)).
+2. **Render** with `-m cdp` (default): 780 frames at 1920×1080, 30 fps.
+3. **Preview** it as a GIF — the clip you see at the top of this README.
+
+### Two export strategies, one command
+
+| Strategy | Flag | How | Use it for |
+|---|---|---|---|
+| **CDP screenshots** | `-m cdp` *(default)* | Standalone page per clip, one screenshot per frame, ffmpeg | Anything you may need to re-render, compare or diff — it is a pure function of the frame index. Two runs produce byte-identical MP4s. |
+| **Editor export** | `-m editor` | Drives the running editor's own export pump (`-e mediabunny \| ftrt \| standard`) | Verifying that the path a real user's **Export** button takes actually renders a clip. |
+
+They are **not interchangeable**: both editor encoders are realtime capture loops, so each frame
+lands at a slightly different point in the animation, while `-m cdp` samples the same frame index
+every time. Use `cdp` for reference files, `editor` for coverage of the shipped path.
+
+### Folder
+
+```
+automation/
+├── html-in-canvas/            # HTML-in-Canvas → Video
+│   ├── render.js              # CLI — --mode cdp|editor
+│   ├── api.js                 # editor client (used by --mode editor)
+│   ├── cdp-capture.js         # standalone page + CDP screenshots (--mode cdp)
+│   ├── examples/              # composition scripts (incl. pollution-story.js)
+│   ├── templates/             # reusable HTML/CSS + design tokens
+│   └── README.md              # the pipeline's own docs
+├── md-render/                 # Markdown → Video
+├── shared/skills/             # AI-agent workflows (AGENTS.md first)
+└── README.md                  # full automation guide
+```
+
+### Agent workflow
+
+1. Read [`automation/shared/skills/AGENTS.md`](automation/shared/skills/AGENTS.md) — the API.
+2. Read a skill doc (`kinetic-text`, `product-launch`, `social-reel`) if one fits.
+3. Write a JS composition using `StudioPro.createComposition()` / `StudioPro.html()`.
+4. Render: `node html-in-canvas/render.js html-in-canvas/examples/my-video.js`.
+
+---
+
+## 🧩 Everything else it does
+
+### Clips you can add
+
+- **Text** — per-letter styling, backgrounds with radius + opacity, stroke, drop shadow, 3D
+  extrude, textures.
+- **Shapes** — rectangle, ellipse, triangle, star, line, arrows, callouts… with fill, stroke,
+  effects and textures.
+- **Image / Video / Audio** — URL or file; video auto-links its audio track; the audio library
+  adds waveform thumbnails.
+- **Math** — LaTeX via MathJax as a crisp image *or* as smooth editable **vector** shapes.
+- **Ink (draw)** — freehand strokes with 20 brushes, from a plain pen to sumi-e fude, watercolor
+  and airbrush.
+- **Annotation elements** — 18 hand-drawn emphasis marks (circle, box, arrow, underline…) stamped
+  as a draw clip, each with a draw-on reveal.
+- **Scene** — group clips into a reusable composition.
+
+### Ink & hand-drawn annotations
 
 | Pack | Brushes |
 |---|---|
 | **Core** | Pen, Eraser, Chisel, Calligraphy, Highlighter, Fine Liner, Dry Erase, Wet Marker, Brush Pen, Paint Marker |
 | **Ink-physics** | Fude Brush, Menso Fine, Kasure Dry, Nijimi Wet, Bokashi Wash, Shibuki Splatter, Hake Flat, Watercolor, Charcoal, Airbrush |
 
-- The **Pen** uses vendored **perfect-freehand** for velocity-simulated tapered ink.
-- The **ink-physics pack** adds four shared knobs on top of size / nib angle / texture / ink opacity / blend: **Bleed** (wet spread), **Sensitivity** (speed → width, resolved at commit time), **Ink Fade** (ink depletes along the stroke) and **Scatter** (particle density).
+The **Pen** uses vendored **perfect-freehand** for velocity-simulated tapered ink; the ink-physics
+pack adds **Bleed**, **Sensitivity**, **Ink Fade** and **Scatter** knobs. Every speckle comes from
+coordinate-hashed noise rather than `Math.random()`, so a stroke rasterizes identically at any
+seek position or resolution.
 
-### Annotation elements (18)
+### Markdown → video
 
-| Group | Elements |
-|---|---|
-| **Emphasis** | Circle, Double Circle, Messy Circle, Box, Dashed Box, Ellipse, Star, Heart, Bracket |
-| **Arrows** | Arrow, Curved Arrow, Double Arrow |
-| **Marks** | Underline, Highlight, Check, Cross, Wavy Line, Burst |
+Write Markdown in the **Markdown → Content** tab and hit **Generate**: headings, paragraphs,
+images, videos, math and mocks become timed, positioned clips. Position tags (`[top-left]`,
+`[center-right]`…), per-slide timing and track modes cover most explainer layouts.
 
-- **Stamp at the playhead** from the library flyout, or **drag a chip onto the canvas** to stamp it where you drop it.
-- Every element lands with a **draw-on reveal** — the mark draws itself at its own pace (0.5–1.3 s) from the clip's start.
-- **Sketch styles** — `Off · Light · Sketchy · Messy` re-render a stroke as 1–2 rough passes with roughness and bowing you can dial, plus a per-clip **Boiling** switch that makes a hand-drawn line wiggle at 10 fps like traditional animation.
-- **Deterministic by construction** — every speckle, bleed and spatter comes from coordinate-hashed noise instead of `Math.random()`, so a frame rasterizes identically at any seek position or export resolution.
+### Timeline, animations & captions
 
-### The Ink card (Properties)
-
-Select a draw clip — or any annotation it stamped — and the sidebar shows:
-
-- brush picker (per-brush glyph, label and size sample)
-- size, nib angle, texture, ink opacity, ink blend
-- only the physics knobs that brush actually uses (bleed / sensitivity / fade / scatter)
-- sketch style, boiling, stroke colour — plus the clip's normal effects, animations and transform
-
----
-
-## 📝 Markdown → Video Generator
-
-Write plain Markdown in the **Markdown → Content** tab, hit **Generate**, and Studio Pro builds slides on the timeline — headings, paragraphs, images, videos, math and mocks, all with per-slide timing, positions and stacking.
-
-### Syntax
-
-```markdown
-# 🎬 Slide Title
-
-## 🦖 T-Rex [top-left]
-
-![T-Rex](https://.../t-rex.jpeg) [right]
-
-The Tyrannosaurus Rex was one of the largest land carnivores… [bottom]
-
-$$e^{i\pi} + 1 = 0$$ [center-right]
-
-![Alt text](mock)          ← mock image placeholder
-![Reel](mock:video)        ← mock video placeholder
-![Clip](video.mp4)         ← real video by extension
-[video](https://…/x.mp4)   ← real video by URL
-
----                          ← separates slides
-```
-
-### Features
-
-- **Element types:** headings, paragraphs, images, math, mock placeholders, real video URLs
-- **Position tags:** `[top]`, `[bottom]`, `[left]`, `[right]`, `[center]`, corners, sides
-- **Timing:** per-slide duration, text delay, generate-from time
-- **Track modes:** Auto layout or Script-order lanes
-- **Presets:** Animals & Dinosaurs, Σ Math, Showcase
-
----
-
-## 🎞️ Animations
-
-- **Preset grid** (Transform): In / Out / Loop animations — fade, slide, zoom, bounce, spin, flip, blur, **Puzzle Blocks**
-- **Text tab:** letter-by-letter pop, background sweep, stagger effects
-- **Custom tab:** full keyframe editor — add/delete keyframes, per-property reset
-- Per-clip duration, delay, and easing controls
-
----
-
-## 🗒️ Captions
-
-- **Import SRT/VTT** files — auto-synced caption clips
-- Convert captions to normal text tracks for full timeline control
-- Overlap handling with live preview
-
----
-
-## ⏱️ Timeline Editing
-
-- Multi-track timeline (V1…, A1…) with per-track height adjustment
-- **Split** at playhead — one clip, linked clips, or all clips (blade tool)
-- Trim from start or end; **push/ripple trim** moves neighbors
-- **Gap select** — click empty space, remove it, ripple left
-- Multi-select, group to scene, duplicate, copy/paste, drag across tracks
+- Split at the playhead (one clip, linked clips, or all), trim, push/ripple trim, gap-select,
+  multi-select, group to scene, copy/paste, drag across tracks.
+- Animation presets for in / out / loop (fade, slide, zoom, bounce, spin, flip, blur, puzzle
+  blocks), letter-by-letter text effects, and a custom keyframe editor.
+- Import SRT/VTT captions, auto-synced, or convert them to normal text tracks.
 
 ---
 
 ## 📤 Export
 
-Hit **Export** in the toolbar, choose a tab and format:
-
 | Format | Engine | Notes |
 |---|---|---|
-| **MP4** (MediaBunny) | WebCodecs | ⚡ Fast, high quality — needs Chrome/Edge/Opera |
+| **MP4** (MediaBunny) | WebCodecs | ⚡ Fast, high quality — Chromium only |
 | **WebM** (MediaBunny) | WebCodecs | ⚡ Fast VP9 |
-| **MP4** (FTRT) | Frame-index | ⚡ Fastest — 4× realtime |
-| **MP4** (standard) | MediaRecorder | H.264 + AAC, universal fallback |
-| **WebM** (standard) | MediaRecorder | VP9 + Opus |
+| **MP4** (FTRT) | Frame-index | ⚡ Fastest — ~4× realtime |
+| **MP4 / WebM** (standard) | MediaRecorder | Universal fallback (H.264 + AAC / VP9 + Opus) |
 | **GIF** | MediaRecorder | Animated GIF via WebM |
 | **Audio WebM / WAV** | MediaRecorder | Audio-only export |
 
-- **Resolution** up to 1080p+, **FPS** selectable, **time-range export**
-- Custom aspect ratios (9:16, 16:9, 1:1, 4:5…)
-- Progress bar + cancel, settings remembered in `localStorage`
-
----
-
-## 🤖 Automation
-
-Studio Pro includes a full automation layer for rendering videos from the terminal — designed for AI agents and batch processing.
-
-### Two Pipelines
-
-| Pipeline | Input | Command | Best For |
-|---|---|---|---|
-| **md-render** | `.md` files | `node md-render/render.js md-render/scripts/file.md` | Simple videos, explainers |
-| **html-in-canvas** | `.js` files | `node html-in-canvas/render.js html-in-canvas/examples/file.js` | Designed HTML/CSS/JS compositions |
-
-`html-in-canvas` is what the `html-static` and `html-waapi` pipelines became — one CLI, two export
-strategies (`-m cdp` screenshots + ffmpeg, or `-m editor` for the editor's own export pump). Both
-old folders have been deleted.
-
-### Quick Start
-
-```bash
-# 1. Start dev server (personal or automation)
-npm run dev              # Port 3000 (personal)
-npm run dev:automation   # Port 7000 (dedicated, isolated)
-
-# 2. Run automation
-cd automation
-npm install
-
-# Markdown → Video
-node md-render/render.js md-render/scripts/social-short.md -q ultra
-
-# HTML-in-Canvas → Video (cdp screenshots + ffmpeg)
-node html-in-canvas/render.js html-in-canvas/examples/simple-test.js -q ultra
-
-# …or let the editor's own export pump render it (mediabunny | ftrt | standard)
-node html-in-canvas/render.js html-in-canvas/examples/simple-test.js -m editor -e ftrt
-```
-
-### Automation Features
-
-- **Port auto-detect** — tries 7000 → 3000 → 3001 automatically
-- **Chrome isolation** — separate profile per pipeline, never touches your browser
-- **Short flags** — `-q ultra -m ftrt` for fast CLI
-- **Export modes** — FTRT (4× realtime), MediaBunny (WebCodecs), Standard
-- **Quality presets** — draft (3Mbps), standard (8Mbps), high (15Mbps), ultra (30Mbps)
-- **Batch rendering** — render multiple scripts in parallel
-
-### Folder Structure
-
-```
-automation/
-├── md-render/                # Pipeline 1: Markdown → Video
-│   ├── render.js             # Headless Chrome renderer
-│   ├── config.json           # Chrome path, port, defaults
-│   ├── scripts/              # Markdown video scripts
-│   └── output/               # Rendered videos
-│
-├── html-in-canvas/           # Pipeline 2: HTML-in-Canvas → Video
-│   ├── render.js             # CLI entry point — --mode cdp|editor
-│   ├── api.js                # Editor client (--mode editor)
-│   ├── cdp-capture.js        # Standalone page + CDP screenshots (--mode cdp)
-│   ├── examples/             # Composition scripts
-│   ├── templates/            # HTML/CSS/JS templates
-│   └── output/               # Rendered videos
-│
-├── shared/                   # Shared across pipelines
-│   ├── skills/               # AI agent workflows (AGENTS.md)
-│   └── tests/                # Test scripts
-│
-├── assets/                   # Shared assets (fonts, images, audio)
-├── batch.js                  # Batch render multiple scripts
-├── package.json              # puppeteer-core dependency
-└── README.md                 # Full automation docs
-```
-
-### AI Agent Workflow
-
-1. Read `shared/skills/AGENTS.md` — learn the API
-2. Read `shared/skills/*.md` — follow a skill doc
-3. Write a JS composition using `StudioPro.createComposition()`
-4. Render: `node html-in-canvas/render.js html-in-canvas/examples/my-video.js`
-5. Get MP4 output
-
----
-
-## ✅ WAAPI Animation System (shipped)
-
-CSS `@keyframes` in an HTML-in-Canvas clip are compiled into a deterministic `onFrame(t)` by
-`src/engines/hic/adapters/waapi.js`, so they scrub and export frame-exact.
-
-The one thing that turned out not to work is the Web Animations API itself: a HIC clip is rastered
-from a **detached** `foreignObject` where the sandbox CSS is never applied, so there are no live
-animations for `document.getAnimations()` to seek. Compiling the keyframes into `onFrame` is what
-made them seekable instead.
-
-### What It Enables
-
-| Before (html2canvas clips) | Now (HTML-in-Canvas clips) |
-|---|---|
-| Static capture at one frame | Any frame is reachable |
-| CSS animations frozen | `@keyframes` compile to `onFrame(t)` |
-| Custom `animate(t)` function required | Either an `onFrame(t)` hook or plain `@keyframes` |
-| ~500 ms per frame capture | ~5–15 ms SVG `foreignObject` raster |
-
-### Three-Layer Architecture
-
-| Layer | What | How it works now |
-|---|---|---|
-| **Markup** | How a clip is authored | HTML/CSS in a HIC clip |
-| **Time Control** | How the editor scrubs time | `WAAPIAdapter.compileKeyframes` → `onFrame(t)` |
-| **Frame Capture** | How DOM becomes pixels | SVG `foreignObject` (~5–15 ms), not html2canvas |
-
-### Status
-
-- ✅ Shipped in the editor — the adapter plus 19 HTML-in-Canvas presets
-- ✅ Batch pipeline (`automation/html-in-canvas/`) renders the same clips — `-m cdp` screenshots them deterministically, `-m editor` uses the editor's own export pump. Its `templates/` are live; `lib/` is unscheduled prototype code
-- ⏳ Retiring the html2canvas path is Phase 4 of the [consolidation plan](docs/HTML-ENGINE-CONSOLIDATION-PLAN.md)
-
-The research folder this replaced (`future-waapi/`) has been removed; its verdict, and the plan for
-the rest of the cleanup, live in [HTML-ENGINE-CONSOLIDATION-PLAN.md](docs/HTML-ENGINE-CONSOLIDATION-PLAN.md)
-and [LEGACY-CLIP-REMOVAL-PLAN.md](docs/LEGACY-CLIP-REMOVAL-PLAN.md).
-
----
-
-## 🚀 Getting Started
-
-```bash
-# 1. Install dependencies
-npm install
-
-# 2. Start the dev server
-npm run dev          # → http://localhost:3000
-
-# 3. Production build
-npm run build
-npm run preview      # serve the built site locally
-```
-
-Open the app, then try the **Showcase** preset in the Markdown tab and hit **Generate** — you'll have a full timeline in seconds.
-
-> **Note:** MediaBunny exports require a Chromium browser (Chrome, Edge, Opera). The standard MediaRecorder export still works everywhere.
+Resolution up to 1080p+, selectable FPS, time-range export, and custom aspect ratios
+(9:16, 16:9, 1:1, 4:5…). Progress bar + cancel; settings are remembered in `localStorage`.
 
 ---
 
 ## 🛠 Tech Stack
 
-- **Vite** — instant dev server & builds
-- **Tailwind CSS 4** — utility-first styling, dark mode
-- **MediaBunny** — WebCodecs encoding for fast MP4/WebM export ([site](https://mediabunny.dev/) · [GitHub](https://github.com/Vanilagy/mediabunny) · MPL-2.0)
-- **html2canvas** — DOM-to-canvas capture for HTML clips
-- **perfect-freehand** — pressure-simulated tapered ink for the draw tool (vendored in `public/vendor/`)
-- **SVG `foreignObject`** — the rasterization path for HTML-in-Canvas clips
-- **MathJax** — LaTeX rendering for image-based math
-- **Puppeteer** — headless Chrome for automation rendering
-- Vanilla JS single-page app — no framework, no backend, no telemetry
+| Layer | Choice |
+|---|---|
+| Build / dev server | **Vite** |
+| Styling | **Tailwind CSS 4** (dark mode) |
+| Encoding | **MediaBunny** — WebCodecs MP4/WebM ([site](https://mediabunny.dev/) · [GitHub](https://github.com/Vanilagy/mediabunny) · MPL-2.0) |
+| HIC rasterization | **SVG `foreignObject`** |
+| Ink | **perfect-freehand** (vendored in `public/vendor/`) |
+| Math | **MathJax** |
+| Headless rendering | **Puppeteer** (`automation/`) |
+| App model | Vanilla JS single page — no framework, no backend, no telemetry |
+
+`html2canvas` still ships in `src/html-clips/` for the legacy HTML-clip path, which is being
+retired — see [`docs/LEGACY-CLIP-REMOVAL-PLAN.md`](docs/LEGACY-CLIP-REMOVAL-PLAN.md).
 
 ---
 
@@ -427,26 +300,32 @@ Open the app, then try the **Showcase** preset in the Markdown tab and hit **Gen
 
 ```
 studio-pro-editor/
-├── index.html              ← the entire editor (UI + logic, ~39k lines)
-├── style.css               ← custom styles (Tailwind 4 + hand-written)
-├── tailwind.config.js      ← Tailwind theme
-├── vite.config.js          ← build config
-├── export-worker.js        ← MediaBunny export worker
+├── index.html                  # the editor — UI + logic (single-page app)
+├── src/
+│   ├── styles/style.css        # custom styles on top of Tailwind
+│   ├── engines/hic/adapters/   # waapi.js — @keyframes → onFrame compiler
+│   ├── html-clips/             # html2canvas.min.js (legacy path, being retired)
+│   └── workers/export-worker.js# MediaBunny export worker
 │
-├── automation/             ← terminal automation (2 pipelines)
-│   ├── md-render/          ← Markdown → Video
-│   ├── html-in-canvas/     ← HTML-in-Canvas → Video (cdp or editor export)
-│   ├── shared/             ← Skills, tests, assets
-│   └── README.md           ← Full automation docs
+├── public/
+│   ├── vendor/                 # lucide, mathjax, perfect-freehand
+│   └── fonts/
 │
-├── public/vendor/          ← vendored runtime deps (lucide, mathjax, perfect-freehand)
+├── automation/                 # terminal pipelines (2)
+│   ├── md-render/              # Markdown → Video
+│   ├── html-in-canvas/         # HTML-in-Canvas → Video  (cdp | editor)
+│   ├── shared/skills/          # AI-agent workflows
+│   └── README.md
 │
-├── docs/                   ← planning docs
-│   ├── automation/         ← render architecture plans
-│   └── html-in-canvas/     ← shared HIC libs (hic-frame, hic-modal,
-│                              hic-storyboard, hic-theme) + standalone
-│                              pages: designs, test-renderer, prompts-engineer
+├── docs/
+│   ├── html-in-canvas/         # HIC libs + standalone pages
+│   ├── automation/             # render architecture plans
+│   ├── funding/                # licensing strategy docs
+│   └── media/                  # README showcase media
 │
+├── tools/                      # design-page generators
+├── og-image.png
+├── vite.config.js · tailwind.config.js · postcss.config.js
 └── package.json
 ```
 
@@ -454,14 +333,19 @@ studio-pro-editor/
 
 ## 📖 Docs & Contributing
 
-- [Contributing guide](CONTRIBUTING.md) — how to set up, code conventions, and testing checklist
-- [Automation docs](automation/README.md) — full automation guide
-- [HTML-in-Canvas renderer](docs/html-in-canvas/test-renderer.html) — the SVG `foreignObject` engine, in isolation
-- [HTML engine consolidation](docs/HTML-ENGINE-CONSOLIDATION-PLAN.md) — the WAAPI→HIC port and the `future-waapi/` verdict
-- [Render architecture](docs/automation/HTML-Render-Final-Plan.md) — three-layer rendering plan
-- [Commercial licensing strategy](LICENSE_STRATEGY_COMMERCIAL.md) — how we plan to fund the editor
-- [License deep-dive](LICENSE_RECOMMENDATION.md) — how MediaBunny's MPL-2.0 license works with our own
+- [Contributing guide](CONTRIBUTING.md) — setup, conventions, testing checklist
+- [Automation guide](automation/README.md) — the pipelines in full
+- [HIC renderer, in isolation](docs/html-in-canvas/test-renderer.html) — the SVG `foreignObject` engine
+- [HTML-in-Canvas pipeline plan](docs/automation/HTML-IN-CANVAS-PIPELINE-PLAN.md) — how the two automation folders became one
+- [HTML engine consolidation](docs/HTML-ENGINE-CONSOLIDATION-PLAN.md) — the WAAPI → HIC port
+- [Legacy clip removal](docs/LEGACY-CLIP-REMOVAL-PLAN.md) — retiring the html2canvas path
+- [Licensing strategy](docs/funding/LICENSE_STRATEGY_COMMERCIAL.md) ·
+  [license deep-dive](docs/funding/LICENSE_RECOMMENDATION.md)
 
----
+<div align="center">
 
-*Built for creators who want a pro editing feel with zero setup. Make something great! 🚀*
+*Built for creators who want a pro editing feel with zero setup.*
+
+**Make something great.** 🚀
+
+</div>
