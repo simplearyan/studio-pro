@@ -16,9 +16,21 @@ export default defineConfig({
     // copy keeps the file byte-identical between dev and production.
     viteStaticCopy({
       targets: [
+        /* Classic (non-module) scripts referenced by index.html are NOT bundled
+           or emitted by Vite — the tag is left verbatim, so without a copy the
+           file 404s in production. This adapter must load before the app script
+           that compiles the ported WAAPI presets. */
+        { src: 'src/engines/hic/adapters/waapi.js', dest: 'src/engines/hic/adapters', rename: { stripBase: true } },
         /* v4 keeps the full source dir under dest unless stripped — stripBase
            flattens so the file lands at <outDir>/docs/html-in-canvas/ */
         { src: 'docs/html-in-canvas/test-renderer.html', dest: 'docs/html-in-canvas', rename: { stripBase: true } },
+        /* The Studio Lite study pages: the tier/palette mock and the
+           YouTube-Create-style editor study. Like the HIC pages they load the
+           vendored Tailwind runtime and the fonts by RELATIVE path (../../vendor,
+           ../../fonts), so they need no bundling — only to exist under
+           <outDir>/docs/studio-lite/. Globbed rather than listed one by one:
+           every page in the folder is a study page and every one of them ships. */
+        { src: 'docs/studio-lite/*.html', dest: 'docs/studio-lite', rename: { stripBase: true } },
         /* /designs gallery page + its synced data file (Phase A/B of
            docs/html-in-canvas/DESIGNS-GALLERY-PLAN.md) */
         { src: 'docs/html-in-canvas/designs.html', dest: 'docs/html-in-canvas', rename: { stripBase: true } },
@@ -55,10 +67,12 @@ export default defineConfig({
         // 2 MB default precache limit, so raise it.
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         // Only the app shell navigations fall back to index.html. Requests that
-        // name a real static file (e.g. docs/html-in-canvas/test-renderer.html)
-        // keep their own response — without the "not a navigation" exclusion the
-        // SPA fallback would serve the app UI in place of the test-renderer page.
-        navigateFallbackDenylist: [/docs\/html-in-canvas\/test-renderer\.html$/],
+        // name a real static file under docs/ keep their own response — without
+        // the "not a navigation" exclusion the SPA fallback serves the app UI in
+        // place of the page. Folder-wide rather than one entry per page: the test
+        // renderer, the designs gallery, the prompts builder and the Studio Lite
+        // mock all live there, and each new one used to reintroduce the bug.
+        navigateFallbackDenylist: [/docs\/.*\.html$/],
         cleanupOutdatedCaches: true,
         // Runtime caching for the few remaining cross-origin calls:
         //   - unpkg / jsDelivr (CDN-first Lucide, any stray CDN scripts):

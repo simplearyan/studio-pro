@@ -111,6 +111,17 @@
     <script id="MathJax-script" async src="vendor/mathjax/tex-svg.js"></script>
     <!-- HTML Clips Module: bundled html2canvas for rendering HTML/CSS to Canvas -->
     <script src="src/html-clips/html2canvas.min.js"></script>
+    <!-- WAAPI → HTML-in-Canvas adapter. Compiles a clip's @keyframes into a
+         deterministic onFrame(time) so CSS animations are seekable inside the
+         HIC raster (the sandbox CSS is never applied to the live DOM, so the
+         Web Animations API cannot be used). See src/engines/hic/adapters/waapi.js. -->
+    <script src="src/engines/hic/adapters/waapi.js"></script>
+    <script>
+        // The ONE copy of the legacy iframe+html2canvas seek shim. It still
+        // serves clips saved before the WAAPI→HIC port; the whole html2canvas
+        // path is removed in Phase 4 of docs/HTML-ENGINE-CONSOLIDATION-PLAN.md.
+        window.WAAPI_SEEK_ADAPTER = '<script>(function(){window.seekToFrame=function(f,fps){var ms=(f/(fps||30))*1000;try{var _a=document.getAnimations({subtree:true});for(var i=0;i<_a.length;i++){_a[i].currentTime=ms;_a[i].pause();}}catch(e){}try{document.documentElement.style.setProperty("--frame",f);document.documentElement.style.setProperty("--progress",(ms/1000).toFixed(4));}catch(e){}try{if(typeof window.animate==="function")window.animate(ms/1000);}catch(e){}}})();<\/script>';
+    </script>
     <!-- perfect-freehand 1.2.3 vendored locally: pressure-simulated tapered ink for
          the draw tool's pen brush (thumb-maker parity). Pure function of its input
          points, so export determinism holds. Sets window.__perfectFreehand. -->
@@ -1306,9 +1317,6 @@
             <button id="btnAddHtml" onclick="addHtmlClipToTimeline()" class="p-1.5 text-surface-600 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white bg-surface-100 dark:bg-surface-800 rounded-md border border-surface-200 dark:border-surface-700 shadow-sm" title="Add HTML/CSS Clip">
                 <i data-lucide="code" class="w-4 h-4"></i>
             </button>
-            <button id="btnAddWaaapi" onclick="addWaaapiClipToTimeline()" class="p-1.5 text-emerald-600 dark:text-emerald-400 hover:text-emerald-900 dark:hover:text-white bg-emerald-50 dark:bg-emerald-900/30 rounded-md border border-emerald-200 dark:border-emerald-700 shadow-sm" title="Add WAAPI Animated Clip (CSS keyframes)">
-                <i data-lucide="play-circle" class="w-4 h-4"></i>
-            </button>
             <button id="btnAddHic" onclick="addHicClipToTimeline()" class="p-1.5 text-violet-600 dark:text-violet-400 hover:text-violet-900 dark:hover:text-white bg-violet-50 dark:bg-violet-900/30 rounded-md border border-violet-200 dark:border-violet-700 shadow-sm" title="Add HTML-in-Canvas Animated Clip">
                 <i data-lucide="sparkles" class="w-4 h-4"></i>
             </button>
@@ -2438,59 +2446,59 @@
             },
             // ── WAAPI Animated Presets (Modern Clean) ───────────────────────
             {
-                id: 'waaapi_googleClean', name: 'Google Clean', type: 'html', category: 'WAAPI', _isWaaapi: true,
+                id: 'waaapi_googleClean', name: 'Google Clean', type: 'text', category: 'HTML in Canvas', _isHic: true, _hicKey: 'waaapi_googleClean',
                 data: {
                     html: '<div class="scene"><div class="kicker">ANNOUNCING</div><h1 class="title">Think <span class="hl">different</span>.</h1><p class="sub">Simple. Beautiful. Functional.</p><div class="divider"></div></div>',
                     css: '@keyframes fadeUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}@keyframes expandWidth{from{width:0}to{width:80px}}.scene{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#fafafa;font-family:Inter,-apple-system,sans-serif;gap:12px}.kicker{font-size:13px;font-weight:600;letter-spacing:4px;color:#999;animation:fadeUp .4s ease-out .1s both}.title{font-size:72px;font-weight:700;color:#1a1a1a;letter-spacing:-2px;animation:fadeUp .5s ease-out .2s both}.hl{background:linear-gradient(135deg,#4285f4,#ea4335);-webkit-background-clip:text;-webkit-text-fill-color:transparent}.sub{font-size:20px;color:#666;animation:fadeUp .4s ease-out .4s both}.divider{height:3px;background:linear-gradient(90deg,#4285f4,#ea4335,#fbbc04,#34a853);border-radius:2px;animation:expandWidth .6s ease-out .6s both}'
                 }
             },
             {
-                id: 'waaapi_brutalShadow', name: 'Brutal Shadow', type: 'html', category: 'WAAPI', _isWaaapi: true,
+                id: 'waaapi_brutalShadow', name: 'Brutal Shadow', type: 'text', category: 'HTML in Canvas', _isHic: true, _hicKey: 'waaapi_brutalShadow',
                 data: {
                     html: '<div class="scene"><h1 class="title">BRUTAL</h1><p class="sub">Bold. Loud. Unapologetic.</p><div class="tag">NEW DROP</div></div>',
                     css: '@keyframes slideUp{from{opacity:0;transform:translateY(60px)}to{opacity:1;transform:translateY(0)}}@keyframes popIn{from{opacity:0;transform:scale(0)}to{opacity:1;transform:scale(1)}}.scene{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#000;font-family:Inter,-apple-system,sans-serif;gap:16px}.title{font-size:120px;font-weight:900;color:#fff;letter-spacing:-4px;text-shadow:8px 8px 0 #ff3366,16px 16px 0 #6633ff;animation:slideUp .6s ease-out .1s both}.sub{font-size:18px;color:#888;letter-spacing:6px;text-transform:uppercase;animation:slideUp .4s ease-out .3s both}.tag{background:#ff3366;color:#000;font-size:12px;font-weight:800;padding:8px 20px;letter-spacing:3px;animation:popIn .4s ease-out .5s both}'
                 }
             },
             {
-                id: 'waaapi_iosGlass', name: 'iOS Glass', type: 'html', category: 'WAAPI', _isWaaapi: true,
+                id: 'waaapi_iosGlass', name: 'iOS Glass', type: 'text', category: 'HTML in Canvas', _isHic: true, _hicKey: 'waaapi_iosGlass',
                 data: {
                     html: '<div class="scene"><div class="card"><div class="icon">\u2726</div><h1 class="title">Glassmorphism</h1><p class="sub">Frosted glass effect</p><div class="pill">Premium</div></div></div>',
                     css: '@keyframes fadeScale{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:scale(1)}}@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}.scene{width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#667eea,#764ba2);font-family:-apple-system,sans-serif}.card{background:rgba(255,255,255,.15);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.2);border-radius:24px;padding:48px 64px;text-align:center;animation:fadeScale .6s ease-out .1s both}.icon{font-size:48px;animation:float 3s ease-in-out infinite;margin-bottom:16px}.title{color:#fff;font-size:42px;font-weight:700;margin-bottom:8px}.sub{color:rgba(255,255,255,.7);font-size:16px;margin-bottom:20px}.pill{display:inline-block;background:rgba(255,255,255,.2);color:#fff;font-size:12px;font-weight:600;padding:6px 16px;border-radius:20px;letter-spacing:2px}'
                 }
             },
             {
-                id: 'waaapi_voxChart', name: 'Vox Chart', type: 'html', category: 'WAAPI', _isWaaapi: true,
+                id: 'waaapi_voxChart', name: 'Vox Chart', type: 'text', category: 'HTML in Canvas', _isHic: true, _hicKey: 'waaapi_voxChart',
                 data: {
                     html: '<div class="scene"><h2 class="title">Global CO2 Emissions</h2><div class="chart"><div class="col" style="--d:.3s"><div class="bar" style="--h:40%;--c:#4285f4"><span class="val">15Gt</span></div><span class="yr">2000</span></div><div class="col" style="--d:.45s"><div class="bar" style="--h:55%;--c:#ea4335"><span class="val">22Gt</span></div><span class="yr">2005</span></div><div class="col" style="--d:.6s"><div class="bar" style="--h:70%;--c:#fbbc04"><span class="val">30Gt</span></div><span class="yr">2010</span></div><div class="col" style="--d:.75s"><div class="bar" style="--h:85%;--c:#34a853"><span class="val">36Gt</span></div><span class="yr">2015</span></div><div class="col" style="--d:.9s"><div class="bar" style="--h:95%;--c:#ea4335"><span class="val">40Gt</span></div><span class="yr">2020</span></div></div></div>',
                     css: '@keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}@keyframes growBar{from{height:0}to{height:var(--h)}}.scene{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#fff;font-family:Inter,-apple-system,sans-serif;padding:60px}.title{font-size:32px;font-weight:700;color:#1a1a1a;margin-bottom:40px;animation:fadeUp .4s ease-out .1s both}.chart{display:flex;align-items:flex-end;gap:24px;height:400px;border-bottom:2px solid #e5e7eb;padding-bottom:8px}.col{display:flex;flex-direction:column;align-items:center;gap:8px}.bar{width:80px;background:var(--c);border-radius:8px 8px 0 0;animation:growBar .8s ease-out var(--d,.3s) both;position:relative;display:flex;align-items:flex-start;justify-content:center;padding-top:12px}.val{color:#fff;font-size:13px;font-weight:700;opacity:0;animation:fadeUp .3s ease-out calc(var(--d,.3s) + .6s) both}.yr{font-size:13px;color:#999;font-weight:500}'
                 }
             },
             {
-                id: 'waaapi_countUp', name: 'Count Up', type: 'html', category: 'WAAPI', _isWaaapi: true,
+                id: 'waaapi_countUp', name: 'Count Up', type: 'text', category: 'HTML in Canvas', _isHic: true, _hicKey: 'waaapi_countUp',
                 data: {
                     html: '<div class="scene"><div class="stat" style="--d:.1s"><span class="num">0</span><span class="label">Users</span></div><div class="stat" style="--d:.25s"><span class="num">0</span><span class="label">Revenue</span></div><div class="stat" style="--d:.4s"><span class="num">0</span><span class="label">Growth</span></div></div>',
                     css: '@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}.scene{width:100%;height:100%;display:flex;align-items:center;justify-content:center;gap:80px;background:#0a0a0a;font-family:Inter,-apple-system,sans-serif}.stat{display:flex;flex-direction:column;align-items:center;gap:8px;animation:fadeUp .5s ease-out var(--d,.2s) both}.num{font-size:72px;font-weight:800;color:#fff;letter-spacing:-2px}.label{font-size:14px;color:#666;letter-spacing:3px;text-transform:uppercase}'
                 }
             },
             {
-                id: 'waaapi_gradientHero', name: 'Gradient Hero', type: 'html', category: 'WAAPI', _isWaaapi: true,
+                id: 'waaapi_gradientHero', name: 'Gradient Hero', type: 'text', category: 'HTML in Canvas', _isHic: true, _hicKey: 'waaapi_gradientHero',
                 data: {
                     html: '<div class="scene"><div class="badge">v2.0</div><h1 class="title">Ship faster.</h1><p class="sub">Build. Test. Deploy. Repeat.</p><div class="btns"><div class="btn primary">Get Started</div><div class="btn ghost">Learn More</div></div></div>',
                     css: '@keyframes fadeUp{from{opacity:0;transform:translateY(32px)}to{opacity:1;transform:translateY(0)}}@keyframes scaleIn{from{opacity:0;transform:scale(.8)}to{opacity:1;transform:scale(1)}}.scene{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#0f0c29,#302b63,#24243e);font-family:Inter,-apple-system,sans-serif;gap:16px}.badge{background:rgba(255,255,255,.1);color:#a78bfa;font-size:12px;font-weight:700;padding:6px 14px;border-radius:20px;letter-spacing:2px;animation:scaleIn .4s ease-out .1s both}.title{font-size:80px;font-weight:800;color:#fff;letter-spacing:-3px;animation:fadeUp .6s ease-out .2s both}.sub{font-size:20px;color:#94a3b8;animation:fadeUp .4s ease-out .4s both}.btns{display:flex;gap:16px;margin-top:16px;animation:fadeUp .4s ease-out .6s both}.btn{padding:14px 32px;border-radius:12px;font-size:15px;font-weight:600}.primary{background:#a78bfa;color:#0f0c29}.ghost{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.2)}'
                 }
             },
             {
-                id: 'waaapi_staggerReveal', name: 'Stagger Reveal', type: 'html', category: 'WAAPI', _isWaaapi: true,
+                id: 'waaapi_staggerReveal', name: 'Stagger Reveal', type: 'text', category: 'HTML in Canvas', _isHic: true, _hicKey: 'waaapi_staggerReveal',
                 data: {
                     html: '<div class="scene"><div class="item" style="--d:.1s"><span class="num">01</span><span class="txt">Discovery</span></div><div class="item" style="--d:.25s"><span class="num">02</span><span class="txt">Strategy</span></div><div class="item" style="--d:.4s"><span class="num">03</span><span class="txt">Design</span></div><div class="item" style="--d:.55s"><span class="num">04</span><span class="txt">Develop</span></div><div class="item" style="--d:.7s"><span class="num">05</span><span class="txt">Launch</span></div></div>',
                     css: '@keyframes slideIn{from{opacity:0;transform:translateX(-40px)}to{opacity:1;transform:translateX(0)}}.scene{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;background:#111;font-family:Inter,-apple-system,sans-serif}.item{display:flex;align-items:center;gap:20px;padding:16px 32px;background:#1a1a1a;border-radius:12px;border-left:3px solid var(--c,#fff);min-width:320px;animation:slideIn .4s ease-out var(--d,.1s) both}.num{font-size:12px;font-weight:700;color:var(--c,#fff);letter-spacing:2px}.txt{font-size:22px;font-weight:600;color:#fff}'
                 }
             },
             {
-                id: 'waaapi_loadExample', name: '\u25B6 Load WAAPI Example', type: 'html', category: 'WAAPI', _isWaaapi: true, _isAction: true,
+                id: 'waaapi_loadExample', name: '\u25B6 Load Example', type: 'text', category: 'HTML in Canvas', _isHic: true, _isAction: true,
                 data: {
-                    action: 'loadWaaapiExample',
-                    html: '<div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;background:#0a0a0a;color:#a78bfa;font-size:32px;font-weight:700;font-family:Inter,sans-serif;gap:12px;">\u25B6 Load WAAPI Example</div>',
+                    action: 'loadHicExample',
+                    html: '<div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;background:#0a0a0a;color:#a78bfa;font-size:32px;font-weight:700;font-family:Inter,sans-serif;gap:12px;">\u25B6 Load Example</div>',
                     css: ''
                 }
             },
@@ -6965,7 +6973,7 @@
                                         ).join('\n');
                                         doc.open();
                                         // WAAPI adapter — inject before clip content for CSS animation seeking
-                                        const _waapiAdapter = '<script>(function(){window.seekToFrame=function(f,fps){var ms=(f/(fps||30))*1000;try{var _a=document.getAnimations({subtree:true});for(var i=0;i<_a.length;i++){_a[i].currentTime=ms;_a[i].pause();}}catch(e){}try{document.documentElement.style.setProperty("--frame",f);document.documentElement.style.setProperty("--progress",(ms/1000).toFixed(4));}catch(e){}try{if(typeof window.animate==="function")window.animate(ms/1000);}catch(e){}}})();<\/script>';
+                                        const _waapiAdapter = window.WAAPI_SEEK_ADAPTER;
                                         doc.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">${fontLinks}<style>*{margin:0;padding:0;box-sizing:border-box;}${sysFontRules}body{width:${w}px;height:${h}px;overflow:hidden;background:transparent;}${safeCss}</style></head><body>${_waapiAdapter}${clip.html || ''}${clip.js ? '<script>' + clip.js + '<\/script>' : ''}</body></html>`);
                                         doc.close();
                                         if (State.isExporting) {
@@ -7259,12 +7267,21 @@
                                 // Scope document.getElementById to this clip's sandbox
                                 // so multiple clips with same IDs don't conflict
                                 var _origGbi = document.getElementById;
+                                var _origQs = document.querySelector;
+                                var _origQsa = document.querySelectorAll;
                                 var _sb = _hr.sandbox;
                                 document.getElementById = function(id) {
                                     return _sb.querySelector('[id="'+id+'"]') || _origGbi.call(document, id);
                                 };
+                                // onFrame must resolve against its OWN clip's DOM.
+                                // An unscoped querySelectorAll would happily match
+                                // the app shell's elements and animate those.
+                                document.querySelector = function(sel) { return _sb.querySelector(sel); };
+                                document.querySelectorAll = function(sel) { return _sb.querySelectorAll(sel); };
                                 try { _hr._onFrame(clipTime * 1000); } catch(e) {}
                                 document.getElementById = _origGbi;
+                                document.querySelector = _origQs;
+                                document.querySelectorAll = _origQsa;
                             }
                             try {
                                 var clone = _hr.sandbox.cloneNode(true);
@@ -8241,7 +8258,7 @@
                                         var _fl2 = _allFonts2.map(function(fn) { return '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=' + fn.replace(/\s+/g, '+') + ':wght@400;600;700;900&display=swap">'; }).join('\n');
                                         var _sfRules = [];
                                         try { if (typeof State !== 'undefined' && State.importedSystemFonts) { _sfRules = State.importedSystemFonts.map(function(fn) { return '@font-face{font-family:\'' + fn + '\';src:local(\'' + fn + '\');}'; }); } } catch(_ef2) {}
-                                        var _wApiJs = '<scr'+'ipt>(function(){window.seekToFrame=function(f,fps){var ms=(f/(fps||30))*1000;try{var _a=document.getAnimations({subtree:true});for(var i=0;i<_a.length;i++){_a[i].currentTime=ms;_a[i].pause();}}catch(e){}try{document.documentElement.style.setProperty("--frame",f);document.documentElement.style.setProperty("--progress",(ms/1000).toFixed(4));}catch(e){}try{if(typeof window.animate==="function")window.animate(ms/1000);}catch(e){}}})();</scr'+'ipt>';
+                                        var _wApiJs = window.WAAPI_SEEK_ADAPTER;
                                         _wDoc.open();
                                         _wDoc.write('<!DOCTYPE html><html><head><meta charset="UTF-8">' + _fl2 + '<style>*{margin:0;padding:0;box-sizing:border-box;}' + _sfRules.join('\n') + 'body{width:' + w + 'px;height:' + h + 'px;overflow:hidden;background:transparent;transform-origin:0 0;}' + (c.css || '') + '</style></head><body>' + _wApiJs + (c.html || '') + (c.js ? '<scr'+'ipt>' + c.js + '</scr'+'ipt>' : '') + '</body></html>');
                                         _wDoc.close();
@@ -15845,14 +15862,12 @@
                 { id: 'shape', name: 'Shapes', icon: 'shapes' },
                 { id: 'media', name: 'Media', icon: 'image' },
                 { id: 'keyframes', name: 'Keyframes', icon: 'key' },
-                { id: 'waaapi', name: 'WAAPI', icon: 'play-circle' },
                 { id: 'hic', name: 'HTML in Canvas', icon: 'sparkles' }
             ];
             
             const filtered = activePresets.filter(p => {
                 if (State.activePresetFilter === 'all') return true;
                 if (State.activePresetFilter === 'keyframes') return p.category === 'Keyframe Path';
-                if (State.activePresetFilter === 'waaapi') return p._isWaaapi === true;
                 if (State.activePresetFilter === 'hic') return p._isHic === true;
                 if (State.activePresetFilter === 'media') return p.type === 'image' || p.type === 'video';
                 if (State.activePresetFilter === 'math') return p.category === 'Math';
@@ -15865,12 +15880,12 @@
             const presetMeta = (p) => {
                 if (p.category === 'Math') return { cat: 'Math', icon: 'sigma', color: '#e9d5ff', accent: '#9333ea' };
                 if (p.category === 'Keyframe Path') return { cat: 'Keyframes', icon: 'key', color: '#e5e7eb', accent: '#4b5563' };
+                if (p._isHic) return { cat: 'HTML in Canvas', icon: 'sparkles', color: '#ede9fe', accent: '#7c3aed' };
                 if (p.type === 'text') return { cat: 'Text', icon: 'type', color: '#bfdbfe', accent: '#2563eb' };
                 if (p.type === 'shape') return { cat: 'Shapes', icon: 'shapes', color: '#bbf7d0', accent: '#16a34a' };
                 if (p.type === 'draw') return { cat: 'Draw', icon: 'pencil', color: '#fbcfe8', accent: '#db2777' };
                 if (p.type === 'image') return { cat: 'Image', icon: 'image', color: '#fef08a', accent: '#ca8a04' };
                 if (p.type === 'video') return { cat: 'Video', icon: 'video', color: '#fecaca', accent: '#dc2626' };
-                if (p._isHic) return { cat: 'HTML in Canvas', icon: 'sparkles', color: '#ede9fe', accent: '#7c3aed' };
                 if (p.type === 'scene') return { cat: 'Scene', icon: 'clapperboard', color: '#e9d5ff', accent: '#9333ea' };
                 return { cat: p.type || 'Media', icon: 'film', color: '#e5e7eb', accent: '#4b5563' };
             };
@@ -26808,33 +26823,9 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
 
         // ── WAAPI Preset Apply (from sidebar buttons) ──────────────────────
         window._applyWaaapiPreset = function(clipId, presetKey) {
-                // Reset content flag so iframe gets new content
-                var _resetClip = State.clips.find(function(c) { return c.id === clipId; });
-                if (_resetClip) { _resetClip._waapiContentWritten = false; }
-            const clip = State.clips.find(c => c.id === clipId);
-            if (!clip || clip.type !== 'html' || !clip._isWaaapi) return;
-            const WAAPI_PRESETS = {
-                googleClean: { title: 'Google Clean', html: '<div class="scene"><div class="kicker">ANNOUNCING</div><h1 class="title">Think <span class="hl">different</span>.</h1><p class="sub">Simple. Beautiful. Functional.</p><div class="divider"></div></div>', css: '@keyframes fadeUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}@keyframes expandWidth{from{width:0}to{width:80px}}.scene{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#fafafa;font-family:Inter,-apple-system,sans-serif;gap:12px}.kicker{font-size:13px;font-weight:600;letter-spacing:4px;color:#999;animation:fadeUp .4s ease-out .1s both}.title{font-size:72px;font-weight:700;color:#1a1a1a;letter-spacing:-2px;animation:fadeUp .5s ease-out .2s both}.hl{background:linear-gradient(135deg,#4285f4,#ea4335);-webkit-background-clip:text;-webkit-text-fill-color:transparent}.sub{font-size:20px;color:#666;animation:fadeUp .4s ease-out .4s both}.divider{height:3px;background:linear-gradient(90deg,#4285f4,#ea4335,#fbbc04,#34a853);border-radius:2px;animation:expandWidth .6s ease-out .6s both}' },
-                brutalShadow: { title: 'Brutal Shadow', html: '<div class="scene"><h1 class="title">BRUTAL</h1><p class="sub">Bold. Loud. Unapologetic.</p><div class="tag">NEW DROP</div></div>', css: '@keyframes slideUp{from{opacity:0;transform:translateY(60px)}to{opacity:1;transform:translateY(0)}}@keyframes popIn{from{opacity:0;transform:scale(0)}to{opacity:1;transform:scale(1)}}.scene{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#000;font-family:Inter,sans-serif;gap:16px}.title{font-size:120px;font-weight:900;color:#fff;letter-spacing:-4px;text-shadow:8px 8px 0 #ff3366,16px 16px 0 #6633ff;animation:slideUp .6s ease-out .1s both}.sub{font-size:18px;color:#888;letter-spacing:6px;text-transform:uppercase;animation:slideUp .4s ease-out .3s both}.tag{background:#ff3366;color:#000;font-size:12px;font-weight:800;padding:8px 20px;letter-spacing:3px;animation:popIn .4s ease-out .5s both}' },
-                iosGlass: { title: 'iOS Glass', html: '<div class="scene"><div class="card"><div class="icon">\u2726</div><h1 class="title">Glassmorphism</h1><p class="sub">Frosted glass effect</p><div class="pill">Premium</div></div></div>', css: '@keyframes fadeScale{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:scale(1)}}@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}.scene{width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#667eea,#764ba2);font-family:-apple-system,sans-serif}.card{background:rgba(255,255,255,.15);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.2);border-radius:24px;padding:48px 64px;text-align:center;animation:fadeScale .6s ease-out .1s both}.icon{font-size:48px;animation:float 3s ease-in-out infinite;margin-bottom:16px}.title{color:#fff;font-size:42px;font-weight:700;margin-bottom:8px}.sub{color:rgba(255,255,255,.7);font-size:16px;margin-bottom:20px}.pill{display:inline-block;background:rgba(255,255,255,.2);color:#fff;font-size:12px;font-weight:600;padding:6px 16px;border-radius:20px;letter-spacing:2px}' },
-                voxChart: { title: 'Vox Chart', html: '<div class="scene"><h2 class="title">Global CO2 Emissions</h2><div class="chart"><div class="col" style="--d:.3s"><div class="bar" style="--h:40%;--c:#4285f4"><span class="val">15Gt</span></div><span class="yr">2000</span></div><div class="col" style="--d:.45s"><div class="bar" style="--h:55%;--c:#ea4335"><span class="val">22Gt</span></div><span class="yr">2005</span></div><div class="col" style="--d:.6s"><div class="bar" style="--h:70%;--c:#fbbc04"><span class="val">30Gt</span></div><span class="yr">2010</span></div><div class="col" style="--d:.75s"><div class="bar" style="--h:85%;--c:#34a853"><span class="val">36Gt</span></div><span class="yr">2015</span></div><div class="col" style="--d:.9s"><div class="bar" style="--h:95%;--c:#ea4335"><span class="val">40Gt</span></div><span class="yr">2020</span></div></div></div>', css: '@keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}@keyframes growBar{from{height:0}to{height:var(--h)}}.scene{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#fff;font-family:Inter,-apple-system,sans-serif;padding:60px}.title{font-size:32px;font-weight:700;color:#1a1a1a;margin-bottom:40px;animation:fadeUp .4s ease-out .1s both}.chart{display:flex;align-items:flex-end;gap:24px;height:400px;border-bottom:2px solid #e5e7eb;padding-bottom:8px}.col{display:flex;flex-direction:column;align-items:center;gap:8px}.bar{width:80px;background:var(--c);border-radius:8px 8px 0 0;animation:growBar .8s ease-out var(--d,.3s) both;position:relative;display:flex;align-items:flex-start;justify-content:center;padding-top:12px}.val{color:#fff;font-size:13px;font-weight:700;opacity:0;animation:fadeUp .3s ease-out calc(var(--d,.3s) + .6s) both}.yr{font-size:13px;color:#999;font-weight:500}' },
-                countUp: { title: 'Count Up', html: '<div class="scene"><div class="stat" style="--d:.1s"><span class="num" id="n1">0</span><span class="label">Users</span></div><div class="stat" style="--d:.25s"><span class="num" id="n2">0</span><span class="label">Revenue</span></div><div class="stat" style="--d:.4s"><span class="num" id="n3">0</span><span class="label">Growth</span></div></div>', css: '@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}.scene{width:100%;height:100%;display:flex;align-items:center;justify-content:center;gap:80px;background:#0a0a0a;font-family:Inter,-apple-system,sans-serif}.stat{display:flex;flex-direction:column;align-items:center;gap:8px;animation:fadeUp .5s ease-out var(--d,.2s) both}.num{font-size:72px;font-weight:800;color:#fff;letter-spacing:-2px;font-variant-numeric:tabular-nums}.label{font-size:14px;color:#666;letter-spacing:3px;text-transform:uppercase}' },
-                gradientHero: { title: 'Gradient Hero', html: '<div class="scene"><div class="badge">v2.0</div><h1 class="title">Ship faster.</h1><p class="sub">Build. Test. Deploy. Repeat.</p><div class="btns"><div class="btn primary">Get Started</div><div class="btn ghost">Learn More</div></div></div>', css: '@keyframes fadeUp{from{opacity:0;transform:translateY(32px)}to{opacity:1;transform:translateY(0)}}@keyframes scaleIn{from{opacity:0;transform:scale(.8)}to{opacity:1;transform:scale(1)}}.scene{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#0f0c29,#302b63,#24243e);font-family:Inter,-apple-system,sans-serif;gap:16px}.badge{background:rgba(255,255,255,.1);color:#a78bfa;font-size:12px;font-weight:700;padding:6px 14px;border-radius:20px;letter-spacing:2px;animation:scaleIn .4s ease-out .1s both}.title{font-size:80px;font-weight:800;color:#fff;letter-spacing:-3px;animation:fadeUp .6s ease-out .2s both}.sub{font-size:20px;color:#94a3b8;animation:fadeUp .4s ease-out .4s both}.btns{display:flex;gap:16px;margin-top:16px;animation:fadeUp .4s ease-out .6s both}.btn{padding:14px 32px;border-radius:12px;font-size:15px;font-weight:600}.primary{background:#a78bfa;color:#0f0c29}.ghost{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.2)}' },
-                staggerReveal: { title: 'Stagger Reveal', html: '<div class="scene"><div class="item" style="--d:.1s;--c:#a78bfa"><span class="num">01</span><span class="txt">Discovery</span></div><div class="item" style="--d:.25s;--c:#60a5fa"><span class="num">02</span><span class="txt">Strategy</span></div><div class="item" style="--d:.4s;--c:#34d399"><span class="num">03</span><span class="txt">Design</span></div><div class="item" style="--d:.55s;--c:#fbbf24"><span class="num">04</span><span class="txt">Develop</span></div><div class="item" style="--d:.7s;--c:#f87171"><span class="num">05</span><span class="txt">Launch</span></div></div>', css: '@keyframes slideIn{from{opacity:0;transform:translateX(-40px)}to{opacity:1;transform:translateX(0)}}.scene{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;background:#111;font-family:Inter,-apple-system,sans-serif}.item{display:flex;align-items:center;gap:20px;padding:16px 32px;background:#1a1a1a;border-radius:12px;border-left:3px solid var(--c,#fff);min-width:320px;animation:slideIn .4s ease-out var(--d,.1s) both}.num{font-size:12px;font-weight:700;color:var(--c,#fff);letter-spacing:2px}.txt{font-size:22px;font-weight:600;color:#fff}' }
-            };
-            const tpl = WAAPI_PRESETS[presetKey];
-            if (!tpl) return;
-            clip.html = tpl.html;
-            clip.css = tpl.css;
-            clip.js = '';
-            clip.title = tpl.title;
-            clip._htmlSig = '';
-            clip._htmlNeedsRefresh = true;
-            clip._htmlReady = false;
-            delete clip._htmlCanvas;
-            updateSidebarPanel();
-            drawCanvas();
-            setTimeout(() => window.preRenderHtmlClip(clip), 100);
+            // Thin alias: the ported preset lives in HIC_PRESETS and applying it
+            // also migrates the legacy html clip in place.
+            window.applyHicPreset(clipId, 'waaapi_' + presetKey);
         };
 
         // ── HTML Code Editor Modal ────────────────────────────────────────────
@@ -26977,7 +26968,7 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 const sf = (State.importedSystemFonts || []).map(function(f) { return '@font-face{font-family:\'' + f + '\';src:local(\'' + f + '\');}'; }).join('\n');
                 doc.open();
                 // WAAPI adapter — inject before clip content for CSS animation seeking
-                var _waapiAdapter2 = '<script>(function(){window.seekToFrame=function(f,fps){var ms=(f/(fps||30))*1000;try{var _a=document.getAnimations({subtree:true});for(var i=0;i<_a.length;i++){_a[i].currentTime=ms;_a[i].pause();}}catch(e){}try{document.documentElement.style.setProperty("--frame",f);document.documentElement.style.setProperty("--progress",(ms/1000).toFixed(4));}catch(e){}try{if(typeof window.animate==="function")window.animate(ms/1000);}catch(e){}}})();<\/script>';
+                var _waapiAdapter2 = window.WAAPI_SEEK_ADAPTER;
                 doc.write('<!DOCTYPE html><html><head><meta charset="UTF-8">' + fl + '<style>*{margin:0;padding:0;box-sizing:border-box;}' + sf + 'body{width:' + w + 'px;height:' + h + 'px;overflow:hidden;background:transparent;}' + (clip.css || '') + '</style></head><body>' + _waapiAdapter2 + (clip.html || '') + (clip.js ? '<script>' + clip.js + '<\/script>' : '') + '</body></html>');
                 doc.close();
                 await new Promise(function(r) { setTimeout(r, 80); });
@@ -27151,87 +27142,23 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             window.preRenderHtmlClip(newHtmlClip);
         };
 
-        // ── Add WAAPI Animated Clip ──────────────────────────────────────────
-        window.addWaaapiClipToTimeline = function(preset) {
-            let targetTrackId = getAvailableTrack('video', State.currentTime, 5);
-            let targetTrack = State.tracks.find(t=>t.id===targetTrackId);
-            let clipColor = (targetTrack.colorIndex + 7) % PALETTES.length;
-            
-            // WAAPI preset templates
-            const WAAPI_PRESETS = {
-                googleClean: { title: 'Google Clean', html: '<div class="scene"><div class="kicker">ANNOUNCING</div><h1 class="title">Think <span class="hl">different</span>.</h1><p class="sub">Simple. Beautiful. Functional.</p><div class="divider"></div></div>', css: '@keyframes fadeUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}@keyframes expandWidth{from{width:0}to{width:80px}}.scene{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#fafafa;font-family:Inter,-apple-system,sans-serif;gap:12px}.kicker{font-size:13px;font-weight:600;letter-spacing:4px;color:#999;animation:fadeUp .4s ease-out .1s both}.title{font-size:72px;font-weight:700;color:#1a1a1a;letter-spacing:-2px;animation:fadeUp .5s ease-out .2s both}.hl{background:linear-gradient(135deg,#4285f4,#ea4335);-webkit-background-clip:text;-webkit-text-fill-color:transparent}.sub{font-size:20px;color:#666;animation:fadeUp .4s ease-out .4s both}.divider{height:3px;background:linear-gradient(90deg,#4285f4,#ea4335,#fbbc04,#34a853);border-radius:2px;animation:expandWidth .6s ease-out .6s both}' },
-                brutalShadow: { title: 'Brutal Shadow', html: '<div class="scene"><h1 class="title">BRUTAL</h1><p class="sub">Bold. Loud. Unapologetic.</p><div class="tag">NEW DROP</div></div>', css: '@keyframes slideUp{from{opacity:0;transform:translateY(60px)}to{opacity:1;transform:translateY(0)}}@keyframes popIn{from{opacity:0;transform:scale(0)}to{opacity:1;transform:scale(1)}}.scene{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#000;font-family:Inter,sans-serif;gap:16px}.title{font-size:120px;font-weight:900;color:#fff;letter-spacing:-4px;text-shadow:8px 8px 0 #ff3366,16px 16px 0 #6633ff;animation:slideUp .6s ease-out .1s both}.sub{font-size:18px;color:#888;letter-spacing:6px;text-transform:uppercase;animation:slideUp .4s ease-out .3s both}.tag{background:#ff3366;color:#000;font-size:12px;font-weight:800;padding:8px 20px;letter-spacing:3px;animation:popIn .4s ease-out .5s both}' },
-                iosGlass: { title: 'iOS Glass', html: '<div class="scene"><div class="card"><div class="icon">\u2726</div><h1 class="title">Glassmorphism</h1><p class="sub">Frosted glass effect</p><div class="pill">Premium</div></div></div>', css: '@keyframes fadeScale{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:scale(1)}}@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}.scene{width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#667eea,#764ba2);font-family:-apple-system,sans-serif}.card{background:rgba(255,255,255,.15);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.2);border-radius:24px;padding:48px 64px;text-align:center;animation:fadeScale .6s ease-out .1s both}.icon{font-size:48px;animation:float 3s ease-in-out infinite;margin-bottom:16px}.title{color:#fff;font-size:42px;font-weight:700;margin-bottom:8px}.sub{color:rgba(255,255,255,.7);font-size:16px;margin-bottom:20px}.pill{display:inline-block;background:rgba(255,255,255,.2);color:#fff;font-size:12px;font-weight:600;padding:6px 16px;border-radius:20px;letter-spacing:2px}' },
-                voxChart: { title: 'Vox Chart', html: '<div class="scene"><h2 class="title">Global CO2 Emissions</h2><div class="chart"><div class="col" style="--d:.3s"><div class="bar" style="--h:40%;--c:#4285f4"><span class="val">15Gt</span></div><span class="yr">2000</span></div><div class="col" style="--d:.45s"><div class="bar" style="--h:55%;--c:#ea4335"><span class="val">22Gt</span></div><span class="yr">2005</span></div><div class="col" style="--d:.6s"><div class="bar" style="--h:70%;--c:#fbbc04"><span class="val">30Gt</span></div><span class="yr">2010</span></div><div class="col" style="--d:.75s"><div class="bar" style="--h:85%;--c:#34a853"><span class="val">36Gt</span></div><span class="yr">2015</span></div><div class="col" style="--d:.9s"><div class="bar" style="--h:95%;--c:#ea4335"><span class="val">40Gt</span></div><span class="yr">2020</span></div></div></div>', css: '@keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}@keyframes growBar{from{height:0}to{height:var(--h)}}.scene{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#fff;font-family:Inter,-apple-system,sans-serif;padding:60px}.title{font-size:32px;font-weight:700;color:#1a1a1a;margin-bottom:40px;animation:fadeUp .4s ease-out .1s both}.chart{display:flex;align-items:flex-end;gap:24px;height:400px;border-bottom:2px solid #e5e7eb;padding-bottom:8px}.col{display:flex;flex-direction:column;align-items:center;gap:8px}.bar{width:80px;background:var(--c);border-radius:8px 8px 0 0;animation:growBar .8s ease-out var(--d,.3s) both;position:relative;display:flex;align-items:flex-start;justify-content:center;padding-top:12px}.val{color:#fff;font-size:13px;font-weight:700;opacity:0;animation:fadeUp .3s ease-out calc(var(--d,.3s) + .6s) both}.yr{font-size:13px;color:#999;font-weight:500}' },
-                countUp: { title: 'Count Up', html: '<div class="scene"><div class="stat" style="--d:.1s"><span class="num">0</span><span class="label">Users</span></div><div class="stat" style="--d:.25s"><span class="num">0</span><span class="label">Revenue</span></div><div class="stat" style="--d:.4s"><span class="num">0</span><span class="label">Growth</span></div></div>', css: '@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}.scene{width:100%;height:100%;display:flex;align-items:center;justify-content:center;gap:80px;background:#0a0a0a;font-family:Inter,-apple-system,sans-serif}.stat{display:flex;flex-direction:column;align-items:center;gap:8px;animation:fadeUp .5s ease-out var(--d,.2s) both}.num{font-size:72px;font-weight:800;color:#fff;letter-spacing:-2px}.label{font-size:14px;color:#666;letter-spacing:3px;text-transform:uppercase}' },
-                gradientHero: { title: 'Gradient Hero', html: '<div class="scene"><div class="badge">v2.0</div><h1 class="title">Ship faster.</h1><p class="sub">Build. Test. Deploy. Repeat.</p><div class="btns"><div class="btn primary">Get Started</div><div class="btn ghost">Learn More</div></div></div>', css: '@keyframes fadeUp{from{opacity:0;transform:translateY(32px)}to{opacity:1;transform:translateY(0)}}@keyframes scaleIn{from{opacity:0;transform:scale(.8)}to{opacity:1;transform:scale(1)}}.scene{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#0f0c29,#302b63,#24243e);font-family:Inter,-apple-system,sans-serif;gap:16px}.badge{background:rgba(255,255,255,.1);color:#a78bfa;font-size:12px;font-weight:700;padding:6px 14px;border-radius:20px;letter-spacing:2px;animation:scaleIn .4s ease-out .1s both}.title{font-size:80px;font-weight:800;color:#fff;letter-spacing:-3px;animation:fadeUp .6s ease-out .2s both}.sub{font-size:20px;color:#94a3b8;animation:fadeUp .4s ease-out .4s both}.btns{display:flex;gap:16px;margin-top:16px;animation:fadeUp .4s ease-out .6s both}.btn{padding:14px 32px;border-radius:12px;font-size:15px;font-weight:600}.primary{background:#a78bfa;color:#0f0c29}.ghost{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.2)}' },
-                staggerReveal: { title: 'Stagger Reveal', html: '<div class="scene"><div class="item" style="--d:.1s"><span class="num">01</span><span class="txt">Discovery</span></div><div class="item" style="--d:.25s"><span class="num">02</span><span class="txt">Strategy</span></div><div class="item" style="--d:.4s"><span class="num">03</span><span class="txt">Design</span></div><div class="item" style="--d:.55s"><span class="num">04</span><span class="txt">Develop</span></div><div class="item" style="--d:.7s"><span class="num">05</span><span class="txt">Launch</span></div></div>', css: '@keyframes slideIn{from{opacity:0;transform:translateX(-40px)}to{opacity:1;transform:translateX(0)}}.scene{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;background:#111;font-family:Inter,-apple-system,sans-serif}.item{display:flex;align-items:center;gap:20px;padding:16px 32px;background:#1a1a1a;border-radius:12px;border-left:3px solid var(--c,#fff);min-width:320px;animation:slideIn .4s ease-out var(--d,.1s) both}.num{font-size:12px;font-weight:700;color:var(--c,#fff);letter-spacing:2px}.txt{font-size:22px;font-weight:600;color:#fff}' }
-            };
-            
-            const tpl = WAAPI_PRESETS[preset] || WAAPI_PRESETS.googleClean;
-            
-            const newWaaapiClip = {
-                id: 'waaapi_' + Date.now() + Math.random().toString(36).substr(2, 5),
-                sceneId: State.activeSceneId || null,
-                trackId: targetTrackId,
-                colorIndex: clipColor,
-                type: 'html',  // Uses html type internally — WAAPI adapter handles seeking
-                title: tpl.title,
-                start: State.currentTime,
-                duration: 5,
-                html: tpl.html,
-                css: tpl.css,
-                js: '',
-                fonts: [],
-                renderWidth: 1920,
-                renderHeight: 1080,
-                backgroundColor: 'transparent',
-                _isWaaapi: true,  // Flag: this clip uses WAAPI seeking
-                effects: {
-                    scale: 1, rotate: 0, offsetX: 0, offsetY: 0, opacity: 100,
-                    strokeEnable: false, strokeColor: '#ffffff', strokeWidth: 4,
-                    shadowEnable: false, shadowColor: '#000000', shadowBlur: 20, shadowX: 0, shadowY: 10,
-                    borderRadius: 0,
-                    animIn: 'none', animOut: 'none', animLoop: 'none',
-                    animInDur: 1.0, animOutDur: 1.0, animInDelay: 0, animOutDelay: 0, animInEase: 'easeOut',
-                    animSlideDir: 'up', animSlideOffCanvas: true,
-                    blendMode: 'source-over'
-                },
-                keyframes: {}
-            };
-            
-            State.clips.push(newWaaapiClip);
-            State.selectedClipId = newWaaapiClip.id;
-            State.multiSelectedClipIds = [newWaaapiClip.id];
-            
-            if (State.currentTime + 5 > State.duration) {
-                State.duration = Math.ceil(State.currentTime + 5 + 10);
-                updateTimelineWidth();
-            }
-            
-            newWaaapiClip._waapiContentWritten = false;
-            calcOverlaps();
-            renderClips();
-            updatePropertiesPanel();
-            drawCanvas();
-            return newWaaapiClip;
-        };
-
-        // ── Load WAAPI Example Project ───────────────────────────────────────
-        window.loadWaaapiExample = function() {
+        // ── Load Example Project (HTML-in-Canvas) ────────────────────────────
+        // Replaces the old WAAPI loader: it adds the four ported WAAPI presets,
+        // which are HTML-in-Canvas clips like every other HIC preset.
+        window.loadHicExample = function() {
             // Clear current project
             State.clips = [];
             State.tracks = State.tracks.filter(t => t.type === 'video' || t.type === 'audio');
             State.currentTime = 0;
             
-            // Add 4 WAAPI clips
-            addWaaapiClipToTimeline('googleClean');
+            // Add 4 animated HTML-in-Canvas clips
+            addHicClipToTimeline('waaapi_googleClean');
             State.currentTime = 5;
-            addWaaapiClipToTimeline('brutalShadow');
+            addHicClipToTimeline('waaapi_brutalShadow');
             State.currentTime = 10;
-            addWaaapiClipToTimeline('iosGlass');
+            addHicClipToTimeline('waaapi_iosGlass');
             State.currentTime = 15;
-            addWaaapiClipToTimeline('voxChart');
+            addHicClipToTimeline('waaapi_voxChart');
             
             // Reset to start
             State.currentTime = 0;
@@ -27242,8 +27169,10 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             renderClips();
             drawCanvas();
             
-            console.log('[WAAPI] Example loaded: 4 animated clips (20s)');
+            console.log('[HIC] Example loaded: 4 animated clips (20s)');
         };
+        // Legacy name kept for one release: old custom presets may still call it.
+        window.loadWaaapiExample = window.loadHicExample;
 
         // ── HIC Presets (HTML-in-Canvas) ─────────────────────────────────────
         const HIC_PRESETS = {
@@ -27309,6 +27238,32 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             }
         };
 
+        // ── Ported WAAPI presets → HTML-in-Canvas ────────────────────────────
+        // The seven animated presets live ONCE, as `data: { html, css }` on the
+        // WAAPI entries in DEFAULT_PRESETS. Their @keyframes are compiled here
+        // into a deterministic onFrame by the WAAPI→HIC adapter (a classic
+        // script in <head>, so it is already loaded) and cached in HIC_PRESETS
+        // under the preset's own id. Nothing is copy-pasted: the adapter is the
+        // single place that knows how to bridge CSS animation onto onFrame.
+        (function registerPortedWaaapiPresets() {
+            if (!window.WAAPIAdapter || !window.WAAPIAdapter.compileKeyframes) {
+                console.warn('[WAAPI→HIC] adapter missing; ported presets unavailable');
+                return;
+            }
+            DEFAULT_PRESETS.forEach(function(preset) {
+                if (!preset._isHic || !preset._hicKey || !preset.data || !preset.data.html) return;
+                if (HIC_PRESETS[preset._hicKey]) return;
+                var compiled = window.WAAPIAdapter.compileKeyframes(preset.data.css || '', 30);
+                HIC_PRESETS[preset._hicKey] = {
+                    name: preset.name,
+                    dur: preset.duration || 5,
+                    html: preset.data.html || '',
+                    css: compiled.css,
+                    js: compiled.js
+                };
+            });
+        })();
+
         // ── Add HIC Clip to Timeline ────────────────────────────────────────
         window.addHicClipToTimeline = function(presetKey) {
             let targetTrackId = getAvailableTrack('video', State.currentTime, 5);
@@ -27364,10 +27319,22 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
 
         // ── Apply HIC Preset ──────────────────────────────────────────────────
         window.applyHicPreset = function(clipId, presetKey) {
+            // A legacy html clip still flagged `_isWaaapi` is accepted and
+            // migrated in place — this is the eager half of Phase 3's load-time
+            // migration, applied to the one clip the user just acted on.
             const clip = State.clips.find(c => c.id === clipId);
-            if (!clip || clip.type !== 'hic') return;
+            if (!clip || (clip.type !== 'hic' && !clip._isWaaapi)) return;
             const preset = HIC_PRESETS[presetKey];
             if (!preset) return;
+            if (clip.type === 'html') {
+                clip.type = 'hic';
+                delete clip._isWaaapi;
+                delete clip._htmlIframe;
+                delete clip._htmlCanvas;
+                delete clip._htmlReady;
+                delete clip._htmlNeedsRefresh;
+                delete clip._htmlSig;
+            }
             clip.html = preset.html;
             clip.css = preset.css;
             clip.js = preset.js;

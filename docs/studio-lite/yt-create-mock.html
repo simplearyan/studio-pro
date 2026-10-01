@@ -1,0 +1,1504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>Studio Lite — a YouTube-Create-style phone editor, studied</title>
+    <meta name="description" content="Pattern study of YouTube Create's phone editor: preview band, aspect switching, fullscreen, pinned-playhead scrubbing, collapsing overlay lanes, and one property-panel shell with live preview and Cancel/Done. Interactive mock.">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>▶</text></svg>">
+
+    <!-- Vendored, offline, no CDN — same contract as the rest of the repo's pages. -->
+    <link rel="stylesheet" href="../../fonts/fonts.css">
+
+    <!-- The Tailwind theme, carried as DATA.
+
+         Why not <style type="text/tailwindcss">? This repo's PostCSS pipeline
+         (postcss.config.js → @tailwindcss/postcss) runs over every <style> tag
+         in an HTML page, inline ones included, and compiles the @theme at the
+         server. Because `inline` deliberately writes nothing to :root unless a
+         utility asks for it, the block reaches the browser as a bare licence
+         banner and the vendored runtime falls back to Tailwind's defaults —
+         silently, with no console error. Learned the hard way in mock.html.
+         A text/plain script is inert data no tool rewrites; the script below
+         hands it to the runtime as the real thing. -->
+    <script type="text/plain" id="tw-theme">
+        @theme inline {
+            --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+            --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+            --color-bg: var(--yt-bg);
+            --color-card: var(--yt-card);
+            --color-raised: var(--yt-raised);
+            --color-raised2: var(--yt-raised-2);
+            --color-line: var(--yt-line);
+            --color-fg: var(--yt-fg);
+            --color-muted: var(--yt-fg-muted);
+            --color-dim: var(--yt-fg-dim);
+            --color-accent: var(--yt-accent);
+            --color-audio: var(--yt-audio);
+            --color-yt: var(--yt-brand);
+            --color-good: var(--yt-good);
+            --color-bad: var(--yt-bad);
+
+            --radius-app: 12px;
+        }
+    </script>
+    <script>
+        (function () {
+            var el = document.createElement('style');
+            el.setAttribute('type', 'text/tailwindcss');
+            el.textContent = document.getElementById('tw-theme').textContent;
+            document.head.appendChild(el);
+        })();
+    </script>
+    <script src="../../vendor/tailwind-browser/index.global.js"></script>
+
+    <style>
+        /* ─────────────────────────────────────────────────────────────────────
+           Two palettes in one file, on purpose.
+
+           `--yt-*` is the REFERENCE's: YouTube Create's dark surfaces, read off
+           the screenshots in this study. It dresses the phone only, because the
+           phone is a quotation of another product.
+
+           `--page-*` is this document's own chrome. The page is dark because the
+           thing being studied is dark — a light page around a dark phone would
+           flatter the layouts. Neither palette is a proposal for Studio Lite:
+           §3.11 of STUDIO-LITE-PLAN.md keeps one shared Material 3 theme for the
+           app, and §8 of YT-CREATE-PATTERN-PLAN.md refuses a second one.
+           ───────────────────────────────────────────────────────────────────── */
+        :root {
+            /* Reference palette — YouTube Create (Android), from the screenshots. */
+            --yt-bg: #0f0f0f;
+            --yt-surface: #161616;
+            --yt-raised: #1f1f1f;
+            --yt-raised-2: #2a2a2a;
+            --yt-line: #303030;
+            --yt-fg: #f1f1f1;
+            --yt-fg-muted: #aaaaaa;
+            --yt-fg-dim: #717171;
+            --yt-inverse: #ffffff;
+            --yt-inverse-fg: #0f0f0f;
+            --yt-audio: #3ddc84;
+            --yt-accent: #3ea6ff;
+            --yt-brand: #ff0033;
+            --yt-text-lane: #3ea6ff;
+            --yt-overlay-lane: #ff9d6b;
+            --yt-canvas: #000000;
+            --yt-good: #63d471;
+            --yt-bad: #ff7a6b;
+
+            /* This document's chrome. */
+            --page-bg: #0b0b0c;
+            --page-card: #141416;
+            --page-line: #26262a;
+            --page-fg: #ededf2;
+            --page-muted: #9a9aa6;
+            --page-dim: #6e6e7a;
+
+            /* Geometry shared by the mock and its callouts.
+               The chrome block's height is not decoration: the panel shell is
+               exactly this tall, which is why opening a panel does not move the
+               preview (see the P4 card). */
+            --top-h: 48px;
+            --transport-h: 48px;
+            --time-h: 24px;
+            --tl-h: 196px;
+            --rail-h: 60px;
+            --chrome-h: calc(var(--transport-h) + var(--time-h) + var(--tl-h) + var(--rail-h));
+        }
+
+        body {
+            background: var(--page-bg);
+            color: var(--page-fg);
+            font-family: "Inter", system-ui, sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+        .lt-chip {
+            display: inline-flex; align-items: center; gap: 6px;
+            min-height: 36px; padding: 0 13px; border-radius: 999px;
+            border: 1px solid var(--page-line); background: #17171a;
+            color: var(--page-fg); font-size: 12px; font-weight: 600; cursor: pointer;
+        }
+        .lt-chip[aria-pressed="true"] { background: #2a2a30; border-color: #3a3a44; }
+        .lt-chip:active { background: #202024; }
+        .card { background: var(--page-card); border: 1px solid var(--page-line); border-radius: 14px; }
+        .rule { border-color: var(--page-line); }
+        .kbd {
+            font: 500 11px/1.4 "JetBrains Mono", monospace;
+            padding: 1px 5px; border-radius: 5px;
+            background: #1d1d21; border: 1px solid var(--page-line); color: var(--page-fg);
+        }
+
+        /* ─────────────────────────────────────────────────────────────────────
+           The phone. A real 390×844 node — the reference is a 360dp phone, so
+           this is one step larger than the screenshots and every measurement
+           below is in CSS px.
+           ───────────────────────────────────────────────────────────────────── */
+        .yt {
+            position: relative;
+            display: grid;
+            grid-template-rows: var(--top-h) minmax(0, 1fr) auto;
+            width: 390px; height: 844px;
+            background: var(--yt-bg);
+            color: var(--yt-fg);
+            border: 1px solid #2b2b2b;
+            border-radius: 26px;
+            overflow: hidden;
+            box-shadow: 0 18px 50px rgba(0, 0, 0, .55);
+            font-size: 13px;
+        }
+        .yt *, .yt *::before, .yt *::after { box-sizing: border-box; }
+        .yt button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+        .yt .ic {
+            width: 44px; height: 44px; flex: 0 0 auto;
+            display: inline-grid; place-items: center; border-radius: 50%;
+            font-size: 17px; color: var(--yt-fg);
+        }
+        .yt .ic:active { background: var(--yt-raised); }
+        .yt .ic[disabled] { color: var(--yt-fg-dim); cursor: default; }
+
+        .yt-top { display: flex; align-items: center; justify-content: space-between; padding: 0 4px; z-index: 6; }
+        .yt-top-r { display: flex; align-items: center; }
+
+        /* The preview band. `align-items: flex-end` is the whole P1 claim: a
+           taller canvas grows UPWARD and the bottom edge — and therefore every
+           row beneath — never moves. */
+        .yt-band {
+            display: flex; align-items: flex-end; justify-content: center;
+            padding: 4px 10px 8px; min-height: 0;
+        }
+        .yt-frame {
+            position: relative; overflow: hidden; border-radius: 8px;
+            background: var(--yt-canvas);
+            transition: width .22s cubic-bezier(.2, 0, 0, 1), height .22s cubic-bezier(.2, 0, 0, 1), border-radius .2s;
+        }
+        .yt[data-fs="1"] .yt-frame { border-radius: 0; transition: none; }
+        /* Two layers on purpose.
+
+           #stage is what presets animate, and it must have NO transform of its
+           own — an animation writing `transform` keyframes overrides the
+           element's CSS transform outright, and with `fill: both` it keeps doing
+           so after it ends. Previewing "Slide up" on the scene itself silently
+           flattened the scene's own rotate/zoom to identity; the rotation slider
+           then appeared to do nothing. Animations get a wrapper; layout keeps
+           the scene. */
+        .yt-stage { position: absolute; inset: 0; }
+        .yt-scene {
+            position: absolute; left: 50%; top: 50%; width: 100%; height: 100%;
+            transform: translate(-50%, -50%) rotate(var(--rot, 0deg)) scale(var(--zoom, 1));
+            background:
+                radial-gradient(60% 45% at 68% 22%, rgba(255, 214, 170, .5), transparent 70%),
+                radial-gradient(45% 40% at 22% 38%, rgba(120, 170, 255, .38), transparent 70%),
+                radial-gradient(90% 60% at 50% 92%, rgba(24, 40, 34, .9), transparent 75%),
+                linear-gradient(168deg, #3b4a63 0%, #1d2735 55%, #0d1219 100%);
+            will-change: transform, opacity, clip-path;
+        }
+        .yt-scene::after {
+            /* A stand-in for footage: no image asset, so this page still loads
+               nothing over the network. Labelled as such in the legend. */
+            content: "";
+            position: absolute; inset: 0;
+            background-image:
+                repeating-linear-gradient(90deg, rgba(255, 255, 255, .04) 0 1px, transparent 1px 46px),
+                repeating-linear-gradient(0deg, rgba(255, 255, 255, .04) 0 1px, transparent 1px 46px);
+        }
+        /* A slate, not a caption: it says the footage is a stand-in without
+           competing with the title in the middle of the frame. */
+        .yt-empty {
+            position: absolute; left: 8px; bottom: 6px;
+            font: 500 8.5px/1.5 "JetBrains Mono", monospace; letter-spacing: .08em;
+            color: rgba(255, 255, 255, .38); white-space: nowrap;
+        }
+        .yt-title {
+            position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+            width: 84%; text-align: center; font-weight: 900; letter-spacing: -.01em;
+            font-size: var(--title-size, 30px); line-height: 1.02; text-transform: uppercase;
+            word-break: break-word;
+        }
+        .yt-title[data-style="party"] {
+            background: linear-gradient(96deg, #ff4d6d 0%, #ffb347 22%, #4ce0b3 48%, #6aa8ff 74%, #d98cff 100%);
+            -webkit-background-clip: text; background-clip: text; color: transparent;
+            filter: drop-shadow(0 2px 0 rgba(0, 0, 0, .45));
+        }
+        .yt-title[data-style="solid"] { color: #fff; text-shadow: 0 2px 10px rgba(0, 0, 0, .5); }
+        .yt-title[data-style="outline"] { color: transparent; -webkit-text-stroke: 2px #fff; }
+        .yt-title[data-style="shadow"] { color: #fff; text-shadow: 4px 4px 0 var(--yt-brand), 8px 8px 0 rgba(0, 0, 0, .45); }
+        .yt-title[data-style="party"]::before,
+        .yt-title[data-style="party"]::after {
+            content: "✦"; position: absolute; font-size: 13px; color: #fff; opacity: .9;
+        }
+        .yt-title[data-style="party"]::before { left: -6px; top: 6%; }
+        .yt-title[data-style="party"]::after { right: -4px; bottom: 10%; }
+
+        .yt-fs {
+            position: absolute; right: 0; bottom: 0; width: 44px; height: 44px;
+            display: grid; place-items: center; font-size: 15px; color: #fff;
+            text-shadow: 0 1px 4px rgba(0, 0, 0, .6); z-index: 4;
+        }
+
+        /* The chrome block. Fixed height on purpose: the panel shell takes exactly
+           this much, so the preview is untouched when a panel opens. */
+        .yt-chrome { display: grid; grid-template-rows: var(--transport-h) var(--time-h) var(--tl-h) var(--rail-h); }
+        .yt-transport { display: flex; align-items: center; justify-content: space-between; padding: 0 6px; }
+        .yt-transport .mid { display: flex; align-items: center; }
+        .yt-time {
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+            font: 500 12px/1 "JetBrains Mono", monospace; color: var(--yt-fg);
+        }
+        .yt-time .sub { color: var(--yt-fg-dim); }
+
+        /* ── Timeline: playhead pinned at 50%, the film scrolls under it ───── */
+        .yt-tl { position: relative; overflow: hidden; touch-action: none; cursor: grab; background: var(--yt-bg); }
+        .yt-tl[data-drag="1"] { cursor: grabbing; }
+        .yt-film { position: absolute; left: 0; top: 0; height: 100%; will-change: transform; }
+        .yt-scale { position: absolute; left: 0; top: 2px; height: 14px; }
+        .yt-scale i {
+            position: absolute; top: 0; font: 500 9.5px/1 "JetBrains Mono", monospace;
+            color: var(--yt-fg-dim); font-style: normal; padding-left: 4px;
+        }
+        .yt-scale i::before {
+            content: ""; position: absolute; left: 0; top: 11px; width: 1px; height: 4px; background: var(--yt-line);
+        }
+        /* left AND right: an absolutely positioned box with only `left` shrink-
+           wraps to zero, which silently clipped every clip in the lane. */
+        .yt-lane { position: absolute; left: 0; right: 0; overflow: hidden; }
+        .yt-lane[data-kind="text"] { background: var(--yt-raised); }
+        .yt-lane-inner { position: relative; width: 100%; height: 100%; }
+        .yt-clip {
+            position: absolute; top: 0; bottom: 0; overflow: hidden;
+            display: flex; align-items: center; gap: 5px;
+            font: 500 10.5px/1 "Inter", sans-serif; color: var(--yt-fg);
+        }
+        .yt-clip[data-kind="video"] {
+            border-radius: 4px;
+            background-image:
+                repeating-linear-gradient(90deg, rgba(0, 0, 0, .62) 0 1.5px, transparent 1.5px 33px),
+                repeating-linear-gradient(90deg, rgba(255, 255, 255, .05) 0 33px, rgba(0, 0, 0, .18) 33px 66px),
+                linear-gradient(150deg, #4a5a78 0%, #2b3a52 50%, #1a2230 100%);
+        }
+        .yt-clip[data-kind="video"][data-sel="1"] { outline: 2px solid var(--yt-inverse); outline-offset: -2px; z-index: 3; }
+        .yt-clip[data-kind="audio"] { border-radius: 4px; background: rgba(61, 220, 132, .16); }
+        .yt-clip[data-kind="audio"] svg { position: absolute; inset: 2px 0; width: 100%; height: calc(100% - 4px); }
+        .yt-clip[data-kind="text"] { background: var(--yt-text-lane); color: #06202f; border-radius: 4px; padding: 0 6px; }
+        .yt-clip[data-kind="overlay"] { background: var(--yt-overlay-lane); color: #35180a; border-radius: 4px; padding: 0 6px; }
+        .yt-clip .tag { flex: 0 0 auto; font-size: 9px; opacity: .85; }
+        /* Our own addition, flagged as such in the legend: trim handles on the
+           selected clip, 12px bar inside a 44px target, as in mock.html. */
+        .yt-trim {
+            position: absolute; top: 3px; bottom: 3px; width: 12px; z-index: 4;
+            background: var(--yt-inverse); border-radius: 3px; box-shadow: 0 0 0 2px rgba(15, 15, 15, .8);
+        }
+        .yt-playhead {
+            position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; margin-left: -1px;
+            background: var(--yt-inverse); z-index: 5; pointer-events: none;
+        }
+        .yt-plus {
+            position: absolute; width: 44px; height: 44px; border-radius: 10px;
+            background: var(--yt-raised); border: 1px solid var(--yt-raised-2);
+            display: grid; place-items: center; font-size: 20px; color: var(--yt-fg); z-index: 6;
+        }
+        .yt-collapse {
+            position: absolute; left: 2px; width: 26px; height: 26px; z-index: 7;
+            display: grid; place-items: center; border-radius: 50%;
+            background: rgba(15, 15, 15, .82); border: 1px solid var(--yt-line);
+            font-size: 11px; color: var(--yt-fg-muted);
+        }
+
+        /* ── Rail ──────────────────────────────────────────────────────────── */
+        .yt-rail { display: flex; align-items: stretch; border-top: 1px solid var(--yt-line); }
+        .yt-rail .sep { width: 1px; margin: 12px 2px; background: var(--yt-line); }
+        .yt-rail button {
+            flex: 1 1 0; min-width: 0; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; gap: 3px;
+            font-size: 9.5px; font-weight: 500; color: var(--yt-fg-muted);
+        }
+        .yt-rail button .g { font-size: 17px; line-height: 1; color: var(--yt-fg); }
+        .yt-rail button[data-on="1"] { color: var(--yt-inverse); }
+        .yt-rail button[data-on="1"] .g { color: var(--yt-inverse); }
+        .yt-rail button.on { color: var(--yt-inverse); }
+        .yt-rail button.on .g { color: var(--yt-inverse); }
+
+        /* ── The panel shell ───────────────────────────────────────────────────
+           One shell, six bodies, and a real commit/revert contract:
+             open   → snapshot the state
+             Cancel → restore the snapshot
+             Done   → keep it and push an undo entry
+           The height equals the chrome block, so the preview never moves. */
+        .yt-panel {
+            display: none; height: var(--chrome-h);
+            grid-template-rows: 56px auto minmax(0, 1fr) 64px;
+            background: var(--yt-bg); border-top: 1px solid transparent;
+        }
+        .yt[data-panel] .yt-chrome { display: none; }
+        .yt[data-panel] .yt-panel { display: grid; }
+        .yt-panel-scrub { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 0 18px; }
+        .yt-track { position: relative; width: 100%; height: 4px; border-radius: 2px; background: var(--yt-raised-2); }
+        .yt-track i {
+            position: absolute; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px;
+            border-radius: 50%; background: var(--yt-inverse); box-shadow: 0 1px 4px rgba(0, 0, 0, .5);
+        }
+        .yt-play { width: 44px; height: 34px; font-size: 15px; color: var(--yt-fg); }
+        .yt-panel-title { text-align: center; font-size: 15px; font-weight: 700; padding: 2px 0 10px; }
+        .yt-tabs { display: flex; justify-content: center; gap: 30px; margin-bottom: 12px; }
+        .yt-tabs button { font-size: 14px; font-weight: 700; color: var(--yt-fg-dim); padding: 6px 2px; min-height: 44px; }
+        .yt-tabs button[aria-selected="true"] { color: var(--yt-fg); }
+        .yt-panel-body { overflow-y: auto; padding: 0 16px 12px; }
+        .yt-panel-foot { display: flex; align-items: center; justify-content: space-between; padding: 0 14px 10px; }
+        .yt-pill { min-height: 44px; padding: 0 22px; border-radius: 22px; font-size: 13.5px; font-weight: 600; background: var(--yt-raised-2); color: var(--yt-fg); }
+        .yt-pill.primary { background: var(--yt-inverse); color: var(--yt-inverse-fg); }
+        .yt-pill.ghost { background: none; color: var(--yt-fg-muted); }
+        .yt-slider { width: 100%; accent-color: var(--yt-inverse); height: 44px; }
+        .yt-slider-row { display: flex; align-items: center; gap: 12px; }
+        .yt-slider-bounds { display: flex; justify-content: space-between; font: 500 11px/1 "JetBrains Mono", monospace; color: var(--yt-fg-muted); padding-bottom: 2px; }
+        .yt-value { text-align: center; font: 600 12px/1 "JetBrains Mono", monospace; padding-bottom: 6px; }
+        .yt-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+        .yt-tile {
+            position: relative; height: 64px; border-radius: 8px; overflow: hidden;
+            display: grid; place-items: center; font-size: 10.5px; font-weight: 600;
+            border: 2px solid transparent; color: #fff; text-shadow: 0 1px 3px rgba(0, 0, 0, .6);
+        }
+        .yt-tile[aria-pressed="true"] { border-color: var(--yt-inverse); }
+        .yt-tile .none { font-size: 18px; }
+        .yt-tile-label { text-align: center; font-size: 10.5px; color: var(--yt-fg-muted); margin-top: 4px; }
+        .yt-tile-cell { display: flex; flex-direction: column; }
+        .yt-row {
+            display: flex; align-items: center; justify-content: space-between; gap: 12px;
+            min-height: 60px; padding: 0 14px; border: 1px solid var(--yt-line);
+            border-radius: 12px; background: var(--yt-surface);
+        }
+        .yt-row .lab { font-size: 11.5px; color: var(--yt-fg-muted); }
+        .yt-row .val { font-size: 13.5px; font-weight: 600; }
+        .yt-field {
+            display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 0 12px;
+            border: 1.5px solid var(--yt-inverse); border-radius: 12px; background: var(--yt-surface);
+        }
+        .yt-field input {
+            flex: 1 1 auto; min-width: 0; background: none; border: 0; outline: 0;
+            color: var(--yt-fg); font: inherit; font-size: 14px;
+        }
+        .yt-field .clear { width: 44px; height: 44px; display: grid; place-items: center; color: var(--yt-fg-muted); font-size: 15px; }
+        .yt-accessory { display: flex; align-items: center; justify-content: space-between; padding: 10px 6px 0; color: var(--yt-fg-muted); }
+        .yt-accessory span { width: 44px; height: 40px; display: grid; place-items: center; font-size: 16px; }
+        .yt-ratio-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+        .yt-ratio {
+            display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+            min-height: 84px; border-radius: 10px; border: 2px solid transparent; background: var(--yt-surface);
+            font: 600 10.5px/1 "JetBrains Mono", monospace; color: var(--yt-fg-muted);
+        }
+        .yt-ratio[aria-pressed="true"] { border-color: var(--yt-inverse); color: var(--yt-fg); }
+        .yt-ratio em { display: block; background: #3c3c3c; border: 1px solid #4d4d4d; border-radius: 3px; }
+        .yt-ratio[aria-pressed="true"] em { background: #5a5a5a; }
+        .yt-swatches { display: flex; gap: 10px; flex-wrap: wrap; }
+        .yt-swatch {
+            width: 56px; height: 56px; border-radius: 10px; border: 2px solid transparent;
+            display: grid; place-items: center; font: 600 9.5px/1 "Inter", sans-serif; color: #ddd;
+        }
+        .yt-swatch[aria-pressed="true"] { border-color: var(--yt-inverse); }
+        .yt-note { font-size: 11.5px; line-height: 1.5; color: var(--yt-fg-muted); }
+
+        /* Fullscreen: chrome out, video to the edges. */
+        .yt[data-fs="1"] .yt-top,
+        .yt[data-fs="1"] .yt-chrome { display: none; }
+        .yt[data-fs="1"] .yt-band { position: absolute; inset: 0; padding: 0; align-items: center; z-index: 3; }
+        .yt[data-fs="1"] .yt-fs { right: 8px; bottom: 74px; }
+        .yt-fs-bar {
+            position: absolute; left: 0; right: 0; bottom: 0; z-index: 4; display: none;
+            align-items: center; gap: 12px; padding: 10px 16px 16px;
+            background: linear-gradient(0deg, rgba(0, 0, 0, .82), transparent);
+        }
+        .yt[data-fs="1"] .yt-fs-bar { display: flex; }
+        .yt-fs-bar .track { flex: 1 1 auto; }
+        .yt-fs-bar .tc { font: 500 12px/1 "JetBrains Mono", monospace; color: #fff; white-space: nowrap; }
+
+        /* Hit-target reveal, same idea as mock.html's "Show hit targets". */
+        .show-hits .yt-trim::after {
+            content: ""; position: absolute; inset: -16px -16px;
+            background: rgba(255, 122, 107, .28); outline: 1px dashed #ff7a6b; border-radius: 6px;
+        }
+        .show-hits .yt-collapse::after {
+            content: ""; position: absolute; inset: -9px; border-radius: 50%;
+            background: rgba(255, 122, 107, .28); outline: 1px dashed #ff7a6b;
+        }
+        .show-hits .yt-rail button::after,
+        .show-hits .yt .ic::after {
+            content: ""; position: absolute; width: 44px; height: 44px; border-radius: 12px;
+            background: rgba(255, 122, 107, .18); outline: 1px dashed rgba(255, 122, 107, .7);
+        }
+        .show-hits .yt-rail button, .show-hits .yt .ic { position: relative; }
+
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font: 600 10.5px/1.7 "JetBrains Mono", monospace; }
+        .badge.adopt { background: rgba(99, 212, 113, .14); color: var(--yt-good); }
+        .badge.adapt { background: rgba(62, 166, 255, .14); color: var(--yt-accent); }
+        .badge.refuse { background: rgba(255, 122, 107, .14); color: var(--yt-bad); }
+        pre.state {
+            margin: 0; padding: 10px 12px; border-radius: 10px; background: #101012;
+            border: 1px solid var(--page-line); color: #cfcfd6;
+            font: 500 11px/1.6 "JetBrains Mono", monospace; max-height: 232px; overflow: auto;
+        }
+        .logline { font: 500 11px/1.7 "JetBrains Mono", monospace; color: var(--page-muted); }
+        .logline b { color: var(--page-fg); font-weight: 600; }
+        .logline.undo b { color: var(--yt-accent); }
+        .logline.revert b { color: var(--bad, #ff7a6b); }
+    </style>
+</head>
+<body class="min-h-full">
+
+<div class="mx-auto max-w-[1500px] px-5 py-10 sm:px-8">
+
+    <!-- ═══ Hero ═══════════════════════════════════════════════════════════ -->
+    <header class="mb-10 flex flex-wrap items-start justify-between gap-6 border-b rule pb-7">
+        <div class="max-w-[74ch]">
+            <p class="mb-2 font-mono text-[11px] font-medium uppercase tracking-[.16em] text-yt">Pattern study · YouTube Create → Studio Lite</p>
+            <h1 class="m-0 text-[30px] font-extrabold leading-[1.1] tracking-tight text-fg sm:text-[38px]">
+                A phone editor is not a small desktop editor
+            </h1>
+            <p class="mt-4 text-[13.5px] leading-relaxed text-muted">
+                Eight screenshots of YouTube Create's Android editor, read for the decisions underneath them — then rebuilt
+                here as one working phone: switch the canvas ratio, go fullscreen, collapse the text lane into a bar, rotate
+                a clip, pick a Start and a Finish animation, retype the title. Every panel is a real
+                <strong class="text-fg">Cancel / Done</strong> editor with a live preview, so the state readout under the
+                phone changes when you commit and snaps back when you don't.
+            </p>
+            <p class="mt-3 text-[13.5px] leading-relaxed text-muted">
+                The analysis, measurements and phased build plan are in
+                <span class="font-mono text-[12px] text-fg">docs/studio-lite/YT-CREATE-PATTERN-PLAN.md</span>, and the
+                reference screenshots this page is derived from are listed in section 3.
+            </p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+            <button class="lt-chip" id="btnHits" type="button" aria-pressed="false">Show hit targets</button>
+            <button class="lt-chip" id="btnUndo" type="button">↶ Undo (0)</button>
+            <button class="lt-chip" id="btnReset" type="button">Reset the phone</button>
+        </div>
+    </header>
+
+    <!-- ═══ 1 · The phone ═════════════════════════════════════════════════ -->
+    <section class="mb-16">
+        <div class="mb-5 flex flex-wrap items-end justify-between gap-3">
+            <div>
+                <h2 class="m-0 text-[20px] font-bold tracking-tight text-fg">1 · The editor, working</h2>
+                <p class="mt-1 max-w-[86ch] text-[12.5px] leading-relaxed text-muted">
+                    Drag the filmstrip to scrub — the playhead stays where it is and the film moves under it, which is the
+                    reference's central gamble. Tap a clip to select it. Tap the ⌃ on a lane to collapse it. The rail opens
+                    panels; every one of them keeps the preview live and ends in Cancel / Done.
+                </p>
+            </div>
+            <code class="rounded-lg border rule bg-card px-2.5 py-1 font-mono text-[11px] text-muted">390×844 · 360dp reference · §5.3 targets</code>
+        </div>
+
+        <div class="grid gap-7 lg:grid-cols-[390px_minmax(0,1fr)]">
+            <!-- the device -->
+            <div>
+                <div class="yt" id="phone" data-range="39">
+                    <header class="yt-top">
+                        <button class="ic" type="button" data-act="home" aria-label="Home">⌂</button>
+                        <div class="yt-top-r">
+                            <button class="ic" type="button" data-act="share" aria-label="Share">↑</button>
+                            <button class="ic" type="button" data-act="more" aria-label="More">⋮</button>
+                        </div>
+                    </header>
+
+                    <div class="yt-band" id="band">
+                        <div class="yt-frame" id="frame">
+                            <div class="yt-stage" id="stage">
+                                <div class="yt-scene" id="scene">
+                                    <span class="yt-empty">1080×1920 · 39.0s · gradient stand-in</span>
+                                </div>
+                                <div class="yt-title" id="titleText" data-style="party">Your title here</div>
+                            </div>
+                            <button class="yt-fs" type="button" data-act="fullscreen" aria-label="Fullscreen" title="Fullscreen — chrome out, video to the edges">⛶</button>
+                        </div>
+                    </div>
+
+                    <div class="yt-chrome" id="chrome">
+                        <div class="yt-transport">
+                            <div class="flex items-center">
+                                <button class="ic" type="button" data-act="delete" aria-label="Delete clip" title="Delete">🗑</button>
+                                <button class="ic" type="button" data-act="split" aria-label="Trim or split" title="Trim / split">✂</button>
+                            </div>
+                            <button class="ic" type="button" data-act="play" aria-label="Play" style="font-size:19px">▶</button>
+                            <div class="flex items-center">
+                                <button class="ic" type="button" data-act="undo" aria-label="Undo">↺</button>
+                                <button class="ic" type="button" data-act="redo" aria-label="Redo">↻</button>
+                            </div>
+                        </div>
+                        <div class="yt-time">
+                            <span id="tc">00:00</span><span class="sub">/ 00:39</span>
+                            <span class="sub" id="tlZoom" style="margin-left:8px">26 px/s</span>
+                        </div>
+                        <div class="yt-tl" id="tl">
+                            <div class="yt-film" id="film">
+                                <div class="yt-scale" id="scale"></div>
+                                <div class="yt-lane" data-kind="text" id="laneText"><div class="yt-lane-inner" id="laneTextInner"></div></div>
+                                <div class="yt-lane" data-kind="audio" id="laneAudio"><div class="yt-lane-inner" id="laneAudioInner"></div></div>
+                                <div class="yt-lane" data-kind="video" id="laneVideo"><div class="yt-lane-inner" id="laneVideoInner"></div></div>
+                            </div>
+                            <div class="yt-playhead"></div>
+                        </div>
+                        <div class="yt-rail" id="rail"></div>
+                    </div>
+
+                    <div class="yt-panel" id="panel">
+                        <div class="yt-panel-scrub">
+                            <div class="yt-track" data-scrub><i id="scrubKnob" style="left:0%"></i></div>
+                            <button class="yt-play" type="button" data-act="play">▶</button>
+                        </div>
+                        <div>
+                            <p class="yt-panel-title m-0" id="panelTitle">Rotation</p>
+                            <div class="yt-tabs" id="panelTabs" hidden></div>
+                        </div>
+                        <div class="yt-panel-body" id="panelBody"></div>
+                        <div class="yt-panel-foot">
+                            <button class="yt-pill" type="button" data-act="cancel">Cancel</button>
+                            <button class="yt-pill ghost" type="button" data-act="panelReset" id="btnPanelReset" hidden>Reset</button>
+                            <button class="yt-pill primary" type="button" data-act="done">Done</button>
+                        </div>
+                    </div>
+
+                    <div class="yt-fs-bar" id="fsBar">
+                        <div class="yt-track" data-scrub><i id="fsKnob" style="left:0%"></i></div>
+                        <span class="tc" id="fsTc">0:00 / 0:39</span>
+                    </div>
+                </div>
+                <p class="mt-3 text-[11.5px] leading-relaxed text-dim">
+                    The video is a CSS gradient stand-in, the waveform is generated SVG, and the frames are gradients — so
+                    this page still loads no network resource. Hit targets are on <span class="kbd">Show hit targets</span>.
+                </p>
+            </div>
+
+            <!-- live readouts: the claims, checkable -->
+            <div class="grid gap-4 content-start">
+                <div class="card p-5">
+                    <h3 class="m-0 text-[14px] font-bold text-fg">What the chrome is doing</h3>
+                    <p class="mt-2 text-[12.5px] leading-relaxed text-muted">
+                        <strong class="text-fg">P1</strong> · change the canvas ratio and watch
+                        <span class="kbd">chrome top</span> — it must not move. A desktop editor re-flows everything; this
+                        one only resizes the preview.
+                    </p>
+                    <div class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4" id="stats"></div>
+                </div>
+
+                <div class="card p-5">
+                    <h3 class="m-0 text-[14px] font-bold text-fg">The state the panels edit</h3>
+                    <p class="mt-2 mb-3 text-[12.5px] leading-relaxed text-muted">
+                        One object, read by the preview, the timeline and the panels. <em>Cancel</em> restores the snapshot
+                        taken when the panel opened; <em>Done</em> keeps it and pushes one undo entry. This is the same
+                        contract as <span class="font-mono text-[11px]">mock.html</span>'s one-undo-per-drag rule, applied to
+                        property edits.
+                    </p>
+                    <div class="grid gap-3 sm:grid-cols-2">
+                        <div>
+                            <p class="m-0 mb-1 font-mono text-[10.5px] uppercase tracking-[.14em] text-dim">Live state</p>
+                            <pre class="state" id="stateView"></pre>
+                        </div>
+                        <div>
+                            <p class="m-0 mb-1 font-mono text-[10.5px] uppercase tracking-[.14em] text-dim">History</p>
+                            <div id="log" class="grid gap-0.5"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card p-5">
+                    <h3 class="m-0 text-[14px] font-bold text-fg">Try these six things</h3>
+                    <ol class="mt-3 grid gap-2 pl-5 text-[12.5px] leading-relaxed text-muted">
+                        <li>With the clip selected the rail offers <span class="kbd">Animation</span> · <span class="kbd">Rotate</span>
+                            · <span class="kbd">Style</span>; tap the clip to deselect and it becomes
+                            <span class="kbd">Text</span> · <span class="kbd">Overlay</span> · <span class="kbd">Sound</span> …
+                            That contextual swap is the reference's own behaviour (P8).</li>
+                        <li>Open <span class="kbd">Aspect</span> → pick <span class="kbd">1:1</span>, then
+                            <span class="kbd">Cancel</span>. The state readout snaps back — the preview was only a preview.</li>
+                        <li>Open <span class="kbd">Rotate</span> → drag the slider. The clip rotates inside its canvas and
+                            the canvas keeps the letterbox, exactly like the reference.</li>
+                        <li>Open <span class="kbd">Animation</span> → tap <span class="kbd">Slide up</span>, then
+                            <span class="kbd">Finish ▸ Wipe horizontal</span>, then <span class="kbd">Done</span>, then ▶ under
+                            the preview: the clip animates in, holds, animates out.</li>
+                        <li>Drag the filmstrip left and right. The playhead never moves; the timecode does.</li>
+                        <li>Tap the ⌃ on the text lane. It collapses to a 12px bar above the video — the video lane keeps
+                            every pixel it had.</li>
+                    </ol>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══ 2 · The patterns, dissected ════════════════════════════════════ -->
+    <section class="mb-16">
+        <h2 class="m-0 text-[20px] font-bold tracking-tight text-fg">2 · The four patterns that carry it</h2>
+        <p class="mt-1 mb-6 max-w-[86ch] text-[12.5px] leading-relaxed text-muted">
+            Everything else in the reference is decoration. These four are the product decisions, and each one is
+            checkable in the phone above.
+        </p>
+
+        <div class="grid gap-4 md:grid-cols-2">
+            <div class="card p-5">
+                <p class="m-0 mb-2 font-mono text-[10.5px] uppercase tracking-[.14em] text-accent">P1 · the preview band</p>
+                <h3 class="m-0 text-[15px] font-bold text-fg">Only the preview resizes</h3>
+                <p class="mt-2 text-[12.5px] leading-relaxed text-muted">
+                    The reference's chrome block — transport, timecode, timeline, rail — occupies the same pixels in the
+                    ~1:1 screenshot and the 9:16 one; the preview grew <em>upward</em> from a fixed bottom edge. Ours does
+                    the same, and the panel shell is deliberately exactly the chrome block's height
+                    (<span class="kbd" id="chromeH">328px</span>) so opening a panel doesn't move the preview either.
+                </p>
+            </div>
+
+            <div class="card p-5">
+                <p class="m-0 mb-2 font-mono text-[10.5px] uppercase tracking-[.14em] text-accent">P2 · pinned playhead</p>
+                <h3 class="m-0 text-[15px] font-bold text-fg">Drag the film, not the playhead</h3>
+                <p class="mt-2 text-[12.5px] leading-relaxed text-muted">
+                    A 2px playhead is a fine mouse target and a terrible thumb target. The reference pins it at the centre
+                    and makes the lane area itself the scrub surface. Our version: one pointer gesture, one undo entry on
+                    release, and <span class="font-mono text-[11px]">pointercancel</span> ends it cleanly (§5.1). The cost
+                    is honest — you cannot see the whole project at once; zoom decides.
+                </p>
+            </div>
+
+            <div class="card p-5">
+                <p class="m-0 mb-2 font-mono text-[10.5px] uppercase tracking-[.14em] text-accent">P3 · collapsing lanes</p>
+                <h3 class="m-0 text-[15px] font-bold text-fg">Overlays become bars</h3>
+                <p class="mt-2 text-[12.5px] leading-relaxed text-muted">
+                    Four 20px lanes spend 80px of a phone's height on three things you are not editing. Our rule: the
+                    <strong class="text-fg">main video lane never collapses</strong>; every overlay lane collapses to a 12px
+                    bar — still showing kind, position and extent — with its 44px target intact. This is where the
+                    kind-as-texture grammar from <span class="font-mono text-[11px]">mock.html</span> pays off: a 12px
+                    waveform is still a waveform.
+                </p>
+            </div>
+
+            <div class="card p-5">
+                <p class="m-0 mb-2 font-mono text-[10.5px] uppercase tracking-[.14em] text-accent">P4 · the panel shell</p>
+                <h3 class="m-0 text-[15px] font-bold text-fg">One shell, six bodies, live preview</h3>
+                <p class="mt-2 text-[12.5px] leading-relaxed text-muted">
+                    Rotation, Start/Finish, Text art, canvas, ratio and the title all wear the same clothes: preview on top,
+                    one control group, <em>Cancel</em> (dark) / <em>Done</em> (the only white thing on screen). Snapshot on
+                    open, restore on Cancel, one undo entry on Done. The controls are sliders and rings of presets — no
+                    numeric fields, no keyframe editor anywhere in the eight screenshots.
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══ 3 · The screenshots, read ══════════════════════════════════════ -->
+    <section class="mb-16">
+        <h2 class="m-0 text-[20px] font-bold tracking-tight text-fg">3 · The eight screenshots, read</h2>
+        <p class="mt-1 mb-5 max-w-[92ch] text-[12.5px] leading-relaxed text-muted">
+            Filed as local reference media in <span class="font-mono text-[11.5px] text-fg">_demo_assets/images/</span> (717×1600
+            each, not committed — the same convention as every other still attached to a study or a bug). Divide by 2 for CSS
+            px on a 360dp phone.
+        </p>
+        <div class="overflow-x-auto">
+            <table class="w-full min-w-[820px] border-collapse text-left text-[12px]">
+                <thead class="text-dim">
+                    <tr class="border-b rule">
+                        <th class="py-2 pr-3 font-semibold">#</th>
+                        <th class="py-2 pr-3 font-semibold">file</th>
+                        <th class="py-2 pr-3 font-semibold">what it shows</th>
+                        <th class="py-2 pr-3 font-semibold">pattern</th>
+                        <th class="py-2 font-semibold">in this mock</th>
+                    </tr>
+                </thead>
+                <tbody class="text-muted" id="shotRows"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- ═══ 4 · Adopt / adapt / refuse ═════════════════════════════════════ -->
+    <section class="mb-14">
+        <h2 class="m-0 text-[20px] font-bold tracking-tight text-fg">4 · Adopt, adapt, refuse</h2>
+        <p class="mt-1 mb-5 max-w-[92ch] text-[12.5px] leading-relaxed text-muted">
+            The reference's generative tiles are the clearest example of something we should not copy: they need the
+            network, credentials and a model, and they serve none of Studio Lite's three jobs (§2.2).
+        </p>
+        <div class="overflow-x-auto">
+            <table class="w-full min-w-[760px] border-collapse text-left text-[12px]">
+                <thead class="text-dim">
+                    <tr class="border-b rule">
+                        <th class="py-2 pr-3 font-semibold">YouTube Create</th>
+                        <th class="py-2 pr-3 font-semibold">Studio Lite</th>
+                        <th class="py-2 font-semibold">verdict</th>
+                    </tr>
+                </thead>
+                <tbody class="text-muted" id="verdictRows"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <footer class="border-t rule pt-5 text-[11.5px] leading-relaxed text-dim">
+        <p class="m-0">
+            Study only — no engine, no persistence, no network. The palette is the reference's, used to judge its layouts
+            honestly; it is not a proposal to re-skin Studio Lite, which keeps the shared Material 3 theme
+            (§3.11). Plan: <span class="font-mono text-[11px]">docs/studio-lite/YT-CREATE-PATTERN-PLAN.md</span>.
+        </p>
+    </footer>
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════════════
+   One state object, a handful of pure paint functions, and one panel shell.
+   Nothing here is a screenshot: every value below is read by the preview, the
+   timeline and the panels, so the mock cannot lie about how it behaves.
+   ══════════════════════════════════════════════════════════════════════════ */
+const $ = id => document.getElementById(id);
+const phone = $('phone');
+
+const DUR = 39;          // project length, seconds
+let PPS = 26;            // px per second: ~15s on screen, so one whole clip fits
+                         // the viewport and both of its trim handles can be seen at once
+
+const RATIOS = {
+    '9:16': [9, 16],
+    '1:1': [1, 1],
+    '4:5': [4, 5],
+    '16:9': [16, 9]
+};
+
+/* Lane model. The video lane is the project; everything else rides on top of it
+   and is collapsible. Heights come from the reference: 44 open, 12 collapsed. */
+const LANES = [
+    { id: 'text', label: 'Text', bar: true, height: 44, collapsedHeight: 12 },
+    { id: 'audio', label: 'Audio', bar: false, height: 44, collapsedHeight: 12 },
+    { id: 'video', label: 'Video', bar: false, height: 96, collapsedHeight: 96, fixed: true }
+];
+
+const CLIPS = {
+    text: [
+        { id: 't1', start: 3, end: 9, label: 'Your title here', tag: 'T' },
+        { id: 't2', start: 20, end: 28, label: 'Subscribe', tag: 'T' }
+    ],
+    audio: [
+        { id: 'a1', start: 2, end: 36, label: 'Voiceover', tag: '♪' }
+    ],
+    video: [
+        { id: 'v1', start: 0, end: 13, label: 'Clip 1', tag: '▶' },
+        { id: 'v2', start: 13.5, end: 26, label: 'Clip 2', tag: '▶' },
+        { id: 'v3', start: 26.5, end: 39, label: 'Clip 3', tag: '▶' }
+    ]
+};
+
+const PRESETS = [
+    { id: 'none', label: 'None', k: 'none' },
+    { id: 'dissolve', label: 'Dissolve', k: 'fade' },
+    { id: 'wipe-v', label: 'Wipe vertical', k: 'wipeV' },
+    { id: 'wipe-h', label: 'Wipe horizontal', k: 'wipeH' },
+    { id: 'slide-up', label: 'Slide up', k: 'slideUp' },
+    { id: 'zoom', label: 'Zoom in', k: 'zoom' },
+    { id: 'spin', label: 'Spin', k: 'spin' },
+    { id: 'pop', label: 'Pop', k: 'pop' }
+];
+const PRESET_THUMB = {
+    none: '#2f2f2f',
+    dissolve: 'linear-gradient(135deg,#b9f0c4,#c9c2ff)',
+    'wipe-v': 'linear-gradient(180deg,#ff9d4d 0 50%,#3ea6ff 50% 100%)',
+    'wipe-h': 'linear-gradient(90deg,#ff9d4d 0 50%,#3ea6ff 50% 100%)',
+    'slide-up': 'linear-gradient(0deg,#ff8a3d 0 40%,#2f6bff 40% 100%)',
+    zoom: 'linear-gradient(135deg,#3ddc84,#2f6bff)',
+    spin: 'conic-gradient(from 210deg,#ff9d4d,#3ea6ff,#d98cff,#ff9d4d)',
+    pop: 'linear-gradient(135deg,#d98cff,#ff8a3d)'
+};
+
+/* The rail is CONTEXTUAL — pattern P8 in the plan, and the reason the reference
+   shows two different rails across its own screenshots. Nothing selected: things
+   you can create. A clip selected: things you can do to it. Ours keeps the
+   divider grouping content from canvas, as the reference does. */
+const RAIL = {
+    none: [
+        { id: 'text', g: 'T', label: 'Text' },
+        { id: 'overlay', g: '▢', label: 'Overlay' },
+        { id: 'sound', g: '♪', label: 'Sound' },
+        { id: 'captions', g: 'CC', label: 'Captions' },
+        { sep: true },
+        { id: 'canvas', g: '◧', label: 'Canvas' },
+        { id: 'ratio', g: '⛶', label: 'Aspect' }
+    ],
+    clip: [
+        { id: 'anim', g: '✦', label: 'Animation' },
+        { id: 'rotate', g: '⟲', label: 'Rotate' },
+        { id: 'textart', g: 'Aa', label: 'Style' },
+        { id: 'sound', g: '♪', label: 'Sound' },
+        { sep: true },
+        { id: 'canvas', g: '◧', label: 'Canvas' },
+        { id: 'ratio', g: '⛶', label: 'Aspect' }
+    ]
+};
+const RAIL_PANEL = { text: 'text', textart: 'textart', anim: 'anim', rotate: 'rotate', canvas: 'canvas', ratio: 'ratio' };
+
+/* The one and only source of truth. */
+const INITIAL = {
+    ratio: '9:16',
+    canvasBg: 'black',
+    rotate: 0,
+    title: 'Your title here',
+    textStyle: 'party',
+    animIn: 'dissolve',
+    animOut: 'wipe-h',
+    animDur: 1.0,
+    animTab: 'in',
+    collapsed: { text: true, audio: false },
+    selected: 'v1',
+    t: 0,
+    panel: null,
+    fs: 0
+};
+let state = structuredClone(INITIAL);
+let snapshot = null;
+let history = [];
+let future = [];
+const log = [];
+
+/* ── paint: preview ─────────────────────────────────────────────────────── */
+function fitFrame() {
+    const band = $('band').getBoundingClientRect();
+    const [rw, rh] = RATIOS[state.ratio];
+    const padW = state.fs ? 0 : 20, padH = state.fs ? 0 : 12;
+    const availW = phone.clientWidth - padW;
+    const availH = band.height - padH;
+    let w, h;
+    if (state.fs) {
+        /* Fullscreen COVERS — the reference goes edge to edge and crops, it does
+           not letterbox the canvas inside the screen. */
+        w = availW; h = w * rh / rw;
+        if (h < availH) { h = availH; w = h * rw / rh; }
+    } else {
+        h = availH; w = h * rw / rh;
+        if (w > availW) { w = availW; h = w * rh / rw; }
+    }
+    const f = $('frame');
+    f.style.width = Math.round(w) + 'px';
+    f.style.height = Math.round(h) + 'px';
+    /* The title scales with the frame, so a 16:9 canvas and a fullscreen frame
+       both look deliberate. */
+    f.style.setProperty('--title-size', Math.round(Math.min(46, Math.max(17, h * 0.072))) + 'px');
+}
+
+function paintPreview() {
+    $('titleText').textContent = state.title || ' ';
+    $('titleText').dataset.style = state.textStyle;
+    $('scene').style.setProperty('--rot', state.rotate + 'deg');
+    /* Rotating crops, like the reference — so scale up as the angle grows and
+       the frame never shows empty corners. */
+    const rad = Math.abs(state.rotate) * Math.PI / 180;
+    const zoom = 1 + Math.min(0.45, Math.abs(Math.sin(rad)) * 0.42);
+    $('scene').style.setProperty('--zoom', zoom.toFixed(3));
+    $('frame').style.background = state.canvasBg === 'black' ? '#000'
+        : state.canvasBg === 'white' ? '#fff'
+        : state.canvasBg === 'blur' ? '#1b1b1b'
+        : '#12161d';
+    fitFrame();
+    paintStats();
+}
+
+/* ── paint: timeline ────────────────────────────────────────────────────── */
+function paintTimeline() {
+    const filmW = DUR * PPS;
+    const film = $('film');
+    film.style.width = filmW + 'px';
+
+    // lanes: video 96, text/audio 44 or 12, stacked from the bottom up like the
+    // reference (audio under video, overlays above)
+    let y = $('tl').clientHeight;
+    const order = ['video', 'audio', 'text'];
+    const tops = {};
+    for (const id of order) {
+        const lane = LANES.find(l => l.id === id);
+        const coll = !lane.fixed && state.collapsed[id];
+        const h = lane.fixed ? lane.height : (coll ? lane.collapsedHeight : lane.height);
+        y -= h;
+        tops[id] = y;
+        const el = $('lane' + id[0].toUpperCase() + id.slice(1));
+        el.style.top = y + 'px';
+        el.style.height = h + 'px';
+        el.dataset.collapsed = coll ? '1' : '0';
+    }
+    // the audio lane needs a little breathing room under the video lane
+    $('laneAudio').style.top = (tops.audio - 0) + 'px';
+
+    // clips
+    const put = (laneId, host, html) => {
+        const lane = CLIPS[laneId];
+        host.innerHTML = lane.map(c => {
+            const sel = state.selected === c.id;
+            const left = c.start * PPS, w = (c.end - c.start) * PPS;
+            let extra = '';
+            if (laneId === 'text') extra = `<span class="tag">${c.tag}</span><span class="nm">${c.label}</span>`;
+            if (laneId === 'audio') extra = `<span class="tag">${c.tag}</span><span class="nm">${c.label}</span>`;
+            if (laneId === 'video' && sel) {
+                extra = `<span class="yt-trim" style="left:2px"></span><span class="yt-trim" style="right:2px"></span>`;
+            }
+            return `<div class="yt-clip" data-kind="${laneId}" data-id="${c.id}" data-sel="${sel ? 1 : 0}"
+                        style="left:${left}px;width:${w}px" title="${c.label}">${extra}</div>`;
+        }).join('');
+    };
+    put('text', $('laneTextInner'));
+    put('video', $('laneVideoInner'));
+
+    // audio: one clip carrying a generated waveform
+    $('laneAudioInner').innerHTML = CLIPS.audio.map(c => `
+        <div class="yt-clip" data-kind="audio" data-id="${c.id}" data-sel="0"
+             style="left:${c.start * PPS}px;width:${(c.end - c.start) * PPS}px">
+            ${waveSvg(Math.round((c.end - c.start) * PPS))}
+        </div>`).join('');
+
+    // the "+" that appends a clip, parked at the end of the video lane
+    let plus = $('plus');
+    if (!plus) {
+        plus = document.createElement('button');
+        plus.id = 'plus'; plus.className = 'yt-plus';
+        plus.type = 'button'; plus.dataset.act = 'addClip'; plus.textContent = '+';
+        plus.title = 'Append a clip';
+        $('tl').appendChild(plus);
+    }
+    /* Pinned to the right of the timeline, centred on the video lane — which is
+       where the reference keeps it, independent of where the film has scrolled. */
+    plus.style.top = Math.round(tops.video + (96 - 44) / 2) + 'px';
+    plus.style.left = '';
+    plus.style.right = '8px';
+
+    // collapse toggles, one per collapsible lane, pinned to the left edge
+    document.querySelectorAll('.yt-collapse').forEach(e => e.remove());
+    for (const lane of LANES) {
+        if (lane.fixed) continue;
+        const b = document.createElement('button');
+        b.className = 'yt-collapse';
+        b.type = 'button';
+        b.dataset.act = 'collapse';
+        b.dataset.lane = lane.id;
+        b.style.top = (tops[lane.id] + (state.collapsed[lane.id] ? 0 : 2)) + 'px';
+        b.textContent = state.collapsed[lane.id] ? '⌄' : '⌃';
+        b.title = (state.collapsed[lane.id] ? 'Expand' : 'Collapse') + ' ' + lane.label + ' lane';
+        b.setAttribute('aria-label', b.title);
+        $('tl').appendChild(b);
+    }
+
+    // scale labels ride with the film
+    const scale = $('scale');
+    scale.style.width = filmW + 'px';
+    let s = '';
+    for (let t = 0; t <= DUR; t += 5) s += `<i style="left:${t * PPS}px">${t ? t + 's' : '00'}</i>`;
+    scale.innerHTML = s;
+    paintTime();
+}
+
+/* How far the film has been pushed left, in px. The playhead sits at the
+   centre, so at t = 0 the film's start is under it. */
+function pushLeft() { return 0.5 * $('tl').clientWidth - state.t * PPS; }
+
+function paintTime() {
+    const film = $('film');
+    film.style.transform = `translate3d(${pushLeft()}px,0,0)`;
+    const tc = fmt(state.t);
+    $('tc').textContent = tc;
+    $('fsTc').textContent = `${fmt(state.t, false)} / 0:39`;
+    const pct = (state.t / DUR) * 100;
+    $('scrubKnob').style.left = pct + '%';
+    $('fsKnob').style.left = pct + '%';
+    paintStats();
+    /* The state readout carries `t`, so scrubbing has to repaint it — otherwise
+       the panel says 6s while the timecode says 00:06 and the page looks broken. */
+    paintState();
+}
+
+function fmt(t, withMs = false) {
+    const m = Math.floor(t / 60), s = Math.floor(t % 60);
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+/* Deterministic waveform → one SVG path, so a 12px lane still reads as audio. */
+function waveSvg(width) {
+    const n = 150, step = width / n;
+    let d = '';
+    for (let i = 0; i < n; i++) {
+        const a = Math.abs(Math.sin(i * 0.7) * Math.cos(i * 0.23) * Math.sin(i * 0.11 + 1.3));
+        const h = 4 + a * 15;
+        const x = (i * step + step / 2).toFixed(1);
+        d += `M${x} ${(20 - h).toFixed(1)}V${(20 + h).toFixed(1)}`;
+    }
+    return `<svg viewBox="0 0 ${width} 40" preserveAspectRatio="none" aria-hidden="true">
+        <path d="${d}" stroke="#3ddc84" stroke-width="${Math.min(3, Math.max(1.2, step * 0.3)).toFixed(2)}" fill="none" stroke-linecap="round"/></svg>`;
+}
+
+/* ── paint: rail, stats, state ──────────────────────────────────────────── */
+function paintRail() {
+    const set = state.selected ? RAIL.clip : RAIL.none;
+    $('rail').innerHTML = set.map(r => r.sep
+        ? '<span class="sep"></span>'
+        : `<button type="button" data-act="rail" data-rail="${r.id}" title="${r.label}"
+             ${state.panel === RAIL_PANEL[r.id] ? 'data-on="1"' : ''}>
+             <span class="g">${r.g}</span>${r.label}</button>`).join('');
+}
+const railPanel = id => RAIL_PANEL[id] || null;
+
+function paintStats() {
+    const f = $('frame').getBoundingClientRect();
+    /* The chrome and the panel take turns occupying the same slot, and a
+       display:none element reports a rect of all zeros — which read as
+       "chrome top -723px" the moment a panel opened. Measure whichever one is
+       actually laid out; they are the same box by design. */
+    const c = (getComputedStyle($('panel')).display !== 'none' ? $('panel') : $('chrome')).getBoundingClientRect();
+    const p = phone.getBoundingClientRect();
+    const rows = [
+        ['preview', Math.round(f.width) + '×' + Math.round(f.height)],
+        ['chrome top', Math.round(c.top - p.top) + 'px'],
+        ['lanes', Object.keys(state.collapsed).filter(k => state.collapsed[k]).length + ' of 3 collapsed'],
+        ['time', fmt(state.t) + ' / 00:39'],
+        ['ratio', state.ratio],
+        ['rail', state.selected ? 'clip selected' : 'nothing selected'],
+        ['committed', String(history.length)]
+    ];
+    $('stats').innerHTML = rows.map(([k, v]) => `
+        <div class="rounded-lg border rule bg-raised px-3 py-2">
+            <p class="m-0 font-mono text-[10px] uppercase tracking-[.12em] text-dim">${k}</p>
+            <p class="m-0 font-mono text-[12px] text-fg">${v}</p>
+        </div>`).join('');
+    $('chromeH').textContent = Math.round(c.height) + 'px';
+}
+
+function paintState() {
+    $('stateView').textContent = JSON.stringify({
+        ratio: state.ratio, canvasBg: state.canvasBg, rotate: state.rotate,
+        title: state.title, textStyle: state.textStyle,
+        animIn: state.animIn, animOut: state.animOut, animDur: state.animDur,
+        collapsed: state.collapsed, selected: state.selected,
+        t: +state.t.toFixed(2), panel: state.panel, fs: state.fs
+    }, null, 1);
+    $('log').innerHTML = log.slice(0, 8).map(l => `<p class="logline m-0 ${l.kind || ''}"><b>${l.what}</b> ${l.detail || ''}</p>`).join('')
+        || '<p class="logline m-0">— nothing committed yet —</p>';
+    $('btnUndo').textContent = `↶ Undo (${history.length})`;
+}
+
+function say(what, detail, kind) { log.unshift({ what, detail, kind }); paintState(); }
+
+/* ── the panel shell ────────────────────────────────────────────────────── */
+const PANELS = {
+    ratio: {
+        title: 'Aspect ratio',
+        body: () => `
+            <p class="yt-note mb-3">The canvas is a project property, not a view. It must round-trip through Pro's file
+            (§3.1) like any other unknown key.</p>
+            <div class="yt-ratio-grid">
+                ${Object.keys(RATIOS).map(r => `
+                    <button class="yt-ratio" type="button" data-set="ratio" data-value="${r}" aria-pressed="${state.ratio === r}">
+                        <em style="width:${ratioEm(r)[0]}px;height:${ratioEm(r)[1]}px"></em>${r}
+                    </button>`).join('')}
+            </div>`
+    },
+    canvas: {
+        title: 'Canvas',
+        body: () => `
+            <p class="yt-note mb-3">What shows in the letterbox when the clip and the canvas don't match. The reference
+            keeps this separate from the ratio for the same reason.</p>
+            <div class="yt-swatches">
+                ${[['black', '#000'], ['white', '#fff'], ['blur', '#1b1b1b'], ['brand', '#12161d']].map(([k, bg]) => `
+                    <button class="yt-swatch" type="button" data-set="canvasBg" data-value="${k}"
+                            aria-pressed="${state.canvasBg === k}" style="background:${bg};color:${k === 'white' ? '#333' : '#ddd'}">${k}</button>`).join('')}
+            </div>`
+    },
+    rotate: {
+        title: 'Rotation',
+        hasReset: true,
+        body: () => `
+            <p class="yt-value">${Math.round(state.rotate)}°</p>
+            <input class="yt-slider" type="range" min="-180" max="180" step="1" value="${state.rotate}" data-set="rotate">
+            <div class="yt-slider-bounds"><span>−180°</span><span>0°</span><span>180°</span></div>
+            <div class="mt-4 flex justify-center">
+                <button class="yt-pill" type="button" data-act="rot90" style="min-width:64px">⟲ 90°</button>
+            </div>
+            <p class="yt-note mt-4">The reference pairs a fine slider with a 90° button: level a horizon, or turn a
+            landscape clip portrait. Rotating crops, so we scale to keep the frame full — the alternative is four black
+            corners.</p>`
+    },
+    anim: {
+        title: '',
+        hasReset: true,
+        tabs: true,
+        body: () => {
+            const key = state.animTab === 'in' ? 'animIn' : 'animOut';
+            return `
+            <div class="yt-grid">
+                ${PRESETS.map(p => `
+                    <div class="yt-tile-cell">
+                        <button class="yt-tile" type="button" data-anim="${p.id}"
+                                aria-pressed="${state[key] === p.id}" style="background:${PRESET_THUMB[p.id]}">
+                            ${p.id === 'none' ? '<span class="none">⊘</span>' : p.label}
+                        </button>
+                        <span class="yt-tile-label">${p.label}</span>
+                    </div>`).join('')}
+            </div>
+            <div class="mt-4">
+                <p class="yt-value">${state.animDur.toFixed(1)} s</p>
+                <input class="yt-slider" type="range" min="0.2" max="2" step="0.1" value="${state.animDur}" data-set="animDur">
+                <div class="yt-slider-bounds"><span>0.2 s</span><span></span><span>2.0 s</span></div>
+            </div>
+            <p class="yt-note mt-3">Tapping a tile plays it on the preview — same preset list we share with Pro, and the
+            tiles can be rendered by the WAAPI adapter's <span class="font-mono text-[11px]">onFrame</span> output, so a
+            thumbnail is a real frame of the preset rather than a drawing of one.</p>`;
+        }
+    },
+    text: {
+        title: 'Title',
+        body: () => `
+            <div class="yt-field">
+                <input id="titleInput" value="${escapeAttr(state.title)}" placeholder="Your title here"
+                       aria-label="Title" autocomplete="off">
+                <button class="clear" type="button" data-act="clearTitle" aria-label="Clear">✕</button>
+            </div>
+            <div class="yt-accessory">
+                <span>☺</span><span>▣</span><span>⧉</span><span>⚙</span><span>…</span>
+            </div>
+            <p class="yt-note mt-3">One line, live preview, a clear button — no modal, no form. The keyboard case is
+            the one thing here we can't reproduce in a page: on device this is when
+            <span class="font-mono text-[11px]">visualViewport</span> has to be respected (§5.4) so the field and the
+            preview both stay visible.</p>`
+    },
+    textart: {
+        title: 'Text art',
+        body: () => `
+            <button class="yt-row w-full text-left" type="button" data-act="rail" data-rail="text">
+                <span><span class="lab block">Title</span><span class="val">${escapeHtml(state.title) || 'Your title here'}</span></span>
+                <span class="text-dim">›</span>
+            </button>
+            <p class="yt-note my-3">Style — the reference's rainbow look is a preset, not per-letter styling (§3 scope).</p>
+            <div class="grid grid-cols-2 gap-2">
+                ${[['party', 'Party'], ['solid', 'Solid'], ['outline', 'Outline'], ['shadow', 'Shadow']].map(([k, l]) => `
+                    <button class="yt-tile" type="button" data-set="textStyle" data-value="${k}"
+                            aria-pressed="${state.textStyle === k}"
+                            style="background:${k === 'party' ? PRESET_THUMB.spin : k === 'solid' ? '#3a3a3a' : k === 'outline' ? '#222' : '#2a2a2a'}">${l}</button>`).join('')}
+            </div>`
+    }
+};
+const ratioEm = r => { const [a, b] = RATIOS[r]; const k = 34 / Math.max(a, b); return [Math.max(10, a * k), Math.max(10, b * k)].map(Math.round); };
+const escapeHtml = s => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+const escapeAttr = s => escapeHtml(s).replace(/"/g, '&quot;');
+
+function openPanel(id) {
+    snapshot = structuredClone(state);
+    state.panel = id;
+    if (id === 'anim') state.animTab = 'in';
+    paintAll();
+    say('open', PANELS[id].title || 'Start / Finish', 'undo');
+}
+function commit() {
+    if (!snapshot) return;
+    const changed = diff(snapshot, state);
+    history.push(snapshot); future = [];
+    snapshot = null; state.panel = null;
+    paintAll();
+    say('Done', changed.length ? changed.join(' · ') : 'no change');
+}
+function revert() {
+    if (!snapshot) return;
+    state = structuredClone(snapshot);
+    state.panel = null; snapshot = null;
+    paintAll();
+    say('Cancel', 'state restored', 'revert');
+}
+function panelReset() {
+    if (state.panel === 'rotate') state.rotate = 0;
+    if (state.panel === 'anim') { state.animIn = 'none'; state.animOut = 'none'; state.animDur = 1.0; }
+    paintAll();
+    say('Reset', 'panel defaults');
+}
+function diff(a, b) {
+    const out = [];
+    for (const k of ['ratio', 'canvasBg', 'rotate', 'title', 'textStyle', 'animIn', 'animOut', 'animDur']) {
+        if (JSON.stringify(a[k]) !== JSON.stringify(b[k])) out.push(`${k} ${JSON.stringify(a[k])} → ${JSON.stringify(b[k])}`);
+    }
+    return out;
+}
+
+function paintPanel() {
+    const id = state.panel;
+    const show = !!id;
+    const panel = $('panel');
+    panel.dataset.open = show ? '1' : '0';
+    // never clear the panel's markup: #panelTitle / #panelBody / #btnPanelReset
+    // are the shell's own nodes and clearing them would orphan every lookups below
+    if (!show) return;
+    const p = PANELS[id];
+    $('panelTitle').textContent = p.title || '';
+    const tabs = $('panelTabs');
+    tabs.hidden = !p.tabs;
+    if (p.tabs) {
+        tabs.innerHTML = [['in', 'Start'], ['out', 'Finish']].map(([k, l]) =>
+            `<button type="button" data-tab="${k}" aria-selected="${state.animTab === k}">${l}</button>`).join('');
+    }
+    $('btnPanelReset').hidden = !p.hasReset;
+    /* Re-rendering the body on every keystroke would eat the caret, so the text
+       panel's input is left alone once it exists. */
+    if (id === 'text' && $('panelBody').querySelector('#titleInput')) {
+        const inp = $('titleInput');
+        if (inp.value !== state.title) inp.value = state.title;
+        return;
+    }
+    $('panelBody').innerHTML = p.body();
+    if (p.tabs) $('panelTabs').hidden = false;
+    const inp = $('titleInput');
+    if (inp) inp.addEventListener('input', e => { state.title = e.target.value; paintPreview(); paintState(); });
+}
+
+function paintAll() {
+    /* Presence-based selectors: `[data-panel]` matches even when the value is
+       "0", so a flag of '0' would hide the whole chrome block. Delete the
+       attribute instead of falsifying it. */
+    if (state.panel) phone.dataset.panel = state.panel; else delete phone.dataset.panel;
+    if (state.fs) phone.dataset.fs = '1'; else delete phone.dataset.fs;
+    paintTimeline();
+    paintPanel();
+    paintPreview();
+    paintRail();
+    paintState();
+    paintStats();
+}
+
+/* ── animation presets, played for real ─────────────────────────────────── */
+const KEYFRAMES = {
+    none: null,
+    fade: [{ opacity: 0 }, { opacity: 1 }],
+    wipeV: [{ clipPath: 'inset(0 0 100% 0)' }, { clipPath: 'inset(0 0 0 0)' }],
+    wipeH: [{ clipPath: 'inset(0 100% 0 0)' }, { clipPath: 'inset(0 0 0 0)' }],
+    slideUp: [{ transform: 'translateY(26px)', opacity: 0 }, { transform: 'none', opacity: 1 }],
+    zoom: [{ transform: 'scale(1.16)', opacity: .35 }, { transform: 'none', opacity: 1 }],
+    spin: [{ transform: 'rotate(-10deg) scale(.92)' }, { transform: 'none' }],
+    pop: [{ transform: 'scale(.86)' }, { transform: 'scale(1.06)', offset: .6 }, { transform: 'none' }]
+};
+function presetKind(id) { return (PRESETS.find(p => p.id === id) || { k: 'none' }).k; }
+function playPreset(id, dir) {
+    const k = presetKind(id);
+    const kf = KEYFRAMES[k];
+    if (!kf) return null;
+    const el = $('stage');              // never the scene: see the .yt-stage note
+    el.getAnimations().forEach(a => a.cancel());
+    const frames = dir === 'out' ? [...kf].reverse() : kf;
+    return el.animate(frames, { duration: state.animDur * 1000, easing: 'cubic-bezier(.2,0,0,1)', fill: 'both' });
+}
+/* A tile tap is a preview, not a commit: play it, then let the frame go back to
+   looking like itself (an "out" preset otherwise leaves the clip invisible). */
+function previewPreset(id, dir) {
+    const a = playPreset(id, dir);
+    if (a) a.finished.then(() => setTimeout(() => a.cancel(), 420)).catch(() => {});
+}
+
+let playing = false;
+async function play() {
+    if (playing) return;
+    playing = true;
+    const stage = $('stage');
+    stage.getAnimations().forEach(a => a.cancel());
+    const inA = playPreset(state.animIn, 'in');
+    await wait(state.animDur * 1000 + 120);
+    // hold: advance the playhead for real so the film and timecode follow
+    const t0 = performance.now(), start = state.t;
+    await new Promise(res => {
+        const step = now => {
+            state.t = Math.min(DUR, start + (now - t0) / 1000);
+            paintTime();
+            if (now - t0 < 2400 && state.t < DUR) requestAnimationFrame(step);
+            else res();
+        };
+        requestAnimationFrame(step);
+    });
+    const outA = playPreset(state.animOut, 'out');
+    await wait(state.animDur * 1000 + 120);
+    [inA, outA].forEach(a => a && a.cancel());
+    stage.style.opacity = '';
+    stage.style.clipPath = '';
+    playing = false;
+}
+const wait = ms => new Promise(r => setTimeout(r, ms));
+
+/* ── gestures: drag the film, and the panel scrubbers ───────────────────── */
+function dragScrub(el, apply) {
+    let on = false;
+    el.addEventListener('pointerdown', e => {
+        on = true;
+        // capture is an optimisation, never a prerequisite (same lesson as mock.html)
+        try { el.setPointerCapture(e.pointerId); } catch (err) {}
+        apply(e);
+    });
+    el.addEventListener('pointermove', e => { if (on) apply(e); });
+    const end = () => { on = false; };
+    el.addEventListener('pointerup', end);
+    el.addEventListener('pointercancel', end);
+}
+dragScrub($('tl'), e => {
+    const r = $('tl').getBoundingClientRect();
+    // the playhead is fixed at the centre: it is the FILM that moves, so the
+    // time under the playhead is a function of where the finger is
+    if (e.type === 'pointerdown') {
+        dragScrub.t0 = state.t;
+        dragScrub.x0 = e.clientX;
+        $('tl').dataset.drag = '1';
+        say('scrub', 'drag the film');
+    } else {
+        state.t = Math.max(0, Math.min(DUR, dragScrub.t0 - (e.clientX - dragScrub.x0) / PPS));
+    }
+    paintTime();
+});
+$('tl').addEventListener('pointerup', () => {
+    delete $('tl').dataset.drag;
+    state.t = Math.round(state.t * 10) / 10;   // snap to 0.1s on release: one undo entry for the drag
+    paintTime();
+});
+document.querySelectorAll('[data-scrub]').forEach(track => {
+    dragScrub(track, e => {
+        const r = track.getBoundingClientRect();
+        state.t = Math.max(0, Math.min(DUR, ((e.clientX - r.left) / r.width) * DUR));
+        paintTime();
+    });
+});
+
+/* ── clicks ─────────────────────────────────────────────────────────────── */
+phone.addEventListener('click', e => {
+    const hit = e.target.closest('[data-act],[data-set],[data-anim],[data-tab],[data-rail],.yt-clip');
+    if (!hit) return;
+    const act = hit.dataset.act;
+
+    if (hit.classList.contains('yt-clip')) {
+        const wasSel = state.selected === hit.dataset.id;
+        state.selected = wasSel ? null : hit.dataset.id;
+        say(wasSel ? 'deselect' : 'select', hit.dataset.id);
+        /* paintRail, because the rail is contextual: the swap between creation
+           actions and clip actions IS the P8 behaviour, and it only happens if
+           the rail is repainted on selection. */
+        paintTimeline(); paintRail(); paintStats();
+        return;
+    }
+    if (hit.dataset.set) {
+        const key = hit.dataset.set, val = hit.dataset.value;
+        state[key] = key === 'rotate' || key === 'animDur' ? parseFloat(val) : val;
+        paintPreview(); paintPanel(); paintState();
+        return;
+    }
+    if (hit.dataset.anim) {
+        const key = state.animTab === 'in' ? 'animIn' : 'animOut';
+        state[key] = hit.dataset.anim;
+        paintPanel(); paintState();
+        previewPreset(hit.dataset.anim, state.animTab === 'in' ? 'in' : 'out');
+        return;
+    }
+    if (hit.dataset.tab) { state.animTab = hit.dataset.tab; paintPanel(); return; }
+    if (hit.dataset.rail) {
+        const r = hit.dataset.rail;
+        if (railPanel(r)) openPanel(railPanel(r));
+        else if (r === 'overlay') { state.collapsed.text = !state.collapsed.text; paintTimeline(); say('lane', 'text ' + (state.collapsed.text ? 'collapsed' : 'expanded')); }
+        else if (r === 'sound') { say('sound', 'record a take (MediaRecorder, §5.4)'); }
+        else if (r === 'captions') { say('captions', 'CC clips land on the text lane'); }
+        return;
+    }
+
+    switch (act) {
+        case 'play': play(); break;
+        case 'fullscreen': state.fs = state.fs ? 0 : 1; paintAll(); say(state.fs ? 'fullscreen' : 'exit fullscreen', state.fs ? 'chrome out' : ''); break;
+        case 'collapse': {
+            const l = hit.dataset.lane;
+            state.collapsed[l] = !state.collapsed[l];
+            paintTimeline(); paintStats();
+            say('lane', `${l} ${state.collapsed[l] ? 'collapsed' : 'expanded'}`);
+            break;
+        }
+        case 'addClip': say('+', 'append a clip'); break;
+        case 'delete': say('delete', state.selected || 'nothing selected'); break;
+        case 'split': say('trim / split', state.selected || 'nothing selected'); break;
+        case 'undo': undo(); break;
+        case 'redo': redo(); break;
+        case 'cancel': revert(); break;
+        case 'done': commit(); break;
+        case 'panelReset': panelReset(); break;
+        case 'rot90': state.rotate = ((state.rotate + 90 + 180) % 360) - 180; paintPreview(); paintPanel(); paintState(); break;
+        case 'clearTitle': state.title = ''; paintPreview(); paintPanel(); paintState(); break;
+        case 'home': case 'share': case 'more': say(act, 'not modelled in this study'); break;
+    }
+});
+
+phone.addEventListener('input', e => {
+    if (e.target.matches('input[type="range"]')) {
+        const key = e.target.dataset.set;
+        state[key] = parseFloat(e.target.value);
+        if (key === 'rotate') paintPreview();
+        if (key === 'animDur' && state.panel === 'anim') {
+            const v = $('panelBody').querySelector('.yt-value');
+            if (v) v.textContent = state.animDur.toFixed(1) + ' s';
+        }
+        paintState(); paintStats();
+    }
+});
+
+function undo() {
+    if (!history.length) { say('undo', 'nothing to undo'); return; }
+    future.push(structuredClone(state));
+    const prev = history.pop();
+    state = structuredClone(prev); state.panel = null; snapshot = null;
+    paintAll();
+    say('undo', `back to commit ${history.length}`, 'undo');
+}
+function redo() {
+    if (!future.length) { say('redo', 'nothing to redo'); return; }
+    history.push(structuredClone(state));
+    state = structuredClone(future.pop()); state.panel = null; snapshot = null;
+    paintAll();
+    say('redo', `forward to commit ${history.length}`, 'undo');
+}
+
+/* ── the two flat tables: screenshots, verdicts ─────────────────────────── */
+const SHOTS = [
+    ['01', 'yt-create-01-canvas-square', '~1:1 canvas; transport, timecode, filmstrip + waveform, rail', 'the chrome block is anchored — only the preview resizes', 'Change the ratio: watch <b>chrome top</b>'],
+    ['02', 'yt-create-02-canvas-9x16', 'same project, 9:16 canvas; preview taller, bottom edge unmoved', 'canvas ratio is a property with a live preview', 'Rail → Aspect'],
+    ['03', 'yt-create-03-fullscreen-preview', 'video edge-to-edge; back, share; scrub + timecode + exit', 'fullscreen removes chrome instead of adding a player', '⛶ in the preview corner'],
+    ['04', 'yt-create-04-timeline-tracks', 'two thin coloured bars over the filmstrip, waveform below; contextual rail', 'overlay lanes collapse into bars; the rail follows selection', 'Tap ⌃ on the text lane'],
+    ['05', 'yt-create-05-panel-rotation', 'live preview, scrub, ▶, slider, 90° button, Cancel / Done', 'one control per panel, preview never hidden', 'Rail → Rotate'],
+    ['06', 'yt-create-06-panel-start-finish', 'Start / Finish tabs, ringed preset grid, 0.2–2.0s slider, Reset', 'animation is a preset grid; in and out share one picker', 'Rail → Animation'],
+    ['07', 'yt-create-07-title-edit-keyboard', 'one-line field, clear button, accessory row, system keyboard', 'text is edited in place with the preview live', 'Rail → Style → Title row'],
+    ['08', 'yt-create-08-panel-text-art', 'rows: “Title / Your title here”, Cancel / Done', 'the style entry point is the content itself', 'Rail → Style']
+];
+$('shotRows').innerHTML = SHOTS.map(([n, f, shows, pattern, here]) => `
+    <tr class="border-b rule align-top">
+        <td class="py-3 pr-3 font-mono text-[11px] text-dim">${n}</td>
+        <td class="py-3 pr-3 font-mono text-[11px]">${f}</td>
+        <td class="py-3 pr-3">${shows}</td>
+        <td class="py-3 pr-3">${pattern}</td>
+        <td class="py-3 text-fg">${here}</td>
+    </tr>`).join('');
+
+const VERDICTS = [
+    ['canvas ratio switch', 'project.canvas.ratio — 9:16 · 1:1 · 4:5 · 16:9', 'adopt'],
+    ['Fullscreen preview (⛶)', 'immersive preview: chrome out, scrub + timecode stay', 'adopt'],
+    ['playhead pinned, film scrolls', 'Tier A scrub gesture; tiers B/C keep the ruler', 'adopt'],
+    ['collapsing overlay lanes', 'data-collapsed per lane; the video lane never collapses', 'adopt'],
+    ['Rotation slider + 90° button', 'clip transform, live, with Cancel/Done', 'adopt'],
+    ['Start / Finish preset grid', 'the shared 12–16 presets, In/Out tabs, 0.2–2.0s, Reset', 'adopt'],
+    ['title field, in place', 'text clip content: one line, live, clear button', 'adopt'],
+    ['Text art rows', 'text style rows: font · size · colour · align · preset', 'adopt'],
+    ['Sticker / emoji library', 'an image clip from the camera roll', 'refuse'],
+    ['Generate image / Generate video', 'network, credentials, cost — none of the three jobs (§2.2)', 'refuse'],
+    ['Voiceover tile', 'MediaRecorder record path; iOS has no WebCodecs MP4 (§5.4)', 'adapt'],
+    ['Captions tile', 'a CC clip in the timeline, not a rail destination', 'adapt'],
+    ['ruler with numeric ticks on a phone', 'floating labels + pinned playhead instead', 'refuse'],
+    ['a second theme for this look', 'one shared Material 3 layer (§3.11); the dark here is the reference’s', 'refuse']
+];
+$('verdictRows').innerHTML = VERDICTS.map(([a, b, v]) => `
+    <tr class="border-b rule align-top">
+        <td class="py-2.5 pr-3 text-fg">${a}</td>
+        <td class="py-2.5 pr-3">${b}</td>
+        <td class="py-2.5"><span class="badge ${v}">${v}</span></td>
+    </tr>`).join('');
+
+/* ── wiring ─────────────────────────────────────────────────────────────── */
+$('btnHits').addEventListener('click', () => {
+    const on = $('btnHits').getAttribute('aria-pressed') !== 'true';
+    $('btnHits').setAttribute('aria-pressed', String(on));
+    phone.classList.toggle('show-hits', on);
+});
+$('btnUndo').addEventListener('click', undo);
+$('btnReset').addEventListener('click', () => {
+    state = structuredClone(INITIAL); history = []; future = []; snapshot = null; log.length = 0;
+    paintAll(); say('reset', 'back to the initial state');
+});
+addEventListener('keydown', e => {
+    if (e.key === 'Escape' && state.panel) revert();
+    if (e.key === ' ' && !e.target.matches('input')) { e.preventDefault(); play(); }
+});
+new ResizeObserver(() => paintPreview()).observe($('band'));
+paintAll();
+say('ready', 'iOS: 39.0s · 3 clips · 4 lanes');
+</script>
+</body>
+</html>

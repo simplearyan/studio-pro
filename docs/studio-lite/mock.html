@@ -1,0 +1,1481 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>Studio Lite — design mock</title>
+    <meta name="description" content="Design mock for Studio Lite: a phone-first Studio Pro shell over the same project file. Palette, type, responsive tiers and feature concepts in one page.">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📱</text></svg>">
+
+    <!-- Applies the theme before first paint, same contract as hic-theme.js -->
+    <script>
+        (function () {
+            var t = 'light';
+            try { t = localStorage.getItem('lite:theme') || t; } catch (e) {}
+            if (t !== 'dark' && t !== 'light') t = 'light';
+            document.documentElement.setAttribute('data-theme', t);
+        })();
+    </script>
+
+    <!-- Vendored, offline, no CDN: matches the app's font stack (tailwind.config.js). -->
+    <link rel="stylesheet" href="../../fonts/fonts.css">
+
+    <!-- The Tailwind theme, as data.
+
+         Why not a <style type="text/tailwindcss"> directly? Vite runs this
+         repo's PostCSS pipeline (postcss.config.js → @tailwindcss/postcss) over
+         every <style> tag in an HTML page, inline ones included. It compiles the
+         @theme at the server, and because `inline` deliberately writes nothing
+         to :root unless a utility asks for it, the block arrives in the browser
+         as a bare licence banner — so the vendored runtime has no theme to read
+         and silently falls back to Tailwind's defaults.
+
+         A text/plain script is inert data that no tool rewrites. The script at
+         the end of this head hands it to the runtime as the real thing. -->
+    <script type="text/plain" id="tw-theme">
+        /* `@theme inline` is what makes the token references survive: without
+           `inline` the light value would be baked into every utility and the
+           dark theme could not swap. */
+        @theme inline {
+            --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+            --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+            --color-primary: var(--md-primary);
+            --color-on-primary: var(--md-on-primary);
+            --color-primary-container: var(--md-primary-container);
+            --color-on-primary-container: var(--md-on-primary-container);
+            --color-tertiary: var(--md-tertiary);
+
+            --color-surface: var(--md-surface);
+            --color-surface-lowest: var(--md-surface-container-lowest);
+            --color-surface-low: var(--md-surface-container-low);
+            --color-surface-container: var(--md-surface-container);
+            --color-surface-high: var(--md-surface-container-high);
+            --color-surface-highest: var(--md-surface-container-highest);
+
+            --color-ink: var(--md-on-surface);
+            --color-ink-variant: var(--md-on-surface-variant);
+            --color-outline: var(--md-outline);
+            --color-line: var(--md-outline-variant);
+
+            --color-success: var(--md-success);
+            --color-warning: var(--md-warning);
+            --color-error: var(--md-error);
+
+            --radius-app: 14px;
+            --shadow-e1: var(--md-elev-1);
+            --shadow-e2: var(--md-elev-2);
+            --shadow-e3: var(--md-elev-3);
+        }
+    </script>
+
+    <!-- Present before the runtime boots, so its first compile pass already has
+         the theme. Appending it later also works — the runtime recompiles the
+         moment a style[type="text/tailwindcss"] appears — but boot-time is one
+         less pass and avoids a flash of unstyled utilities. -->
+    <script>
+        (function () {
+            var el = document.createElement('style');
+            el.setAttribute('type', 'text/tailwindcss');
+            el.textContent = document.getElementById('tw-theme').textContent;
+            document.head.appendChild(el);
+        })();
+    </script>
+    <script src="../../vendor/tailwind-browser/index.global.js"></script>
+
+    <style>
+        /* ─────────────────────────────────────────────────────────────────────
+           Theme tokens — copied verbatim from docs/html-in-canvas/hic-theme.css.
+
+           STUDIO-LITE-PLAN.md §3.11 makes theme boot/toggle a CORE, shared
+           concern ("one implementation for both apps"), so Studio Lite does not
+           invent a second palette. It reuses the product family's Material 3
+           scheme and its `html[data-theme]` contract.
+
+           Note what that buys us: every utility below consumes a token, so dark
+           mode is a variable swap — there is not one `dark:` utility in this
+           file, and no chance of the two themes drifting apart.
+           ───────────────────────────────────────────────────────────────────── */
+        :root {
+            --md-primary: #6d4fc1;
+            --md-on-primary: #ffffff;
+            --md-primary-container: #e9deff;
+            --md-on-primary-container: #22005d;
+            --md-primary-dim: #6d4fc14d;
+            --md-surface: #fbfaff;
+            --md-surface-container-lowest: #ffffff;
+            --md-surface-container-low: #f5f2fb;
+            --md-surface-container: #efecf7;
+            --md-surface-container-high: #e9e6f2;
+            --md-surface-container-highest: #e3e0ed;
+            --md-on-surface: #1b1b21;
+            --md-on-surface-variant: #47464f;
+            --md-outline: #6b6c76;
+            --md-outline-variant: #c6c5d0;
+            --md-success: #146c2e;
+            --md-warning: #7a5900;
+            --md-error: #b3261e;
+            --md-tertiary: #6d52a8;
+
+            /* Short names for the surface scale. The Tailwind theme above maps
+               `--color-surface-lowest` → `--md-surface-container-lowest`, so
+               component CSS should be able to use the short form too.
+
+               These are not decoration. An undefined var() inside a shorthand
+               makes the WHOLE declaration invalid at computed-value time, so
+               `background: var(--md-surface-low)` renders transparent and
+               `box-shadow: 0 0 0 2px var(--md-surface-lowest)` renders `none` —
+               no error, no fallback, just a surface that quietly isn't there.
+               Seven declarations in this file were dead that way.
+
+               Declared once, in :root, and they follow the theme for free,
+               because each value is itself a var() reference resolved against
+               the element that uses it. */
+            --md-surface-lowest: var(--md-surface-container-lowest);
+            --md-surface-low: var(--md-surface-container-low);
+            --md-surface-high: var(--md-surface-container-high);
+            --md-surface-highest: var(--md-surface-container-highest);
+
+            --md-elev-1: 0 1px 2px rgba(0, 0, 0, .14), 0 1px 3px rgba(0, 0, 0, .08);
+            --md-elev-2: 0 1px 2px rgba(0, 0, 0, .16), 0 2px 6px rgba(0, 0, 0, .10);
+            --md-elev-3: 0 4px 8px rgba(0, 0, 0, .14), 0 8px 24px rgba(0, 0, 0, .12);
+            --md-stage-a: #e6ebf2;
+            --md-stage-b: #f6f8fb;
+            --page-bg: #f2f1f6;
+            color-scheme: light;
+        }
+
+        html[data-theme="dark"] {
+            --md-primary: #cfbcff;
+            --md-on-primary: #381e72;
+            --md-primary-container: #4f28a8;
+            --md-on-primary-container: #e9deff;
+            --md-primary-dim: #cfbcff40;
+            --md-surface: #0f1117;
+            --md-surface-container-lowest: #0a0c11;
+            --md-surface-container-low: #131720;
+            --md-surface-container: #161b26;
+            --md-surface-container-high: #1c2230;
+            --md-surface-container-highest: #262e40;
+            --md-on-surface: #e4e1ec;
+            --md-on-surface-variant: #a3a1b3;
+            --md-outline: #8e9099;
+            --md-outline-variant: #3a3f4e;
+            --md-success: #7ddb96;
+            --md-warning: #f8c555;
+            --md-error: #ffb4ab;
+            --md-tertiary: #d6bcfa;
+            --md-elev-1: 0 1px 2px rgba(0, 0, 0, .5), 0 1px 3px rgba(0, 0, 0, .35);
+            --md-elev-2: 0 1px 2px rgba(0, 0, 0, .55), 0 2px 6px rgba(0, 0, 0, .4);
+            --md-elev-3: 0 4px 8px rgba(0, 0, 0, .5), 0 8px 24px rgba(0, 0, 0, .45);
+            --md-stage-a: #131a28;
+            --md-stage-b: #0d1117;
+            --page-bg: #080a0e;
+            color-scheme: dark;
+        }
+
+        body {
+            background: var(--page-bg);
+            color: var(--md-on-surface);
+            font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* ── The mock owner's chrome (not part of the app being mocked) ───── */
+        .lt-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            min-height: 32px;
+            padding: 0 12px;
+            border-radius: 999px;
+            border: 1px solid var(--md-outline-variant);
+            background: var(--md-surface-container-lowest);
+            color: var(--md-on-surface-variant);
+            font-size: 11.5px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .lt-chip[aria-pressed="true"] {
+            background: var(--md-primary-container);
+            border-color: transparent;
+            color: var(--md-on-primary-container);
+        }
+        .lt-chip:focus-visible { outline: 3px solid var(--md-primary); outline-offset: 2px; }
+
+        /* Device columns are laid out at their true widths so the container
+           queries below fire for the right tier. Scroll sideways to see them. */
+        .device-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 28px;
+            align-items: flex-start;
+            padding: 4px 0 8px;
+        }
+        .device { flex: 0 0 auto; }
+        .device-label {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: .09em;
+            text-transform: uppercase;
+            color: var(--md-on-surface-variant);
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* ─────────────────────────────────────────────────────────────────────
+           The mocked app.
+
+           Layout is driven by CONTAINER queries, not media queries. That is the
+           whole point of this mock: a 390px-wide panel shows the phone layout
+           even when the page itself is 1600px, so all three tiers can be seen
+           side by side. The paper plan's §6.1 tiers map to the two min-width
+           breakpoints below (768 / 1200).
+           ───────────────────────────────────────────────────────────────────── */
+        .app {
+            container-type: inline-size;
+            container-name: app;
+            position: relative;
+            display: grid;
+            grid-template-rows: auto minmax(0, 1fr) auto;
+            height: 100%;
+            overflow: hidden;
+            background: var(--md-surface);
+            color: var(--md-on-surface);
+            border-radius: 18px;
+            border: 1px solid var(--md-outline-variant);
+            box-shadow: var(--md-elev-3);
+        }
+        .app-shell {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr);
+            min-height: 0;
+            position: relative;
+        }
+
+        /* Tier A — phone. One column, TWO rows: the stage on top, the timeline
+           pinned under it. The timeline is not a panel you open on a phone — it
+           is the thing you came to touch, so it never hides behind a sheet.
+           What arrives as a sheet is the inspector / clip list / Add / Export. */
+        .app-inspector, .app-timeline, .app-rail, .app-dock, .app-sheet { display: none; }
+        .app-stage-col { display: grid; grid-template-rows: minmax(0, 1fr) auto; min-height: 0; }
+
+        /* Tier B — tablet: stage left, inspector pinned right, timeline strip. */
+        @container app (min-width: 768px) {
+            .app-shell { grid-template-columns: 60px minmax(0, 1fr) minmax(260px, 32%); }
+            .app-rail { display: flex; }
+            .app-inspector { display: flex; }
+            .app-timeline { display: block; grid-column: 1 / -1; }
+            .app-stage-col { border-right: 1px solid var(--md-outline-variant); }
+        }
+
+        /* Tier C — desktop: three panes, wider inspector. Its timeline height is
+           with the other tier metrics at the end of this sheet. */
+        @container app (min-width: 1200px) {
+            .app-shell { grid-template-columns: 64px minmax(0, 1fr) 320px; }
+        }
+
+        /* Tier A structure only — everything here is a `display` or a grid track
+           with no later competitor. The phone's METRICS live at the bottom of
+           this sheet, next to a comment explaining why they have to. */
+        @container app (max-width: 767px) {
+            .app-shell { grid-template-rows: minmax(0, 1fr) auto; }
+            .app-timeline { display: block; }
+            .app-dock, .app-sheet { display: flex; }
+        }
+
+        /* During a move/resize the stage takes the space the chrome was using
+           (STUDIO-LITE-PLAN.md §6.2). This is the single biggest difference
+           between "desktop UI in a narrow window" and a phone editor. */
+        /* `data-state="closed"` parks the sheet past the dock (100% + 80px clears
+           it at every tier), which a plain translateY(100%) does not once the
+           sheet's own `bottom` is offset from the app's bottom edge. */
+        .app-sheet[data-state="closed"] { transform: translateY(calc(100% + 80px)); }
+        .app[data-dragging="1"] .app-sheet { transform: translateY(calc(100% + 80px)) !important; }
+        .app[data-dragging="1"] .app-dock { opacity: 0; pointer-events: none; }
+        .app[data-dragging="1"] .app-timeline { height: 100px; }
+        .app-dock, .app-sheet, .app-timeline { transition: transform .22s cubic-bezier(.2, 0, 0, 1), opacity .18s ease, height .22s cubic-bezier(.2, 0, 0, 1); }
+
+        /* ── The stage: 9:16 frame, floating transport, selection ─────────── */
+        .app-stage {
+            position: relative;
+            display: grid;
+            place-items: center;
+            background: var(--md-stage-b);
+            min-height: 0;
+            overflow: hidden;
+            padding: 14px;
+        }
+        .stage-frame {
+            position: relative;
+            aspect-ratio: 9 / 16;
+            height: min(100%, 520px);
+            max-width: 100%;
+            border-radius: 12px;
+            overflow: hidden;
+            background: linear-gradient(160deg, #1c1440, #3b1e6e 55%, #7a3fa8);
+            box-shadow: var(--md-elev-3);
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            padding: 22px;
+        }
+        .stage-frame[data-selected="1"] { outline: 2px solid var(--md-primary); outline-offset: 2px; }
+        .stage-frame h3 { font-size: clamp(20px, 4.4cqw, 34px); line-height: 1.08; margin: 0 0 8px; letter-spacing: -.02em; }
+        .stage-frame p { margin: 0; font-size: 12px; line-height: 1.5; color: rgba(255, 255, 255, .72); }
+
+        /* There is exactly ONE trim handle in this design system (`.trim`, in
+           the timeline section below) and it appears in exactly one place: the
+           edge of a clip on a lane. An earlier draft also drew handles on the
+           9:16 preview, which is where a video player would put scrubbers —
+           trimming is a timeline act, so that draft was wrong and is gone. */
+
+        /* ─────────────────────────────────────────────────────────────────────
+           Timeline clip grammar.
+
+           Four kinds, four textures, one token family each:
+             video → a filmstrip of frames on a raised surface
+             audio → a waveform in the success (green) family
+             text  → a chip in the primary container
+             HIC   → a 45° hatch in the tertiary family, the "generated" fill
+           The colour says which family of clip; the texture says which kind, so
+           a 20px lane stays readable and still works in greyscale.
+
+           Trim handles on a clip are SIBLINGS of the clip, not children. A child
+           would be clipped by the clip's own `overflow: hidden` and lose most of
+           its 44px target — which is exactly the bug you get if you build this
+           the obvious way first.
+           ───────────────────────────────────────────────────────────────────── */
+        .clip {
+            position: absolute; top: 0; bottom: 0;
+            display: flex; align-items: center; padding: 0 8px;
+            border: 1px solid var(--md-outline-variant); border-radius: 7px;
+            font-size: 10.5px; font-weight: 600;
+            overflow: hidden; white-space: nowrap; cursor: grab;
+        }
+        .clip[data-selected="1"] { outline: 2px solid var(--md-primary); outline-offset: -2px; z-index: 2; box-shadow: var(--md-elev-2); }
+        .clip .glyph { flex: 0 0 auto; margin-right: 5px; font-size: 9.5px; opacity: .9; }
+        .clip .name { position: relative; overflow: hidden; text-overflow: ellipsis; }
+        .clip .dur { position: relative; margin-left: auto; padding-left: 6px; font-family: var(--font-mono, monospace); font-size: 9px; font-weight: 500; opacity: .72; }
+        /* Textures sit behind the label, so no clip needs an image asset. */
+        .clip .tex { position: absolute; inset: 2px; pointer-events: none; }
+
+        .k-video { background: var(--md-surface-container-high); color: var(--md-on-surface); }
+        .k-video .tex { display: flex; gap: 3px; opacity: .55; }
+        .k-video .tex i { flex: 1 1 0; border-radius: 4px; }
+
+        .k-audio { background: color-mix(in srgb, var(--md-success) 14%, var(--md-surface-lowest)); color: var(--md-on-surface); }
+        .k-audio .tex { display: flex; align-items: center; gap: 2px; opacity: .8; }
+        .k-audio .tex i { flex: 1 1 0; min-width: 2px; border-radius: 2px; background: var(--md-success); }
+
+        .k-text { background: var(--md-primary-container); color: var(--md-on-primary-container); }
+
+        .k-hic { background: color-mix(in srgb, var(--md-tertiary) 20%, var(--md-surface-lowest)); color: var(--md-on-surface); }
+        .k-hic .tex { background-image: repeating-linear-gradient(45deg, transparent 0 5px, color-mix(in srgb, var(--md-tertiary) 32%, transparent) 5px 6px); }
+
+        /* The visible bar sits just INSIDE the clip (the inline left/margin pair
+           puts it 2px in), while the 44px target straddles the edge — so what
+           you see is never under your thumb, and what you hit is generous. */
+        .trim {
+            position: absolute; top: 2px; bottom: 2px; width: 10px;
+            border-radius: 4px; background: var(--md-primary); z-index: 4; cursor: ew-resize;
+            box-shadow: 0 0 0 2px var(--md-surface-lowest), var(--md-elev-1);
+        }
+        /* Three grip lines, so the bar reads as something you pull. */
+        .trim::before {
+            content: ""; position: absolute; left: 50%; top: 50%; width: 2px; height: 12px;
+            transform: translate(-50%, -50%);
+            background-image: linear-gradient(var(--md-on-primary) 0 2px, transparent 2px 5px, var(--md-on-primary) 5px 7px, transparent 7px 10px, var(--md-on-primary) 10px 12px);
+        }
+        /* The real target: 44×44 minimum, centred on the visible bar. */
+        .trim::after { content: ""; position: absolute; left: -17px; right: -17px; top: -14px; bottom: -14px; border-radius: 999px; }
+        .show-hits .trim::after { background: color-mix(in srgb, var(--md-warning) 30%, transparent); outline: 1px dashed var(--md-warning); }
+
+        /* Snap guide + duration bubble: the two things that make a trim feel
+           controlled rather than fiddly. The bubble inverts with the theme by
+           swapping ink and surface — no third colour, no `dark:` utility. */
+        .snap { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--md-primary); z-index: 5; pointer-events: none; }
+        .snap::after {
+            content: attr(data-label); position: absolute; top: 3px; left: 5px;
+            padding: 1px 5px; border-radius: 999px; white-space: nowrap;
+            background: var(--md-primary); color: var(--md-on-primary);
+            font: 600 9px/1.5 var(--font-mono, monospace);
+        }
+        .bubble {
+            position: absolute; top: -18px; transform: translateX(-50%); z-index: 6;
+            padding: 2px 6px; border-radius: 999px; white-space: nowrap;
+            background: var(--md-on-surface); color: var(--md-surface-container-lowest);
+            font: 600 9.5px/1.35 var(--font-mono, monospace);
+            box-shadow: var(--md-elev-2);
+        }
+
+        /* ── Timeline ─────────────────────────────────────────────────────── */
+        .app-timeline { border-top: 1px solid var(--md-outline-variant); background: var(--md-surface-low); height: 174px; overflow: hidden; }
+        .ruler { position: relative; height: 28px; border-bottom: 1px solid var(--md-outline-variant); touch-action: none; cursor: ew-resize; }
+        .ruler .tick { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--md-outline-variant); opacity: .8; }
+        .ruler .tick.minor { top: 62%; opacity: .45; }
+        .ruler .tick span { position: absolute; top: 5px; left: 4px; font-size: 9px; font-family: var(--font-mono, monospace); color: var(--md-on-surface-variant); }
+        .playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--md-error); z-index: 3; pointer-events: none; }
+        .playhead::before { content: ""; position: absolute; top: 0; left: -5px; border: 6px solid transparent; border-top-color: var(--md-error); }
+        .track { position: relative; height: 26px; margin: 5px 8px; border-radius: 7px; background: var(--md-surface-container); }
+
+        /* §6.2 — during a drag the timeline collapses to the two lanes you are
+           working between. Cheaper than re-laying out the stage, and it keeps
+           the lanes you are dragging onto on screen. */
+        .app[data-dragging="1"] .track:nth-child(n + 4) { display: none; }
+
+        /* ── Top bar, dock, sheet, rail ───────────────────────────────────── */
+        .app-topbar { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--md-outline-variant); background: var(--md-surface); }
+        .icon-btn {
+            width: 36px; height: 36px; flex: 0 0 auto;
+            display: inline-flex; align-items: center; justify-content: center;
+            border-radius: 10px; border: 1px solid transparent;
+            background: transparent; color: var(--md-on-surface-variant);
+            cursor: pointer; font-size: 15px; line-height: 1;
+        }
+        .icon-btn:hover { background: var(--md-surface-container); }
+        .icon-btn[aria-pressed="true"] { background: var(--md-primary-container); color: var(--md-on-primary-container); }
+
+        /* 44px is the floor for anything you press (§5.3 rule 1). */
+        .app-dock { border-top: 1px solid var(--md-outline-variant); background: var(--md-surface); padding-bottom: env(safe-area-inset-bottom, 0px); }
+        .dock-btn {
+            flex: 1; min-height: 56px; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; gap: 2px;
+            background: none; border: 0; cursor: pointer;
+            color: var(--md-on-surface-variant); font-size: 10px; font-weight: 600;
+            font-family: inherit;
+        }
+        .dock-btn .g { font-size: 17px; line-height: 1; }
+        .dock-btn[aria-selected="true"] { color: var(--md-primary); }
+
+        .app-sheet {
+            position: absolute; left: 0; right: 0; bottom: 0;
+            height: 50%; z-index: 6;
+            flex-direction: column;
+            background: var(--md-surface-container-lowest);
+            border-top: 1px solid var(--md-outline-variant);
+            border-radius: 18px 18px 0 0;
+            box-shadow: var(--md-elev-3);
+            transform: translateY(0);
+        }
+        .sheet-grip { padding: 8px 0 4px; display: grid; place-items: center; cursor: grab; touch-action: none; }
+        .sheet-grip i { display: block; width: 40px; height: 4px; border-radius: 2px; background: var(--md-outline-variant); }
+        .sheet-body { overflow-y: auto; padding: 6px 12px 16px; }
+
+        /* Tablet/desktop rail — the same four destinations, always visible
+           (no hover-only affordance, §5.3 rule 3). */
+        .app-rail {
+            flex-direction: column; align-items: center; gap: 4px; padding: 10px 0;
+            border-right: 1px solid var(--md-outline-variant); background: var(--md-surface-low);
+        }
+        .rail-btn { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 12px; border: 0; background: none; color: var(--md-on-surface-variant); cursor: pointer; font-size: 17px; }
+        .rail-btn[aria-selected="true"] { background: var(--md-primary-container); color: var(--md-on-primary-container); }
+
+        .app-inspector { flex-direction: column; border-left: 1px solid var(--md-outline-variant); background: var(--md-surface-low); overflow-y: auto; }
+        .field-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 44px; }
+        .swatch { width: 22px; height: 22px; border-radius: 6px; border: 1px solid var(--md-outline-variant); }
+
+        /* ─────────────────────────────────────────────────────────────────────
+           The phone gallery.
+
+           Every shot is a real `.app` at its true 390×844, rendered from the
+           same markup template as the tier row — so a mockup cannot drift from
+           the layout it claims to describe. The frames are the mock; the strip
+           of clips inside them is the real timeline component.
+           ───────────────────────────────────────────────────────────────────── */
+        .gallery { display: flex; flex-wrap: wrap; gap: 32px 26px; align-items: flex-start; }
+        .shot { flex: 0 0 auto; width: 390px; max-width: 100%; }
+        .shot-head { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; }
+        .shot-n {
+            width: 22px; height: 22px; flex: 0 0 auto; display: grid; place-items: center;
+            border-radius: 7px; background: var(--md-primary); color: var(--md-on-primary);
+            font: 700 11px/1 var(--font-mono, monospace);
+        }
+        .shot-head h3 { margin: 0; font-size: 14px; font-weight: 700; letter-spacing: -.01em; color: var(--md-on-surface); }
+        .shot-why { margin: 10px 0 0; font-size: 12px; line-height: 1.55; color: var(--md-on-surface-variant); }
+        .shot-why strong { color: var(--md-on-surface); }
+        .shot-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+        .shot-tags span { padding: 2px 8px; border-radius: 999px; border: 1px solid var(--md-outline-variant); font: 600 10.5px/1.7 var(--font-mono, monospace); color: var(--md-on-surface-variant); }
+
+        /* Trim-handle anatomy: the same .clip + .trim the timeline uses, at 3×
+           the lane height, with numbered callouts instead of prose arrows. */
+        .anatomy { border-radius: 14px; border: 1px solid var(--md-outline-variant); background: var(--md-surface-lowest); padding: 24px 20px 18px; box-shadow: var(--md-elev-1); }
+        .anatomy-lane { position: relative; height: 78px; border-radius: 10px; background: var(--md-surface-container); }
+        .anatomy-lane .clip { top: 14px; bottom: 14px; font-size: 11.5px; }
+        .anatomy-lane .trim { width: 12px; }
+        .anatomy-lane .trim::before { height: 22px; background-image: linear-gradient(var(--md-on-primary) 0 4px, transparent 4px 9px, var(--md-on-primary) 9px 13px, transparent 13px 18px, var(--md-on-primary) 18px 22px); }
+        .badge {
+            position: absolute; width: 19px; height: 19px; border-radius: 50%; z-index: 8;
+            background: var(--md-primary); color: var(--md-on-primary);
+            font: 700 10.5px/19px var(--font-mono, monospace); text-align: center;
+            box-shadow: 0 0 0 2px var(--md-surface-lowest);
+        }
+        .anatomy ol { margin: 20px 0 0; padding: 0; list-style: none; display: grid; gap: 9px 18px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+        .anatomy li { display: flex; gap: 9px; font-size: 12px; line-height: 1.5; color: var(--md-on-surface-variant); }
+        .anatomy li b { flex: 0 0 auto; width: 19px; height: 19px; border-radius: 50%; background: var(--md-primary-container); color: var(--md-on-primary-container); font: 700 10.5px/19px var(--font-mono, monospace); text-align: center; }
+        .anatomy li strong { color: var(--md-on-surface); font-weight: 700; }
+
+        /* The stage: 9:16 frame, floating transport, selection ────────────── */
+        .stage-hic-badge {
+            display: inline-flex; align-items: center; gap: 5px; align-self: flex-start;
+            padding: 3px 8px; border-radius: 999px; margin-bottom: 10px;
+            background: rgba(255, 255, 255, .14); border: 1px solid rgba(255, 255, 255, .28);
+            font: 600 9.5px/1.5 var(--font-mono, monospace); color: #fff;
+        }
+        .stage-bars { display: flex; align-items: flex-end; gap: 7px; height: 92px; margin: 6px 0 10px; }
+        .stage-bars i { flex: 1 1 0; border-radius: 5px 5px 2px 2px; background: linear-gradient(180deg, #fff, rgba(255, 255, 255, .45)); }
+        .stage-wave { display: flex; align-items: center; gap: 3px; height: 70px; margin: 4px 0 12px; }
+        .stage-wave i { flex: 1 1 0; min-width: 2px; border-radius: 2px; background: rgba(255, 255, 255, .75); }
+        .stage-play {
+            position: absolute; inset: auto 0 0 0; top: 0; display: grid; place-items: center;
+            color: #fff; font-size: 34px; opacity: .82; pointer-events: none;
+        }
+
+        /* ─────────────────────────────────────────────────────────────────────
+           TIER METRICS, DECLARED LAST ON PURPOSE.
+
+           At equal specificity the later declaration wins, and the base rules
+           for .ruler, .track, .clip and .app-sheet are all written *after* the
+           tier blocks at the top of this sheet. A phone override written up
+           there is silently discarded — which is how the sheet ended up
+           covering the timeline on tablet, and how the phone timeline first
+           drew at its desktop height with the sheet still pinned to the floor.
+
+           So: a tier may change the structure of the shell up there, but any
+           number it changes about a component styled LATER in this file has to
+           live here, where it is guaranteed to be the last word.
+           ───────────────────────────────────────────────────────────────────── */
+        @container app (max-width: 767px) {
+            /* Four lanes + a ruler have to fit 130px on a phone, so a lane is
+               20px and its labels drop to 9.5px. That is the whole tier-A
+               timeline argument in two numbers. */
+            .app-timeline { height: 130px; }
+            .ruler { height: 24px; }
+            .track { height: 20px; margin: 3px 8px; border-radius: 6px; }
+            .clip { font-size: 9.5px; padding: 0 6px; border-radius: 6px; }
+            .clip .glyph { margin-right: 4px; font-size: 9px; }
+            .clip .dur { display: none; }
+            /* The sheet parks ABOVE the dock, not over it: the bottom bar is the
+               only navigation a phone has, and it must not sit behind the panel
+               you just opened. */
+            .app-sheet { bottom: 57px; border-radius: 16px 16px 0 0; }
+            .app[data-dragging="1"] .app-timeline { height: 78px; }
+
+            /* On a phone the frame fills its column instead of sitting in a fixed
+               520px box — which is also what makes §6.2 visible: collapse the
+               timeline and the preview actually grows to take the space back.
+               (On tablet/desktop the cap stays, because there the stage is wide
+               and the frame is already as tall as the screen allows.) */
+            .stage-frame { height: min(100%, 640px); }
+        }
+
+        @container app (min-width: 1200px) {
+            .app-timeline { height: 240px; }
+        }
+    </style>
+</head>
+<body class="min-h-full">
+    <div class="mx-auto max-w-[1400px] px-5 py-8 sm:px-8">
+
+        <!-- ═══ Mock chrome ════════════════════════════════════════════════ -->
+        <header class="mb-8 flex flex-wrap items-start justify-between gap-4 border-b border-line pb-6">
+            <div class="max-w-[62ch]">
+                <p class="mb-1 font-mono text-[11px] font-medium uppercase tracking-[.14em] text-primary">Studio Lite · design mock</p>
+                <h1 class="m-0 text-[32px] font-extrabold leading-tight tracking-tight text-ink sm:text-[38px]">The phone-shaped path through the same project file</h1>
+                <p class="mt-3 text-[13.5px] leading-relaxed text-ink-variant">
+                    A second app over the same core — not a narrow window on Studio Pro. Every decision here is
+                    traceable to <span class="font-mono text-[12px] text-ink">docs/STUDIO-LITE-PLAN.md</span>: the layout tiers are §6.1,
+                    the gesture and ergonomics rules are §5, the feature scope is §3, and the palette is the shared
+                    Material 3 layer from <span class="font-mono text-[12px] text-ink">hic-theme.css</span>.
+                </p>
+                <p class="mt-3 text-[13.5px] leading-relaxed text-ink-variant">
+                    <strong class="text-ink">Start at section 2</strong> — five phone screens showing the timeline
+                    with video, audio, text and HTML-in-canvas clips, and what a trim handle looks like when it is
+                    built for a thumb.
+                </p>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+                <button class="lt-chip" id="btnTheme" type="button">🌙 Dark</button>
+                <button class="lt-chip" id="btnHits" type="button" aria-pressed="false">Show hit targets</button>
+                <button class="lt-chip" id="btnDrag" type="button" aria-pressed="false">Simulate a clip drag</button>
+            </div>
+        </header>
+
+        <!-- ═══ 1 · The app, at all three tiers ═══════════════════════════ -->
+        <section class="mb-14">
+            <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
+                <div>
+                    <h2 class="m-0 text-[19px] font-bold tracking-tight text-ink">1 · The app, at all three tiers</h2>
+                    <p class="mt-1 max-w-[80ch] text-[12.5px] text-ink-variant">
+                        All three panels are <em>the same markup</em>. The layout is chosen by the panel's own width
+                        (CSS container queries), so a 390px panel shows the phone layout even on a wide screen.
+                        On the phone the timeline is always on screen and the sheet stays parked until you ask for
+                        it — scrub the ruler, drag a clip, tap the dock, drag the sheet grip.
+                    </p>
+                </div>
+                <code class="rounded-lg border border-line bg-surface-lowest px-2.5 py-1 font-mono text-[11px] text-ink-variant">§6.1 A &lt;768 · B 768–1199 · C ≥1200</code>
+            </div>
+            <div class="device-row" id="deviceRow"></div>
+        </section>
+
+        <!-- ═══ 2 · The phone timeline ═══════════════════════════════════════ -->
+        <section class="mb-14">
+            <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
+                <div>
+                    <h2 class="m-0 text-[19px] font-bold tracking-tight text-ink">2 · The timeline, on a phone</h2>
+                    <p class="mt-1 max-w-[86ch] text-[12.5px] leading-relaxed text-ink-variant">
+                        Five 390×844 screens for the part of an editor that usually gets dropped on mobile: the strip.
+                        Four clip kinds share one timeline, trim handles stay 44px whatever the lane height, and
+                        generating an HTML-in-canvas clip is one tap from the dock. Press
+                        <em>Show hit targets</em> to reveal the real touch areas, and <em>Simulate a clip drag</em> to
+                        watch the shell get out of the way (§6.2).
+                    </p>
+                </div>
+                <code class="rounded-lg border border-line bg-surface-lowest px-2.5 py-1 font-mono text-[11px] text-ink-variant">Tier A · 390×844 · §5.3 §6.1</code>
+            </div>
+            <div class="gallery" id="phoneGallery"></div>
+
+            <div class="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,430px)]">
+                <!-- Trim-handle anatomy: the real .clip + .trim, 3× the lane height -->
+                <div class="anatomy">
+                    <p class="m-0 mb-1 font-mono text-[10.5px] uppercase tracking-[.14em] text-ink-variant">Anatomy · one handle, one home</p>
+                    <h3 class="m-0 mb-5 text-[15px] font-bold text-ink">Clean trim handles</h3>
+                    <div class="anatomy-lane">
+                        <div class="clip k-video" style="left:14%;width:56%">
+                            <span class="tex"><i style="background:linear-gradient(150deg,#b5a2ff,#6d4fc1)"></i><i style="background:linear-gradient(150deg,#7a3fa8,#3b1e6e)"></i><i style="background:linear-gradient(150deg,#cfbcff,#8b6fd0)"></i><i style="background:linear-gradient(150deg,#241a4d,#5b2fa8)"></i></span>
+                            <span class="glyph">▶</span><span class="name">Screen demo</span><span class="dur">2.4s</span>
+                        </div>
+                        <span class="trim" style="left:14%;margin-left:2px"></span>
+                        <span class="trim" style="left:70%;margin-left:-14px"></span>
+                        <span class="bubble" style="left:70%">2.4s</span>
+                        <span class="badge" style="left:14%;top:50%;margin:-9px 0 0 -9px">1</span>
+                        <span class="badge" style="left:70%;top:50%;margin:-9px 0 0 -9px">2</span>
+                        <span class="badge" style="left:36%;top:50%;margin:-9px 0 0 -9px">3</span>
+                        <span class="badge" style="left:70%;top:-8px;margin-left:-9px">4</span>
+                    </div>
+                    <ol>
+                        <li><b>1</b><span><strong>The bar you see.</strong> 10–12px wide, inset from the clip edge — never centred on it, so your thumb cannot cover the cut it is making.</span></li>
+                        <li><b>2</b><span><strong>The target you hit.</strong> 44×44 minimum, drawn around the bar. Toggle <em>Show hit targets</em>: the dashed area is bigger than the clip on purpose.</span></li>
+                        <li><b>3</b><span><strong>The body moves, the edge trims.</strong> Dragging the middle slides the clip between lanes; dragging a handle only changes in/out. Two gestures, never one ambiguous one.</span></li>
+                        <li><b>4</b><span><strong>Live feedback.</strong> A snap guide and a duration bubble appear while trimming and leave with the gesture — plus one undo entry per drag, not per frame.</span></li>
+                    </ol>
+                    <p class="mt-4 text-[11.5px] leading-relaxed text-ink-variant">
+                        Handles are rendered as <em>siblings</em> of the clip, not children: a child is clipped by the
+                        clip's own <span class="font-mono text-[11px] text-ink">overflow: hidden</span> and quietly
+                        loses most of its 44px target. And a handle only exists while its clip is selected — the strip
+                        is a timeline, not a wall of grab bars.
+                    </p>
+                </div>
+
+                <div class="grid gap-4">
+                    <div class="rounded-app border border-line bg-surface-lowest p-5 shadow-e1">
+                        <h3 class="m-0 text-[13.5px] font-bold text-ink">One grammar, four kinds</h3>
+                        <p class="mt-2 text-[12.5px] leading-relaxed text-ink-variant">
+                            A lane's texture is its kind, so a strip stays readable at 20px tall and in greyscale.
+                            Every texture is a CSS gradient — no image asset, no network request, and both themes come
+                            from the same rules.
+                        </p>
+                        <div class="mt-3 overflow-hidden rounded-xl border border-line">
+                            <table class="w-full border-collapse text-left text-[11.5px]">
+                                <thead class="bg-surface-container text-ink-variant">
+                                    <tr><th class="px-2.5 py-2 font-semibold">Kind</th><th class="px-2.5 py-2 font-semibold">Texture</th><th class="px-2.5 py-2 font-semibold">What trim does</th></tr>
+                                </thead>
+                                <tbody class="text-ink-variant">
+                                    <tr class="border-t border-line"><td class="px-2.5 py-2 font-semibold text-ink">Video</td><td class="px-2.5 py-2">filmstrip of frames</td><td class="px-2.5 py-2">cuts in/out; the preview follows the playhead</td></tr>
+                                    <tr class="border-t border-line"><td class="px-2.5 py-2 font-semibold text-ink">Audio</td><td class="px-2.5 py-2">waveform</td><td class="px-2.5 py-2">cuts the take; edges fade by default</td></tr>
+                                    <tr class="border-t border-line"><td class="px-2.5 py-2 font-semibold text-ink">Text</td><td class="px-2.5 py-2">chip in the container colour</td><td class="px-2.5 py-2">sets the window the words are on screen</td></tr>
+                                    <tr class="border-t border-line"><td class="px-2.5 py-2 font-semibold text-ink">HTML in canvas</td><td class="px-2.5 py-2">45° hatch</td><td class="px-2.5 py-2">re-renders the engine for the range you kept</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="rounded-app border border-line bg-surface-lowest p-5 shadow-e1">
+                        <h3 class="m-0 text-[13.5px] font-bold text-ink">Borrowed from YouTube Create — and refused</h3>
+                        <p class="mt-2 text-[12.5px] leading-relaxed text-ink-variant">
+                            It is the reference for "an editor built for a phone, not shrunk onto one". What it does
+                            well is worth copying; what it does to fill a screen is not, because lite opens
+                            <em>your</em> project.
+                        </p>
+                        <div class="mt-3 grid gap-3 sm:grid-cols-2">
+                            <div>
+                                <p class="m-0 mb-1.5 font-mono text-[10.5px] uppercase tracking-[.14em] text-success">Taken</p>
+                                <ul class="m-0 grid gap-1.5 pl-4 text-[12px] leading-relaxed text-ink-variant">
+                                    <li>Strip always visible; the preview never owns the whole screen</li>
+                                    <li>One kind per lane, colour-coded, no track menus on a phone</li>
+                                    <li>Primary actions in the bottom 40%, thumb first (§5.3 rule 7)</li>
+                                    <li>Edge-to-edge stage, so the frame is the brightest thing on screen</li>
+                                </ul>
+                            </div>
+                            <div>
+                                <p class="m-0 mb-1.5 font-mono text-[10.5px] uppercase tracking-[.14em] text-warning">Refused</p>
+                                <ul class="m-0 grid gap-1.5 pl-4 text-[12px] leading-relaxed text-ink-variant">
+                                    <li>A template feed on launch — lite opens your project (§2.2 J1)</li>
+                                    <li>A licensed music library — audio comes from your files</li>
+                                    <li>Auto-captions as the front door — still here, as a clip, not a screen</li>
+                                    <li>Filters and effects — that is Pro's job (§2.3)</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ═══ 3 · Palette ═══════════════════════════════════════════════ -->
+        <section class="mb-14">
+            <h2 class="m-0 text-[19px] font-bold tracking-tight text-ink">3 · Palette</h2>
+            <p class="mt-1 mb-5 max-w-[80ch] text-[12.5px] text-ink-variant">
+                One set of roles, light and dark. Interactive colour is reserved for the selection, the playhead and
+                the active destination — everything else is surface and ink, which is what keeps a dense editor calm.
+                Toggle the theme above: every swatch below is a live token read, not a picture of one.
+            </p>
+            <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4" id="palette"></div>
+        </section>
+
+        <!-- ═══ 4 · Type & shape ══════════════════════════════════════════ -->
+        <section class="mb-14 grid gap-6 lg:grid-cols-2">
+            <div>
+                <h2 class="m-0 text-[19px] font-bold tracking-tight text-ink">4 · Type</h2>
+                <p class="mt-1 mb-5 text-[12.5px] text-ink-variant">
+                    Two families, both already vendored in <span class="font-mono text-[12px] text-ink">public/fonts</span> —
+                    no CDN request, so the mock works offline like the app does. Plus Jakarta Sans is the product's
+                    <span class="font-mono text-[12px] text-ink">sans</span>; JetBrains Mono carries everything numeric
+                    so timecodes and durations never jitter as they change.
+                </p>
+                <div class="rounded-app border border-line bg-surface-lowest p-5 shadow-e1">
+                    <p class="mb-1 font-mono text-[10.5px] uppercase tracking-[.14em] text-ink-variant">Display · 32/1.1 · 800</p>
+                    <p class="mb-5 text-[32px] font-extrabold leading-[1.1] tracking-tight text-ink">Make it clear.</p>
+                    <p class="mb-1 font-mono text-[10.5px] uppercase tracking-[.14em] text-ink-variant">Title · 19/1.3 · 700</p>
+                    <p class="mb-5 text-[19px] font-bold leading-snug text-ink">Export settings</p>
+                    <p class="mb-1 font-mono text-[10.5px] uppercase tracking-[.14em] text-ink-variant">Body · 13.5/1.6 · 400</p>
+                    <p class="mb-5 max-w-[46ch] text-[13.5px] leading-relaxed text-ink-variant">
+                        Body copy stays under roughly 46 characters on a phone so a line never runs past the thumb.
+                    </p>
+                    <p class="mb-1 font-mono text-[10.5px] uppercase tracking-[.14em] text-ink-variant">Mono · 12 · 500 · tabular</p>
+                    <p class="font-mono text-[12px] font-medium tabular-nums text-ink">00:00:04:12 · 9:16 · 30fps</p>
+                </div>
+            </div>
+
+            <div>
+                <h2 class="m-0 text-[19px] font-bold tracking-tight text-ink">5 · Shape, depth &amp; touch</h2>
+                <p class="mt-1 mb-5 text-[12.5px] text-ink-variant">
+                    Two radii, three elevations, no more. Every pressable thing is ≥44px, and nothing depends on a
+                    cursor hovering. A number in mono, a radius on a card, one shadow — that is the whole system.
+                </p>
+                <div class="grid gap-3 rounded-app border border-line bg-surface-lowest p-5 shadow-e1">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <span class="rounded-full bg-primary px-4 py-2 text-[12.5px] font-semibold text-on-primary">Export</span>
+                        <span class="rounded-full border border-line bg-surface-container px-4 py-2 text-[12.5px] font-semibold text-ink">Add clip</span>
+                        <span class="rounded-full bg-primary-container px-4 py-2 text-[12.5px] font-semibold text-on-primary-container">Selected</span>
+                        <span class="rounded-full border border-line px-3 py-1 font-mono text-[11px] font-medium text-ink-variant">9:16</span>
+                        <span class="rounded-full border border-line px-3 py-1 font-mono text-[11px] font-medium text-success">1080p30</span>
+                    </div>
+                    <div class="mt-1 flex items-center gap-3 rounded-xl border border-line p-3">
+                        <span class="grid h-11 w-11 place-items-center rounded-xl bg-primary-container text-[16px] text-on-primary-container">T</span>
+                        <div class="min-w-0 flex-1">
+                            <p class="m-0 truncate text-[13px] font-semibold text-ink">Title — “Make it clear.”</p>
+                            <p class="m-0 font-mono text-[11px] text-ink-variant">0.0s → 4.5s · fade up</p>
+                        </div>
+                        <span class="grid h-11 w-11 place-items-center rounded-xl border border-line text-[14px] text-ink-variant">⋮</span>
+                    </div>
+                    <div class="flex items-center gap-3 rounded-xl bg-surface-container p-3">
+                        <span class="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-dashed border-warning font-mono text-[10px] text-warning">44px</span>
+                        <p class="m-0 text-[12px] leading-relaxed text-ink-variant">
+                            A 10–12px bar sits <em>inside</em> the clip edge, and a 44px target is centred on that
+                            edge — so the finger never covers the cut it is moving. Section 2 draws the whole thing.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ═══ 6 · Feature concepts ══════════════════════════════════════ -->
+        <section class="mb-14">
+            <h2 class="m-0 text-[19px] font-bold tracking-tight text-ink">6 · Feature concepts</h2>
+            <p class="mt-1 mb-5 max-w-[80ch] text-[12.5px] text-ink-variant">
+                Lite is scoped by three jobs, not by feature parity. If a feature is not required for one of these,
+                it stays in Studio Pro — which is what keeps this shell small enough to be fast on a phone.
+            </p>
+
+            <div class="mb-5 grid gap-4 md:grid-cols-3">
+                <div class="rounded-app border border-line bg-surface-lowest p-5 shadow-e1">
+                    <p class="mb-2 font-mono text-[10.5px] uppercase tracking-[.14em] text-primary">J1 · Highest value</p>
+                    <h3 class="m-0 text-[15px] font-bold text-ink">Open and finish</h3>
+                    <p class="mt-2 text-[12.5px] leading-relaxed text-ink-variant">
+                        Open a project — yours, or a <span class="font-mono text-[11.5px] text-ink">.spcomp</span> from Pro —
+                        change some text or a picture, fix the timing, export. This is what you do away from the desk.
+                    </p>
+                </div>
+                <div class="rounded-app border border-line bg-surface-lowest p-5 shadow-e1">
+                    <p class="mb-2 font-mono text-[10.5px] uppercase tracking-[.14em] text-primary">J2</p>
+                    <h3 class="m-0 text-[15px] font-bold text-ink">Build a short from scratch</h3>
+                    <p class="mt-2 text-[12.5px] leading-relaxed text-ink-variant">
+                        Add text/shape/image/HIC clips, type a Markdown script and generate slides, caption it, pick an
+                        animation preset, arrange a small timeline, export 9:16.
+                    </p>
+                </div>
+                <div class="rounded-app border border-line bg-surface-lowest p-5 shadow-e1">
+                    <p class="mb-2 font-mono text-[10.5px] uppercase tracking-[.14em] text-primary">J3</p>
+                    <h3 class="m-0 text-[15px] font-bold text-ink">Capture and go</h3>
+                    <p class="mt-2 text-[12.5px] leading-relaxed text-ink-variant">
+                        Import from the camera roll, trim it, caption it, export, share.
+                    </p>
+                </div>
+            </div>
+
+            <div class="grid gap-4 lg:grid-cols-3">
+                <div class="rounded-app border border-line bg-surface-lowest p-5 shadow-e1">
+                    <h3 class="m-0 text-[13.5px] font-bold text-ink">The dock is the whole navigation</h3>
+                    <p class="mt-2 text-[12.5px] leading-relaxed text-ink-variant">
+                        Four destinations replace Pro's six-tab sidebar, each one a thumb-height away in the bottom 40%
+                        of the screen. Panels arrive as a <em>sheet</em> that drags between 50% and 92% and dismisses
+                        downward — never a permanent panel stealing the stage.
+                    </p>
+                    <ul class="mt-3 grid gap-1.5 text-[12px] text-ink-variant">
+                        <li><strong class="text-ink">Clips</strong> — the list and track order</li>
+                        <li><strong class="text-ink">Inspect</strong> — properties for the selection</li>
+                        <li><strong class="text-ink">Add</strong> — text, shape, image, video, audio, captions, Markdown</li>
+                        <li><strong class="text-ink">Export</strong> — format, resolution, fps, range, progress</li>
+                    </ul>
+                </div>
+
+                <div class="rounded-app border border-line bg-surface-lowest p-5 shadow-e1">
+                    <h3 class="m-0 text-[13.5px] font-bold text-ink">One gesture layer, three inputs</h3>
+                    <p class="mt-2 text-[12.5px] leading-relaxed text-ink-variant">
+                        Pointer Events only — mouse, finger and Pencil in one path. Today Pro has zero
+                        <span class="font-mono text-[11.5px] text-ink">touch*</span> listeners, which is why a drag
+                        simply dies on a phone.
+                    </p>
+                    <div class="mt-3 overflow-hidden rounded-xl border border-line">
+                        <table class="w-full border-collapse text-left text-[11.5px]">
+                            <thead class="bg-surface-container text-ink-variant">
+                                <tr><th class="px-2.5 py-2 font-semibold">Surface</th><th class="px-2.5 py-2 font-semibold">1 finger</th><th class="px-2.5 py-2 font-semibold">2 fingers</th></tr>
+                            </thead>
+                            <tbody class="text-ink-variant">
+                                <tr class="border-t border-line"><td class="px-2.5 py-2 font-semibold text-ink">Stage</td><td class="px-2.5 py-2">move · tap selects</td><td class="px-2.5 py-2">pinch zoom</td></tr>
+                                <tr class="border-t border-line"><td class="px-2.5 py-2 font-semibold text-ink">Ruler</td><td class="px-2.5 py-2">scrub</td><td class="px-2.5 py-2">zoom time</td></tr>
+                                <tr class="border-t border-line"><td class="px-2.5 py-2 font-semibold text-ink">Clip</td><td class="px-2.5 py-2">move across tracks</td><td class="px-2.5 py-2">—</td></tr>
+                                <tr class="border-t border-line"><td class="px-2.5 py-2 font-semibold text-ink">Clip edge</td><td class="px-2.5 py-2">trim, snapping</td><td class="px-2.5 py-2">—</td></tr>
+                                <tr class="border-t border-line"><td class="px-2.5 py-2 font-semibold text-ink">Long-press</td><td class="px-2.5 py-2" colspan="2">pickup / context menu (duplicate, delete, order)</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="rounded-app border border-line bg-surface-lowest p-5 shadow-e1">
+                    <h3 class="m-0 text-[13.5px] font-bold text-ink">Deliberately not here (v1)</h3>
+                    <p class="mt-2 text-[12.5px] leading-relaxed text-ink-variant">
+                        These keep living in Pro. Naming them is what stops "lite" quietly becoming a second Pro.
+                    </p>
+                    <div class="mt-3 flex flex-wrap gap-1.5">
+                        <span class="rounded-full border border-line px-2.5 py-1 text-[11px] text-ink-variant">per-letter styling</span>
+                        <span class="rounded-full border border-line px-2.5 py-1 text-[11px] text-ink-variant">textures</span>
+                        <span class="rounded-full border border-line px-2.5 py-1 text-[11px] text-ink-variant">3D extrude</span>
+                        <span class="rounded-full border border-line px-2.5 py-1 text-[11px] text-ink-variant">keyframe editor</span>
+                        <span class="rounded-full border border-line px-2.5 py-1 text-[11px] text-ink-variant">ink &amp; sketch engine</span>
+                        <span class="rounded-full border border-line px-2.5 py-1 text-[11px] text-ink-variant">colour correction</span>
+                        <span class="rounded-full border border-line px-2.5 py-1 text-[11px] text-ink-variant">audio mixer</span>
+                        <span class="rounded-full border border-line px-2.5 py-1 text-[11px] text-ink-variant">multi-project</span>
+                    </div>
+                    <p class="mt-3 text-[12px] leading-relaxed text-ink-variant">
+                        The contract that makes this safe: <strong class="text-ink">a clip lite cannot represent must
+                        survive a load → save round-trip untouched.</strong> Unknown keys are preserved, never dropped —
+                        that is what makes "open on the phone, finish at the desk" work.
+                    </p>
+                </div>
+            </div>
+
+            <div class="mt-4 grid gap-4 md:grid-cols-3">
+                <div class="rounded-app border border-line bg-surface-lowest p-5 shadow-e1">
+                    <p class="m-0 font-mono text-[10.5px] uppercase tracking-[.14em] text-ink-variant">Tier A · phone</p>
+                    <p class="m-0 mt-1 text-[12.5px] font-semibold text-ink">720p · DPR ≤2 · export 720p30</p>
+                    <p class="m-0 mt-1 text-[12px] leading-relaxed text-ink-variant">Static-layer cache on · one HIC clip at a time · textures off</p>
+                </div>
+                <div class="rounded-app border border-line bg-surface-lowest p-5 shadow-e1">
+                    <p class="m-0 font-mono text-[10.5px] uppercase tracking-[.14em] text-ink-variant">Tier B · iPad</p>
+                    <p class="m-0 mt-1 text-[12.5px] font-semibold text-ink">1080p · export 1080p30/60</p>
+                    <p class="m-0 mt-1 text-[12px] leading-relaxed text-ink-variant">Cache on · HIC clips as needed · Pencil = pen pointer</p>
+                </div>
+                <div class="rounded-app border border-line bg-surface-lowest p-5 shadow-e1">
+                    <p class="m-0 font-mono text-[10.5px] uppercase tracking-[.14em] text-ink-variant">Tier C · desktop</p>
+                    <p class="m-0 mt-1 text-[12.5px] font-semibold text-ink">Native · FTRT export</p>
+                    <p class="m-0 mt-1 text-[12px] leading-relaxed text-ink-variant">Three panes, same gestures with a mouse, same shortcuts as Pro</p>
+                </div>
+            </div>
+        </section>
+
+        <footer class="border-t border-line pt-5 text-[11.5px] text-ink-variant">
+            <p class="m-0">
+                Mock only — no engine, no persistence beyond the theme key. Draws the shared tokens from
+                <span class="font-mono text-ink">docs/html-in-canvas/hic-theme.css</span> and the vendored
+                <span class="font-mono text-ink">@tailwindcss/browser</span>; loads no network resource.
+            </p>
+        </footer>
+    </div>
+
+    <script>
+        /* ═══════════════════════════════════════════════════════════════════
+           One markup template, three hosts. The tier is decided by each host's
+           own width via CSS container queries — nothing here branches on the
+           viewport, which is why the panels can sit side by side.
+           ═══════════════════════════════════════════════════════════════════ */
+        const SHOTS = {
+            a: { w: 390, h: 844, name: 'Tier A — phone', note: '<768px' },
+            b: { w: 900, h: 620, name: 'Tier B — tablet', note: '768–1199px' },
+            c: { w: 1280, h: 700, name: 'Tier C — desktop', note: '≥1200px' }
+        };
+
+        /* ── The clip grammar ──────────────────────────────────────────────
+           One lane per kind. A clip is placed in percent of the visible range;
+           the real component would store seconds and derive the same numbers,
+           so nothing here is a drawing of a timeline that could not exist.
+
+           Kind is carried by TEXTURE, not by a legend you must memorise:
+           filmstrip · waveform · text chip · 45° hatch. Colour only separates
+           families, which is what lets four 20px lanes stay readable and still
+           work in greyscale. */
+        const KIND = {
+            video: { label: 'Video', glyph: '▶', cls: 'k-video', chip: 'bg-surface-high text-ink' },
+            audio: { label: 'Audio', glyph: '♪', cls: 'k-audio', chip: 'bg-surface-container text-ink' },
+            text:  { label: 'Text',  glyph: 'T', cls: 'k-text',  chip: 'bg-primary-container text-on-primary-container' },
+            hic:   { label: 'HTML in canvas', glyph: '</>', cls: 'k-hic', chip: 'bg-surface-highest text-ink' }
+        };
+
+        const TRACKS = [
+            { kind: 'video', clips: [ { n: 'Opening shot', d: '0.0–3.4s', s: 1,  w: 33 }, { n: 'Screen demo', d: '3.4–6.0s', s: 35, w: 25 }, { n: 'Endcard', d: '6.0–9.6s', s: 61, w: 33 } ] },
+            { kind: 'audio', clips: [ { n: 'Ambient bed', d: '0.2–6.6s', s: 3,  w: 64 }, { n: 'VO · take 2', d: '6.6–9.4s', s: 68, w: 27 } ] },
+            { kind: 'text',  clips: [ { n: '“Make it clear.”', d: '0.4–3.0s', s: 5, w: 26 }, { n: 'Endcard CTA', d: '6.2–8.8s', s: 63, w: 26 } ] },
+            { kind: 'hic',   clips: [ { n: 'Bar chart · grow', d: '3.6–6.4s', s: 37, w: 28 }, { n: 'Count-up 240%', d: '6.4–9.0s', s: 65, w: 26 } ] }
+        ];
+
+        /* Zoomed-in strips for the trim shots: same ranges, fewer seconds, so a
+           handle is big enough to actually look at. */
+        const TRIM_VIDEO = [
+            { kind: 'video', clips: [ { n: 'Opening shot', d: '1.8s', s: 12, w: 46 }, { n: 'Screen demo', d: '1.6s', s: 60, w: 38 } ] },
+            { kind: 'audio', clips: [ { n: 'Ambient bed', s: 4, w: 62 } ] },
+            { kind: 'text',  clips: [ { n: '“Make it clear.”', s: 18, w: 34 } ] },
+            { kind: 'hic',   clips: [ { n: 'Count-up 240%', s: 64, w: 34 } ] }
+        ];
+        const TRIM_AUDIO = [
+            { kind: 'video', clips: [ { n: 'Screen demo', s: 0, w: 100 } ] },
+            { kind: 'audio', clips: [ { n: 'VO · take 2', d: '4.4s', s: 10, w: 74 } ] },
+            { kind: 'text',  clips: [ { n: 'Endcard CTA', s: 22, w: 30 } ] },
+            { kind: 'hic',   clips: [ { n: 'Bar chart · grow', s: 54, w: 32 } ] }
+        ];
+        const TRIM_HIC = [
+            { kind: 'video', clips: [ { n: 'Endcard', s: 62, w: 32 } ] },
+            { kind: 'audio', clips: [ { n: 'Ambient bed', s: 3, w: 58 } ] },
+            { kind: 'text',  clips: [ { n: 'Endcard CTA', s: 64, w: 26 } ] },
+            { kind: 'hic',   clips: [ { n: 'Bar chart · grow', d: '2.8s', s: 36, w: 28 } ] }
+        ];
+
+        /* A fixed waveform. Deterministic on purpose — a random one would make
+           two screenshots of the same clip differ. */
+        const WAVE = [12, 34, 58, 80, 66, 42, 24, 52, 78, 92, 60, 30, 18, 44, 70, 86, 54, 28, 16, 40, 64, 88, 74, 46, 22, 36, 60, 82, 68, 38, 20, 48, 72, 90, 56, 26, 14, 42, 66, 84, 62, 32, 18, 50, 76, 94, 58, 28];
+
+        /* Filmstrip tints. Fixed hexes, not tokens: a photograph is content, not
+           chrome, and it must look the same in both themes. */
+        const FRAME_TINTS = [
+            'linear-gradient(150deg, #b5a2ff, #6d4fc1)',
+            'linear-gradient(150deg, #7a3fa8, #3b1e6e)',
+            'linear-gradient(150deg, #cfbcff, #8b6fd0)',
+            'linear-gradient(150deg, #241a4d, #5b2fa8)'
+        ];
+
+        /* Every texture is drawn from gradients — no image, no network, and it
+           inherits the theme because every colour is a token. */
+        function texture(kind, seed) {
+            if (kind === 'video') {
+                return `<span class="tex">${[0, 1, 2, 3].map(n => `<i style="background:${FRAME_TINTS[(seed + n) % FRAME_TINTS.length]}"></i>`).join('')}</span>`;
+            }
+            if (kind === 'audio') {
+                return `<span class="tex">${WAVE.map(h => `<i style="height:${h}%"></i>`).join('')}</span>`;
+            }
+            if (kind === 'hic') return '<span class="tex"></span>';
+            return '';
+        }
+
+        function clipMarkup(kind, c, seed, lane, index, o) {
+            const sel = o.sel && o.sel.lane === lane && o.sel.clip === index;
+            return `
+                <div class="clip ${KIND[kind].cls}" data-clip data-lane="${lane}" style="left:${c.s}%;width:${c.w}%" data-s="${c.s}" data-w="${c.w}"${sel ? ' data-selected="1"' : ''}>
+                    ${texture(kind, seed)}
+                    <span class="glyph">${KIND[kind].glyph}</span><span class="name">${c.n}</span>${c.d ? `<span class="dur">${c.d}</span>` : ''}
+                </div>`;
+        }
+
+        /* Trim handles + the snap guide + the duration bubble, rendered into the
+           LANE next to the clip — see the CSS note for why they cannot be
+           children of it. `o.sel = { lane, clip, trim: 'left' | 'right' | 'both' }`. */
+        function trimMarkup(lane, o) {
+            if (!o.sel || o.sel.lane !== lane) return '';
+            const c = o.tracks[lane].clips[o.sel.clip];
+            const edge = o.sel.trim || 'right';
+            const sides = edge === 'both' ? ['left', 'right'] : [edge];
+            const handles = sides.map(side => {
+                const x = side === 'left' ? c.s : c.s + c.w;
+                return `<span class="trim" style="left:${x}%;margin-left:${side === 'left' ? 2 : -12}px" aria-hidden="true"></span>`;
+            }).join('');
+            const at = edge === 'left' ? c.s : c.s + c.w;
+            const bubble = o.bubble ? `<span class="bubble" style="left:${at}%">${o.bubble}</span>` : '';
+            const snap = o.snapAt != null ? `<span class="snap" style="left:${o.snapAt}%" data-label="${o.snapLabel || ''}"></span>` : '';
+            return handles + bubble + snap;
+        }
+
+        function trackMarkup(t, lane, o) {
+            return `
+                            <div class="track" data-track="${lane}">
+                                ${t.clips.map((c, n) => clipMarkup(t.kind, c, n, lane, n, o)).join('')}
+                                ${trimMarkup(lane, o)}
+                            </div>`;
+        }
+
+        /* Two tick weights: a labelled major every `major` seconds and a small
+           one at the halfway mark, which is what makes a 366px ruler feel
+           accurate without printing ten numbers on a phone. */
+        function rulerTicks(o) {
+            const out = [];
+            const step = o.major || 2;
+            for (let t = 0; t <= o.range + 1e-6; t += step / 2) {
+                const major = Math.abs(t / step - Math.round(t / step)) < 1e-6;
+                const p = (t / o.range) * 100;
+                const nearEnd = p > 88;
+                out.push(`<span class="tick${major ? '' : ' minor'}" style="left:${p}%">${major ? `<span style="left:${nearEnd ? 'auto' : '4px'};right:${nearEnd ? '4px' : 'auto'}">${+t.toFixed(1)}s</span>` : ''}</span>`);
+            }
+            return out.join('');
+        }
+
+        /* The four things a 9:16 stage can be showing. Same frame, same handles
+           contract, four different selected clips. */
+        const STAGES = {
+            slide: () => `
+                                <p class="m-0 mb-2 font-mono text-[9.5px] uppercase tracking-[.18em] text-white/70">Slide 01</p>
+                                <h3>Make it clear.</h3>
+                                <p>Simple, fast, helpful. Exported in the same file Pro opens.</p>`,
+            clip: o => `
+                                <span class="stage-play">▶</span>
+                                <p class="absolute bottom-3 left-4 right-4 m-0 font-mono text-[9.5px] text-white/85">${o.clipNote || 'Opening shot · 3.4s · trimmed'}</p>`,
+            wave: () => `
+                                <span class="stage-hic-badge">♪ VO · take 2</span>
+                                <div class="stage-wave">${WAVE.slice(0, 26).map(h => `<i style="height:${Math.max(14, h)}%"></i>`).join('')}</div>
+                                <p class="m-0 font-mono text-[10px] tabular-nums text-white/85">0.6s → 5.0s</p>`,
+            hic: () => `
+                                <span class="stage-hic-badge">&lt;/&gt; HTML in canvas · generated</span>
+                                <div class="stage-bars">${[38, 62, 84, 51, 96].map(h => `<i style="height:${h}%"></i>`).join('')}</div>
+                                <p class="m-0 text-[11px] text-white/85">Bar chart · grow right · re-rendered by the trim</p>`
+        };
+
+        function panelClips() {
+            /* The sheet list and the timeline strip are the same array rendered
+               twice — one model, two views. A clip cannot go missing from the
+               list while still sitting on a lane. */
+            const flat = TRACKS.flatMap(t => t.clips.map(c => ({ ...c, kind: t.kind })));
+            return `
+                <p class="m-0 mb-2 font-mono text-[10px] uppercase tracking-[.14em] text-ink-variant">${flat.length} clips · 4 lanes</p>` +
+                flat.map((c, n) => `
+                <div class="mb-1.5 flex items-center gap-3 rounded-xl border ${n === 0 ? 'border-primary bg-primary-container' : 'border-line'} px-3 py-2">
+                    <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-line ${KIND[c.kind].cls} text-[10px]">${KIND[c.kind].glyph}</span>
+                    <div class="min-w-0 flex-1">
+                        <p class="m-0 truncate text-[12.5px] font-semibold ${n === 0 ? 'text-on-primary-container' : 'text-ink'}">${c.n}</p>
+                        <p class="m-0 font-mono text-[10.5px] ${n === 0 ? 'text-on-primary-container opacity-80' : 'text-ink-variant'}">${KIND[c.kind].label}${c.d ? ' · ' + c.d : ''}</p>
+                    </div>
+                    <span class="grid h-11 w-11 place-items-center rounded-xl text-[13px] ${n === 0 ? 'text-on-primary-container' : 'text-ink-variant'}">⋮</span>
+                </div>`).join('');
+        }
+
+        function panelInspect() {
+            return `
+                <p class="m-0 mb-2 font-mono text-[10px] uppercase tracking-[.14em] text-ink-variant">Text · selected</p>
+                <div class="field-row"><span class="text-[12.5px] text-ink-variant">Font</span><span class="rounded-lg border border-line px-2.5 py-1 text-[12px] font-medium text-ink">Plus Jakarta Sans</span></div>
+                <div class="field-row"><span class="text-[12.5px] text-ink-variant">Size</span><span class="rounded-lg border border-line px-2.5 py-1 font-mono text-[12px] text-ink">34 px</span></div>
+                <div class="field-row"><span class="text-[12.5px] text-ink-variant">Colour</span><span class="flex gap-1.5">
+                    <i class="swatch" style="background:#ffffff"></i><i class="swatch" style="background:var(--md-primary)"></i>
+                    <i class="swatch" style="background:var(--md-warning)"></i><i class="swatch" style="background:#111318"></i></span></div>
+                <div class="field-row"><span class="text-[12.5px] text-ink-variant">Align</span><span class="flex gap-1">
+                    <button class="icon-btn" type="button">⯇</button><button class="icon-btn" aria-pressed="true" type="button">≡</button><button class="icon-btn" type="button">⯈</button></span></div>
+                <div class="field-row"><span class="text-[12.5px] text-ink-variant">Opacity</span>
+                    <span class="flex items-center gap-2"><input type="range" min="0" max="100" value="100" class="w-24 accent-[var(--md-primary)]"><span class="font-mono text-[11.5px] text-ink">100%</span></span></div>
+                <div class="field-row"><span class="text-[12.5px] text-ink-variant">Animate in</span><span class="rounded-lg border border-line px-2.5 py-1 text-[12px] font-medium text-ink">Fade up · 0.4s</span></div>
+                <p class="m-0 mt-3 text-[11.5px] leading-relaxed text-ink-variant">Presets replace the keyframe editor: a curated 12–16 shared with Pro, so “fade up” means the same thing in both apps.</p>`;
+        }
+
+        function panelAdd(hi) {
+            const items = [['T', 'Text'], ['▢', 'Shape'], ['▣', 'Image'], ['▶', 'Video'], ['♪', 'Audio'], ['CC', 'Captions'], ['M↓', 'Markdown'], ['</>', 'HTML']];
+            return `
+                <p class="m-0 mb-2 font-mono text-[10px] uppercase tracking-[.14em] text-ink-variant">Add a clip</p>
+                <div class="grid grid-cols-4 gap-2">
+                    ${items.map(([g, l]) => {
+                        const on = g === hi;
+                        return `
+                        <button class="flex min-h-[72px] flex-col items-center justify-center gap-1.5 rounded-xl text-ink-variant ${on ? 'border-2 border-primary bg-primary-container' : 'border border-line bg-surface-lowest'}" type="button"${on ? ' aria-pressed="true"' : ''}>
+                            <span class="text-[15px] leading-none ${on ? 'text-on-primary-container' : 'text-ink'}">${g}</span>
+                            <span class="text-[10.5px] font-semibold ${on ? 'text-on-primary-container' : ''}">${l}</span>
+                        </button>`;
+                    }).join('')}
+                </div>
+                <div class="mt-3 rounded-xl border border-dashed border-line p-3">
+                    <p class="m-0 text-[12px] font-semibold text-ink">HTML in canvas</p>
+                    <p class="m-0 mt-1 text-[11.5px] leading-relaxed text-ink-variant">A clip can be markup the engine renders per frame in a canvas — charts, counters, anything a div can do. It is generated on add and <em>re-rendered when you trim it</em>, so the range you keep is the range the engine draws.</p>
+                </div>
+                <div class="mt-2 rounded-xl border border-dashed border-line p-3">
+                    <p class="m-0 text-[12px] font-semibold text-ink">Markdown → slides</p>
+                    <p class="m-0 mt-1 text-[11.5px] leading-relaxed text-ink-variant">The best feature a phone can have: type headings and paragraphs, get clips. Imports from Pro, and HIC storyboards trim here.</p>
+                </div>`;
+        }
+
+        function panelExport() {
+            return `
+                <p class="m-0 mb-2 font-mono text-[10px] uppercase tracking-[.14em] text-ink-variant">Export</p>
+                <div class="flex flex-wrap gap-1.5">
+                    <span class="rounded-full bg-primary px-3 py-1.5 text-[11.5px] font-semibold text-on-primary">MP4</span>
+                    <span class="rounded-full border border-line px-3 py-1.5 text-[11.5px] font-semibold text-ink-variant">WebM</span>
+                    <span class="rounded-full border border-line px-3 py-1.5 text-[11.5px] font-semibold text-ink-variant">GIF</span>
+                </div>
+                <div class="mt-3 grid grid-cols-2 gap-2">
+                    <div class="rounded-xl border border-line p-2.5"><p class="m-0 font-mono text-[10px] uppercase tracking-widest text-ink-variant">Resolution</p><p class="m-0 mt-1 text-[12.5px] font-semibold text-ink">1080p</p></div>
+                    <div class="rounded-xl border border-line p-2.5"><p class="m-0 font-mono text-[10px] uppercase tracking-widest text-ink-variant">Frame rate</p><p class="m-0 mt-1 text-[12.5px] font-semibold text-ink">30 fps</p></div>
+                </div>
+                <div class="mt-3 h-2 overflow-hidden rounded-full bg-surface-container"><div class="h-full w-[38%] rounded-full bg-primary"></div></div>
+                <div class="mt-2 flex items-center justify-between">
+                    <p class="m-0 font-mono text-[11px] text-ink-variant">38% · 12.4s left</p>
+                    <button class="rounded-lg border border-line px-3 py-1.5 text-[11.5px] font-semibold text-ink" type="button">Cancel</button>
+                </div>
+                <p class="m-0 mt-3 text-[11.5px] leading-relaxed text-ink-variant">Exports run in a worker and must survive a screen lock — iOS has no WebCodecs MP4, so the MediaRecorder path is the primary one there, not a fallback of last resort.</p>`;
+        }
+
+        const SHEET_PANELS = { clips: panelClips, inspect: panelInspect, add: panelAdd, export: panelExport };
+
+        /* One template for every frame in this page: the three tier panels and
+           every phone shot in the gallery. `opts` only ever moves data (which
+           lanes, which clip is selected, what the stage shows) — never layout,
+           which stays the container query's job. */
+        function appMarkup(sh, opts) {
+            const o = Object.assign({
+                title: 'Product Launch', stage: 'slide', range: 9.6, major: 2, playhead: 4,
+                tracks: TRACKS, sel: null, bubble: '', snapAt: null, snapLabel: '',
+                sheet: 'add', sheetArg: undefined, dock: 'clips', openSheet: false, clipNote: ''
+            }, opts || {});
+            const railBtns = [['clips', '▤'], ['inspect', '⚙'], ['add', '＋'], ['export', '↗']];
+            const dockBtns = [['clips', '▤', 'Clips'], ['inspect', '⚙', 'Inspect'], ['add', '＋', 'Add'], ['export', '↗', 'Export']];
+            const clipCount = o.tracks.reduce((n, t) => n + t.clips.length, 0);
+            const end = '0:' + String(Math.round(o.range)).padStart(2, '0') + '.0';
+            return `
+            <div class="app" data-range="${o.range}" style="width:${sh.w}px;height:${sh.h}px">
+                <header class="app-topbar">
+                    <button class="icon-btn" type="button" aria-label="Back">←</button>
+                    <div class="min-w-0 flex-1">
+                        <p class="m-0 truncate text-[13px] font-bold text-ink">${o.title}</p>
+                        <p class="m-0 font-mono text-[10.5px] text-ink-variant" data-time>9:16 · ${clipCount} clips · 0.0s</p>
+                    </div>
+                    <button class="icon-btn" type="button" aria-label="Undo">↺</button>
+                    <button class="icon-btn" type="button" aria-label="Redo">↻</button>
+                    <button class="rounded-full bg-primary px-3.5 text-[11.5px] font-semibold text-on-primary" style="height:36px" type="button">Export</button>
+                </header>
+
+                <div class="app-shell">
+                    <nav class="app-rail" aria-label="Destinations">
+                        ${railBtns.map(([k, g]) => `<button class="rail-btn" type="button" data-dest="${k}" aria-selected="${k === o.dock}">${g}</button>`).join('')}
+                    </nav>
+
+                    <div class="app-stage-col">
+                        <div class="app-stage">
+                            <div class="stage-frame" data-selected="1">
+                                ${STAGES[o.stage](o)}
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2 border-t border-line bg-surface px-3 py-1.5">
+                            <button class="icon-btn" type="button" data-play aria-label="Play">▶</button>
+                            <button class="icon-btn" type="button" aria-label="Restart">↻</button>
+                            <span class="font-mono text-[10.5px] tabular-nums text-ink-variant" data-time>0:00.0</span>
+                            <span class="mx-1 h-1 flex-1 rounded-full bg-surface-container"><span class="block h-full w-0 rounded-full bg-primary" data-fill></span></span>
+                            <span class="font-mono text-[10.5px] tabular-nums text-ink-variant">${end}</span>
+                        </div>
+                    </div>
+
+                    <aside class="app-inspector"><div class="p-3">${panelInspect()}</div></aside>
+
+                    <section class="app-timeline">
+                        <div class="ruler" data-ruler>
+                            ${rulerTicks(o)}
+                            <span class="playhead" style="left:${o.playhead}%"></span>
+                        </div>
+                        ${o.tracks.map((t, i) => trackMarkup(t, i, o)).join('')}
+                    </section>
+                </div>
+
+                <nav class="app-dock">
+                    ${dockBtns.map(([k, g, l]) => `<button class="dock-btn" type="button" data-dest="${k}" aria-selected="${k === o.dock}"><span class="g">${g}</span>${l}</button>`).join('')}
+                </nav>
+
+                <div class="app-sheet" data-sheet data-state="${o.openSheet ? 'open' : 'closed'}">
+                    <div class="sheet-grip" data-grip aria-label="Drag to resize"><i></i></div>
+                    <div class="sheet-body" data-sheet-body>${SHEET_PANELS[o.sheet](o.sheetArg)}</div>
+                </div>
+            </div>`;
+        }
+
+        /* ── Build the three device columns ─────────────────────────────── */
+        const row = document.getElementById('deviceRow');
+        Object.keys(SHOTS).forEach(k => {
+            const sh = SHOTS[k];
+            const wrap = document.createElement('div');
+            wrap.className = 'device';
+            wrap.style.width = sh.w + 'px';
+            wrap.innerHTML = `
+                <p class="device-label">${sh.name}<span class="rounded-full border border-line px-2 py-0.5 font-mono text-[10px] normal-case tracking-normal">${sh.note}</span>
+                   <span class="rounded-full border border-line px-2 py-0.5 font-mono text-[10px] normal-case tracking-normal" data-tier-badge>measuring…</span></p>
+                ${appMarkup(sh)}`;
+            row.appendChild(wrap);
+        });
+
+        /* Report the tier each panel actually resolved to. This is the proof
+           that the container queries did the work, not the viewport. */
+        document.querySelectorAll('#deviceRow .app').forEach(app => {
+            const badge = app.closest('.device').querySelector('[data-tier-badge]');
+            const label = w => w < 768 ? 'Tier A' : w < 1200 ? 'Tier B' : 'Tier C';
+            const sync = () => { badge.textContent = label(app.clientWidth) + ' layout'; };
+            sync();
+            new ResizeObserver(sync).observe(app);
+        });
+
+        /* ───────────────────────────────────────────────────────────────────
+           The phone gallery.
+
+           Five shots at true 390×844 — so they resolve to Tier A through the
+           same container query as everything else, and cannot silently drift
+           into a desktop drawing with a phone bezel around it. `opt` carries
+           data only: which lanes, which clip is selected, what the stage shows.
+           ─────────────────────────────────────────────────────────────────── */
+        const PHONE_SHOTS = [
+            {
+                n: 1,
+                title: 'Four kinds of clip, one strip',
+                why: 'The whole timeline fits a phone: <strong>nine clips on four lanes in 130px</strong>. Video, audio, text and HTML-in-canvas are told apart by <em>texture</em> — a filmstrip, a waveform, a chip, a hatch — so nothing depends on a legend you have to read at 20px tall. The timeline is not something you open on a phone; it is what you came to touch, so it is always on screen.',
+                tags: ['4 lanes · 130px', 'kind = texture', 'timeline never hides'],
+                opt: { playhead: 34 }
+            },
+            {
+                n: 2,
+                title: 'Trim a video clip',
+                why: 'The ruler is zoomed to 4s, so the selected clip is big enough to work on. The right handle is a <strong>10px bar with a 44px target</strong>, inset from the edge so a thumb never covers the cut it is making. Snap guide and live duration bubble appear only while a trim is active; releasing writes one undo entry and moves nothing else.',
+                tags: ['0–4s zoom', 'snap + duration', 'one undo per drag'],
+                opt: {
+                    title: 'Trim · Opening shot', stage: 'clip', range: 4, major: 1, playhead: 58,
+                    tracks: TRIM_VIDEO, sel: { lane: 0, clip: 0, trim: 'right' },
+                    bubble: '1.8s', snapAt: 58, snapLabel: '2.4s'
+                }
+            },
+            {
+                n: 3,
+                title: 'Trim audio to the beat',
+                why: 'Audio is the lane you trim by ear, so it gets the waveform and the <strong>left</strong> handle — the edge you cut first on a voice-over. Trimming never moves a clip between lanes: <em>edge and body are different targets with different gestures</em>, which is the difference between a phone editor and a shrunken desktop one.',
+                tags: ['waveform lane', 'edge ≠ body', 'voice-over'],
+                opt: {
+                    title: 'Trim · VO take 2', stage: 'wave', range: 6, major: 1, playhead: 10,
+                    tracks: TRIM_AUDIO, sel: { lane: 1, clip: 0, trim: 'left' },
+                    bubble: '4.4s', snapAt: 10, snapLabel: '0.6s'
+                }
+            },
+            {
+                n: 4,
+                title: 'Generate an HTML-in-canvas clip',
+                why: 'Add is a grid of 44px+ tiles, not a menu tree, and the sheet is deliberately modal — generating is a separate act from arranging. Picking <strong>HTML</strong> spends the next screen on markup rather than on a form; the engine renders that markup per frame into a canvas on the stage behind.',
+                tags: ['Add · one tap deep', 'generated, not imported', 'modal on purpose'],
+                opt: {
+                    title: 'Add · HTML in canvas', stage: 'hic', playhead: 50, tracks: TRIM_HIC,
+                    dock: 'add', sheet: 'add', sheetArg: '</>', openSheet: true
+                }
+            },
+            {
+                n: 5,
+                title: 'It lands on its lane, selected',
+                why: 'Same frame, sheet dismissed: the generated clip is on the HIC lane with both handles live and the strip re-laid out around it. Because a lane is 20px and the handle target is 44px, <strong>the touch target is bigger than the thing it is drawn on</strong> — which is the only way a dense timeline is usable with a thumb.',
+                tags: ['44px target · 20px lane', 'both edges', 'one lane per kind'],
+                opt: {
+                    title: 'Product Launch', stage: 'hic', playhead: 50, tracks: TRIM_HIC,
+                    sel: { lane: 3, clip: 0, trim: 'both' }, bubble: '2.8s', snapAt: 64, snapLabel: '6.4s'
+                }
+            }
+        ];
+
+        const gallery = document.getElementById('phoneGallery');
+        PHONE_SHOTS.forEach(s => {
+            const fig = document.createElement('figure');
+            fig.className = 'shot m-0';
+            fig.innerHTML = `
+                <div class="shot-head"><span class="shot-n">${s.n}</span><h3>${s.title}</h3></div>
+                ${appMarkup({ w: 390, h: 844 }, s.opt)}
+                <figcaption class="shot-why">${s.why}</figcaption>
+                <div class="shot-tags">${s.tags.map(t => `<span>${t}</span>`).join('')}</div>`;
+            gallery.appendChild(fig);
+        });
+
+        /* ── Theme ─────────────────────────────────────────────────────── */
+        const btnTheme = document.getElementById('btnTheme');
+        function paintTheme() {
+            const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+            btnTheme.textContent = dark ? '☀️ Light' : '🌙 Dark';
+        }
+        btnTheme.addEventListener('click', () => {
+            const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', next);
+            /* Namespaced exactly as STUDIO-LITE-PLAN.md §3.1 requires, so the two
+               apps never fight over the same key. */
+            try { localStorage.setItem('lite:theme', next); } catch (e) {}
+            paintTheme();
+            /* The swatches were always live (they read the tokens); their hex
+               labels were not. Re-read them, or the section lies about what the
+               values are the moment you switch theme. */
+            paintHexes();
+        });
+        paintTheme();
+
+        /* ── Palette swatches, read from the live tokens ───────────────── */
+        const ROLES = [
+            ['primary', 'Interactive · selection, playhead, active destination'],
+            ['primary-container', 'Selected surface · chips, the selected clip'],
+            ['tertiary', 'Secondary accent · the Markdown/HIC badge'],
+            ['surface', 'App background'],
+            ['surface-container', 'Panel and track background'],
+            ['surface-container-highest', 'Raised surface · inactive clip, chip'],
+            ['on-surface', 'Primary text'],
+            ['on-surface-variant', 'Secondary text and metadata'],
+            ['outline-variant', 'Hairline borders'],
+            ['success', 'Export complete'],
+            ['warning', 'Hit-target debug, warnings'],
+            ['error', 'Playhead, destructive actions']
+        ];
+        const palette = document.getElementById('palette');
+        palette.innerHTML = ROLES.map(([role, desc]) => `
+            <div class="rounded-app border border-line bg-surface-lowest p-3 shadow-e1">
+                <div class="mb-2 h-10 rounded-lg" style="background:var(--md-${role});border:1px solid var(--md-outline-variant)"></div>
+                <p class="m-0 font-mono text-[10.5px] font-semibold text-ink">--md-${role}</p>
+                <p class="m-0 mt-0.5 text-[11px] leading-snug text-ink-variant">${desc}</p>
+                <p class="m-0 mt-1 font-mono text-[10.5px] text-ink-variant" data-hex></p>
+            </div>`).join('');
+
+        function paintHexes() {
+            const cs = getComputedStyle(document.documentElement);
+            palette.querySelectorAll('[data-hex]').forEach((el, n) => {
+                el.textContent = cs.getPropertyValue('--md-' + ROLES[n][0]).trim();
+            });
+        }
+        paintHexes();
+
+        /* ── Interactions: dock/rail nav, sheet drag, scrub, play ──────── */
+        document.querySelectorAll('.app').forEach(app => {
+            const sheet = app.querySelector('[data-sheet]');
+            const body = app.querySelector('[data-sheet-body]');
+            const grip = app.querySelector('[data-grip]');
+
+            const select = dest => {
+                app.querySelectorAll('[data-dest]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.dest === dest)));
+                if (SHEET_PANELS[dest]) body.innerHTML = SHEET_PANELS[dest]();
+                if (sheet) { sheet.dataset.state = 'open'; sheet.style.height = ''; }
+            };
+            app.addEventListener('click', e => {
+                const b = e.target.closest('[data-dest]');
+                if (b) { select(b.dataset.dest); return; }
+                const clip = e.target.closest('[data-clip]');
+                if (clip) {
+                    app.querySelectorAll('[data-clip]').forEach(c => c.removeAttribute('data-selected'));
+                    clip.setAttribute('data-selected', '1');
+                }
+            });
+
+            /* Sheet drag: 50% ↔ 92% ↔ dismissed, snapping to the nearest stop.
+               Pointer Events only, and pointercancel ends the gesture cleanly —
+               on iOS a stuck drag is the single most common touch bug (§5.1). */
+            if (sheet && grip) {
+                let y0 = 0, h0 = 0, dragging = false;
+                const stops = [0, 50, 92];
+                grip.addEventListener('pointerdown', e => {
+                    dragging = true; y0 = e.clientY; h0 = sheet.getBoundingClientRect().height;
+                    /* Capture is an optimisation, never a prerequisite. It throws
+                       if the pointer is already gone (a fast tap-and-lift, or
+                       WebKit before 16), and an unguarded throw here kills the
+                       gesture before it starts — the classic "dragging is dead,
+                       only on some devices, only sometimes" bug. */
+                    try { grip.setPointerCapture(e.pointerId); } catch (err) {}
+                });
+                grip.addEventListener('pointermove', e => {
+                    if (!dragging) return;
+                    const h = Math.min(app.clientHeight * 0.94, Math.max(28, h0 - (e.clientY - y0)));
+                    sheet.style.height = (h / app.clientHeight * 100) + '%';
+                });
+                const end = () => {
+                    if (!dragging) return;
+                    dragging = false;
+                    const pct = sheet.getBoundingClientRect().height / app.clientHeight * 100;
+                    const near = stops.reduce((a, b) => Math.abs(b - pct) < Math.abs(a - pct) ? b : a);
+                    sheet.style.height = near + '%';
+                    sheet.dataset.state = near === 0 ? 'closed' : 'open';
+                };
+                grip.addEventListener('pointerup', end);
+                grip.addEventListener('pointercancel', end);
+            }
+
+            /* Ruler scrub — hit-test on pointerdown, not on first move, so the
+               playhead jumps immediately (feedback ≤100ms, §5.3 rule 6). */
+            const ruler = app.querySelector('[data-ruler]');
+            const playhead = app.querySelector('.playhead');
+            /* The range lives on the frame, not in the handler: the trim shots
+               are zoomed to 4s and the timecode has to agree with the ruler. */
+            const range = parseFloat(app.dataset.range || '9.6');
+            const clipCount = app.querySelectorAll('[data-clip]').length;
+            const setTime = pct => {
+                playhead.style.left = pct + '%';
+                const secs = pct / 100 * range;
+                const tc = `${String(Math.floor(secs / 60)).padStart(2, '0')}:${String(Math.floor(secs % 60)).padStart(2, '0')}.${Math.floor((secs % 1) * 10)}`;
+                app.querySelectorAll('[data-time]').forEach(el => {
+                    el.textContent = el.textContent.includes('9:16')
+                        ? `9:16 · ${clipCount} clips · ${tc}`
+                        : tc;
+                });
+                app.querySelectorAll('[data-fill]').forEach(el => { el.style.width = pct + '%'; });
+            };
+            if (ruler) {
+                let scrubbing = false;
+                const at = e => {
+                    const r = ruler.getBoundingClientRect();
+                    return Math.min(100, Math.max(0, ((e.clientX - r.left) / r.width) * 100));
+                };
+                ruler.addEventListener('pointerdown', e => {
+                    scrubbing = true;
+                    try { ruler.setPointerCapture(e.pointerId); } catch (err) {}
+                    setTime(at(e));
+                });
+                ruler.addEventListener('pointermove', e => { if (scrubbing) setTime(at(e)); });
+                ruler.addEventListener('pointerup', () => { scrubbing = false; });
+                ruler.addEventListener('pointercancel', () => { scrubbing = false; });
+            }
+
+            const play = app.querySelector('[data-play]');
+            if (play) play.addEventListener('click', () => {
+                const on = play.getAttribute('aria-pressed') === 'true';
+                play.setAttribute('aria-pressed', String(!on));
+                play.textContent = on ? '▶' : '❚❚';
+            });
+        });
+
+        /* ── §6.2: what the screen does during a drag ──────────────────── */
+        const btnDrag = document.getElementById('btnDrag');
+        btnDrag.addEventListener('click', () => {
+            const on = btnDrag.getAttribute('aria-pressed') !== 'true';
+            btnDrag.setAttribute('aria-pressed', String(on));
+            document.querySelectorAll('.app').forEach(a => a.setAttribute('data-dragging', on ? '1' : '0'));
+        });
+
+        const btnHits = document.getElementById('btnHits');
+        btnHits.addEventListener('click', () => {
+            const on = btnHits.getAttribute('aria-pressed') !== 'true';
+            btnHits.setAttribute('aria-pressed', String(on));
+            document.querySelectorAll('.app, .anatomy').forEach(a => a.classList.toggle('show-hits', on));
+        });
+    </script>
+</body>
+</html>
