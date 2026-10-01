@@ -65,7 +65,7 @@
 | [M1-FTRT-Export-Plan.md](./hyperframes/M1-FTRT-Export-Plan.md) | FTRT export plan |
 | [M3-Spcomp-Spec.md](./hyperframes/M3-Spcomp-Spec.md) | .spcomp format |
 | [M5-AI-Panel-Spec.md](./hyperframes/M5-AI-Panel-Spec.md) | AI panel |
-| [HyperGen-Plan.md](./hyperframes/HyperGen-Plan.md) | Design.md + Frame.md + Storyboard.md → Storyboard.html film generator (plan) |
+| [Studio-Reel-Plan.md](./hyperframes/Studio-Reel-Plan.md) | Design.md + Frame.md + Storyboard.md → Storyboard.html film generator, "Studio Reel" (plan) |
 
 ### 📊 Analysis
 **[hyperframes/](./hyperframes/)** — Comparison and analysis
