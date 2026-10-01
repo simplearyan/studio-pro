@@ -1,6 +1,6 @@
 # Legacy clip authoring: removal plan + `future-waapi/` verdict
 
-**Status:** **Phases 1 and 2 executed** — see §E and §F. Part A and Phases 3–4 are still plan-only.
+**Status:** **Part A and Phases 1–2 executed** — see §A.4, §E and §F. Phases 3–4 are still plan-only.
 **Companion to:** [HTML-ENGINE-CONSOLIDATION-PLAN.md](HTML-ENGINE-CONSOLIDATION-PLAN.md) — that
 plan did Phases 1–2 (the WAAPI compiler); this one is the *execution* detail for its Phase 3–4
 plus a direct answer on `future-waapi/`.
@@ -30,6 +30,7 @@ Evidence, from the tree rather than assumption:
 - `grep -rl "future-waapi"` across the repo returns exactly three files: its own
   `docs/IMPLEMENTATION-GUIDE.md`, `docs/HTML-ENGINE-CONSOLIDATION-PLAN.md`, and `README.md`.
   **Zero** matches under `src/`, **zero** in `index.html`. Nothing imports it.
+  *(Measured before the deletion in §A.4; the folder is now gone.)*
 - It is tracked in git (all 9 files), 64 KB, and its README describes the app as
   html2canvas-only with WAAPI "unproven" — the opposite of the code as of the Phase 1–2 port.
 
@@ -62,16 +63,39 @@ templates — a table, no logic.
 
 Do **not** port `svg-renderer.js` or `waapi-seek.js`. Both would re-introduce a fourth engine.
 
-### A.4 Disposition
+### A.4 Disposition — **executed**
 
-1. Copy the animation table + attribute parsing out of `lib/data-animate-adapter.js` into the
-   adapter as `expandDataAnimate`.
-2. `git rm -r future-waapi/` — git history preserves it; an on-disk copy is redundant and
-   actively misleading (its README contradicts the shipped code).
-3. Add one line to `docs/HTML-ENGINE-CONSOLIDATION-PLAN.md` §7.2 marking it done.
+1. ~~Copy the animation table + attribute parsing out of `lib/data-animate-adapter.js` into the
+   adapter as `expandDataAnimate`.~~ **Still open, but no longer blocked on the folder** — see §A.5.
+2. ✅ `git rm -r future-waapi/` — done; git history preserves it, and an on-disk copy was
+   redundant and actively misleading (its README contradicted the shipped code).
+3. ✅ `docs/HTML-ENGINE-CONSOLIDATION-PLAN.md` §7.2 updated to record it.
 
 Leaving the folder in place is the only option I would argue against: a future reader will find a
 "next-generation animation system" that is neither next-generation nor wired in.
+
+### A.5 Step 1 was not actually a prerequisite
+
+The original ordering — lift the idea *before* deleting the folder — assumed the folder held the
+only copy of the `data-animate` implementation. It did not. Every non-markdown file in it was a
+byte-identical duplicate of one under `automation/html-waapi/`:
+
+| `future-waapi/` | md5 | Byte-identical copy that stays |
+|---|---|---|
+| `lib/waapi-seek.js` | `611efcd5…` | `automation/html-waapi/lib/waapi-seek.js` |
+| `lib/data-animate-adapter.js` | `aac3f916…` | `automation/html-waapi/lib/data-animate-adapter.js` |
+| `lib/svg-renderer.js` | `221acf4f…` | `automation/html-waapi/lib/svg-renderer.js` |
+| `examples/animated-slide.html` | `3f381948…` | `automation/html-waapi/templates/animated-slide.html` |
+| `examples/data-animate-slide.html` | `c8b74565…` | `automation/html-waapi/templates/data-animate-slide.html` |
+
+So the folder was a stale fork of a tree that is still in use — `automation/html-waapi/templates/*`
+loads those libs through `../lib/`, and `api.js` / `render.js` / `cdp-capture.js` drive them. Only
+the four markdown files existed nowhere else, and `docs/DATA-ANIMATE-PLAN.md` was the only one whose
+subject is not superseded; its plan is summarised in §A.3 and the verdict itself is recorded in both
+plan documents, so no load-bearing content was lost.
+
+**Consequence for the `expandDataAnimate` work:** read the animation table out of
+`automation/html-waapi/lib/data-animate-adapter.js` — that is now the only copy.
 
 ---
 
@@ -263,6 +287,8 @@ code that Phase 3 has already proven unreachable.
 ## D. Recommended sequence
 
 1. **Part A** (independent): lift `data-animate` into the adapter, `git rm -r future-waapi/`.
+   **Half done** — the folder is deleted (§A.4–A.5); the `expandDataAnimate` pre-pass is still
+   open, and its reference implementation now survives only in `automation/html-waapi/lib/`.
 2. **Phase 0**: stand up the round-trip fixture; capture the export baseline.
 3. **Phase 1**: delete the WAAPI button + filter, resolve the example loader.
 4. **Phase 2**: add blank-HIC, delete the HTML button.

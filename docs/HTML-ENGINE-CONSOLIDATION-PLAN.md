@@ -358,7 +358,7 @@ Answered from the tree, not assumed.
 | `automation/md-render/` | no | keep — unaffected |
 | `automation/html-static/` | no | keep — documented batch path |
 | `automation/html-waapi/` | no | **keep, but converge onto the compiler** (§7.1) |
-| `future-waapi/` | nothing imports it | salvage `data-animate`, then archive (§7.2) |
+| `future-waapi/` | nothing imports it | **deleted** — it was a byte-identical duplicate of `automation/html-waapi/` (§7.2) |
 
 ### 7.1 `automation/html-waapi` still works — and should share the compiler
 
@@ -401,6 +401,15 @@ clip for an AI agent or a human, and it compiles into the same model `compileKey
 produces — one pre-pass that turns the attributes into keyframe specs, no engine of its own.
 That is the plan's own position, restated with evidence: it belongs in the adapter, not as a
 fourth engine.
+
+**Done — the folder has been removed.** Before deleting it every file was checksummed against the
+rest of the repo, and the three libs plus both example pages turned out to be **byte-identical
+duplicates** of `automation/html-waapi/lib/` and `automation/html-waapi/templates/` — the live copy
+that `html-waapi/templates/*.html` still loads through `../lib/`. So nothing was lost but a stale
+fork, and the `data-animate` idea remains readable at
+`automation/html-waapi/lib/data-animate-adapter.js`, which is now the only copy. `README.md`'s three
+references to the folder are gone with it. Full record:
+[LEGACY-CLIP-REMOVAL-PLAN.md §A.4–A.5](LEGACY-CLIP-REMOVAL-PLAN.md).
 
 **Recommendation:** lift `data-animate` into the adapter, then archive the folder. Left in
 place it is now actively misleading — it describes the editor as html2canvas-only and WAAPI as

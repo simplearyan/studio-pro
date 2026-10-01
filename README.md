@@ -349,33 +349,42 @@ automation/
 
 ---
 
-## 🔬 Future: WAAPI Animation System
+## ✅ WAAPI Animation System (shipped)
 
-A research system for deterministic, frame-by-frame animation control using the browser's native Web Animations API.
+CSS `@keyframes` in an HTML-in-Canvas clip are compiled into a deterministic `onFrame(t)` by
+`src/engines/hic/adapters/waapi.js`, so they scrub and export frame-exact.
+
+The one thing that turned out not to work is the Web Animations API itself: a HIC clip is rastered
+from a **detached** `foreignObject` where the sandbox CSS is never applied, so there are no live
+animations for `document.getAnimations()` to seek. Compiling the keyframes into `onFrame` is what
+made them seekable instead.
 
 ### What It Enables
 
-| Current (html2canvas) | Future (WAAPI) |
+| Before (html2canvas clips) | Now (HTML-in-Canvas clips) |
 |---|---|
-| Static capture at one frame | Seek to ANY frame instantly |
-| CSS animations are frozen | CSS animations are scrubable |
-| Custom `animate(t)` function required | Standard `@keyframes` work |
-| ~500ms per frame capture | ~0ms native GPU seeking |
+| Static capture at one frame | Any frame is reachable |
+| CSS animations frozen | `@keyframes` compile to `onFrame(t)` |
+| Custom `animate(t)` function required | Either an `onFrame(t)` hook or plain `@keyframes` |
+| ~500 ms per frame capture | ~5–15 ms SVG `foreignObject` raster |
 
 ### Three-Layer Architecture
 
-| Layer | What | Solution |
+| Layer | What | How it works now |
 |---|---|---|
-| **Markup** | How AI writes graphics | `data-animate="fade-in"` attributes |
-| **Time Control** | How editor scrubs time | WAAPI — `anim.pause(); anim.currentTime = ms` |
-| **Frame Capture** | How DOM becomes pixels | SVG foreignObject (~5-15ms) |
+| **Markup** | How a clip is authored | HTML/CSS in a HIC clip |
+| **Time Control** | How the editor scrubs time | `WAAPIAdapter.compileKeyframes` → `onFrame(t)` |
+| **Frame Capture** | How DOM becomes pixels | SVG `foreignObject` (~5–15 ms), not html2canvas |
 
 ### Status
 
-- 🔬 Research complete (docs in `docs/automation/`)
-- 🔬 Prototype libs ready (`future-waapi/lib/`)
-- 🔬 Production pipeline scaffolded (`automation/html-waapi/`)
-- ⏳ Not yet integrated into editor
+- ✅ Shipped in the editor — the adapter plus 19 HTML-in-Canvas presets
+- 🔬 Batch pipeline still separate (`automation/html-waapi/`), and it owns the `lib/` and `templates/` prototypes
+- ⏳ Retiring the html2canvas path is Phase 4 of the [consolidation plan](docs/HTML-ENGINE-CONSOLIDATION-PLAN.md)
+
+The research folder this replaced (`future-waapi/`) has been removed; its verdict, and the plan for
+the rest of the cleanup, live in [HTML-ENGINE-CONSOLIDATION-PLAN.md](docs/HTML-ENGINE-CONSOLIDATION-PLAN.md)
+and [LEGACY-CLIP-REMOVAL-PLAN.md](docs/LEGACY-CLIP-REMOVAL-PLAN.md).
 
 ---
 
@@ -430,8 +439,6 @@ studio-pro-editor/
 │   ├── shared/             ← Skills, tests, assets
 │   └── README.md           ← Full automation docs
 │
-├── future-waapi/           ← WAAPI research lab (libs, docs, examples)
-│
 ├── public/vendor/          ← vendored runtime deps (lucide, mathjax, perfect-freehand)
 │
 ├── docs/                   ← planning docs
@@ -450,7 +457,7 @@ studio-pro-editor/
 - [Contributing guide](CONTRIBUTING.md) — how to set up, code conventions, and testing checklist
 - [Automation docs](automation/README.md) — full automation guide
 - [HTML-in-Canvas renderer](docs/html-in-canvas/test-renderer.html) — the SVG `foreignObject` engine, in isolation
-- [WAAPI research](future-waapi/README.md) — future animation system
+- [HTML engine consolidation](docs/HTML-ENGINE-CONSOLIDATION-PLAN.md) — the WAAPI→HIC port and the `future-waapi/` verdict
 - [Render architecture](docs/automation/HTML-Render-Final-Plan.md) — three-layer rendering plan
 - [Commercial licensing strategy](LICENSE_STRATEGY_COMMERCIAL.md) — how we plan to fund the editor
 - [License deep-dive](LICENSE_RECOMMENDATION.md) — how MediaBunny's MPL-2.0 license works with our own
