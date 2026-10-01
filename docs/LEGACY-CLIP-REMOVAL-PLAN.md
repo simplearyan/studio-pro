@@ -1,6 +1,6 @@
 # Legacy clip authoring: removal plan + `future-waapi/` verdict
 
-**Status:** **Phase 1 executed** — see §E. Part A and Phases 2–4 are still plan-only.
+**Status:** **Phases 1 and 2 executed** — see §E and §F. Part A and Phases 3–4 are still plan-only.
 **Companion to:** [HTML-ENGINE-CONSOLIDATION-PLAN.md](HTML-ENGINE-CONSOLIDATION-PLAN.md) — that
 plan did Phases 1–2 (the WAAPI compiler); this one is the *execution* detail for its Phase 3–4
 plus a direct answer on `future-waapi/`.
@@ -313,7 +313,7 @@ Two deliberate deviations from §B.4, both recorded here rather than left implic
   and logs `[HIC] Example loaded: 4 animated clips (20s)`. Zero console errors.
 - `npm run build` passes; `dist/index.html` 2,548.11 → **2,547.21 kB** (gzip 477.95).
 
-### Left open by this phase
+### Left open after Phase 1
 
 - **Three names appear twice under HTML in Canvas** — *Google Clean*, *Gradient Hero*, *iOS Glass*
   exist as both an `hic_*` (hand-written `onFrame`) and a `waaapi_*` (compiled `@keyframes`)
@@ -322,4 +322,60 @@ Two deliberate deviations from §B.4, both recorded here rather than left implic
   tiles.
 - **Phase 2's blank-clip gap is untouched** (§B.3): `addHicClipToTimeline()` with no key still
   falls back to `googleClean`, so `#btnAddHtml` is still the only route to an empty canvas. Do not
-  delete that button before the `blank` preset exists.
+  delete that button before the `blank` preset exists. **Closed by Phase 2 — see §F.**
+- Under the **HTML in Canvas** filter the seven ported (`waaapi_*`) tiles are declared before the
+  native `hic_*` ones, so the category reads as *Blank, 7 ported, Load Example, 12 native*. Grouping
+  the ported tiles with the native ones is a pure array reorder, deliberately not bundled with the
+  phases above.
+
+---
+
+## F. Phase 2 — what actually shipped
+
+§B.3 framed the choice as "give `addHicClipToTimeline` a `'blank'` preset key **or** add a tile".
+Both were done, because the two entry points answer different questions — the header button is the
+one-click replacement for the deleted `#btnAddHtml`, and the tile is what makes a blank clip
+*discoverable* to someone browsing the preset library. There is exactly one preset behind them.
+
+| # | Change | Where |
+|---|---|---|
+| 1 | `HIC_PRESETS.blank = { name: 'Blank', dur: 5, html: '', css: '', js: '' }` | `HIC_PRESETS` |
+| 2 | `addHicClipToTimeline()` no longer falls back to Google Clean: no key → `blank`, an unknown key → `googleClean` as before | `addHicClipToTimeline` |
+| 3 | `#btnAddHic` retitled `Add Blank HTML-in-Canvas Clip` (it now adds a blank clip) | header |
+| 4 | `hic_blank` grid tile, declared before every other preset so it is the **first** tile under HTML in Canvas | `DEFAULT_PRESETS` |
+| 5 | `#btnAddHtml` markup deleted | header |
+| 6 | `addHtmlClipToTimeline` **kept**, now unreferenced | helpers |
+
+Two decisions worth naming:
+
+- **The header button changes behaviour.** It used to add Google Clean; it now adds a blank clip.
+  That is what §B.3 asked for ("give `addHicClipToTimeline` a `'blank'` preset key") and it is the
+  only shape that actually replaces the removed header affordance, but it does mean the fastest
+  route to a *preset* is now the grid. The fallback for an **unknown** key is unchanged, so nothing
+  that passes a key can regress.
+- **The blank preset is genuinely empty**, per §B.3. A freshly added blank clip draws nothing on the
+  canvas — it is a transparent clip whose only on-screen presence is its timeline bar and its
+  sidebar card. That is the honest state of "empty", and the card is one click from the code editor,
+  but it is the one place a user could reasonably read an empty canvas as a bug.
+
+### Verified (dev server, `localhost:4345`)
+
+- No `#btnAddHtml` in the DOM; `#btnAddHic` present, `title="Add Blank HTML-in-Canvas Clip"`.
+- `addHicClipToTimeline()` → `{ title: 'Blank', type: 'hic', duration: 5 }` with `html`, `css` and
+  `js` all the empty string. `addHicClipToTimeline('googleClean')` still yields Google Clean (292 B
+  html), and an unknown key still falls back to Google Clean.
+- The grid under HTML in Canvas is **21 cards = 20 presets + the `▶ Load Example` action tile**,
+  in the order *Blank, Google Clean, Brutal Shadow, iOS Glass, Vox Chart, Count Up, Gradient Hero,
+  Stagger Reveal, ▶ Load Example, …12 native…*.
+- **A blank clip is authorable end to end:** the sidebar renders `#cardHicContent` with its three
+  textareas plus the *Open Code Editor* button; typing `<h1 class="t">Hello</h1>` into the HTML
+  field writes it onto the clip, and `openHicEditor(clip.id)` then opens on that same clip with the
+  typed markup in `#hicEditorHTML`.
+- `npm run build` passes, 90 precache entries, zero console errors, no failed requests.
+
+### What Phase 2 deliberately did not do
+
+- **`addHtmlClipToTimeline` is still defined.** Old projects hold `type: 'html'` clips and Phase 3
+  is what migrates them; the function stays dead weight until Phase 4.
+- **The legacy HTML code editor, the sidebar HTML cards and the html2canvas path are untouched.**
+  They are now reachable only from a clip that already exists, which is exactly the Phase 3 problem.
