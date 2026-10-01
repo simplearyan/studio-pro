@@ -85,6 +85,14 @@
 | [LICENSE_STRATEGY_COMMERCIAL.md](./funding/LICENSE_STRATEGY_COMMERCIAL.md) | Commercial licensing |
 | [LICENSE_RECOMMENDATION.md](./funding/LICENSE_RECOMMENDATION.md) | License recommendations |
 
+### 📐 Conventions
+**[docs/](./)** — rules that apply across the repo
+
+| Document | Description |
+|---|---|
+| [Versioning-Guide.md](./Versioning-Guide.md) | SemVer, pre-release labels, tag history, and the `package.json` / in-app version surfaces (§11) |
+| [commit-conventions.md](./commit-conventions.md) | Commit message format and staging rules |
+
 ## Folder Structure
 
 ```
@@ -114,9 +122,11 @@ docs/
 │   ├── Agent-Authoring-and-Automation-Plan.md
 │   ├── AGENTS.md
 │   └── ... (15+ docs)
-└── funding/                  # Business
-    ├── OpenSource-Funding-Strategy.md
-    └── ... (4 docs)
+├── funding/                  # Business
+│   ├── OpenSource-Funding-Strategy.md
+│   └── ... (4 docs)
+├── media/                    # README showcase assets (gif, poster)
+└── Versioning-Guide.md       # SemVer, tags, version surfaces
 ```
 
 ## Related Files
