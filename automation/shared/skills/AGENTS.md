@@ -19,15 +19,16 @@ You write a JS file → Puppeteer executes it in the browser → Video is export
 ```
 You write a JS file using StudioPro API
         ↓
-Run: node render.js your-file.js
+Run: node html-in-canvas/render.js html-in-canvas/examples/your-file.js   (from automation/)
         ↓
 Puppeteer opens Chrome, loads StudioPro
         ↓
-Executes your JS → Creates clips on timeline
+Executes your JS → Creates HTML-in-Canvas clips on the timeline
         ↓
-Exports video via MediaBunny (4× realtime)
+cdp mode (default): screenshots a standalone page per clip, encodes with ffmpeg
+editor mode:         lets the editor's own export pump render (MediaBunny / FTRT)
         ↓
-Output: MP4/WebM file
+Output: MP4/WebM file in html-in-canvas/output/
 ```
 
 ---
@@ -133,23 +134,28 @@ StudioPro.fonts.linkTag('Poppins');   // <link rel="stylesheet" ...>
 ## File Structure
 
 ```
-code-to-video/
-├── skills/
-│   ├── AGENTS.md              # This file — read first
-│   ├── product-launch.md      # Skill: marketing videos
-│   ├── social-reel.md         # Skill: short-form content
-│   └── kinetic-text.md        # Skill: text animations
-├── templates/
-│   ├── gradient-card.html     # Reusable HTML/CSS template
-│   ├── glassmorphism.html
-│   └── premium-gradient.html
-├── examples/
-│   ├── product-launch.js      # Example composition
-│   ├── social-reel.js
-│   └── kinetic-text.js
-├── api.js                     # Node.js API wrapper
-├── render.js                  # CLI entry point
-└── README.md                  # Full documentation
+automation/
+├── html-in-canvas/            # the HTML-in-Canvas render pipeline
+│   ├── render.js              # CLI entry point — --mode cdp|editor
+│   ├── api.js                 # editor client (editor mode)
+│   ├── cdp-capture.js         # standalone page + CDP screenshots (cdp mode)
+│   ├── templates/
+│   │   ├── gradient-card.html     # Reusable HTML/CSS templates
+│   │   ├── glassmorphism.html
+│   │   ├── premium-gradient.html
+│   │   └── design-tokens.md
+│   ├── examples/
+│   │   ├── product-launch.js      # Example compositions
+│   │   ├── social-reel.js
+│   │   ├── kinetic-text.js
+│   │   └── …
+│   └── output/                # Rendered videos (gitignored)
+├── md-render/                 # separate pipeline: Markdown → video
+└── shared/skills/             # these skill docs live here, not per-pipeline
+    ├── AGENTS.md              # This file — read first
+    ├── product-launch.md      # Skill: marketing videos
+    ├── social-reel.md         # Skill: short-form content
+    └── kinetic-text.md        # Skill: text animations
 ```
 
 ---
@@ -199,9 +205,18 @@ StudioPro.keyframes(clip, {
 ### Step 5: Export
 
 ```bash
-node render.js my-video.js
-# Output: my-video_ultra_30fps_ftrt_mp4.mp4
+# From automation/ — the script path resolves against the CURRENT DIRECTORY
+node html-in-canvas/render.js html-in-canvas/examples/my-video.js
+# Output: html-in-canvas/output/my-video_ultra_30fps_cdp.mp4
+
+# Let the editor's own export pump render instead:
+node html-in-canvas/render.js html-in-canvas/examples/my-video.js -m editor -e ftrt
+# Output: html-in-canvas/output/my-video_ultra_30fps_editor_ftrt.mp4
 ```
+
+**A composition created here is an HTML-in-Canvas clip** (`type: 'hic'`). `StudioPro.html(...)`
+is the authoring alias for it — the editor has not built a legacy `type: 'html'` clip since
+Phase 3 of `docs/LEGACY-CLIP-REMOVAL-PLAN.md`.
 
 ---
 
@@ -351,6 +366,6 @@ module.exports = function(StudioPro, State) {
 ```
 
 ```bash
-node render.js my-video.js
-# ✅ Output: product-launch_ultra_30fps_ftrt_mp4.mp4
+node html-in-canvas/render.js html-in-canvas/examples/my-video.js
+# ✅ Output: html-in-canvas/output/my-video_ultra_30fps_cdp.mp4
 ```

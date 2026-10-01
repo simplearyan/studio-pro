@@ -1,8 +1,8 @@
 /**
  * WAAPI Animation Test — Renders clips with CSS keyframe animations
- * Uses the html-waapi render pipeline
+ * Uses the html-in-canvas render pipeline
  * 
- * Usage: node html-waapi/render.js html-waapi/examples/waapi-test.js -m mediabunny
+ * Usage: node html-in-canvas/render.js html-in-canvas/examples/waapi-test.js
  */
 
 module.exports = function(StudioPro, State) {

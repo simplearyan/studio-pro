@@ -272,7 +272,7 @@ is phone-friendly (typing text is a phone-native act), and it is fully testable 
 |---|---|---|
 | `window.StudioPro` M7 composition API + M8 animation | 10853–11288 | **CORE** (frozen contract, §4.6) — this is lite's scripting surface too |
 | AI keys in localStorage (`studiopro_ai_key_*`) | in-file | LATER |
-| `automation/` (md-render, html-static, html-waapi, Puppeteer) | `automation/` | PRO — but it consumes the same `@sp/core`, which is a free consistency win |
+| `automation/` (md-render, html-in-canvas, Puppeteer) | `automation/` | PRO — but it consumes the same `@sp/core`, which is a free consistency win |
 | `docs/html-in-canvas/*.html` pages | docs | **CORE to keep working** (they are shipped URLs), not to rebuild |
 
 ### 3.11 Shell, theme, PWA

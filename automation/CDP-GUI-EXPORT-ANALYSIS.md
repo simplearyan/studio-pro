@@ -274,14 +274,14 @@ Adopt HyperFrames-style data attributes for AI-generated clips:
 </div>
 ```
 
-This makes our `code-to-video` automation compatible with HyperFrames compositions.
+This makes our `html-in-canvas` automation compatible with HyperFrames compositions.
 
 ### Phase 3: Deterministic Rendering (Production)
 
 For production-quality exports, use `chrome-headless-shell` with `--deterministic-mode`:
 
 ```javascript
-// In automation/html-waapi/cdp-capture.js
+// In automation/html-in-canvas/cdp-capture.js (then named html-waapi/)
 const browser = await puppeteer.launch({
     executablePath: chromeHeadlessShellPath,
     args: [
@@ -298,7 +298,7 @@ const browser = await puppeteer.launch({
 Formalize our `_waapiAdapter` into a proper adapter system:
 
 ```javascript
-// Future: automation/html-waapi/adapters/
+// Future: automation/html-in-canvas/adapters/
 export const adapters = {
     waapi: {
         seekFrame(frame, fps) {

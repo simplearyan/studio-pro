@@ -9,8 +9,8 @@
  * - Background music
  * 
  * Usage:
- *   node render.js examples/product-launch.js
- *   node render.js examples/product-launch.js output.mp4 --quality ultra
+ *   node html-in-canvas/render.js html-in-canvas/examples/product-launch.js
+ *   node html-in-canvas/render.js html-in-canvas/examples/product-launch.js output.mp4 --quality ultra
  * 
  * This script runs in the browser context via Puppeteer.
  * StudioPro and State are passed as arguments.

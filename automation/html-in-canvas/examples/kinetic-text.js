@@ -7,8 +7,8 @@
  * - Different colors and sizes
  * 
  * Usage:
- *   node render.js examples/kinetic-text.js
- *   node render.js examples/kinetic-text.js kinetic.mp4 --quality ultra
+ *   node html-in-canvas/render.js html-in-canvas/examples/kinetic-text.js
+ *   node html-in-canvas/render.js html-in-canvas/examples/kinetic-text.js kinetic.mp4 --quality ultra
  */
 
 module.exports = function(StudioPro, State) {

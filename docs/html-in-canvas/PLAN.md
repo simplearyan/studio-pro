@@ -82,17 +82,18 @@ studio-pro-editor/
 │           └── data-chart.js               # Vox-style animated chart
 │
 ├── automation/
-│   ├── html-to-canvas/                     # NEW: Automation pipeline
-│   │   ├── render.js                       # CDP-based renderer (like html-waapi)
+│   ├── html-in-canvas/                     # SHIPPED: the automation half of this doc — one CLI,
+│   │   ├── render.js                       #   --mode cdp (CDP screenshots) | editor (export pump)
 │   │   ├── cdp-capture.js                  # Frame capture via Puppeteer
-│   │   ├── examples/
-│   │   │   ├── animated-pollution.js       # Test: animated pollution clip
-│   │   │   └── bouncing-google.js          # Test: bouncing logo
+│   │   ├── api.js                          # Editor client (--mode editor)
+│   │   ├── examples/                       # Composition scripts
 │   │   └── output/                         # Exported videos
 │   │
-│   ├── html-waapi/                         # EXISTING: WAAPI pipeline
-│   ├── md-render/                          # EXISTING: Markdown pipeline
-│   └── code-to-video/                      # EXISTING: Legacy pipeline
+│   └── md-render/                          # EXISTING: Markdown pipeline
+│
+│   Note: this tree sketched the folder as `html-to-canvas/` and listed `html-waapi/` and
+│   `code-to-video/` as existing. It shipped as `html-in-canvas/`, and both of those old folders
+│   have been deleted.
 │
 ├── index.html                              # MODIFIED: Add SVG foreignObject rendering
 └── server/

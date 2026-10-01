@@ -271,13 +271,16 @@ Hit **Export** in the toolbar, choose a tab and format:
 
 Studio Pro includes a full automation layer for rendering videos from the terminal — designed for AI agents and batch processing.
 
-### Three Pipelines
+### Two Pipelines
 
 | Pipeline | Input | Command | Best For |
 |---|---|---|---|
-| **md-render** | `.md` files | `node md-render/render.js scripts/file.md` | Simple videos, explainers |
-| **html-static** | `.js` files | `node html-static/render.js examples/file.js` | HTML clip compositions |
-| **html-waapi** | `.js` files | `node html-waapi/render.js examples/file.js` | Animated HTML clips (future) |
+| **md-render** | `.md` files | `node md-render/render.js md-render/scripts/file.md` | Simple videos, explainers |
+| **html-in-canvas** | `.js` files | `node html-in-canvas/render.js html-in-canvas/examples/file.js` | Designed HTML/CSS/JS compositions |
+
+`html-in-canvas` is what the `html-static` and `html-waapi` pipelines became — one CLI, two export
+strategies (`-m cdp` screenshots + ffmpeg, or `-m editor` for the editor's own export pump). Both
+old folders have been deleted.
 
 ### Quick Start
 
@@ -291,10 +294,13 @@ cd automation
 npm install
 
 # Markdown → Video
-node md-render/render.js scripts/social-short.md -q ultra -m ftrt
+node md-render/render.js md-render/scripts/social-short.md -q ultra
 
-# HTML → Video
-node html-static/render.js html-static/examples/simple-test.js -q ultra -m ftrt
+# HTML-in-Canvas → Video (cdp screenshots + ffmpeg)
+node html-in-canvas/render.js html-in-canvas/examples/simple-test.js -q ultra
+
+# …or let the editor's own export pump render it (mediabunny | ftrt | standard)
+node html-in-canvas/render.js html-in-canvas/examples/simple-test.js -m editor -e ftrt
 ```
 
 ### Automation Features
@@ -316,17 +322,12 @@ automation/
 │   ├── scripts/              # Markdown video scripts
 │   └── output/               # Rendered videos
 │
-├── html-static/              # Pipeline 2: HTML Clips → Video
-│   ├── api.js                # Puppeteer API wrapper
-│   ├── render.js             # CLI entry point
+├── html-in-canvas/           # Pipeline 2: HTML-in-Canvas → Video
+│   ├── render.js             # CLI entry point — --mode cdp|editor
+│   ├── api.js                # Editor client (--mode editor)
+│   ├── cdp-capture.js        # Standalone page + CDP screenshots (--mode cdp)
 │   ├── examples/             # Composition scripts
 │   ├── templates/            # HTML/CSS/JS templates
-│   └── output/               # Rendered videos
-│
-├── html-waapi/               # Pipeline 3: Animated HTML → Video (future)
-│   ├── lib/                  # WAAPI seek, data-animate, SVG renderer
-│   ├── templates/            # Animated HTML templates
-│   ├── examples/             # Animated compositions
 │   └── output/               # Rendered videos
 │
 ├── shared/                   # Shared across pipelines
@@ -344,7 +345,7 @@ automation/
 1. Read `shared/skills/AGENTS.md` — learn the API
 2. Read `shared/skills/*.md` — follow a skill doc
 3. Write a JS composition using `StudioPro.createComposition()`
-4. Render: `node html-static/render.js my-video.js`
+4. Render: `node html-in-canvas/render.js html-in-canvas/examples/my-video.js`
 5. Get MP4 output
 
 ---
@@ -379,7 +380,7 @@ made them seekable instead.
 ### Status
 
 - ✅ Shipped in the editor — the adapter plus 19 HTML-in-Canvas presets
-- 🔬 Batch pipeline still separate (`automation/html-waapi/`), and it owns the `lib/` and `templates/` prototypes
+- ✅ Batch pipeline (`automation/html-in-canvas/`) renders the same clips — `-m cdp` screenshots them deterministically, `-m editor` uses the editor's own export pump. Its `templates/` are live; `lib/` is unscheduled prototype code
 - ⏳ Retiring the html2canvas path is Phase 4 of the [consolidation plan](docs/HTML-ENGINE-CONSOLIDATION-PLAN.md)
 
 The research folder this replaced (`future-waapi/`) has been removed; its verdict, and the plan for
@@ -432,10 +433,9 @@ studio-pro-editor/
 ├── vite.config.js          ← build config
 ├── export-worker.js        ← MediaBunny export worker
 │
-├── automation/             ← terminal automation (3 pipelines)
+├── automation/             ← terminal automation (2 pipelines)
 │   ├── md-render/          ← Markdown → Video
-│   ├── html-static/        ← HTML Clips → Video
-│   ├── html-waapi/         ← Animated HTML → Video (future)
+│   ├── html-in-canvas/     ← HTML-in-Canvas → Video (cdp or editor export)
 │   ├── shared/             ← Skills, tests, assets
 │   └── README.md           ← Full automation docs
 │

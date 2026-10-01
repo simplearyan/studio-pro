@@ -1,7 +1,7 @@
 /**
  * Simple 5-second Google Clean WAAPI test
  * 
- * Usage: node html-waapi/render.js html-waapi/examples/google-clean-test.js -m mediabunny
+ * Usage: node html-in-canvas/render.js html-in-canvas/examples/google-clean-test.js
  */
 
 module.exports = function(StudioPro, State) {

@@ -74,7 +74,7 @@ Or simpler — use a dedicated npm script:
 }
 ```
 
-**`automation/html-static/api.js`:**
+**`automation/html-in-canvas/api.js`:**
 ```javascript
 // Change default URL from localhost:3000 to localhost:7000
 const DEFAULT_URL = 'http://localhost:7000';
@@ -124,7 +124,7 @@ npm run dev:automation &
 
 # Then run renders (reuse existing server)
 node md-render/render.js scripts/social-short.md
-node html-static/render.js examples/simple-test.js
+node html-in-canvas/render.js html-in-canvas/examples/simple-test.js
 ```
 
 Or auto-start in render.js:
@@ -158,10 +158,10 @@ cd automation
 node md-render/render.js scripts/social-short.md
 
 # 3. Render HTML → Video
-node html-static/render.js html-static/examples/simple-test.js
+node html-in-canvas/render.js html-in-canvas/examples/simple-test.js
 
-# 4. Render HTML Animated → Video (future)
-node html-waapi/render.js html-waapi/examples/animated-slide.js
+# 4. Render HTML Animated → Video (`-m cdp` by default, `-m editor` for the export pump)
+node html-in-canvas/render.js html-in-canvas/examples/animated-pollution.js
 ```
 
 ---
@@ -223,5 +223,5 @@ automation/render html examples/simple-test.js --debug  # Show Chrome
 This single CLI would:
 1. Auto-detect if automation server is running on 7000
 2. Start it if not
-3. Route to the correct pipeline (md-render, html-static, html-waapi)
+3. Route to the correct pipeline (md-render, html-in-canvas)
 4. Clean up after itself

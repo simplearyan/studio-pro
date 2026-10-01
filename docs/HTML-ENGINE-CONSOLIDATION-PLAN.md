@@ -194,16 +194,21 @@ Once Phase 3 has shipped for a release (or a project-age guard passes), remove:
 
 ## 3. What must NOT be touched in this cleanup
 
-- **`automation/html-static/` and `automation/html-waapi/`** — separate Node + Puppeteer
-  CLIs under their own `automation/package.json` (`puppeteer-core`), reading `.js`/`.md`
-  files and capturing frames in a real browser page. They reference **nothing** under `src/`
-  (see §7.1), so deleting the editor's engine modules cannot affect them. *(Corrected: the
-  `data-animate-adapter.js` / `svg-renderer.js` files this section used to attribute to
-  `html-waapi/` actually live in `future-waapi/lib/` — see §7.2.)*
+- **`automation/html-static/` and `automation/html-in-canvas/`** *(the latter was `html-waapi/`
+  until the P1 rename — see [automation/HTML-IN-CANVAS-PIPELINE-PLAN.md](automation/HTML-IN-CANVAS-PIPELINE-PLAN.md))* — Node + Puppeteer CLIs under the
+  shared `automation/package.json` (`puppeteer-core`), reading `.js`/`.md` files and capturing
+  frames in a real browser page. They import **nothing** under `src/`, but that is the wrong test:
+  they are clients of the **running editor**, driving `window.StudioPro` and its
+  `preRenderAllHtmlClips` / `_isWaaapi` paths, so they **are** affected by the legacy removal. See
+  §7.1 and [LEGACY-CLIP-REMOVAL-PLAN.md §B.6](LEGACY-CLIP-REMOVAL-PLAN.md). *(Two earlier
+  corrections: the `data-animate-adapter.js` / `svg-renderer.js` files this section used to
+  attribute to `html-waapi/` actually lived in `future-waapi/lib/` — see §7.2; and neither CLI has
+  its own `package.json`/`node_modules`.)*
 - **`automation/md-render/`** — emits text/shape/image/math clips; unaffected.
-- **`future-waapi/`** — a research lab referenced only from docs. It contains a *different*
-  idea (declarative `data-animate` attributes). If that idea is still wanted it belongs in
-  the HIC adapter as authoring sugar, not as a fourth engine.
+- **`future-waapi/`** — **deleted** (§7.2). It held one *different* idea (declarative
+  `data-animate` attributes); that idea still belongs in the HIC adapter as authoring sugar, not
+  as a fourth engine, and its reference implementation is now only at
+  `automation/html-waapi/lib/data-animate-adapter.js`.
 - **`docs/html-in-canvas/hic-*.js`** — the shared layer the three live pages depend on.
 - **The Markdown generator** — verified to emit text clips, never `html`/`waapi`; nothing to
   change.
@@ -356,32 +361,80 @@ Answered from the tree, not assumed.
 | Folder | Referenced by the app? | Verdict |
 |---|---|---|
 | `automation/md-render/` | no | keep — unaffected |
-| `automation/html-static/` | no | keep — documented batch path |
-| `automation/html-waapi/` | no | **keep, but converge onto the compiler** (§7.1) |
+| `automation/html-static/` | **yes, at runtime** — drives `window.StudioPro` + `preRenderAllHicClips` | keep for now — ported with Phase 3 (§7.1, §H); **merge into one folder** (pipeline plan §0) |
+| `automation/html-in-canvas/` *(was `html-waapi/`)* | **yes, at runtime** — reads `type === 'hic'` clips | keep, **converge onto the compiler**, and merge with the above (§7.1) |
 | `future-waapi/` | nothing imports it | **deleted** — it was a byte-identical duplicate of `automation/html-waapi/` (§7.2) |
 
-### 7.1 `automation/html-waapi` still works — and should share the compiler
+*(Executed since: P4 of the pipeline plan deleted `automation/html-static/`, folded its examples
+and templates into `html-in-canvas/`, and removed that folder's `lib/` prototypes plus the legacy
+seek shim. The table above is the state as planned.)*
 
-Deleting the editor's engine modules cannot break it. `grep -rn "src/html-clips\|src/html-in-canvas\|src/engines" automation/` returns only prose (in `html-static/ISSUES-AND-TODOS.md` and its `templates/`); the real imports are `puppeteer-core`, `path`, `fs`, `url` and sibling files. It runs under `automation/package.json`, with its own 83 MB `node_modules`, as `node html-waapi/render.js <file>`.
+### 7.1 `automation/html-in-canvas` (then `html-waapi`) still works — and should share the compiler
+
+**Correction.** An earlier revision of this section said deleting the editor's engine modules
+"cannot break it", citing `grep -rn "src/html-clips\|src/html-in-canvas\|src/engines" automation/`
+returning only prose. That grep answers the wrong question. Neither CLI imports the editor's
+*modules* — they are Puppeteer clients of the running editor, so what binds them is the editor's
+*runtime globals*:
+
+- both refuse to start without a Vite server serving the editor (`api.js:96–120`, and see the
+  dedicated `"dev:automation": "vite --port 7000"` script plus `PORT_PRIORITY = [7000, 3000, 3001]`);
+- both wait for `window.StudioPro` (`api.js:127`), the 460-line agent API at `index.html:10872–11331`;
+- `html-static/api.js:263` calls `window.preRenderAllHtmlClips()` — which the legacy-removal plan's
+  Phase 4 deletes, inside a guard that makes the failure silent;
+- `html-in-canvas/api.js:188` (named `html-waapi/api.js` at the time) filters `c._isWaaapi` — the
+  flag that same phase deletes;
+- `StudioPro.createHtmlClip()` (`index.html:10926`) creates `type: 'html'` clips, the type its
+  Phase 3 migrates away from, after which `preRenderAllHtmlClips` matches nothing.
+
+So both pipelines are live, and both are *coupled to the legacy path*. Porting them was made an
+obligation of that plan's Phase 3 rather than an optional follow-up, and **has since been done** —
+`html-static` now preloads through `preRenderAllHicClips`, `html-in-canvas` (then `html-waapi`) reads `type === 'hic'`, and
+`StudioPro.createHtmlClip()` builds `'hic'` — see
+[LEGACY-CLIP-REMOVAL-PLAN.md §H](LEGACY-CLIP-REMOVAL-PLAN.md). The rest of this section stands.
+
+**Since shipped.** P4 of the pipeline plan deleted `automation/html-static/` outright and folded
+its examples and templates into `html-in-canvas/`, so the `html-static` half of every sentence
+above is now history, kept for the reasoning rather than the paths.
+
+(Also corrected: earlier drafts said each CLI has "its own 83 MB `node_modules`". There is **one**
+`automation/package.json` and **one** shared `automation/node_modules` — 62 MB, shared by all three
+pipelines. Neither `html-static/` nor `html-waapi/` has its own.)
 
 The interesting part: `html-waapi` **also** positions CSS animations with
 `document.getAnimations()` (`cdp-capture.js:65`) — and there it works, because it screenshots a
 **live page where the CSS is actually applied**. That is exactly the property HIC lacks (§6).
-So the repo now holds one animation input (a `@keyframes` clip) positioned two different ways:
-a live-browser seek in batch, a compiled `onFrame` in the editor. Both are deterministic, but
-they are different code and can drift — the same failure mode as the three `seekToFrame` copies
-we just collapsed.
+So the repo holds one animation input (a `@keyframes` clip) positioned two different ways:
+a live-browser seek in batch, a compiled `onFrame` in the editor.
 
-**Recommendation:** keep both pipelines, and have `html-waapi` call
-`WAAPIAdapter.compileKeyframes` instead of carrying its own shim. That makes “what the editor
-previews” and “what batch renders” the same thing *by construction*, and removes the fourth copy
-of the seek snippet. It is a small change: the compiler already emits exactly the per-frame
-values the batch loop needs.
+**Correction, measured:** an earlier draft said "both are deterministic". They are not.
+Two captures of the same 9 frames in headless Chrome: the clip driven by `getAnimations()`
+differed **between runs**; the clip driven by a compiled `onFrame` was **frame-for-frame
+identical**. Live CSS animations carry page-load phase; a compiled `onFrame` is a pure function
+of time. So this is not merely two implementations that *can* drift — one of them is
+non-reproducible in the mode that renders unsupervised.
 
-*(Doc bug found while checking: `automation/README.md:23` documents
-`node html-waapi/render.js html-waapi/examples/animated-slide.js`, but that file does not exist —
-the folder holds `animated-pollution.js`, `google-clean-test.js`, `waapi-test.js`. The
-`html-static` and `md-render` example commands are fine.*)
+**Recommendation (partly shipped):** keep both pipelines, and have the batch renderer stop carrying
+its own compiler. As of the legacy-removal plan's Phase 3 the *sources* have converged from the
+editor's side — a migrated clip arrives at the batch renderer as css-without-keyframes plus a
+compiled `onFrame`, and `cdp-capture.js` seeks with it — so the compile step now happens once, in
+the editor, and the shim is only carried for a pre-migration page. See
+[LEGACY-CLIP-REMOVAL-PLAN.md §H](LEGACY-CLIP-REMOVAL-PLAN.md).
+
+**The folder question has its own plan:** [automation/HTML-IN-CANVAS-PIPELINE-PLAN.md](automation/HTML-IN-CANVAS-PIPELINE-PLAN.md)
+replaces **both** CLIs with one `automation/html-in-canvas/` — they are the same editor client twice
+over (168 identical lines, `launch`/`export`/`execute` included), and after Phase 3 the only thing
+left to choose between them is the export strategy: CDP screenshots (deterministic) or the editor's
+own pump (the only automated test of it).
+
+*(Doc bugs found while checking, and what happened to them: `automation/README.md:23` documented
+`node html-waapi/render.js html-waapi/examples/animated-slide.js`, but that file never existed —
+the folder holds `animated-pollution.js`, `google-clean-test.js`, `waapi-test.js`. **Fixed** during
+the P1 rename. Two more in the same file were fixed at the same time: `:151–152` listed
+`html-static/skills/` and `html-waapi/skills/`, neither of which exists (the skills are in
+`automation/shared/skills/`), and `:142` still documents `node batch.js html-static/examples/*.js`,
+which **cannot work** — `batch.js:148` routes only `md-render/render.js`. That one is still open.
+The `md-render` example commands are fine.)*
 
 ### 7.2 `future-waapi/` — superseded, with one idea worth lifting
 

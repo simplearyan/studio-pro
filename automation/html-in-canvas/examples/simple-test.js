@@ -3,6 +3,10 @@
  * 
  * Creates a 5-second video with one HTML clip.
  * Used for testing automation, measuring timing, and identifying issues.
+ *
+ * Usage (from automation/):
+ *   node html-in-canvas/render.js html-in-canvas/examples/simple-test.js
+ *   node html-in-canvas/render.js html-in-canvas/examples/simple-test.js -m editor -e ftrt
  */
 
 module.exports = function(StudioPro, State) {

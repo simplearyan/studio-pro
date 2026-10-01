@@ -115,7 +115,7 @@ StudioPro.keyframes(clips[2], {
 ### Step 4: Export
 
 ```bash
-node render.js my-kinetic-text.js
+node html-in-canvas/render.js html-in-canvas/examples/my-kinetic-text.js
 ```
 
 ---

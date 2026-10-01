@@ -1,7 +1,8 @@
 # Studio Pro — Automation Layer
 
-> Render videos from the terminal using **Markdown → Video**, **HTML Static → Video**, or **HTML Animated → Video**.
-> Three pipelines: write Markdown for simple videos, HTML clips for static content, or WAAPI-animated clips for motion graphics.
+> Render videos from the terminal: **Markdown → Video**, or **HTML-in-Canvas → Video**.
+> Two pipelines. Write Markdown for simple videos; write a JS composition for anything that
+> needs designed HTML/CSS/JS, with two export strategies behind one command.
 
 ## Quick Start
 
@@ -16,20 +17,33 @@ npm install
 # Markdown → Video
 node md-render/render.js md-render/scripts/product-launch.md
 
-# HTML Static → Video
-node html-static/render.js html-static/examples/product-launch.js
+# HTML-in-Canvas → Video
+node html-in-canvas/render.js html-in-canvas/examples/simple-test.js
 
-# HTML Animated → Video (future)
-node html-waapi/render.js html-waapi/examples/animated-slide.js
+# …or let the editor's own export pump render it instead
+node html-in-canvas/render.js html-in-canvas/examples/simple-test.js -m editor -e ftrt
 ```
 
-## Three Automation Pipelines
+## Two Automation Pipelines
 
 | Pipeline | Input | Command | Best For |
 |---|---|---|---|
-| **md-render** | `.md` files | `node md-render/render.js scripts/file.md` | Simple videos, explainers, social posts |
-| **html-static** | `.js` files | `node html-static/render.js examples/file.js` | Complex HTML clip compositions, AI agents |
-| **html-waapi** | `.js` files | `node html-waapi/render.js examples/file.js` | Animated HTML clips with WAAPI, motion graphics |
+| **md-render** | `.md` files | `node md-render/render.js md-render/scripts/file.md` | Simple videos, explainers, social posts |
+| **html-in-canvas** | `.js` files | `node html-in-canvas/render.js html-in-canvas/examples/file.js` | Designed HTML/CSS/JS compositions, motion graphics, AI agents |
+
+`html-in-canvas` replaced the `html-static` and `html-waapi` pipelines, and both old folders have
+been deleted (see
+[../docs/automation/HTML-IN-CANVAS-PIPELINE-PLAN.md](../docs/automation/HTML-IN-CANVAS-PIPELINE-PLAN.md)).
+
+**Two export strategies, one command:**
+
+| Flag | Strategy |
+|---|---|
+| `-m cdp` *(default)* | Standalone page per clip + CDP screenshots + ffmpeg. Deterministic: the same frame index gives the same pixels across runs. |
+| `-m editor` | Drive the running editor and let its own export pump render. `-e mediabunny` *(default)*, `-e ftrt`, or `-e standard`. |
+
+The old mode names still work and are mapped, with a warning: `-m gui` / `-m mediabunny` →
+`-m editor -e mediabunny`, `-m ftrt` → `-m editor -e ftrt`, `-m standard` → `-m editor -e standard`.
 
 ## Folder Structure
 
@@ -50,33 +64,21 @@ automation/
 │   │   └── social-short.md
 │   └── output/                  # Rendered videos
 │
-├── html-static/                 # Pipeline 2: HTML Clips → Video (static)
-│   ├── api.js                   # Node.js Puppeteer API
-│   ├── render.js                # CLI entry point
+├── html-in-canvas/              # Pipeline 2: HTML-in-Canvas → Video
+│   ├── render.js                # CLI entry point — --mode cdp|editor
+│   ├── api.js                   # Editor client (used by --mode editor)
+│   ├── cdp-capture.js           # Standalone page + CDP screenshots (--mode cdp)
 │   ├── examples/                # Composition scripts
 │   │   ├── india-pollution.js
 │   │   ├── kinetic-text.js
-│   │   ├── product-launch.js
 │   │   ├── simple-test.js
-│   │   └── social-reel.js
+│   │   ├── social-reel.js
+│   │   └── …
 │   ├── templates/               # Reusable HTML/CSS/JS
 │   │   ├── design-tokens.md
 │   │   ├── glassmorphism.html
 │   │   ├── gradient-card.html
 │   │   └── premium-gradient.html
-│   ├── skills/                  # (moved to shared/skills/)
-│   └── output/                  # Rendered videos
-│
-├── html-waapi/                  # Pipeline 3: HTML Clips → Video (animated)
-│   ├── lib/
-│   │   ├── waapi-seek.js        # WAAPI seek engine (deterministic)
-│   │   ├── data-animate-adapter.js  # data-animate → WAAPI
-│   │   └── svg-renderer.js      # SVG foreignObject capture
-│   ├── templates/               # Animated HTML templates
-│   │   ├── animated-slide.html
-│   │   └── data-animate-slide.html
-│   ├── examples/                # Animated compositions
-│   ├── skills/                  # Agent skills for animated clips
 │   └── output/                  # Rendered videos
 │
 ├── shared/                      # Shared across all pipelines
@@ -104,15 +106,16 @@ automation/
 
 ## Pipeline Comparison
 
-| Feature | md-render | html-static | html-waapi |
-|---|---|---|---|
-| **Input format** | Markdown | JavaScript (StudioPro API) | JavaScript + data-animate |
-| **HTML clips** | ❌ No | ✅ Static | ✅ Animated (WAAPI) |
-| **Animation** | ❌ No | ⚠️ Custom animate(t) | ✅ CSS keyframes + WAAPI |
-| **AI agent effort** | Write markdown | Write JS composition | Write data-animate HTML |
-| **Rendering** | html2canvas | html2canvas | html2canvas + WAAPI seek |
-| **Export modes** | FTRT, MediaBunny | FTRT, MediaBunny | FTRT, MediaBunny |
-| **Status** | ✅ Working | ✅ Working | 🔬 In development |
+| Feature | md-render | html-in-canvas |
+|---|---|---|
+| **Input format** | Markdown | JavaScript (StudioPro API) |
+| **Clip type** | text/shape/image/math | HTML-in-Canvas (`type: 'hic'`) |
+| **HTML clips** | ❌ No | ✅ Yes |
+| **Animation** | ❌ No | ✅ One deterministic `onFrame(t)`; CSS `@keyframes` are compiled into it |
+| **AI agent effort** | Write markdown | Write a JS composition |
+| **Rendering** | the editor's export pump | `-m cdp`: CDP screenshots + ffmpeg, or `-m editor`: the editor's export pump |
+| **Export modes** | FTRT, MediaBunny | cdp (default) · editor + mediabunny/ftrt/standard |
+| **Status** | ✅ Working | ✅ Working |
 
 ## Features
 
@@ -135,12 +138,13 @@ automation/
 ### Batch Rendering
 
 ```bash
-# Render all markdown scripts
+# `batch.js` currently routes ONLY md-render (batch.js:148); there is no
+# batch input for HTML-in-Canvas compositions — shell a loop of render.js calls.
 node batch.js md-render/scripts/*.md
-
-# Render all HTML compositions
-node batch.js html-static/examples/*.js
 ```
+
+Batching HTML-in-Canvas compositions means shelling a loop of `render.js` calls; wiring
+`batch.js` for a second input type is an open item.
 
 ## AI Agent Integration
 
@@ -148,31 +152,43 @@ Each pipeline has its own `skills/` folder with agent workflows:
 
 - **shared/skills/AGENTS.md** — Master contract for all agents
 - **shared/skills/html2canvas-gotchas.md** — Known html2canvas limitations
-- **html-static/skills/** — Static HTML clip agent guides
-- **html-waapi/skills/** — Animated HTML clip agent guides
+- **shared/skills/** — the skill docs themselves (`kinetic-text.md`, `product-launch.md`,
+  `social-reel.md`). Neither pipeline has its own `skills/` folder.
 
 ### Writing Compositions
 
-**Static (html-static):**
 ```javascript
-StudioPro.project({ name: 'My Video', width: 1920, height: 1080, fps: 30 });
-StudioPro.addHtmlClip({
-    html: '<h1>Hello World</h1>',
-    css: 'h1 { color: white; font-size: 72px; }',
-    start: 0, duration: 5
-});
+module.exports = function(StudioPro, State) {
+    StudioPro.fonts.loadGoogle('Poppins');
+
+    StudioPro.createComposition({
+        id: 'my-video',
+        duration: 10,
+        clips: [
+            StudioPro.html(
+                '<div class="card"><h1>Hello World</h1></div>',
+                '.card { background: linear-gradient(135deg, #667eea, #764ba2); }',
+                '',                                             // js: onFrame(t)
+                { start: 0, duration: 5, fonts: ['Poppins'] }
+            ),
+            StudioPro.text('10× Faster', { start: 5, duration: 5 })
+        ]
+    });
+
+    // Animations are applied to the created clips.
+    StudioPro.keyframes(State.clips[0], {
+        opacity: [{ frame: 0, value: 0 }, { frame: 15, value: 100 }]
+    });
+};
 ```
 
-**Animated (html-waapi):**
-```javascript
-StudioPro.project({ name: 'My Video', width: 1920, height: 1080, fps: 30 });
-StudioPro.addHtmlClip({
-    html: '<h1 data-animate="fade-in" data-delay="0.2s">Hello World</h1>',
-    css: 'h1 { color: white; font-size: 72px; }',
-    start: 0, duration: 5,
-    animated: true  // Enable WAAPI seek
-});
-```
+> An earlier revision of this section documented `StudioPro.addHtmlClip({ … animated: true })` and
+> `data-animate` attributes. **Neither exists** — `addHtmlClip` was never a method on
+> `window.StudioPro` (`createHtmlClip`/`createComposition` are), and `data-animate` was a prototype
+> in `future-waapi/` that nothing ever imported. The version above is the real API; see
+> `shared/skills/AGENTS.md` for the full reference. Note that a bare `StudioPro.html(...)` clip is
+> a static HTML-in-Canvas clip — to animate it, either give it a `js` `onFrame(t)` or put CSS
+> `@keyframes` in its `css` (the editor compiles them).
 
 ## Prerequisites
 
@@ -188,8 +204,8 @@ StudioPro.addHtmlClip({
 
 **Blank frames in export:**
 - Ensure dev server is Vite (`npm run dev`), not `http-server`
-- Check console for html2canvas errors
-- Try `--mode mediabunny` instead of `--mode ftrt`
+- Check the console for HIC render errors (`[HIC] JS error: …` means the clip's `onFrame` threw)
+- In `-m editor`, try `-e mediabunny` instead of `-e ftrt` — FTRT is realtime and can stall
 
 **Fonts missing in export:**
 - Use `StudioPro.fonts.loadGoogle("Font Name")` in composition

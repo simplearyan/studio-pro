@@ -5,7 +5,7 @@
  * Each scene uses @keyframes instead of custom animate(t) functions.
  * 
  * Usage:
- *   node html-waapi/render.js examples/animated-pollution.js
+ *   node html-in-canvas/render.js html-in-canvas/examples/animated-pollution.js
  * 
  * How it works:
  *   1. HTML clips contain CSS @keyframes animations

@@ -10924,17 +10924,19 @@
             },
             /** Create a new HTML clip with code and add to timeline */
             createHtmlClip: (html = '', css = '', js = '', options = {}) => {
-                const clip = createClipBase('html');
-                clip.html = html;
-                clip.css = css;
-                clip.js = js;
-                clip.fonts = options.fonts || [];
-                if (options.trackId) clip.trackId = options.trackId;
-                if (options.start !== undefined) clip.start = options.start;
-                if (options.duration) clip.duration = options.duration;
-                if (options.x !== undefined) clip.effects.offsetX = options.x;
-                if (options.y !== undefined) clip.effects.offsetY = options.y;
-                if (options.scale !== undefined) clip.effects.scale = options.scale;
+                // Routed through _createClipFromDef so this returns exactly the
+                // clip createComposition() would build — an HTML-in-Canvas clip.
+                // (It used to call a `createClipBase` that is not defined
+                // anywhere in this file, so this path always threw.)
+                const eff = {};
+                if (options.x !== undefined) eff.offsetX = options.x;
+                if (options.y !== undefined) eff.offsetY = options.y;
+                if (options.scale !== undefined) eff.scale = options.scale;
+                const clip = StudioPro._createClipFromDef(Object.assign({
+                    type: 'html', html, css, js,
+                    effects: eff
+                }, options));
+                if (!clip) return null;
                 State.clips.push(clip);
                 needsCanvasRedraw = true;
                 drawCanvas();
@@ -11001,7 +11003,7 @@
                 ...options
             }),
 
-            /** Create an HTML clip definition */
+            /** Create an HTML clip definition (built as an HTML-in-Canvas clip) */
             html: (html, css = '', js = '', options = {}) => ({
                 type: 'html',
                 html, css, js,
@@ -11044,7 +11046,12 @@
 
             // ── M7: Internal clip factory ────────────────────────────────────
             _createClipFromDef: (def) => {
-                const type = def.type || 'text';
+                // `html` stays the authoring alias, but it now builds an
+                // HTML-in-Canvas clip (Phase 3 of docs/LEGACY-CLIP-REMOVAL-PLAN.md).
+                // Without this the alias would be the last remaining way to
+                // create a legacy `type: 'html'` clip.
+                const labelType = def.type || 'text';
+                const type = (labelType === 'html') ? 'hic' : labelType;
                 const trackType = (type === 'audio') ? 'audio' : 'video';
 
                 // Find or create a track
@@ -11079,7 +11086,7 @@
                     trackId: trackId,
                     colorIndex: clipColor,
                     type: type,
-                    title: def.title || (type.charAt(0).toUpperCase() + type.slice(1) + ' Clip'),
+                    title: def.title || (labelType.charAt(0).toUpperCase() + labelType.slice(1) + ' Clip'),
                     start: startTime,
                     duration: duration,
                     effects: {
@@ -11110,15 +11117,18 @@
 
                 // Type-specific properties
                 switch (type) {
-                    case 'html':
-                        baseClip.html = def.html || '';
-                        baseClip.css = def.css || '';
-                        baseClip.js = def.js || '';
+                    case 'hic': {
+                        // Same conversion the load migration uses, so an
+                        // agent-authored clip and a migrated one are identical.
+                        const conv = htmlToHicCode(def.html, def.css, def.js, State.fps || 30);
+                        baseClip.html = conv.html;
+                        baseClip.css = conv.css;
+                        baseClip.js = conv.js;
                         baseClip.fonts = def.fonts || [];
-                        baseClip.renderWidth = 1920;
-                        baseClip.renderHeight = 1080;
-                        baseClip.backgroundColor = 'transparent';
+                        baseClip.presetId = null;
+                        baseClip._hicSig = '';
                         break;
+                    }
 
                     case 'text':
                         baseClip.text = def.text || '';
@@ -27272,6 +27282,93 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             });
         })();
 
+        // ── Legacy HTML → HTML-in-Canvas: the ONE conversion ─────────────────
+        // Both callers below (the load migration and the StudioPro agent API)
+        // go through here, so they can never disagree about what a legacy
+        // `type: 'html'` clip becomes.
+        //
+        // The engine did not change the picture, only the rasterizer: the legacy
+        // path captured a LIVE iframe with html2canvas, HIC serialises the same
+        // markup into an SVG `foreignObject`. So html always survives untouched.
+        // The one thing that cannot survive is CSS animation — a live iframe runs
+        // `@keyframes` and `document.getAnimations()` can seek them, but a detached
+        // foreignObject never applies the stylesheet, so there is nothing to seek.
+        // `compileKeyframes` is what replaces it: a deterministic `onFrame(t)`.
+        function htmlToHicCode(html, css, js, fps) {
+            var out = { html: html || '', css: css || '', js: js || '' };
+            var A = window.WAAPIAdapter;
+            if (!A || typeof A.compileKeyframes !== 'function') return out;
+            // An author's own `onFrame` is already deterministic and wins — same
+            // rule the adapter uses (WAAPIAdapter.wrapWithWAAPI).
+            if (A.hasOnFrame(out.js)) return out;
+            if (!A.hasKeyframes(out.css)) return out;
+            var compiled = A.compileKeyframes(out.css, fps || 30);
+            if (!compiled || !compiled.animations || !compiled.animations.length) return out;
+            // Take BOTH halves. `compiled.css` is the stylesheet with the consumed
+            // `@keyframes` and their `animation:` declarations stripped — that half
+            // matters: the adapter writes interpolated values as INLINE styles, and
+            // a still-running `animation:` would otherwise win the cascade in the
+            // live-preview paths (the docs pages raster HIC in a real DOM).
+            out.css = compiled.css;
+            out.js = compiled.js;
+            return out;
+        }
+
+        // ── Phase 3: migrate legacy `type: 'html'` clips to HIC on load ───────
+        // Called from applyProject — the single choke point every restore path
+        // funnels through (localStorage autosave, .json file, .spcomp import,
+        // project switch), so no load path can miss it.
+        //
+        // Idempotent twice over: the clip stops being `type: 'html'`, and
+        // `_migratedFrom` records the conversion explicitly (it is not in
+        // PROJECT_RUNTIME_FIELDS, so it survives save/reload). Saving and loading
+        // a migrated project therefore cannot re-migrate or double-compile a clip.
+        //
+        // Behaviour-preserving by construction:
+        //   - a clip with `@keyframes` keeps its animation, compiled into onFrame;
+        //   - a clip with its own `onFrame` keeps that function verbatim;
+        //   - a clip with neither was already a static html2canvas capture, and
+        //     becomes a static HIC clip — the same picture, ~30x cheaper.
+        function migrateLegacyHtmlClips(clips) {
+            if (!Array.isArray(clips)) return 0;
+            var n = 0, compiled = 0;
+            clips.forEach(function(clip) {
+                if (!clip || clip.type !== 'html' || clip._migratedFrom) return;
+                var conv = htmlToHicCode(clip.html, clip.css, clip.js, State.fps || 30);
+                if (conv.js !== (clip.js || '') && conv.js) compiled++;
+                clip.html = conv.html;
+                clip.css = conv.css;
+                clip.js = conv.js;
+                clip.type = 'hic';
+                clip.presetId = clip.presetId || null;
+                // Drop every legacy session/frame cache. The iframe and the
+                // html2canvas raster are dead, and `renderWidth/renderHeight`
+                // were the html2canvas capture size — HIC renders at canvas
+                // resolution instead, so they are ignored, not deleted (a
+                // downgrade still wants them).
+                delete clip._isWaaapi;
+                delete clip._htmlIframe;
+                delete clip._htmlCanvas;
+                delete clip._htmlReady;
+                delete clip._htmlNeedsRefresh;
+                delete clip._htmlSig;
+                delete clip._htmlRendering;
+                delete clip._htmlContentWritten;
+                delete clip._waapiContentWritten;
+                // Force a fresh HIC raster at the clip's current size.
+                delete clip._hicR;
+                delete clip._lastHicFrameSig;
+                clip._hicSig = '';
+                clip._migratedFrom = 'html';
+                n++;
+            });
+            if (n) {
+                console.log('[HIC] Migrated ' + n + ' legacy HTML clip(s) → HTML-in-Canvas'
+                    + (compiled ? ' (' + compiled + ' with compiled keyframes)' : ''));
+            }
+            return n;
+        }
+
         // ── Add HIC Clip to Timeline ────────────────────────────────────────
         window.addHicClipToTimeline = function(presetKey) {
             let targetTrackId = getAvailableTrack('video', State.currentTime, 5);
@@ -33816,6 +33913,11 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             }
 
             State.clips = (Array.isArray(data.clips) ? data.clips : []).map(restoreClip).filter(Boolean);
+            // Phase 3: legacy `type: 'html'` clips become HTML-in-Canvas here, so
+            // `preRenderAllHtmlClips` below has nothing left to capture and every
+            // migrated clip is pre-rendered by preRenderAllHicClips instead.
+            // See docs/LEGACY-CLIP-REMOVAL-PLAN.md §G/§H.
+            migrateLegacyHtmlClips(State.clips);
             State.subtitles = Array.isArray(data.subtitles) ? data.subtitles : [];
             if (data.subtitleConfig) State.subtitleConfig = Object.assign({}, State.subtitleConfig, data.subtitleConfig);
             if (data.markdownConfig) State.markdownConfig = Object.assign({}, State.markdownConfig, data.markdownConfig);

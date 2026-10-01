@@ -120,7 +120,7 @@ StudioPro.keyframes(clips[2], {
 ### Step 4: Export
 
 ```bash
-node render.js my-product-launch.js
+node html-in-canvas/render.js html-in-canvas/examples/my-product-launch.js
 ```
 
 ---

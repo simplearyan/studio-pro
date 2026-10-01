@@ -6,6 +6,9 @@
  * highlight text, emojis, stickers, multiple HTML clips.
  * 
  * Duration: 45 seconds (9 scenes × 5s each)
+ *
+ * Usage (from automation/):
+ *   node html-in-canvas/render.js html-in-canvas/examples/india-pollution.js
  */
 
 module.exports = function(StudioPro, State) {

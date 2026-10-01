@@ -103,7 +103,7 @@ StudioPro.keyframes(clips[2], {
 ### Step 4: Export
 
 ```bash
-node render.js my-reel.js
+node html-in-canvas/render.js html-in-canvas/examples/my-reel.js
 ```
 
 ---

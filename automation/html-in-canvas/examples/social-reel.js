@@ -7,8 +7,8 @@
  * - Quick cuts between scenes
  * 
  * Usage:
- *   node render.js examples/social-reel.js
- *   node render.js examples/social-reel.js reel.mp4 --format webm
+ *   node html-in-canvas/render.js html-in-canvas/examples/social-reel.js
+ *   node html-in-canvas/render.js html-in-canvas/examples/social-reel.js reel.mp4 --format webm
  */
 
 module.exports = function(StudioPro, State) {

@@ -1,6 +1,6 @@
 # Legacy clip authoring: removal plan + `future-waapi/` verdict
 
-**Status:** **Part A and Phases 1–2 executed** — see §A.4, §E and §F. Phases 3–4 are still plan-only.
+**Status:** **Part A and Phases 1–2 executed** — see §A.4, §E, §F and the §G audit. Phases 0, 3 and 4 are still plan-only.
 **Companion to:** [HTML-ENGINE-CONSOLIDATION-PLAN.md](HTML-ENGINE-CONSOLIDATION-PLAN.md) — that
 plan did Phases 1–2 (the WAAPI compiler); this one is the *execution* detail for its Phase 3–4
 plus a direct answer on `future-waapi/`.
@@ -140,7 +140,7 @@ So removing the WAAPI button + its filter category also removes: the example loa
 `waaapi_loadExample` tile, and `addWaaapiClipToTimeline` (after repointing the loader or deleting
 it). `_applyWaaapiPreset` (26831) dies with the HTML card.
 
-### B.3 The one real gap to close first
+### B.3 The one real gap to close first — **closed by Phase 2 (§F)**
 
 `addHtmlClipToTimeline` is today the **only way to start from a blank HTML clip**. Every HIC entry
 point is preset-driven: `addHicClipToTimeline(presetKey)` falls back to `googleClean` when the key
@@ -230,9 +230,14 @@ The mapping is behaviour-preserving by construction:
 This is the *eager* version of the in-place migration already implemented in `applyHicPreset`
 (27330–27343); this phase runs it on load instead of on first edit.
 
+**Same-release obligation:** the two automation CLIs preload clips through the API this phase
+retires, so the port in §B.6 must ship *with* Phase 3 — a phase later is a broken release.
+**Discharged — see §H.**
+
 **Verify (the Phase 0 gate, now mandatory):** the fixture loads, renders, exports, and re-saves
 identical; a clip with `_migratedFrom` set is not migrated again; no `type: 'html'` clip remains in
-`State.clips` after load.
+`State.clips` after load; **and one example from each `automation/` pipeline still renders** (§B.6).
+**Executed as far as it could be — see §H.4 and §H.6.**
 
 #### Phase 4 — Delete the dead engine
 
@@ -240,7 +245,9 @@ Only after Phase 3 has shipped and the fixture passes end-to-end:
 
 - the html2canvas branch in `drawCanvas` (5818, 6877–6921) and the iframe-overlay path
   (8233, 8321–8334);
-- `preRenderHtmlClip` (26948–27027) and `preRenderAllHtmlClips` (27015);
+- `preRenderHtmlClip` (26948–27027) and, **only once `automation/html-static/api.js:263` has been
+  repointed at `preRenderAllHicClips` (§B.6 — that port ships with Phase 3)**, `preRenderAllHtmlClips`
+  (27015);
 - the two `_needsHtmlWait` scans in the export pumps (37916, 38517);
 - `addHtmlClipToTimeline` (27071) and `#htmlEditorModal` markup + JS (137–180, 26841–26947) and the
   two sidebar HTML cards (15386, 15618) + nav item (15478) + `_applyWaaapiPreset` buttons
@@ -253,19 +260,82 @@ Only after Phase 3 has shipped and the fixture passes end-to-end:
 **Result:** one HTML engine; ~800 lines of inline render/UI code and the two legacy buttons gone;
 198 KB off the initial load and the precache; no per-frame capture penalty in export.
 **Verify:** re-run the export-speed comparison against the Phase 0 baseline; precache entry count
-drops; the fixture still round-trips.
+drops; the fixture still round-trips; and both `automation/` pipelines still produce a video (§B.6).
 
 ### B.5 What NOT to touch
 
 - **`src/engines/hic/adapters/waapi.js`** — the live compiler. Do not delete it with the buttons;
   it is what the ported presets are compiled by.
-- **`automation/html-static/`, `automation/html-waapi/`, `automation/md-render/`** — separate Node
-  tools under their own `package.json`, importing nothing under `src/`. `automation/html-waapi/api.js:188`
-  reads `_isWaaapi` from a page it drives, so **Phase 4 must not break that CLI** — check it (or
-  have it read `type === 'hic'`) before deleting the flag. It renders from a live page, so it is not
-  affected by the editor's UI at all.
+- **`automation/md-render/`** — a standalone Node tool under the shared `automation/package.json`,
+  importing nothing under `src/` and driving no editor global. Genuinely unaffected.
 - **`docs/html-in-canvas/hic-*.js`** — the shared layer the live docs pages depend on.
 - **`_archive/`** — a pre-existing backup folder; not part of this change.
+
+*(`automation/html-static/` and `automation/html-waapi/` used to be listed here as unaffected. They
+are not — see §B.6.)*
+
+### B.6 Correction: the `html-static` / `html-waapi` CLIs are NOT independent of the editor
+
+> **Renamed, then deleted since:** `automation/html-waapi/` is now **`automation/html-in-canvas/`**
+> (P1 of [HTML-IN-CANVAS-PIPELINE-PLAN.md](automation/HTML-IN-CANVAS-PIPELINE-PLAN.md)), and
+> `automation/html-static/` has since been **deleted** (P4 of the same plan). Paths in this section
+> and in §A.5/§H are as they were when those findings were recorded — nothing about the finding
+> changes, and the plan above supersedes the “port both” conclusion with “merge both, then delete”.
+
+This section replaces an earlier claim in §B.5 that `automation/` is untouched by these phases,
+based on `grep -rn "src/html-clips\|src/html-in-canvas\|src/engines" automation/` returning only
+prose. **That test was the wrong test.** The dependency is on the editor's *runtime globals*, not on
+its modules, so a module grep cannot find it.
+
+Both folders share one `automation/package.json` and one `automation/node_modules` (62 MB) — neither
+has its own, contrary to what an earlier draft of this document said.
+
+`automation/html-static/api.js` is a Puppeteer client of the **running editor**. It refuses to start
+unless it finds a Vite server (`api.js:96–120`), waits for `window.StudioPro` (`api.js:127`), and
+then:
+
+| What it calls | Where | Broken by |
+|---|---|---|
+| `window.preRenderAllHtmlClips()` | `api.js:263` | **Phase 4** deletes that function; the call sits inside a `typeof === 'function'` guard, so it fails **silently** |
+| `StudioPro.createHtmlClip()` → `createClipBase('html')` | `index.html:10926` | **Phase 3** migrates `type: 'html'` away — `preRenderAllHtmlClips` filters `c.type === 'html'`, so it would find **zero** clips and report success over a blank export |
+| `openExportModal()`, `exportSelectOption()`, `submitExport()`, `#exportProgressText`, `#ftrtFbOverlay`, `State.isExporting` | `api.js:171–236` | survives, but is a permanent coupling worth knowing about |
+
+The editor's side of that contract is deliberate and large: `window.StudioPro` is **460 lines**
+(`index.html:10872–11331` — `fonts`, `createHtmlClip`, `createComposition`, `project`, `text`,
+`html`, `image`, `video`, `audio`, `shape`, `scene`), and the **root** `package.json` carries a
+dedicated `"dev:automation": "vite --port 7000"` matching the `PORT_PRIORITY = [7000, 3000, 3001]`
+in `api.js:42`. `automation/html-waapi/api.js:188` likewise reads `c._isWaaapi`, which Phase 4 deletes.
+
+**Decision: keep the batch path and port it.** The port is a **Phase 3 obligation, not a Phase 4
+tidy-up** — the moment Phase 3 rewrites clip types, the old preload finds nothing to preload, and the
+failure is silent in the one code path nobody is watching.
+
+> **The silent-blank risk below was real, and is now fixed and measured.** A pre-merge editor-mode
+> baseline of `google-clean-test` (`automation/html-in-canvas/output/google-clean-test_ultra_30fps_
+> mediabunny_mp4.mp4`) is a valid, playable 5-second MP4 containing **four distinct states of a flat
+> grey field** — the failure this section predicted, shipped into an artifact nobody looked at. The
+> merged pipeline renders the same clip with 42 distinct states. Evidence and method:
+> [HTML-IN-CANVAS-PIPELINE-PLAN.md §12.4](automation/HTML-IN-CANVAS-PIPELINE-PLAN.md).
+
+1. ✅ **done (§H)** — `html-static/api.js:263` — `preloadHtmlClips()` calls `window.preRenderAllHicClips()`.
+2. ✅ **done (§H)** — `index.html` — `StudioPro.createHtmlClip()` builds `type: 'hic'` (it already took
+   `html`, `css`, `js`; it also needed `presetId: null` and the `_hicSig` reset the HIC path relies on).
+   The same normalisation now sits in `_createClipFromDef`, so `createComposition` + `html()` and the
+   whole def-based API are covered too.
+3. ✅ **done (§H)** — `html-waapi/api.js:188` — the `c._isWaaapi` filter becomes `c.type === 'hic'`.
+4. ⬜ **planned** — consolidate the two CLIs, or at least share the preload: they are one pipeline with
+   two strategies — 168 distinct lines of `html-static/api.js` (294) are byte-identical to
+   `html-waapi/api.js` (448), including all of `_detectPort`/`launch`/`execute`/`export`/`close`, and
+   the whole difference is which `preload*` runs. Keeping two copies after Phase 4 would re-create
+   exactly the duplication the HTML-engine consolidation just removed.
+   → **now has its own plan: [HTML-IN-CANVAS-PIPELINE-PLAN.md](automation/HTML-IN-CANVAS-PIPELINE-PLAN.md).**
+   It resolves this by absorbing **both** folders into one `automation/html-in-canvas/` — and its
+   P1–P4 are ordered **before** Phase 4 here, because these CLIs are the only end-to-end test of the
+   editor's HTML path and Phase 4 is the last change to it.
+5. 🟡 **partly done** — the standalone CDP seek path was run end-to-end in headless Chrome (§H.4); the
+   full `render.js` run (which needs a dev server on port 7000/3000/3001 and ffmpeg) was not. That
+   full run is now **P3** of [HTML-IN-CANVAS-PIPELINE-PLAN.md](automation/HTML-IN-CANVAS-PIPELINE-PLAN.md),
+   against the four MP4 baselines already in `automation/*/output/`.
 
 ---
 
@@ -277,6 +347,7 @@ drops; the fixture still round-trips.
 | Phase 2 (blank HIC + HTML button) | UI only; `addHtmlClipToTimeline` left dead | yes | pre-change project still renders |
 | Phase 3 (load migration) | **project load path — touches user data** | yes (guard is `_migratedFrom`), but must be exercised | round-trip fixture **required** |
 | Phase 4 (engine delete) | render + export paths; irreversible | no | Phase 3 shipped + baseline compared |
+| Phase 3/4 × `automation/` | two batch CLIs, silently — their preloads go quiet before they error | yes, but a blank export looks like success | one example from each pipeline renders (§B.6) |
 
 The only step that can lose user data is Phase 3, and it is idempotent-guarded and additive — it
 reads old fields into new ones and deletes only transient `_html*` cache fields. Phase 4 deletes
@@ -289,14 +360,16 @@ code that Phase 3 has already proven unreachable.
 1. **Part A** (independent): lift `data-animate` into the adapter, `git rm -r future-waapi/`.
    **Half done** — the folder is deleted (§A.4–A.5); the `expandDataAnimate` pre-pass is still
    open, and its reference implementation now survives only in `automation/html-waapi/lib/`.
-2. **Phase 0**: stand up the round-trip fixture; capture the export baseline.
-3. **Phase 1**: delete the WAAPI button + filter, resolve the example loader.
-4. **Phase 2**: add blank-HIC, delete the HTML button.
+2. **Phase 0**: stand up the round-trip fixture; capture the export baseline. **Still open — and now
+   it is the gate for two pipelines, not one (§B.6).**
+3. ✅ **Phase 1**: delete the WAAPI button + filter, resolve the example loader (§E).
+4. ✅ **Phase 2**: add blank-HIC, delete the HTML button (§F).
 5. **Phase 3**: ship the load migration; run the fixture on real pre-change projects for one release.
+   **Carries §B.6**: the two batch CLIs must be repointed in the same release or they go quiet.
 6. **Phase 4**: delete the engine, the modal, the cards, the flag, and the shim.
 
-Phases 1–2 are a single afternoon and are safe today. Phases 3–4 are gated on the fixture, not on
-courage.
+Phases 1–2 were a single afternoon and shipped. Phases 3–4 are gated on the fixture, not on courage —
+and since §B.6 they are also gated on the two `automation/` CLIs still rendering.
 
 ---
 
@@ -405,3 +478,182 @@ Two decisions worth naming:
   is what migrates them; the function stays dead weight until Phase 4.
 - **The legacy HTML code editor, the sidebar HTML cards and the html2canvas path are untouched.**
   They are now reachable only from a clip that already exists, which is exactly the Phase 3 problem.
+
+---
+
+## G. Status audit — verified against the tree, not this document
+
+When someone asks "are the phases done?", the answer has to come from the code, not from a plan that
+describes the work. This is that check: **search for the artifact each phase must leave behind.** A
+shipped phase leaves traces; an unshipped one leaves the old code standing.
+
+| Phase | Artifact it must leave | Found? | Evidence |
+|---|---|---|---|
+| Part A | `future-waapi/` gone | ✅ | folder absent on disk; removed in `a36f427` |
+| Phase 1 | no `#btnAddWaaapi`, no `waaapi` chip | ✅ | `btnAddWaaapi` has **zero** matches in `index.html`; chip list ends at HTML in Canvas |
+| Phase 2 | `#btnAddHtml` gone, blank entry point present | ✅ | 21 grid cards with *Blank* first; `#btnAddHic` titled *Add Blank HTML-in-Canvas Clip* |
+| **Phase 0** | round-trip fixture + export baseline | ⚠️ | the round trip was **executed**, but ad hoc in the browser — no committed fixture file, no recorded export baseline (§H.6) |
+| **Phase 3** | load-time migration | ✅ | `migrateLegacyHtmlClips` at `index.html:27332`, called from `applyProject` at `33920` — see §H *(was ❌ at the time of this audit)* |
+| **Phase 4** | the legacy engine gone | ❌ | every target still present — see §G.1 |
+
+Three commits exist on `main` (`4808621`, `00e64c4`, `a36f427`) and they cover Part A, Phase 1 and
+Phase 2. Phase 3 is implemented and verified but **uncommitted** (§H). Phase 4 has not been started,
+and Phase 0 was run without being written down as a fixture.
+
+### G.1 Phase 4's targets, still standing
+
+| Target | Where it still is |
+|---|---|
+| `html2canvas.min.js` | `src/html-clips/html2canvas.min.js`, **198,689 bytes**, still loaded at `index.html:113` |
+| html2canvas render branch | `index.html:6874–7070` |
+| iframe overlay path | `8232`, `8320`, `8333` |
+| `window.WAAPI_SEEK_ADAPTER` | `index.html:123` |
+| `#htmlEditorModal` | markup `136`; JS `26841`, `26869` |
+| `window.preRenderHtmlClip` | `26944` |
+| `window.preRenderAllHtmlClips` | `27010` — and still called by the editor itself at `33854` |
+| `window.addHtmlClipToTimeline` | `27067` |
+| `_isWaaapi` | live read sites at `5817`, `6876`, `6908`, `6920`, `8232`, `8320`, `8333`, `12823`, `16125`, `16133`, `16215`, `26946` |
+
+*Updated after Phase 3 (§H):* every target in §G.1 is still standing, so **Phase 4 is still fully
+intact as a body of work** — but `type: 'html'` is no longer a clip type the app can *create* or
+*load*. The remaining legacy code is now reached by nothing; that is precisely what makes Phase 4 a
+pure deletion instead of a migration.
+
+### G.2 What this means for `automation/`
+
+`automation/html-static` is the **only automated consumer of the path Phases 3 and 4 change** — the
+closest thing this repo has to an end-to-end test of it. That is an argument for repointing it
+during Phase 3 (done — §H.1), not for deleting it now.
+
+---
+
+## H. Phase 3 — what actually shipped
+
+Executed this turn, **uncommitted**. Five files: `index.html` (+123/−21 — the migration and the
+creation path), `automation/html-static/api.js` (+7/−4), `automation/html-waapi/api.js` (+27/−73),
+`automation/html-waapi/render.js` (+7/−3), `automation/html-waapi/cdp-capture.js` (+18/−1).
+
+### H.1 One conversion, two call sites
+
+There is now **exactly one** `type: 'html'` → `'hic'` conversion in the codebase,
+`htmlToHicCode(html, css, js, fps)` (`index.html:27280`). It is called from two places, and those two
+places are the only ways a legacy clip can reach the app:
+
+| Call site | Why it is there |
+|---|---|
+| `migrateLegacyHtmlClips(clips)` ← `applyProject()` | the **load** path — every saved project ever written |
+| `StudioPro._createClipFromDef()`, `case 'hic'` | the **creation** path — `createHtmlClip`, `createComposition`, `html()` |
+
+The rule it applies, in order — the same precedence `WAAPIAdapter.wrapWithWAAPI` already uses, so a
+migrated clip and an agent-authored one are indistinguishable:
+
+1. `hasOnFrame(js)` → return the clip **untouched**. An author's `onFrame` is already deterministic;
+   compiling keyframes on top of it would replace intent with inference.
+2. `!hasKeyframes(css)` → untouched. Nothing to compile; the clip was already a static capture.
+3. else `compileKeyframes(css, fps)` and take **both halves**: `compiled.js` (the `onFrame` that
+   writes interpolated values as inline styles) *and* `compiled.css` (the same stylesheet with the
+   consumed `@keyframes` and their `animation:` declarations stripped). The stripped half is
+   load-bearing, not cosmetic: a still-running `animation:` wins the cascade over the inline values
+   the adapter writes, and the docs pages raster HIC in a real DOM where CSS animations do apply.
+
+`applyProject` is not one load path among several — it is the choke point all of them funnel
+through (localStorage restore, `.json` import, `.spcomp`, project switch: call sites at 33689, 34102,
+34168, 35303/35307/35313). The migration sits immediately after `State.clips` is rebuilt at 33915,
+*before* the pre-render calls, so `preRenderAllHtmlClips` finds nothing to capture and
+`preRenderAllHicClips` does the work instead.
+
+Every legacy per-clip cache is dropped on the way across (`_isWaaapi`, `_htmlIframe`, `_htmlCanvas`,
+`_htmlReady`, `_htmlNeedsRefresh`, `_htmlSig`, `_htmlRendering`, `_htmlContentWritten`,
+`_waapiContentWritten`, `_hicR`, `_lastHicFrameSig`) — a migrated clip must not arrive with a raster
+that belongs to the engine it just left.
+
+### H.2 Idempotency is enforced twice over, not once
+
+`clip._migratedFrom = 'html'` is the explicit guard, and it is **not** in `PROJECT_RUNTIME_FIELDS`, so
+it is serialised and survives a save/reload. The second guard is structural: after migration the clip
+is no longer `type: 'html'`, and the predicate tests for that first. Either alone would do; together
+they mean a project can be loaded, saved, reloaded and loaded again without a second compile pass.
+
+### H.3 Three deliberate deviations from the §B.4 sketch
+
+1. **`WAAPIAdapter.expandDataAnimate` is not called.** §B.4's sketch writes
+   `clip.html = WAAPIAdapter.expandDataAnimate(clip.html)`. Part A deleted `future-waapi/` without
+   lifting that file (§A.5 records why the lift was not a prerequisite), and — the part that makes
+   this a *correct* omission rather than a shortcut — **no legacy HTML clip ever had
+   `data-animate` support**: the adapter lived in a folder nothing imported. Applying it now would
+   not preserve behaviour, it would invent it. The pointer to the only surviving copy
+   (`automation/html-waapi/lib/data-animate-adapter.js`) is in §A.5 and in
+   `HTML-ENGINE-CONSOLIDATION-PLAN.md` §7.2.
+2. **The creation path was closed too, not just the load path.** §B.4 only asked for a load-time
+   migration. That leaves `StudioPro.createHtmlClip()` and the whole `_createClipFromDef` API able to
+   mint fresh `type: 'html'` clips forever — which would make Phase 4's deletion reachable only in
+   theory, since a new legacy clip could appear at any time. One line in `_createClipFromDef`
+   (`type = labelType === 'html' ? 'hic' : labelType`) closes it, and it also fixed a latent bug: the
+   `html` case called a `createClipBase(...)` that **is not defined anywhere in `index.html`**, so
+   `createHtmlClip()` had been throwing on every call.
+3. **`renderWidth`/`renderHeight` are kept, not deleted.** They were the html2canvas capture size; HIC
+   renders at canvas resolution and ignores them. Deleting them would break a downgrade (open a
+   migrated project in an older build) for no gain, so they stay as inert data.
+
+### H.4 Verified
+
+Editor (dev server, `localhost:4345`): a three-clip legacy project built and pushed through
+`applyProject` — the real load path, not a unit call.
+
+| Clip | Input | Result |
+|---|---|---|
+| `leg_static` | static css, no js | `hic`, css verbatim (68), js `''` |
+| `leg_anim` | css with `@keyframes` + `animation:`, no js | `hic`, css stripped to 16 chars, js = 5,916-char compiled adapter |
+| `leg_author` | css with `@keyframes` **and** its own `onFrame` | `hic`, css verbatim (153), js verbatim (46) — author wins |
+
+- All three: `_migratedFrom === 'html'`, every `_html*` cache gone, `_hicR` rasterised afterwards.
+- **Round trip:** `serializeProject()` → `applyProject()` → `serializeProject()` → `applyProject()`. The
+  two loads are identical and the two clip arrays are **byte-identical**; the only top-level diff is
+  `savedAt`. No double compile (js length stays 5,916, not ~11.8 K).
+- **Real persistence:** the migrated project was autosaved, the page **reloaded**, and it came back
+  with the same three clips, the same lengths and **no second migration log**.
+- `State.clips.filter(c => c.type === 'html').length === 0`; `preRenderAllHtmlClips` would find 0;
+  the export pumps' `_needsHtmlWait` scan is false; zero console errors.
+- `StudioPro.createHtmlClip('<div>…', keyframedCss)` → `type: 'hic'`, `presetId` null, `_hicSig` set,
+  keyframes compiled; `StudioPro.createComposition({clips:[StudioPro.html(…)]})` likewise.
+- `npm run build` passes; `dist/index.html` 2,554.20 kB; precache still 90 entries.
+
+CLIs: `node --check` clean on all four files, then the seek path was exercised for real in headless
+Chrome (throwaway harness, since deleted). Two clips, 9 frames each, captured twice:
+
+| Clip | Animates | Frame-for-frame identical across two runs |
+|---|---|---|
+| migrated (`onFrame`, css stripped → driven **only** by the new `window.onFrame(ms)` branch) | ✅ 9/9 distinct | ✅ **yes** |
+| legacy (live `@keyframes` → driven by `getAnimations()`) | ✅ 9/9 distinct | ❌ **no** |
+
+### H.5 The finding worth keeping: the batch path got *more* deterministic, not less
+
+The `cdp-capture.js` change was written as a compatibility shim — "migrated clips lost their live CSS
+animations, so also call `onFrame`". The measurement says something better: the **migrated** clip is
+reproducible run-to-run and the **live-keyframes** clip is not. Once Phase 3 has converted a project,
+the batch renderer stops depending on animation phase at all. The seek adapter runs `getAnimations()`
+first and `onFrame(ms)` second by design, because the adapter writes inline styles and must win the
+cascade.
+
+For `render.js` (`cdp` mode) the repoint is therefore not a workaround at all: `extractClipData`
+now reads `type === 'hic'`, gets `css` already stripped and `js` already carrying `onFrame`, and
+hands both to a standalone page that seeks deterministically. Verified live: the editor exposes all
+three migrated clips to that filter with non-empty `html`/`css`/`js`.
+
+### H.6 Left open
+
+- **The CLIs were moved after this section was written.** `automation/html-waapi/` →
+  `automation/html-in-canvas/` (P1). The `/−` line counts above describe the tree as it was during
+  Phase 3; the file contents are unchanged.
+- **Phase 0 still has no committed fixture.** The round trip was run in the browser and the numbers
+  are above, but as an ad-hoc script, not a file the next person can re-run. Phase 4 changes the
+  render path itself, so it still wants the fixture — built, not remembered.
+- **No export-speed baseline was recorded** (that half of Phase 0 is untouched).
+- **Neither CLI was run end-to-end.** The repointed code paths were each exercised directly (seek in
+  headless Chrome; `preRenderAllHicClips` queuing; the filtered clip reads), but a full
+  `render.js examples/*.js` needs a dev server on port 7000/3000/3001 **and** ffmpeg, and neither was
+  started. The `-m gui` mode (`StudioProWAAPI.export`) is entirely unexercised.
+- **The two CLIs remain two CLIs** (§B.6 item 4).
+- `automation/html-waapi/api.js`'s `preloadWaaapiClips` was reduced from 82 lines of per-clip
+  offscreen-iframe construction to a call to `preRenderAllHicClips`. That is the right shape *if* the
+  GUI export still needs an explicit preload — worth confirming against the `-m gui` path above.

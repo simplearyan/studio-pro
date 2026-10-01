@@ -1,10 +1,24 @@
 #!/usr/bin/env node
 
 /**
- * StudioPro Code-to-Video API
- * 
- * Node.js wrapper that communicates with StudioPro via Puppeteer.
- * Allows AI agents to write entire videos programmatically.
+ * StudioPro editor client (Puppeteer)
+ *
+ * Drives the RUNNING editor: connects to its dev server, injects a composition
+ * script, pre-renders the clips, then asks the editor's own export pump for the
+ * finished video and writes the blob to disk. This is the `--mode editor`
+ * strategy of render.js; the `--mode cdp` strategy screenshots a standalone page
+ * per clip and never needs this client.
+ *
+ * The clips it drives are HTML-in-Canvas (`type: 'hic'`). Pre-rendering is
+ * therefore a single call into the editor (preRenderAllHicClips) — HIC
+ * rasterizes each clip inside drawCanvas and the export pump awaits it through
+ * waitForHicRenders. Nothing here builds a per-clip iframe or captures a frame
+ * itself; that ended with the html2canvas engine (docs/LEGACY-CLIP-REMOVAL-PLAN.md).
+ *
+ * The WAAPI seek shim and the SVG-foreignObject capture helper this client used
+ * to inject were removed in P4 of
+ * docs/automation/HTML-IN-CANVAS-PIPELINE-PLAN.md: after the Phase 3 migration no
+ * clip carries a live animation or an iframe, so both had nothing left to drive.
  */
 
 import puppeteer from 'puppeteer-core';
@@ -16,14 +30,15 @@ import { dirname } from 'path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Find Chrome path
+// ── Chrome detection ─────────────────────────────────────────────────────
+
 function findChrome() {
     if (process.env.CHROME_PATH) return process.env.CHROME_PATH;
     try {
         const configPath = path.join(__dirname, '..', 'config.json');
         if (fs.existsSync(configPath)) {
             const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-            if (config.chromePath && fs.existsSync(configPath)) return config.chromePath;
+            if (config.chromePath && fs.existsSync(config.chromePath)) return config.chromePath;
         }
     } catch (e) {}
     const commonPaths = [
@@ -38,23 +53,22 @@ function findChrome() {
 }
 
 const CHROME_PATH = findChrome();
-
-// Port priority: 7000 (automation) → 3000 (personal) → 3001 (backup)
 const PORT_PRIORITY = [7000, 3000, 3001];
 const USER_DATA_DIR = path.join(__dirname, '.chrome-profile');
 
-class StudioPro {
+// ── StudioPro editor client ──────────────────────────────────────────────
+
+class StudioProClient {
     constructor(options = {}) {
         this.browser = null;
         this.page = null;
-        this.url = options.url || process.env.STUDIO_PRO_URL || null; // null = auto-detect
+        this.url = options.url || process.env.STUDIO_PRO_URL || null;
         this.headless = options.headless !== false;
         this.timeout = options.timeout || 120000;
     }
 
-    /** Auto-detect available dev server port */
     async _detectPort() {
-        if (this.url) return; // User specified a URL
+        if (this.url) return;
         const http = await import('http');
         for (const port of PORT_PRIORITY) {
             const url = `http://localhost:${port}`;
@@ -71,8 +85,7 @@ class StudioPro {
         }
         throw new Error(
             `❌ No dev server found on ports ${PORT_PRIORITY.join(', ')}\n` +
-            `   Run: npm run dev          (personal, port 3000)\n` +
-            `   Run: npm run dev:automation (dedicated, port 7000)`
+            `   Run: npm run dev`
         );
     }
 
@@ -81,10 +94,9 @@ class StudioPro {
             throw new Error('Chrome not found. Set CHROME_PATH or check config.json');
         }
 
-        // Auto-detect dev server port if not specified
         await this._detectPort();
 
-        // Check dev server is running and is Vite (not http-server)
+        // Verify dev server is Vite
         const http = await import('http');
         const pageHtml = await new Promise((resolve, reject) => {
             http.default.get(this.url, (res) => {
@@ -94,21 +106,8 @@ class StudioPro {
             }).on('error', () => reject(new Error('not running'))).setTimeout(3000, function() { this.destroy(); reject(new Error('timeout')); });
         }).catch(() => null);
 
-        if (!pageHtml) {
-            throw new Error(`❌ Dev server not running at ${this.url}\n   Run: npm run dev`);
-        }
-
-        // Detect wrong server type (http-server shows directory listing)
-        if (pageHtml.includes('Index of /') || !pageHtml.includes('@vite/client')) {
-            throw new Error(
-                `❌ Wrong server detected! The page at ${this.url} is NOT served by Vite.\n\n` +
-                `   Your server is showing raw HTML without CSS/JS processing.\n` +
-                `   This causes: broken layout, missing Tailwind styles, export failures.\n\n` +
-                `   Fix:\n` +
-                `   1. Kill the current server\n` +
-                `   2. cd studio-pro-editor && npm run dev\n\n` +
-                `   NEVER use: npx http-server, npx serve, python -m http.server`
-            );
+        if (!pageHtml || !pageHtml.includes('@vite/client')) {
+            throw new Error(`❌ Wrong server at ${this.url}. Run: npm run dev`);
         }
         console.log(`[StudioPro] Dev server verified (Vite) at ${this.url}`);
 
@@ -126,6 +125,7 @@ class StudioPro {
         await this.page.goto(this.url, { waitUntil: 'domcontentloaded', timeout: this.timeout });
         await this.page.waitForFunction('window.StudioPro !== undefined', { timeout: this.timeout });
         console.log('[StudioPro] Connected successfully');
+        console.log('[StudioPro] Ready for composition');
     }
 
     async execute(scriptPath) {
@@ -160,6 +160,28 @@ class StudioPro {
         console.log('[StudioPro] Script executed successfully');
     }
 
+    /**
+     * Queue the editor's own HIC pre-render before exporting.
+     *
+     * The per-clip offscreen iframe this method used to build existed only because
+     * the legacy engine captured a LIVE page. A HIC clip rasterizes from a
+     * detached foreignObject and is never in the DOM, so there is no live page to
+     * build, seek or screenshot — the clip's compiled `onFrame` is the seek.
+     */
+    async preloadHtmlClips() {
+        console.log('[StudioPro] Pre-rendering HTML-in-Canvas clips...');
+        const startTime = Date.now();
+        const clipCount = await this.page.evaluate(() => {
+            const clips = (typeof State !== 'undefined' && State.clips)
+                ? State.clips.filter(c => c.type === 'hic' && !c.hidden)
+                : [];
+            if (typeof window.preRenderAllHicClips === 'function') window.preRenderAllHicClips();
+            return clips.length;
+        });
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        console.log(`[StudioPro] Queued ${clipCount} HIC clip(s) for render in ${elapsed}s`);
+    }
+
     async export(outputPath, options = {}) {
         const { quality = 'ultra', format = 'mp4', mode = 'mediabunny' } = options;
         const FORMAT_MAP = {
@@ -172,27 +194,21 @@ class StudioPro {
 
         console.log(`[StudioPro] Starting export (format: ${formatValue})...`);
 
-        // Step 1: Open modal + set radio values (matching working automation/render.js)
+        // Open export modal
         await this.page.evaluate((params) => {
             openExportModal();
-
             function setRadio(name, value) {
                 const radio = document.querySelector(`input[name="${name}"][value="${value}"]`);
-                if (radio) {
-                    radio.checked = true;
-                    radio.dispatchEvent(new Event('change', { bubbles: true }));
-                }
+                if (radio) { radio.checked = true; radio.dispatchEvent(new Event('change', { bubbles: true })); }
             }
-
             setRadio('exportFormat', params.formatValue);
             setRadio('exportScope', 'full');
             exportSelectOption();
         }, { formatValue });
 
-        // Step 2: Click Submit Export (separate evaluate — same as working render.js)
         await this.page.evaluate(() => submitExport());
 
-        // Step 3: Monitor progress
+        // Monitor progress
         console.log('[StudioPro] Waiting for export...');
         const exportStart = Date.now();
         let lastProgress = -1;
@@ -200,19 +216,17 @@ class StudioPro {
         while (true) {
             const status = await this.page.evaluate(() => ({
                 done: !State.isExporting,
-                progress: parseInt(document.getElementById('exportProgressText')?.textContent) || 0,
-                currentTime: State.currentTime || 0
+                progress: parseInt(document.getElementById('exportProgressText')?.textContent) || 0
             }));
-
             if (status.done) break;
 
-            // Check if FTRT stall modal appeared
+            // Auto-recover from FTRT stall
             const modalVisible = await this.page.evaluate(() => {
                 const el = document.getElementById('ftrtFbOverlay');
                 return el && !el.classList.contains('hidden');
             }).catch(() => false);
             if (modalVisible) {
-                console.log('\n[StudioPro] FTRT stall detected — switching to MediaBunny...');
+                console.log('\n[StudioPro] FTRT stall → switching to MediaBunny...');
                 await this.page.evaluate(() => {
                     const btn = document.getElementById('ftrtFbMediaBunny');
                     if (btn) btn.click();
@@ -225,12 +239,11 @@ class StudioPro {
                 lastProgress = p;
                 process.stdout.write(`\r   ⏳ ${p}% (${((Date.now() - exportStart) / 1000).toFixed(0)}s)`);
             }
-
             await new Promise(r => setTimeout(r, 500));
         }
         console.log(`\n[StudioPro] Export complete in ${((Date.now() - exportStart) / 1000).toFixed(1)}s`);
 
-        // Step 4: Capture blob
+        // Capture blob
         console.log('[StudioPro] Capturing export...');
         await new Promise(r => setTimeout(r, 1000));
 
@@ -257,20 +270,6 @@ class StudioPro {
         }
     }
 
-    async preloadHtmlClips() {
-        console.log('[StudioPro] Pre-rendering HTML clips...');
-        const startTime = Date.now();
-        // Call the editor's built-in preRenderAllHtmlClips() which handles
-        // iframe creation, content writing, font loading, and html2canvas capture
-        await this.page.evaluate(() => {
-            if (typeof window.preRenderAllHtmlClips === 'function') {
-                return window.preRenderAllHtmlClips();
-            }
-        });
-        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        console.log(`[StudioPro] HTML clips pre-rendered in ${elapsed}s`);
-    }
-
     async close() {
         if (this.browser) {
             await this.browser.close();
@@ -278,7 +277,6 @@ class StudioPro {
             this.page = null;
             console.log('[StudioPro] Browser closed');
         }
-        // Clean up Chrome profile (saves ~36MB disk per render)
         try {
             const fs = await import('fs');
             if (fs.default.existsSync(USER_DATA_DIR)) {
@@ -288,4 +286,4 @@ class StudioPro {
     }
 }
 
-export { StudioPro };
+export { StudioProClient };

@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 /**
- * CDP Frame Capture — Chrome DevTools Protocol screenshots for WAAPI clips
+ * CDP Frame Capture — Chrome DevTools Protocol screenshots for HTML-in-Canvas
+ * (HIC) clips
  * 
  * Instead of html2canvas (200-500ms/frame, limited CSS) or SVG foreignObject
  * (broken by browser security), this uses Puppeteer's page.screenshot() which
@@ -43,7 +44,7 @@ function findChrome() {
         const configPath = path.join(__dirname, '..', 'config.json');
         if (existsSync(configPath)) {
             const config = JSON.parse(readFileSync(configPath, 'utf-8'));
-            if (config.chromePath && existsSync(configPath)) return config.chromePath;
+            if (config.chromePath && existsSync(config.chromePath)) return config.chromePath;
         }
     } catch (e) {}
     const commonPaths = [
@@ -56,7 +57,16 @@ function findChrome() {
     return null;
 }
 
-// ── WAAPI Seek Adapter (injected into standalone page) ───────────────────
+// ── Seek Adapter (injected into standalone page) ─────────────────────────
+//
+// One seek model: `window.onFrame(ms)` — the HTML-in-Canvas model. A clip's
+// @keyframes are compiled into a deterministic onFrame (and stripped from the
+// css) by the editor's WAAPI→HIC adapter, so the compiled function is the only
+// thing that can position a frame.
+//
+// The `document.getAnimations()` branch that used to run first was removed in
+// P4 of docs/automation/HTML-IN-CANVAS-PIPELINE-PLAN.md — no clip in the repo
+// can hold a live-keyframes animation any more, so it had nothing to drive.
 
 const SEEK_ADAPTER = `
 <script>
@@ -66,11 +76,7 @@ const SEEK_ADAPTER = `
         var fps = framesPerSec || 30;
         var ms = (frame / fps) * 1000;
         try {
-            var animations = document.getAnimations({ subtree: true });
-            for (var i = 0; i < animations.length; i++) {
-                animations[i].currentTime = ms;
-                animations[i].pause();
-            }
+            if (typeof window.onFrame === 'function') window.onFrame(ms);
         } catch(e) {}
         try {
             document.documentElement.style.setProperty('--frame', frame);
@@ -212,7 +218,7 @@ function generateStandalonePage(clip, options = {}) {
 // ── CDP Frame Capture ────────────────────────────────────────────────────
 
 /**
- * Capture all frames of a WAAPI clip using CDP screenshots.
+ * Capture all frames of a HTML-in-Canvas clip using CDP screenshots.
  * 
  * @param {Object} clip - Clip data with html, css, js, fonts, duration
  * @param {Object} options - { fps, width, height, outputDir, browser, verbose }
