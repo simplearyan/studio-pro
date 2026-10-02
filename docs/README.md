@@ -65,7 +65,8 @@
 | [M1-FTRT-Export-Plan.md](./hyperframes/M1-FTRT-Export-Plan.md) | FTRT export plan |
 | [M3-Spcomp-Spec.md](./hyperframes/M3-Spcomp-Spec.md) | .spcomp format |
 | [M5-AI-Panel-Spec.md](./hyperframes/M5-AI-Panel-Spec.md) | AI panel |
-| [Studio-Reel-Plan.md](./hyperframes/Studio-Reel-Plan.md) | Design.md + Frame.md + Storyboard.md → Storyboard.html film generator, "Studio Reel" (plan) |
+| [Studio-Reel-Plan.md](./hyperframes/Studio-Reel-Plan.md) | Design.md + Frame.md + Storyboard.md → Storyboard.html film generator, "Studio Reel" (design) |
+| [Studio-Reel-Roadmap.md](./hyperframes/Studio-Reel-Roadmap.md) | Studio Reel feature roadmap — Studio Pro analysis, gaps, phases R0–R8, feature tracker (plan) |
 
 ### 📊 Analysis
 **[hyperframes/](./hyperframes/)** — Comparison and analysis

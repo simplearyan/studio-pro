@@ -3,6 +3,9 @@
 > **Status:** plan, not implemented. Written after the first HIC showcase film
 > (`automation/html-in-canvas/examples/pollution-story.js`) proved the render path end to end.
 > **Date:** October 2026
+> **Roadmap:** [Studio-Reel-Roadmap.md](./Studio-Reel-Roadmap.md) is the **tracker** — it schedules
+> these phases as R0–R8, adds the audio/media and editor-round-trip work this plan leaves as open
+> questions, and holds the per-feature tracker. This document stays the *design* reference.
 > **Goal:** make a video the way you write a document — `Design.md` + `Frame.md` +
 > `Storyboard.md` in, a deterministic, self-contained `Storyboard.html` out, MP4 via the existing
 > automation CLI.
