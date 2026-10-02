@@ -141,7 +141,17 @@ canvas{max-width:100%;max-height:100%;width:auto;height:auto;border-radius:0;bac
 .play{background:none;color:var(--on);width:48px;height:48px}.play svg{width:30px;height:30px}
 #time{font-size:13px;letter-spacing:.02em;color:var(--on2);min-width:0;font-variant-numeric:tabular-nums}#time b{color:var(--on);font-weight:500}
 #ruler i{position:absolute;top:9px;width:3px;height:3px;margin-left:-1.5px;border-radius:50%;background:var(--on2);opacity:.7}
-#panel{flex-direction:column;align-items:stretch;flex-wrap:nowrap;gap:16px;padding:20px 20px 16px;margin:0;min-height:260px;background:var(--sf);border-radius:24px 24px 0 0}
+/* P3, revised: the sheet occupies the dock's slot, not its own height. With the
+   preview pinned (P1) that slot is an exact number — whatever the dock was —
+   so `flex:1 1 auto` makes the two the same height in every state instead of
+   the sheet floating at whatever its content happened to measure, which is how
+   it ended up 37px short of the dock. `min-height:0` is what lets it shrink
+   below that content and scroll instead, and the corner radius is gone: with
+   the sheet and the dock now one continuous region of the same surface, a
+   rounded top edge only announced a boundary that is not there. The >=900px
+   layout is untouched — there the dock is a centred card with a bottom margin
+   and the sheet is its matching card, which is a different arrangement. */
+#panel{flex-direction:column;align-items:stretch;flex-wrap:nowrap;gap:16px;padding:20px 20px 16px;margin:0;flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;background:var(--sf);border-radius:0}
 .eh{text-align:center;font-size:16px;font-weight:500;letter-spacing:.01em}
 .eb{flex:1;display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap}
 .eb label{flex:1 1 100%;text-align:center;font-size:20px;min-width:0}
@@ -162,7 +172,7 @@ svg{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-l
 .jn{position:absolute;top:50%;width:26px;height:26px;margin:-13px 0 0 -13px;border-radius:50%;background:var(--sf);color:var(--on);display:grid;place-items:center;z-index:3;box-shadow:0 0 0 1px var(--ol)}
 .jn svg{width:14px;height:14px}.jn.has{background:var(--on);color:var(--bg)}
 .clip.sel .h{z-index:4}
-#fs{position:absolute;right:8px;bottom:8px;width:44px;height:44px;border-radius:50%;color:#fff;display:grid;place-items:center;z-index:9;filter:drop-shadow(0 1px 2px rgba(0,0,0,.8))}
+#fs{position:absolute;right:8px;bottom:8px;width:44px;height:44px;border-radius:50%;color:var(--on);display:grid;place-items:center;z-index:9}
 .view.fs{position:fixed;inset:0;z-index:8;background:#000;padding:0}
 .sub{flex:1 1 100%;text-align:center;font-size:13px;color:var(--on2)}
 .dock{background:none;border-radius:0}
@@ -220,18 +230,34 @@ svg{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-l
 .ro{position:relative;height:30px;display:grid;place-items:center}
 #time{position:relative;z-index:1}
 
-/* ── the ⋮ sheet: rare actions + settings, one home, nothing gesture-only ─ */
-#panel.set{min-height:0;max-height:64vh;overflow-y:auto;padding:4px 18px 6px}
-#panel.set .eh{padding:12px 0 6px}
-#panel.set .ef{padding-top:10px}
-.eb.st{flex-direction:column;align-items:stretch;justify-content:flex-start;flex-wrap:nowrap;gap:0}
-.sr{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px;border-bottom:1px solid color-mix(in srgb,var(--on) 7%,transparent)}
+/* ── the ⋮ sheet: rare actions + settings, one home, nothing gesture-only ──
+   S1-S7: the Settings sheet stops being a special case. `.set` is now only a
+   state flag — the class is still toggled so panel() can tell the two sheets
+   apart, but it carries no styling of its own. Everything that made this sheet
+   look borrowed is gone: its private padding, its `max-height:64vh` (a magic
+   number that never knew how much room the pinned preview left, and redundant
+   now that #panel sizes itself and scrolls), and its 13px/--on2 labels, which
+   made the quietest text on screen belong to the settings you are least likely
+   to check.
+
+   `.sr`/`.sg` stay — a list of four unrelated settings genuinely needs rows, and
+   the property sheets have none because each of them edits a single value. The
+   inconsistency was never the rows; it was the padding, the type, the missing
+   values and the private footer. Rows now speak the shared vocabulary: a 15px
+   label in --on like the readout, a tabular value in --on2, and 44px controls
+   matching the tap floor everywhere else. Four 48px rows plus the old title
+   padding came to 329px against 322px of room at 320x700, which is why Done used
+   to sit 1px below the fold; 44px rows and the standard title padding fit with
+   room to spare. */
+.eb.st{flex-direction:column;align-items:stretch;justify-content:center;flex-wrap:nowrap;gap:0}
+.sr{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;border-bottom:1px solid color-mix(in srgb,var(--on) 7%,transparent)}
 .sr:last-child{border-bottom:0}
-.sr>span:first-child{font-size:13px;color:var(--on2)}
-.sr .chip{height:40px;padding:0 18px;border-radius:20px}
-.sg{display:flex;align-items:center;gap:8px}
-#panel.set .sg input[type=range]{flex:0 1 118px;width:118px;min-width:0;height:32px;accent-color:var(--pri)}
-.sg .ib{width:40px;height:40px}
+.sr>span:first-child{font-size:15px;font-weight:500;color:var(--on)}   /* the readout's size, not grey caption text */
+.sr .val{font-size:13px;font-weight:400;color:var(--on2);font-variant-numeric:tabular-nums}
+.sr .chip{height:36px;padding:0 16px;border-radius:18px}
+.sg{display:flex;align-items:center;gap:8px;flex:1 1 auto;justify-content:flex-end;min-width:0}
+#panel.set .sg input[type=range]{flex:0 1 96px;width:96px;min-width:0;height:32px;accent-color:var(--pri)}
+.sg .ib{width:44px;height:44px}
 .sw{width:46px;height:28px;border-radius:14px;background:var(--sf2);position:relative;flex:none;transition:background .15s}
 .sw i{position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:var(--on2);transition:transform .15s,background .15s}
 .sw.on{background:var(--acc)}
@@ -305,10 +331,24 @@ svg{width:22px;height:22px;stroke-width:1.75}
 .jn svg{width:18px;height:18px;stroke-width:1.9}
 #fs svg{width:20px;height:20px;stroke-width:1.92}
 
-/* ── B5: the fullscreen mark is a bare glyph in the letterbox ────────────
-   Drop the chip, keep the crop marks, add the whisper of a ring the reference
-   draws around them. Revert by deleting this one rule. */
-#fs::before{content:"";position:absolute;inset:9px;border:1px solid rgba(255,255,255,.28);border-radius:6px;pointer-events:none}
+/* ── B5: the fullscreen mark is the crop marks and nothing else ─────────
+   Three things came off this glyph in a row, and all three were mine: the chip,
+   then the drop-shadow, then the ring. The ring went last and was the least
+   load-bearing — a 28%-alpha outline around four corner marks that are already
+   a shape. What is left is the mark itself, at 20px on the shared optical
+   scale, in the icon's own colour: dark on white chrome in light theme, white
+   on black in dark.
+
+   `.view.fs` is the one exception and stays white. Fullscreen paints the stage
+   black regardless of theme, so a --on icon would vanish on it in light theme.
+   It is the one place this glyph sits on the picture rather than the chrome.
+
+   Known: at 1:1 and 4:5 the canvas fills the stage, so this glyph lands on the
+   video (40x21px and 29x44px of overlap at 378x770) and a dark --on mark is
+   only readable on a bright frame. Unlike the header icons this one has no
+   arrangement to move it aside — it is pinned to the preview corner — so the
+   two cases cannot be solved the same way. */
+.view.fs #fs{color:#fff}
 
 /* ── B4: the readout is the loudest text in the dock, not the quietest ───
    13px made the one number the user checks constantly the smallest thing on
@@ -426,34 +466,54 @@ const applyProj=()=>{const d=AR[proj.ar];W=d[0];H=d[1];cv.width=W;cv.height=H},r
    at both ends so no ratio can either waste the frame or squeeze it past usability. */
 const VIEW_FLOOR=.46,VIEW_CEIL=.54,BAND_AIR=24,GUT_MIN=52;
 function fitView(){
-  const v=$('.view'),dock=$('.dock');
+  const v=$('.view'),dock=$('.dock'),tr=$('#track');
   /* The ceiling lives in the inline flex-basis below, so the CSS max-height that
      guards the first paint is cleared here — leaving it at '' would let it clamp
      the computed height back to a flat 54% and eat C2 entirely. */
   v.style.maxHeight='none';
-  if(!dock.offsetHeight){v.style.flex='1 1 auto';return}   // sheet open — the stage fills
+  /* P1: the preview's height is a pure function of the viewport and the ratio.
+     A sheet hides the dock, and every row this ladder subtracts lives inside it,
+     so measuring them with the dock hidden reads zero and hands the entire
+     screen to the preview — that is the old `flex:1 1 auto` branch, and it made
+     the preview resize to whatever the sheet happened to leave over (+88px and
+     +47% of canvas area behind the Settings sheet at 378x770). chrome is
+     therefore only measured while the dock is laid out, and reused afterwards:
+     opening a sheet changes what is on screen, never how much room the preview
+     asked for. There is no early return, so P4 holds by construction — the gutter
+     measurement and the filmstrip re-layout below now run in every state,
+     including this one, instead of silently skipping behind a `return`. */
+  if(dock.offsetHeight){
+    chrome=$('.ar').offsetHeight+$('.ro').offsetHeight+$('#tools').offsetHeight+4;
+    /* The band's floor: what the lanes need when the film lane is at its cap.
+       Derived from the rows themselves rather than from tl.scrollHeight, because
+       the film lane flexes — so scrollHeight *is* the band we just produced, and
+       measuring the floor from it makes the ladder feed back into itself: switch
+       16:9 -> 9:16 and the floor would still carry the taller band's number, and
+       the layout would creep 4px a switch instead of returning. Every term here
+       is read from CSS, so retuning a lane height needs no edit to this line.
+
+       Measured inside the same guard as chrome, and for the same reason: the
+       lanes live in the dock, so with a sheet open every row below reads 0 and
+       the floor collapses to about 108px. The ceiling happens to mask that at
+       9:16, but at 16:9 it moved the preview by 3px — a sheet was still moving
+       the picture, just by less. Cached here, refreshed the moment the dock is
+       laid out again. */
+    const inn=$('#inn'),ics=getComputedStyle(inn),tlws=getComputedStyle($('.tlw'));
+    laneFloor=(parseFloat(ics.paddingTop)||0)+(parseFloat(ics.paddingBottom)||0)+
+              (parseFloat(getComputedStyle(tr).maxHeight)||tr.offsetHeight);
+    for(const e of inn.children)if(e!==tr)laneFloor+=e.offsetHeight+(parseFloat(getComputedStyle(e).marginTop)||0);
+    laneFloor+=(parseFloat(tlws.paddingBottom)||0);
+  }
+  const lanes=laneFloor;
   /* Read the stage's real padding rather than assuming the mobile 12px, so the
      same numbers hold in the wide .view padding at >=900px — and so `want` below
      tracks the padding it is meant to be adding, now that .view is flush. */
   const cs=getComputedStyle(v),pl=parseFloat(cs.paddingLeft)||0,pr=parseFloat(cs.paddingRight)||0,
         pt=parseFloat(cs.paddingTop)||0,pb=parseFloat(cs.paddingBottom)||0;
   const d=AR[proj.ar],inner=Math.max(v.clientWidth-pl-pr,1);
-  const tr=$('#track');
   const cap=innerHeight*VIEW_CEIL,floor=innerHeight*VIEW_FLOOR;
   const want=clamp(inner*d[1]/d[0]+pt+pb,floor,cap);        // what this canvas would use
-  /* The band's floor: what the lanes need when the film lane is at its cap.
-     Derived from the rows themselves rather than from tl.scrollHeight, because
-     the film lane flexes — so scrollHeight *is* the band we just produced, and
-     measuring the floor from it makes the ladder feed back into itself: switch
-     16:9 -> 9:16 and the floor would still carry the taller band's number, and
-     the layout would creep 4px a switch instead of returning. Every term here
-     is read from CSS, so retuning a lane height needs no edit to this line. */
-  const inn=$('#inn'),ics=getComputedStyle(inn),tlws=getComputedStyle($('.tlw'));
-  let lanes=(parseFloat(ics.paddingTop)||0)+(parseFloat(ics.paddingBottom)||0)+
-            (parseFloat(getComputedStyle(tr).maxHeight)||tr.offsetHeight);
-  for(const e of inn.children)if(e!==tr)lanes+=e.offsetHeight+(parseFloat(getComputedStyle(e).marginTop)||0);
-  lanes+=(parseFloat(tlws.paddingBottom)||0);
-  const avail=document.body.clientHeight-($('.ar').offsetHeight+$('.ro').offsetHeight+$('#tools').offsetHeight+4);
+  const avail=document.body.clientHeight-chrome;
   let band=clamp(avail-want,lanes,lanes+BAND_AIR),view=avail-band;
   if(view>cap){view=cap;band=avail-cap}                     // the ceiling wins; the surplus becomes band air
   if(view<floor){view=floor;band=Math.max(lanes,avail-floor)}  // the floor wins; the band gives way
@@ -477,7 +537,7 @@ function fitView(){
   document.body.classList.toggle('gut',(document.body.clientWidth-cw)/2>=GUT_MIN);
 }
 const F={none:'none',vivid:'saturate(1.6) contrast(1.1)',mono:'grayscale(1)',warm:'sepia(.35) saturate(1.3)',cool:'hue-rotate(15deg) saturate(1.1) brightness(1.05)',fade:'contrast(.85) brightness(1.1) saturate(.8)'};
-let clips=[],texts=[],srcs={},t=0,total=0,playing=false,sel=null,pps=60,uid=0,active=null,ac,dest,hist=[],rec=null,W=1280,H=720,tool=null,cancelled=false,mime='',laneH=0;
+let clips=[],texts=[],srcs={},t=0,total=0,playing=false,sel=null,pps=60,uid=0,active=null,ac,dest,hist=[],rec=null,W=1280,H=720,tool=null,cancelled=false,mime='',laneH=0,chrome=0,laneFloor=0;
 const dur=c=>(c.out-c.in)/c.sp,esc=s=>s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 const fmt=s=>{s=Math.max(0,s);return Math.floor(s/60)+':'+(s%60).toFixed(1).padStart(4,'0')},fmtS=s=>Math.floor(s/60)+':'+String(s%60).padStart(2,'0');
 const fmtT=s=>String(Math.floor(s/60)).padStart(2,'0')+':'+String(Math.floor(s%60)).padStart(2,'0');
@@ -698,8 +758,15 @@ function del(){
   const c=curSel();snap();pause();clips=clips.filter(x=>x!=c);sel=null;refresh();
 }
 let esBase=null;
-const LBL={add:'Add video',text:'Text',edit:'Edit text',speed:'Speed',volume:'Volume',filter:'Filter',rotate:'Rotate',trans:'Transition',aspect:'Canvas',dup:'Duplicate',ts:'Trim start',te:'Trim end'};
-const TOOLS=['speed','volume','filter','rotate','trans','aspect','text'],TTL={speed:'Speed',volume:'Volume',filter:'Filter',rotate:'Rotation',trans:'Transition',aspect:'Canvas',text:'Text'};
+/* Rail labels, in our own words. "Canvas" was the one that needed replacing:
+   the button opens a panel of aspect ratios and a background colour, so the
+   label named an art surface rather than the thing it changes, and the only
+   other word anyone reaches for — the reference's "Aspect ratio" — is both
+   longer than the rail can carry cleanly and borrowed. "Format" covers the
+   ratio and the backdrop in one word. The rest are already plain: what the
+   control does, in the fewest words that still say it. */
+const LBL={add:'Add video',text:'Text',edit:'Edit text',speed:'Speed',volume:'Volume',filter:'Filter',rotate:'Rotate',trans:'Transition',aspect:'Format',dup:'Duplicate',ts:'Trim start',te:'Trim end'};
+const TOOLS=['speed','volume','filter','rotate','trans','aspect','text'],TTL={speed:'Speed',volume:'Volume',filter:'Filter',rotate:'Rotation',trans:'Transition',aspect:'Format',text:'Text'};
 function strip(){
   const ci=sel&&sel.k=='c'?clips.findIndex(c=>c.id==sel.id):-1;
   const k=!clips.length?['add']:!sel?['add','text','aspect']:sel.k=='t'?['edit','dup','ts','te']:['speed','volume','filter','rotate',...(ci>0?['trans']:[]),'dup','ts','te'];
@@ -722,10 +789,9 @@ const autoAr=()=>{const v=srcs[clips[0].src].v;return v.videoHeight>v.videoWidth
 function settingsSheet(){
   const p=$('#panel');esBase=null;document.body.classList.add('es');fitView();
   p.innerHTML=`<div class="eh">Settings</div><div class="eb st">
+    <div class="sr"><span>Timeline zoom</span><span class="sg"><b class="val" id="zv">${Math.round(pps)} px/s</b><input type="range" id="zr" min="2" max="240" step="1" value="${Math.round(clamp(pps,2,240))}" aria-label="Timeline zoom"><button class="chip" data-a="fit">Fit</button></span></div>
+    <div class="sr"><span>Step one frame</span><span class="sg"><button class="ib" id="fb" aria-label="Previous frame">${ic('prev')}</button><button class="ib" id="ff" aria-label="Next frame">${ic('next')}</button></span></div>
     <div class="sr"><span>Snap to edges</span><button class="sw${snapOn?' on':''}" id="swsnap" role="switch" aria-checked="${snapOn}" aria-label="Snap to edges"><i></i></button></div>
-    <div class="sr"><span>Zoom</span><span class="sg"><button class="ib" id="zo" aria-label="Zoom out">${ic('zo')}</button><input type="range" id="zr" min="2" max="240" step="1" value="${Math.round(clamp(pps,2,240))}" aria-label="Timeline zoom"><button class="ib" id="zi" aria-label="Zoom in">${ic('zi')}</button></span></div>
-    <div class="sr"><span>Frame step</span><span class="sg"><button class="ib" id="fb" aria-label="Previous frame">${ic('prev')}</button><button class="ib" id="ff" aria-label="Next frame">${ic('next')}</button></span></div>
-    <div class="sr"><span>Fit timeline</span><span class="sg"><button class="chip" data-a="fit">Fit all</button></span></div>
   </div><div class="ef"><span></span><button class="pillb pri" id="ed">Done</button></div>`;
   p.classList.add('set');p.hidden=false;
 }
@@ -758,18 +824,16 @@ P.addEventListener('input',e=>{
     else if(tool=='trans'){c.tr.d=+el.value;$('#rv').textContent=c.tr.d.toFixed(1)+' s'}
   }
   if(el.id=='ti'&&x){x.t=el.value||' ';renderTL()}
-  if(el.id=='zr'){pps=clamp(+el.value,2,240);renderTL()}
+  if(el.id=='zr'){pps=clamp(+el.value,2,240);const zv=$('#zv');if(zv)zv.textContent=Math.round(pps)+' px/s';renderTL()}
 });
 P.addEventListener('click',e=>{
   const b=e.target.closest('button');if(!b)return;const d=b.dataset;
   if(P.classList.contains('set')){
     const z=$('#zr');
     if(b.id=='swsnap'){snapOn=!snapOn;b.classList.toggle('on',snapOn);try{localStorage.setItem('lite:snap',snapOn?'1':'0')}catch(_){} }
-    else if(b.id=='zo'){pps=clamp(pps/1.5,2,240);if(z)z.value=Math.round(pps);renderTL()}
-    else if(b.id=='zi'){pps=clamp(pps*1.5,2,240);if(z)z.value=Math.round(pps);renderTL()}
     else if(b.id=='fb')nudge(-1/30);
     else if(b.id=='ff')nudge(1/30);
-    else if(d.a=='fit'){fitZoom();if(z)z.value=Math.round(pps)}
+    else if(d.a=='fit'){fitZoom();if(z)z.value=Math.round(pps);const zv=$('#zv');if(zv)zv.textContent=Math.round(pps)+' px/s'}
     else if(b.id=='ed'){tool=null;document.body.classList.remove('es');refresh()}
     return;
   }

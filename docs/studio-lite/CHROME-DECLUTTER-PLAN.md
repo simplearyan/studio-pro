@@ -644,8 +644,9 @@ units, each group carries its own value — 1.92, 1.83, 1.75, 1.92 — so every 
 title 600. The `.ro` row stayed at 30px, so the readout got louder without spending a pixel it had
 already spent.
 
-**The ⛶ is a bare glyph again** — 20px, with the faint rounded ring the reference draws as a
-`.view`-independent `::before` at inset 9px and 0.28 alpha. Delete that one rule to revert.
+**The ⛶ is a bare glyph again** — 20px. The ring this paragraph originally recorded was removed
+again in §20: three things came off that glyph in a row, all mine (the chip, the drop-shadow, the
+ring), and what survives is the crop marks in the icon's own colour.
 
 **Two corrections to this plan, both from measuring rather than reasoning:**
 
@@ -758,7 +759,150 @@ every pixel landed.
 
 ---
 
-*Plan produced 2026-10-02; §11 records M1–M3, §19 records B1–B5, §20 records B2r (the scrim deleted
-and the header rearranged), §12–§18 are Part B (the screenshot-driven geometry, icon and type pass).
-Measurements taken from `clip-lite-mock.html` at 320×700 / 366×836 / 378×770 / 390×844, both themes,
-one clip selected.*
+## 21. Open: opening a property sheet resizes the preview
+
+**The symptom.** Tapping any tool in the rail and having the sheet open makes the picture jump and
+grow, and the header icons lose their arrangement. It reads as the app flinching.
+
+**Measured, 378x770, dark, one 9:16 clip:**
+
+| | `.view` height | inline flex | canvas | `body.gut` |
+|---|---|---|---|---|
+| sheet closed | **416** | `0 0 416px` | 234x416 | **true** |
+| Settings sheet open | **504** | `1 1 auto` | 284x504 | **false** |
+
++88px of height, +50px of width, **+47% of canvas area** — while the user is adjusting a property. And
+the header's margin arrangement (`body.gut`) goes false for the duration, so the icons fall back to
+the single row exactly when the user is in a property sheet.
+
+**One cause, not two.** `fitView()` abandons its computation when the dock is hidden:
+
+```js
+if(!dock.offsetHeight){v.style.flex='1 1 auto';return}   // sheet open — the stage fills
+```
+
+That branch predates C1-D3, when `.view` had no ceiling and "fill" meant "sensibly fill". Now that the
+preview's height is a *computed* number, "fill" means "take whatever the sheet left over" — and what
+the sheet leaves over is a function of **its content height**, not of the viewport. So the same clip
+previews at one size behind the Format sheet and another behind the taller Settings sheet. Measured:
+Settings open gives `.view` 504; a taller sheet gives 416. The preview size became a function of which
+tool you tapped.
+
+The `gut` flip is the same dead branch: the gutter measurement sits *after* the return, so it is
+simply not executed while a sheet is open. Same for `laneH`/`paintFilms()`.
+
+**Why it looks like a shift rather than a resize.** At 9:16 the canvas is height-bound, so it scales.
+At 16:9 / 1:1 / 4:5 it is width-bound, so a taller `.view` cannot make it bigger — it only moves, because
+`.view` centres it vertically. Verified at 16:9: canvas top 121 closed, 108 with a sheet open, size
+unchanged. Same bug, two different-looking symptoms, which is why this reads as two problems.
+
+**Closing returns exactly** — the ladder is a pure function of its inputs and the sheet height returns to
+0 — so this is a round-trip flicker, not a drift. That also makes it cheap to test for.
+
+**The fix, in order:**
+
+- **P1 — the preview's height must stop being a function of the sheet.** Delete the
+  `flex='1 1 auto'` branch and always write `0 0 Npx`, so the preview's height is a pure function of the
+  viewport and the ratio in every state. This is the whole fix; P2-P4 are consequences of taking it
+  seriously.
+- **P2 — decided: the preview is PINNED. It never resizes for any sheet, and the sheet scrolls
+  instead.** The rule to implement: `view = clamp(want, floor, min(cap, innerHeight*VIEW_CEIL))`, with
+  `avail` used only as a guard against overflow, never as a reason to shrink. Rationale — the picture is
+  the thing being judged while a property is adjusted, and a judge that moves under you while you are
+  adjusting it is worse than one that is slightly too large for a very tall sheet. It also matches how
+  most editors behave. The rejected alternative was to let the preview *yield* and shrink to fit, which
+  avoids overflow on small phones but reintroduces exactly the resize this section exists to remove,
+  only for tall sheets instead of all of them.
+- **P3 — the sheet takes the scroll instead.** `#panel` needs `flex:0 1 auto; min-height:0; overflow-y:auto`
+  so a tall sheet shrinks within the space the pinned preview leaves and scrolls there. Its current
+  `min-height:260px` is a floor that would fight this. `#panel.set` already has
+  `max-height:64vh; overflow-y:auto`, which is the shape to generalise.
+- **P4 — one exit from `fitView()`.** The gutter measurement and the filmstrip re-layout currently live
+  past a `return`, so both are skipped in one whole class of states. Move them above every exit, or
+  delete the early returns. This is the part that would be easy to leave behind and expensive to
+  rediscover.
+- **P5 — reconcile the CSS guard.** `v.style.maxHeight='none'` is written on every call, which is right
+  (the stylesheet's 54% is a first-paint guard), but it means the inline path and the stylesheet
+  permanently disagree. Say so once in the comment rather than leaving it as a trap.
+- **P6 — round-trip regression test.** For every sheet the rail can open (Format, Settings, Rotation,
+  Speed, Volume, Filter, Transition, Text), assert `.view` height, the canvas rect and `body.gut` are
+  identical before open and after close. The current bug would fail this on the first sheet.
+
+**Status: analysed and specified, deliberately not implemented.** The pinned-vs-yield question is
+resolved above; what remains is the edit.
+
+---
+
+## 22. Open: the Settings sheet is not one of the property sheets
+
+**The finding.** Every property sheet in the mock is the same three parts: an `.eh` title, an `.eb`
+content block, an `.ef` footer with Cancel / Reset / Done. Settings is all three of those plus a fourth
+thing — `.eb.st` — which switches the content to a left-aligned hairline list with its own padding, its
+own `.sr` rows and its own `.sw` toggle. Two design systems stacked in one panel, and Settings is the
+one that looks borrowed.
+
+**And the primary action is below the fold.** Measured with §21's pinned preview:
+
+| | space below preview | sheet wants | scrolls | Done visible |
+|---|---|---|---|---|
+| 378x770 | 354 | 329 | no | yes, 6px spare |
+| **320x700** | **322** | **329** | **yes, 7px** | **no — 1px below the fold** |
+
+`#panel.set{max-height:64vh}` is a magic number that does not know how much room the preview left. That
+room is `100vh - previewHeight`, which §21 made a stable number and which the mock now knows. The cap
+is both wrong and, after P3, redundant: `flex:0 1 auto; min-height:0; overflow-y:auto` already sizes the
+sheet to what is left and scrolls it.
+
+**Why it does not read as clean, specifically:**
+
+1. **Four rows, four unrelated idioms.** A toggle, a slider flanked by two icon buttons, a pair of
+   chevron buttons, and a chip. Zoom and Frame step are *the same control* — a minus/plus pair on a value
+   — so they look identical while doing different things. That is worse than either being distinct.
+2. **No value anywhere.** The other sheets lead with a 20px `<b>` readout (`2×`, `100%`, `0°`). Settings
+   shows only a 13px `--on2` label, so the quietest text on screen belongs to the settings you are least
+   likely to check. You cannot see your current zoom or frame step at all.
+3. **A command wearing a row's clothes.** "Fit timeline" is an action, not a setting; it shares a hairline
+   and a label with three things that persist state.
+4. **It is mis-scoped as a whole.** All four rows act on the *timeline*, which is visible on screen while
+   this sheet is open. The sheet is called "Settings", which promises app-wide.
+5. **It overrides the sheet's own padding** (`4px 18px 6px` against the standard `20px 20px 16px`, and
+   `.eh{padding:12px 0 6px}`), so its title sits closer to the top edge than Format, Rotation or Speed.
+
+**The plan:**
+
+- **S1 — make Settings a peer.** Delete `.eb.st`, `.sr`, `.sg`, `.sw` and `#panel.set`'s padding
+  overrides, and build it from `.eh` / `.eb` / `.ef` like every other sheet. One language, one set of
+  rules to keep consistent. This is the whole of "clean" — the inconsistency is the clutter.
+- **S2 — a real footer.** Settings renders `<span></span>` + Done, right-aligning with an empty
+  placeholder. Give it the standard Cancel / Reset / Done. Cancel is no longer optional anyway: P3 made
+  the sheet scrollable, and a scrollable sheet whose only exit is below the fold is a trap.
+- **S3 — delete the 64vh cap** and let the leftover do the sizing. The number is now knowable and the
+  flex rules already handle it.
+- **S4 — budget the rows so it fits without scrolling at 320x700.** 4 x 48px rows + title + footer is
+  329 against 322. Either 44px rows (−16) or drop a row. Target: no scroll on any tested size.
+- **S5 — give every row a value**, reusing the `<b>` readout the other sheets already have: zoom as
+  px/second, frame step as its seconds. A setting you cannot read back is a setting you cannot trust.
+- **S6 — one stepper, used twice.** Zoom and Frame step are both minus/plus on a value; make that an
+  explicit component so the pairing is intentional instead of accidental.
+- **S7 — group by subject, and stop lying about scope.** Either retitle the sheet to "Timeline" so the
+  four rows mean something, or split it: three persisting settings plus one command, with Fit promoted
+  out of the list.
+- **S8 — verify.** Sheet fits with no page scroll and Done fully visible at 320x700 / 366x836 / 378x770 /
+  390x844, both themes, with the P1 pin holding.
+
+**Open question, and it is the bigger one.** Should three of these four rows exist at all? Zoom and frame
+step are *navigation on a visible timeline*, not settings — a pinch or a long-press on the timeline
+would serve both without a sheet. If they move there, Settings becomes one row (snap to edges) and the
+clutter is gone rather than restyled. That is the endpoint this whole document is pointing at, but it is
+a behavioural change, not a layout one, so it is not assumed here.
+
+**Status: analysed and specified, deliberately not implemented** — as with §21, this section records the
+plan only.
+
+---
+
+*Plan produced 2026-10-02; §11 records M1–M3, §19 records B1–B5, §20 records B2r (the scrim deleted and
+the header rearranged), §21 analyses the sheet-resize bug and specifies the pinned fix without
+implementing it, §22 does the same for the Settings sheet, §12–§18 are Part B (the screenshot-driven
+geometry, icon and type pass). Measurements taken from `clip-lite-mock.html` at 320x700 / 366x836 /
+378x770 / 390x844, both themes, one clip selected.*
