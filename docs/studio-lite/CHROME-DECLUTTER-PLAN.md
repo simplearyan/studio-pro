@@ -880,10 +880,19 @@ sheet to what is left and scrolls it.
   flex rules already handle it.
 - **S4 — budget the rows so it fits without scrolling at 320x700.** 4 x 48px rows + title + footer is
   329 against 322. Either 44px rows (−16) or drop a row. Target: no scroll on any tested size.
-- **S5 — give every row a value**, reusing the `<b>` readout the other sheets already have: zoom as
-  px/second, frame step as its seconds. A setting you cannot read back is a setting you cannot trust.
-- **S6 — one stepper, used twice.** Zoom and Frame step are both minus/plus on a value; make that an
-  explicit component so the pairing is intentional instead of accidental.
+- **S5 — give every row a value**, reusing the `<b>` readout the other sheets already have. Zoom reads
+  **seconds across the screen** (`5.8 s across`), not px/second: pps is a rendering detail, and the user
+  is asking "how much timeline can I see". It rounds to a tenth under 10s and to the second above it,
+  because "167.3 s" is false precision. `tl.clientWidth` is 0 while this sheet is open (the dock is
+  hidden), so the value uses the same fallback `fitZoom()` uses — otherwise it would read 0/0.
+- **S6 — one stepper, used twice — revised: zoom is a stepper, and the slider is gone.** The slider was
+  the wrong control for this value: linear across 2-240 px/s, but 2 shows ~173s of timeline (a 20s clip
+  40px wide) and 240 shows ~1.4s, so both ends are unusable and ~75% of the travel is dead. It also
+  made the row do four jobs in 338px. Zoom is now the magnifier `−/+` pair at 1.25x steps plus the `Fit`
+  chip — Fit covers the coarse jump, the pair covers fine, and the row matches "Step one frame". The
+  pair disables itself at the range bounds so the limit is visible rather than silently ignored. (The
+  timeline already had pinch-to-zoom and ctrl+wheel zoom, which is the real reason a slider was
+  redundant: the surface itself is the direct control and this row is the precise fallback.)
 - **S7 — group by subject, and stop lying about scope.** Either retitle the sheet to "Timeline" so the
   four rows mean something, or split it: three persisting settings plus one command, with Fit promoted
   out of the list.
@@ -896,8 +905,9 @@ would serve both without a sheet. If they move there, Settings becomes one row (
 clutter is gone rather than restyled. That is the endpoint this whole document is pointing at, but it is
 a behavioural change, not a layout one, so it is not assumed here.
 
-**Status: analysed and specified, deliberately not implemented** — as with §21, this section records the
-plan only.
+**Status: implemented** (S1, S3-S8), with two deliberate departures recorded above: no Cancel button,
+and `.sr` kept as the list primitive. Verified at 320x700 / 366x836 / 378x770 / 390x844 in both themes —
+the sheet no longer scrolls anywhere and Done is never below the fold.
 
 ---
 

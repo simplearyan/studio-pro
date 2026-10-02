@@ -33,6 +33,10 @@ export default defineConfig({
            ../../fonts), so they need no bundling — only to exist under
            <outDir>/docs/studio-lite/. */
         { src: 'docs/studio-lite/*.html', dest: 'docs/studio-lite', rename: { stripBase: true } },
+        /* ...and its web app manifest. Without this the page links a manifest
+           that 404s in production, so it cannot be installed from the deployed
+           site — the html glob above does not match it. */
+        { src: 'docs/studio-lite/*.webmanifest', dest: 'docs/studio-lite', rename: { stripBase: true } },
         /* /designs gallery page + its synced data file (Phase A/B of
            docs/html-in-canvas/DESIGNS-GALLERY-PLAN.md) */
         { src: 'docs/html-in-canvas/designs.html', dest: 'docs/html-in-canvas', rename: { stripBase: true } },
@@ -61,7 +65,30 @@ export default defineConfig({
         theme_color: '#171717',
         background_color: '#171717',
         display: 'standalone',
-        icons: [{ src: 'og-image.png', sizes: '1200x630', type: 'image/png' }]
+        // Stable identity so the installed app is not treated as a new one if
+        // start_url ever moves — Chrome keys the app on `id` first, then on
+        // start_url, and a changed key leaves the old icon on the home screen.
+        id: 'studio-pro',
+        // Chrome refuses to offer "Install app" unless it can find BOTH a
+        // 192x192 and a 512x512 icon. Until these landed the only entry was
+        // og-image.png at 1200x630, which is neither, so the app was not
+        // installable at all. Regenerate with `node tools/make-app-icons.cjs`.
+        //
+        // Paths are relative on purpose: the manifest is served from the app
+        // root under whatever `base` is, so relative srcs resolve correctly in
+        // dev ("/") and on Pages ("/studio-pro/") without the plugin rewriting
+        // them. og-image.png is deliberately NOT listed — it is a 1200x630
+        // social card, not an icon, and listing it only confused validators.
+        icons: [
+          { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          // Android adaptive icons are cropped to a circle of 80% diameter, so
+          // this one is drawn smaller and its mark sits inside that safe zone.
+          { src: 'icons/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          // iOS ignores the manifest and reads <link rel="apple-touch-icon">,
+          // which index.html also carries — this entry is for other consumers.
+          { src: 'icons/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }
+        ]
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,woff2,woff,ttf,png,svg,ico,webp,jpg,jpeg}'],
