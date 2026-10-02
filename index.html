@@ -3700,14 +3700,6 @@
             btnToggleAspect.title = `Aspect Ratio: ${aspect.label}`;
             
             resizeCanvas();
-            // Invalidate all HTML clip canvases so they re-render at the new aspect ratio
-            State.clips.filter(c => c.type === 'html').forEach(c => {
-                if (c._htmlIframe) { c._htmlIframe.remove(); c._htmlIframe = null; }
-                c._htmlCanvas = null;
-                c._htmlReady = false;
-                c._htmlSig = '';
-                c._htmlNeedsRefresh = true;
-            });
             // Force an immediate redraw at the new aspect ratio.
             requestAnimationFrame(() => { drawCanvas(); });
             lucide.createIcons();
@@ -26250,18 +26242,9 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
                 clip.js = conv.js;
                 clip.type = 'hic';
                 clip.presetId = clip.presetId || null;
-                // Drop every legacy session/frame cache. The iframe and the
-                // html2canvas raster are dead, and `renderWidth/renderHeight`
-                // were the html2canvas capture size — HIC renders at canvas
-                // resolution instead, so they are ignored, not deleted (a
-                // downgrade still wants them).
-                delete clip._isWaaapi;
-                delete clip._htmlIframe;
-                delete clip._htmlCanvas;
-                delete clip._htmlReady;
-                delete clip._htmlNeedsRefresh;
-                delete clip._htmlSig;
-                delete clip._htmlContentWritten;
+                // `renderWidth/renderHeight` were the html2canvas capture size —
+                // HIC renders at canvas resolution instead, so they are ignored,
+                // not deleted (a downgrade still wants them).
                 // Force a fresh HIC raster at the clip's current size.
                 delete clip._hicR;
                 delete clip._lastHicFrameSig;
@@ -26335,22 +26318,10 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
 
         // ── Apply HIC Preset ──────────────────────────────────────────────────
         window.applyHicPreset = function(clipId, presetKey) {
-            // A legacy html clip still flagged `_isWaaapi` is accepted and
-            // migrated in place — this is the eager half of Phase 3's load-time
-            // migration, applied to the one clip the user just acted on.
             const clip = State.clips.find(c => c.id === clipId);
-            if (!clip || (clip.type !== 'hic' && !clip._isWaaapi)) return;
+            if (!clip || clip.type !== 'hic') return;
             const preset = HIC_PRESETS[presetKey];
             if (!preset) return;
-            if (clip.type === 'html') {
-                clip.type = 'hic';
-                delete clip._isWaaapi;
-                delete clip._htmlIframe;
-                delete clip._htmlCanvas;
-                delete clip._htmlReady;
-                delete clip._htmlNeedsRefresh;
-                delete clip._htmlSig;
-            }
             clip.html = preset.html;
             clip.css = preset.css;
             clip.js = preset.js;
@@ -32349,14 +32320,6 @@ Click 'Load Preset' to see an example!">` + (State.markdownText || '') + `</text
             delete clip._mathLastExtrude;
             delete clip.__vecLastSprite;
             delete clip._mathPreview;
-            // HTML clip session-only refs: iframe/canvas don't survive serialization
-            if (clip.type === 'html') {
-                delete clip._htmlIframe;
-                delete clip._htmlCanvas;
-                delete clip._htmlReady;
-                delete clip._htmlSig;
-                delete clip._htmlNeedsRefresh;
-            }
             if (clip.type === 'hic') {
                 if (clip._hicR) {
                     if (clip._hicR.sandbox && clip._hicR.sandbox.parentNode) clip._hicR.sandbox.parentNode.removeChild(clip._hicR.sandbox);

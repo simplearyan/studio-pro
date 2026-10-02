@@ -16,6 +16,28 @@
   and no creator remains. So anything gated on `type === 'html'` or on a flag that is
   never set is unreachable.
 
+## Re-running the audit
+
+`tools/audit-dead-code.cjs` automates both halves of this report so it can be re-run
+after future changes. It is a read-only heuristic reporter — it never edits a file and
+always exits 0.
+
+```bash
+node tools/audit-dead-code.cjs          # text report
+node tools/audit-dead-code.cjs --json   # machine-readable
+node tools/audit-dead-code.cjs --all    # do not truncate the lists
+```
+
+- **Unused editor globals:** scans `window.<name> = …` and `function <name>(…)`
+  definitions in `index.html`, skips self-invoking function expressions, and flags any
+  name that occurs just once across all tracked **code** (excluding `_archive/`,
+  `dist/`, and docs, so a prose mention or a backup cannot mask a real orphan).
+- **Unreferenced tracked files:** flags tracked files whose basename appears in no other
+  tracked text file.
+
+A hit is a lead, not a verdict — a global reached only via `window['name']`, or a file
+loaded only via a glob/inline path, will look unreferenced. Open the hit before deleting.
+
 ---
 
 ## Status
@@ -25,11 +47,19 @@
 | §1.1 WAAPI iframe-overlay renderer | ✅ removed (`drawCanvas` block, setup vars, debug log, hide-inactive loop, no-active-clips tail, DOM hooks `#waapiOverlayContainer` / `#waapiOverlayCanvas`, aspect-reset `_waCont`) |
 | §1.2 legacy HTML-clip editor UI | ✅ removed (`#htmlEditorModal` markup + 5 functions + `_htmlEditorClipId`, the two `isHtml` sidebar cards, `htmlHTML`, `navItems`/`basicCardIds`/`basicCardHtml` branches, `strokeHTML` html clause) |
 | §1.3 single-line orphans | ✅ removed (`_htmlEditorLiveTimer`, two `_htmlRendering` deletes; `_waapiOverlaySig` went with §1.1) |
+| §1.3 clip-state fields | ✅ removed (`_htmlIframe`, `_htmlCanvas`, `_htmlReady`, `_htmlSig`, `_htmlContentWritten`, `_htmlNeedsRefresh`) — the dead aspect-invalidate loop, the `applyHicPreset` html branch, and the `restoreClip` / migration deletes |
+| §1.3 `_isWaaapi` | ✅ removed — the `applyHicPreset` guard (proven unreachable: the flag is never assigned, and `migrateLegacyHtmlClips` converted any legacy occurrence) and its delete |
 | §3 not-from-consolidation | untouched (intentional) |
 
-Verification: `vite build` passes (bundle 2,516 → 2,464 kB), inline classic scripts parse
+Verification: `vite build` passes (bundle 2,516 → 2,462 kB), inline classic scripts parse
 clean, the editor boots with no console errors, the HIC panel + HIC code editor still work,
-and a legacy `type: 'html'` clip still migrates to `hic`.
+`applyHicPreset` still applies to a `hic` clip, and a legacy `type: 'html'` clip still
+migrates to `hic`.
+
+**Known, intended side effect:** because the `restoreClip` / `migrateLegacyHtmlClips` deletes
+are gone, a legacy project that serialized those keys keeps them as inert stray properties
+after load (nothing reads them). If data hygiene matters more than zero references, the single
+place to strip them is `PROJECT_RUNTIME_FIELDS` (the save-time filter).
 
 ---
 
