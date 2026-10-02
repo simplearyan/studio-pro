@@ -9,6 +9,13 @@ set, the proportions and the rainbow title were all brought closer to the refere
 and §4 describe it as it stands now; §10 records what changed and why.
 **Shared spec:** [`../STUDIO-LITE-PLAN.md`](../STUDIO-LITE-PLAN.md) — §2 jobs, §3 features, §5 gestures, §6 layout.
 **Sibling study:** [`YT-CREATE-PATTERN-PLAN.md`](YT-CREATE-PATTERN-PLAN.md) — the screenshot study this one is deliberately matched against.
+**Test media:** [`TEST-MEDIA.md`](TEST-MEDIA.md) — the two canonical local videos (portrait+audio, landscape+silent) to drive this mock with real media, plus the load snippet and a pass checklist.
+**Follow-up (chrome):** [`CHROME-DECLUTTER-PLAN.md`](CHROME-DECLUTTER-PLAN.md) — the dock had
+accumulated 21 always-visible controls, three of which wrapped out of their own row and landed on the
+filmstrip. §1–§11 bring that to 16, drop the actions row and fix four bugs. **§12–§18 (Part B)** take
+the newer direction: the header stops being a row at all and becomes an overlay, so the preview band
+owns y=0 and a 9:16 canvas gets **288×512 instead of 257×456** — plus a smaller-glyph icon scale and a
+louder readout.
 
 **The question this answers.** The YouTube Create study read eight screenshots and derived
 patterns. Clip Lite is the opposite kind of evidence: it is a **single HTML file that actually
@@ -73,7 +80,7 @@ pattern reached a second time.
 | 01 | **Header bar** | theme toggle · spacer · export (disabled until a clip exists) | chrome is two taps, nothing else |
 | 02 | **Stage** | canvas preview; a floating "Add video" pill when empty; ⛶ in the corner; tap = play/pause | preview is the flex band; empty state is *on* the stage |
 | 03 | **Transport row** | delete · split │ prev-frame · **play** · next-frame │ undo · redo | five-plus-two glyphs, fixed, always visible |
-| 04 | **Actions row** | snap toggle · `mm:ss / mm:ss` · zoom out / zoom in / fit | readout is `current / total`, not frames |
+| 04 | ~~Actions row~~ → **readout row + ⋮** | the button row was removed after this study: snap, zoom and fit moved into the ⋮ sheet, and what is left above the timeline is a 30px **readout row** — the timecode centred, flanked by the ruler dots, carrying no controls | readout is `current / total`, not frames — see [`CHROME-DECLUTTER-PLAN.md`](CHROME-DECLUTTER-PLAN.md) §11 |
 | 05 | **Timeline** | dot ruler · text lanes · video lane (filmstrip + trim handles + transition junctions) · audio lane (teal waveform) · **fixed centre playhead** | the strip scrolls; the playhead does not |
 | 06 | **Tool rail** | contextual: `Add video · Text · Canvas` with nothing selected; `Edit text · Duplicate · Trim start · Trim end` with a text selected; `Speed · Volume · Filter · Rotate · Transition · Duplicate · Trim start · Trim end` with a clip selected | the rail is a function of the selection |
 | 07 | **Property bar** | one tool at a time — header, one control group, footer `Cancel` / `Reset` / `Done`; preview stays live above | the panel the plan calls a "sheet", built as an in-flow bar |
@@ -158,6 +165,11 @@ pattern reached a second time.
 
 The prototype is plain CSS px on a fluid viewport, so these are design values rather than
 read-off pixels — the useful part is the *ratios* and which ones clear the 44px floor.
+
+> **Superseded in part.** The chrome-declutter pass ([`CHROME-DECLUTTER-PLAN.md`](CHROME-DECLUTTER-PLAN.md)
+> §11) replaced the actions row with a 30px readout row, and the ⋮ sheet took over snap / zoom /
+> frame-step / fit. Rows that no longer exist — the actions-row controls, and the row heights around
+> them — are recorded there instead. The lane and control measurements below still hold.
 
 | thing | value | clears §5.3 `44px`? |
 |---|---|---|
@@ -365,7 +377,73 @@ layout holds, the rail scrolls, the panel fits, and the console stays empty.
 **Not changed:** the CDN font link (§9 Q1), the gesture model, the export path, the state model —
 those are §5–§6 findings about the prototype's *architecture*, not its look.
 
+**Known follow-up.** The retarget fixed how the controls *look*; it did not question how many there
+are. The measurements in §4 assume every control on screen; in the running mock the actions row has
+grown a zoom cluster that wraps out of its own row. See [`CHROME-DECLUTTER-PLAN.md`](CHROME-DECLUTTER-PLAN.md).
+
+---
+
+## 11. Lane architecture — the text / caption split (proposed, not built)
+
+**The proposal:** text overlays live in a **collapsible lane above** the video (thin bars, expanding on
+selection, as the reference does); captions live in a **permanently expanded lane below** the video.
+**Verdict: yes — the asymmetry is principled — but three corrections, and one rule has to be written
+down or it will be violated by the next lane someone adds.**
+
+**Why the asymmetry is principled.** They are different objects with different density and different
+editing gesture. A text overlay is authored, sparse (0–5 items), moved *on the canvas* — so the lane is
+only a marker plus two trim handles, and 14px is the honest height. A caption is generated, dense (a cue
+every 2–4s for the whole duration), and edited *in the lane* — so the lane **is** the editing surface and
+collapsing it would hide the thing being edited. Collapse policy should follow density; the two
+densities differ by an order of magnitude.
+
+**The rule to record.** Spatial position must mean one thing, applied to every future lane:
+
+> **Above the video = layers that composite over the picture and are positioned on the canvas**
+> (text, stickers, PiP). **Below the video = streams derived from or attached to sound**
+> (captions, voiceover, music, the waveform).
+
+A rule this makes unavoidable and which should be intended: **it puts captions under text overlays** in
+z-order. That matches the usual default (burned-in captions sit under decorative text), but it is an
+implication, not an accident, and it should be written down as one.
+
+**Correction 1 — the text strip needs a reserved constant height.** Measured in the running mock with one
+real clip (`getBoundingClientRect`, 366×836):
+
+| project state | `#track` top | `#ttrack` top / height | timeline band top |
+|---|---|---|---|
+| no text | 640 | 640 / **0** | 620 |
+| 2 non-overlapping texts (1 row) | **648** | 612 / 36 | **592** |
+| 3 texts, one overlap (2 rows) | 648 | 596 / 52 | **576** |
+| text cleared | 640 | 640 / 0 | 620 |
+
+Two things to read out of that. The filmstrip **moves 8px down** the first time text is added, under a
+playhead that does not move — the vertical version of the P1 invariant in
+[`CHROME-DECLUTTER-PLAN.md`](CHROME-DECLUTTER-PLAN.md) §13. And the band is **bottom-anchored**, so it
+grows *upward*: adding text costs the preview band 28px, and a second packed row costs 16px more. Thin
+bars fix the first cost but not the second — the fix is a **constant reservation** (always reserve the
+collapsed 14px whether or not text exists), so the film never moves.
+
+**Correction 2 — the caption lane must be fixed height with no overlap packing.** The current
+`lanes()` packs non-overlapping items onto rows and returns the max level, and `#ttrack` height is
+`n*16+20`. That is right for sparse text and **wrong for captions**: one cue that runs 100ms into the
+next makes the lane 16px taller, and because the band grows upward, that single sloppy cue permanently
+costs 16px of preview **for the entire project**. Captions will hit this constantly. Cap the lane at a
+fixed row count and let an overlap either wrap within the row or be prevented on import — do not let
+one bad cue resize the timeline forever.
+
+**Correction 3 — "never collapse" means "never collapse *while captions exist*".** An empty caption
+lane that still charges 34px is exactly the failure §1 of the chrome plan was written to remove. The
+lane should collapse to a labelled strip when the project has no captions and expand the moment one
+exists.
+
+**The cost of the split, stated honestly.** Two lanes on opposite sides of the spine means "where are my
+words?" has two answers. Mitigation: the rail item that opens Text should highlight the lane above, and
+the one that opens Captions the lane below, so the mapping is taught on the first tap rather than
+discovered.
+
 ---
 
 *Study produced 2026-10-02. Nothing built. `clip-lite-mock-v1.html` is byte-identical to
-`video-editor (7).html`; `clip-lite-mock.html` is `video-editor (8).html` with the §10 retarget.*
+`video-editor (7).html`; `clip-lite-mock.html` is `video-editor (8).html` with the §10 retarget. §11 is a
+proposed lane architecture, not an implementation.*

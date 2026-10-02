@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Clip Lite — a working phone video editor in one self-contained HTML file: import real video, build a filmstrip and waveform from the source, scrub on a pinned playhead, and export with MediaRecorder. The Studio Lite prototype.">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Anton&display=swap" rel="stylesheet">
 <title>Clip Lite – Video Editor</title>
 <style>
@@ -85,17 +86,16 @@ canvas{max-width:100%;max-height:100%;width:auto;height:auto;border-radius:8px;b
 #snap[hidden],#tip[hidden]{display:none}
 .tl{cursor:grab}.clip,.tx{cursor:pointer}.clip.sel,.tx.sel{cursor:grab}.h:hover{filter:brightness(1.12)}body.scrub,body.scrub *{cursor:grabbing!important}
 .tl.multi .clip.sel{touch-action:none}
-.mid{display:flex;align-items:center}.mid .ib{width:40px}
+.mid{display:flex;align-items:center;justify-content:center;flex:1}
 .acts{display:flex;gap:8px;overflow-x:auto;padding:6px 16px 8px;scrollbar-width:none}.acts::-webkit-scrollbar{display:none}.acts .chip{flex:none}
 .film{position:absolute;inset:0;overflow:hidden;border-radius:10px;pointer-events:none}
 .film img{position:absolute;top:0;height:100%;object-fit:cover;pointer-events:none;-webkit-user-drag:none}
 .clip{padding:6px 8px}.clip span{position:relative;font-size:11px;background:rgba(0,0,0,.55);color:#fff;padding:2px 8px;border-radius:8px}
 @media(min-width:900px){.acts{justify-content:center}}
-.bar{height:56px;padding:0 8px}
+.bar{height:56px;padding:0 6px}
 .ib:disabled{opacity:.35;cursor:default}.ib:disabled:hover{background:none}.ib.on{color:var(--acc)}
 .ar{display:flex;align-items:center;justify-content:space-between;padding:4px 8px 0}
 .play{background:none;color:var(--on);width:48px;height:48px}.play svg{width:30px;height:30px}
-.tc{display:flex;align-items:center;justify-content:space-between;padding:0 8px}.tc .ib{width:40px;height:40px}.tc .ib svg{width:22px;height:22px}
 #time{font-size:13px;letter-spacing:.02em;color:var(--on2);min-width:0;font-variant-numeric:tabular-nums}#time b{color:var(--on);font-weight:500}
 #ruler i{position:absolute;top:9px;width:3px;height:3px;margin-left:-1.5px;border-radius:50%;background:var(--on2);opacity:.7}
 #panel{flex-direction:column;align-items:stretch;flex-wrap:nowrap;gap:16px;padding:20px 20px 16px;margin:0;min-height:260px;background:var(--sf);border-radius:24px 24px 0 0}
@@ -124,11 +124,11 @@ svg{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-l
 .sub{flex:1 1 100%;text-align:center;font-size:13px;color:var(--on2)}
 .dock{background:none;border-radius:0}
 #ruler{height:0}
-#rl{position:absolute;inset:0;overflow:hidden;pointer-events:none;-webkit-mask-image:linear-gradient(90deg,transparent 0 44px,#000 56px,#000 calc(50% - 76px),transparent calc(50% - 70px) calc(50% + 70px),#000 calc(50% + 76px),#000 calc(100% - 136px),transparent calc(100% - 124px));mask-image:linear-gradient(90deg,transparent 0 44px,#000 56px,#000 calc(50% - 76px),transparent calc(50% - 70px) calc(50% + 70px),#000 calc(50% + 76px),#000 calc(100% - 136px),transparent calc(100% - 124px))}
+#rl{position:absolute;top:0;left:0;right:0;bottom:0;overflow:hidden;pointer-events:none;-webkit-mask-image:linear-gradient(90deg,transparent 0 14px,#000 24px,#000 calc(50% - 64px),transparent calc(50% - 56px) calc(50% + 56px),#000 calc(50% + 64px),#000 calc(100% - 24px),transparent calc(100% - 14px));mask-image:linear-gradient(90deg,transparent 0 14px,#000 24px,#000 calc(50% - 64px),transparent calc(50% - 56px) calc(50% + 56px),#000 calc(50% + 64px),#000 calc(100% - 24px),transparent calc(100% - 14px))}
 #rd{position:absolute;left:0;top:0;height:100%}
 #rd i{position:absolute;top:50%;width:2px;height:2px;margin:-1px 0 0 -1px;border-radius:50%;background:var(--on2);opacity:.55}
-.tc{position:relative;height:40px}.tc .ib,#time{position:relative;z-index:1}
-.tlw{padding-bottom:14px}.ph{top:0;bottom:0}.ph::before{display:none}
+#time{position:relative;z-index:1}
+.tlw{padding-bottom:8px}.ph{top:0;bottom:0}.ph::before{display:none}
 .tl{min-height:140px}#ttrack{margin-top:0}
 .tx{top:auto;height:14px;padding:0 14px;border:0;border-radius:8px 8px 3px 3px;display:flex;align-items:center;overflow:visible;font-size:11px;font-weight:500;color:#111;transition:height .12s}
 .tx span{display:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -138,7 +138,7 @@ svg{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-l
 #atrack{height:44px}.aclip{background:var(--audio);border-radius:8px}
 .jn{width:36px;height:36px;margin:-18px 0 0 -18px;background:#2b2b2b;color:#fff;box-shadow:none}.jn svg{width:16px;height:16px}.jn.has{background:#fff;color:#111;box-shadow:0 0 0 1px #8a8a8a}
 .addf{position:absolute;right:10px;width:44px;height:44px;border-radius:50%;background:var(--on);color:var(--bg);display:grid;place-items:center;z-index:5;box-shadow:0 2px 8px rgba(0,0,0,.35)}.addf[hidden]{display:none}.addf svg{width:26px;height:26px;stroke-width:1.5}
-.tools{-webkit-mask-image:none;mask-image:none}.tools button{width:auto;min-width:68px;padding:4px 12px}.tools button span{font-size:11px;color:var(--on2)}
+.tools{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 26px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 26px),transparent)}.tools button{width:auto;min-width:68px;padding:4px 12px}.tools button span{font-size:11px;color:var(--on2)}
 .vd{flex:none;width:1px;height:34px;align-self:center;background:var(--ol);margin:0 6px}
 .tpl{display:flex;gap:8px;flex:1 1 100%;justify-content:center;flex-wrap:wrap}
 .tpl .chip{height:40px;padding:0 14px}.tpl .chip span{font-family:Anton,Roboto,sans-serif;font-size:16px;letter-spacing:.02em}
@@ -147,13 +147,39 @@ svg{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-l
 .tp-plain{background:rgba(0,0,0,.55);color:#fff;border-radius:8px;padding:2px 10px}
 .tools button:active{background:color-mix(in srgb,var(--on) 10%,transparent)}
 @media(max-width:360px){.tools button{min-width:60px}.ar{padding:2px 2px 0}#time{font-size:12px}.addf{width:40px;height:40px}}
+@supports not (color:color-mix(in srgb,red 50%,blue)){.sr{border-bottom:1px solid rgba(127,127,127,.18)}}
+/* no sticky hover wash on touch devices — it reads as a broken pressed state */
+@media(hover:none){.ib:hover,.tools button:hover,.ib:hover{background:none}}
+
+/* ── header: three columns, the timecode now lives in the middle ────────── */
+.bar{display:flex;align-items:center;justify-content:space-between}
+.bar .br{display:flex;align-items:center}
+/* the readout sits with the ruler, directly above the timeline — not in the header */
+.ro{position:relative;height:30px;display:grid;place-items:center}
+#time{position:relative;z-index:1}
+
+/* ── the ⋮ sheet: rare actions + settings, one home, nothing gesture-only ─ */
+#panel.set{min-height:0;max-height:64vh;overflow-y:auto;padding:4px 18px 6px}
+#panel.set .eh{padding:12px 0 6px}
+#panel.set .ef{padding-top:10px}
+.eb.st{flex-direction:column;align-items:stretch;justify-content:flex-start;flex-wrap:nowrap;gap:0}
+.sr{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px;border-bottom:1px solid color-mix(in srgb,var(--on) 7%,transparent)}
+.sr:last-child{border-bottom:0}
+.sr>span:first-child{font-size:13px;color:var(--on2)}
+.sr .chip{height:40px;padding:0 18px;border-radius:20px}
+.sg{display:flex;align-items:center;gap:8px}
+#panel.set .sg input[type=range]{flex:0 1 118px;width:118px;min-width:0;height:32px;accent-color:var(--pri)}
+.sg .ib{width:40px;height:40px}
+.sw{width:46px;height:28px;border-radius:14px;background:var(--sf2);position:relative;flex:none;transition:background .15s}
+.sw i{position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:var(--on2);transition:transform .15s,background .15s}
+.sw.on{background:var(--acc)}
+.sw.on i{transform:translateX(18px);background:#fff}
 </style>
 </head>
 <body>
 <header class="bar">
   <button class="ib" id="theme" title="Light / dark" aria-label="Toggle theme"><svg data-i="sun"></svg></button>
-  <span style="flex:1"></span>
-  <button class="ib" id="export" disabled title="Export" aria-label="Export video"><svg data-i="up"></svg></button>
+  <span class="br"><button class="ib" id="more" aria-label="More" title="Settings and rare actions"><svg data-i="more"></svg></button><button class="ib" id="export" disabled title="Export" aria-label="Export video"><svg data-i="up"></svg></button></span>
 </header>
 <div class="view">
   <canvas id="cv" width="1280" height="720"></canvas>
@@ -164,14 +190,12 @@ svg{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-l
 <div class="dock">
   <div class="ar">
     <button class="ib" id="bdel" aria-label="Delete" title="Delete"><svg data-i="trash"></svg></button><button class="ib" id="bsplit" aria-label="Split" title="Split"><svg data-i="cut"></svg></button>
-    <span class="mid"><button class="ib" id="fb" aria-label="Previous frame" title="Previous frame"><svg data-i="prev"></svg></button><button class="play" id="play" aria-label="Play"></button><button class="ib" id="ff" aria-label="Next frame" title="Next frame"><svg data-i="next"></svg></button></span>
+    <span class="mid"><button class="play" id="play" aria-label="Play"></button></span>
     <button class="ib" id="undo" aria-label="Undo" title="Undo"><svg data-i="undo"></svg></button><button class="ib" id="redo" aria-label="Redo" title="Redo"><svg data-i="redo"></svg></button>
   </div>
-  <div class="tc" id="acts">
+  <div class="ro">
     <div id="rl"><div id="rd"></div></div>
-    <button class="ib on" data-a="snap" aria-label="Snapping" title="Snapping on/off"><svg data-i="snap"></svg></button>
     <span id="time"><b id="tc">00:00</b> / <span id="tt">00:00</span></span>
-    <span><button class="ib" id="zo" aria-label="Zoom out" title="Zoom out"><svg data-i="zo"></svg></button><button class="ib" id="zi" aria-label="Zoom in" title="Zoom in"><svg data-i="zi"></svg></button><button class="ib" data-a="fit" aria-label="Fit all" title="Fit all"><svg data-i="fit"></svg></button></span>
   </div>
   <div class="tlw">
     <div class="tl" id="tl"><div class="inn" id="inn"><div id="ruler"></div><div id="ttrack"></div><div id="track"></div><div id="atrack"></div></div></div>
@@ -200,9 +224,10 @@ filter:'<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><c
 dup:'<rect x="8" y="8" width="12" height="12" rx="2.4"/><path d="M16 8V6.4A2.4 2.4 0 0 0 13.6 4H6.4A2.4 2.4 0 0 0 4 6.4v7.2A2.4 2.4 0 0 0 6.4 16H8"/>',
 ts:'<path d="M5 5v14M9.5 12h9M15 8.6l3.4 3.4-3.4 3.4"/>',te:'<path d="M19 5v14M14.5 12h-9M9 8.6 5.6 12 9 15.4"/>',
 rotate:'<path d="M20 12a8 8 0 1 1-2.5-5.8"/><path d="M20.4 4v5h-5"/>',trans:'<path d="M4 6v12l8-6zM20 6v12l-8-6z"/>',
-aspect:'<rect x="3" y="6" width="18" height="12" rx="2.4"/><path d="M7 10.6V9h1.6M17 13.4V15h-1.6"/>',fs:'<path d="M4 9.5v-4A1.5 1.5 0 0 1 5.5 4h4M20 9.5v-4A1.5 1.5 0 0 0 18.5 4h-4M4 14.5v4A1.5 1.5 0 0 0 5.5 20h4M20 14.5v4A1.5 1.5 0 0 1 18.5 20h-4"/>'};
+aspect:'<rect x="3" y="6" width="18" height="12" rx="2.4"/><path d="M7 10.6V9h1.6M17 13.4V15h-1.6"/>',fs:'<path d="M4 9.5v-4A1.5 1.5 0 0 1 5.5 4h4M20 9.5v-4A1.5 1.5 0 0 0 18.5 4h-4M4 14.5v4A1.5 1.5 0 0 0 5.5 20h4M20 14.5v4A1.5 1.5 0 0 1 18.5 20h-4"/>',
+more:'<circle cx="12" cy="5" r="1.7" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"/><circle cx="12" cy="19" r="1.7" fill="currentColor" stroke="none"/>'};
 const ic=n=>`<svg viewBox="0 0 24 24">${ICON[n]}</svg>`;
-document.querySelectorAll('svg[data-i]').forEach(e=>{e.setAttribute('viewBox','0 0 24 24');e.innerHTML=ICON[e.dataset.i]});
+document.querySelectorAll('svg[data-i]').forEach(e=>{e.setAttribute('viewBox','0 0 24 24');e.innerHTML=ICON[e.dataset.i]||''});
 const PLAY='<svg viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M8 5v14l11-7z"/></svg>',PAUSE='<svg viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg>';
 const AR={'16:9':[1280,720],'9:16':[720,1280],'1:1':[1080,1080],'4:5':[864,1080]},BG=[['Black','#000000'],['Charcoal','#1e1e1e'],['Grey','#808080'],['White','#ffffff']];
 let proj={ar:'16:9',bg:'#000000'};
@@ -212,7 +237,7 @@ let clips=[],texts=[],srcs={},t=0,total=0,playing=false,sel=null,pps=60,uid=0,ac
 const dur=c=>(c.out-c.in)/c.sp,esc=s=>s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 const fmt=s=>{s=Math.max(0,s);return Math.floor(s/60)+':'+(s%60).toFixed(1).padStart(4,'0')},fmtS=s=>Math.floor(s/60)+':'+String(s%60).padStart(2,'0');
 const fmtT=s=>String(Math.floor(s/60)).padStart(2,'0')+':'+String(Math.floor(s%60)).padStart(2,'0');
-function syncBtns(){const h=!clips.length;$('#bdel').disabled=$('#bsplit').disabled=$('#fb').disabled=$('#ff').disabled=h;$('#undo').disabled=!hist.length||!!rec;$('#redo').disabled=!redoS.length||!!rec}
+function syncBtns(){const h=!clips.length;$('#bdel').disabled=$('#bsplit').disabled=h;$('#undo').disabled=!hist.length||!!rec;$('#redo').disabled=!redoS.length||!!rec}
 function toast(m){const e=$('#toast');e.textContent=m;e.classList.add('on');clearTimeout(toast.h);toast.h=setTimeout(()=>e.classList.remove('on'),1800)}
 function layout(){let s=0;clips.forEach(c=>{c.s=s;s+=dur(c)});total=s;if(clips.length){texts.forEach(x=>{if(x.s+x.d>total)x.d=total-x.s});texts=texts.filter(x=>x.d>=.2)}}
 const at=x=>clips.find(c=>x>=c.s&&x<c.s+dur(c))||clips[clips.length-1];
@@ -309,7 +334,7 @@ function reorder(e,cl,el){
   const put=()=>{ins.style.left=(idx?others[idx-1].s+dur(others[idx-1]):0)*pps+'px'};put();
   drag(e,d=>{d=clamp(d,lo,hi);el.style.transform=`translateX(${d*pps}px)`;idx=others.filter(c=>c.s+dur(c)/2<mid0+d).length;put()},()=>{if(idx!==orig){snap();clips=[...others.slice(0,idx),cl,...others.slice(idx)]}sel={k:'c',id:cl.id};settle()});
 }
-tl.addEventListener('scroll',()=>{if(playing||rec||dragging||Math.abs(tl.scrollLeft-t*pps)<1.5)return;t=clamp(tl.scrollLeft/pps,0,total);seekVid()});
+tl.addEventListener('scroll',()=>{if(!tl.offsetParent||playing||rec||dragging||Math.abs(tl.scrollLeft-t*pps)<1.5)return;t=clamp(tl.scrollLeft/pps,0,total);seekVid()});
 tl.addEventListener('contextmenu',e=>e.preventDefault());
 tl.addEventListener('click',e=>{
   if(Date.now()-noClick<300)return;
@@ -439,11 +464,25 @@ function addText(){
 function closeEdit(keep){
   if(esBase&&!keep){const o=JSON.parse(esBase);clips=o.clips;texts=o.texts;restoreProj(o);if(sel&&!(sel.k=='t'?texts:clips).some(x=>x.id==sel.id))sel=null}
   if(esBase&&keep&&JSON.stringify({clips,texts,proj})!==esBase){hist.push(esBase);redoS.length=0;if(hist.length>40)hist.shift()}
-  esBase=null;tool=null;refresh();
+  esBase=null;tool=null;document.body.classList.remove('es');refresh();
 }
 const autoAr=()=>{const v=srcs[clips[0].src].v;return v.videoHeight>v.videoWidth?'9:16':'16:9'};
+/* The ⋮ sheet. Every control that is not used in most sessions lives here and nowhere else,
+   so nothing disappears from the app — it just stops competing with play, split and delete. */
+function settingsSheet(){
+  const p=$('#panel');esBase=null;document.body.classList.add('es');
+  p.innerHTML=`<div class="eh">Settings</div><div class="eb st">
+    <div class="sr"><span>Snap to edges</span><button class="sw${snapOn?' on':''}" id="swsnap" role="switch" aria-checked="${snapOn}" aria-label="Snap to edges"><i></i></button></div>
+    <div class="sr"><span>Zoom</span><span class="sg"><button class="ib" id="zo" aria-label="Zoom out">${ic('zo')}</button><input type="range" id="zr" min="2" max="240" step="1" value="${Math.round(clamp(pps,2,240))}" aria-label="Timeline zoom"><button class="ib" id="zi" aria-label="Zoom in">${ic('zi')}</button></span></div>
+    <div class="sr"><span>Frame step</span><span class="sg"><button class="ib" id="fb" aria-label="Previous frame">${ic('prev')}</button><button class="ib" id="ff" aria-label="Next frame">${ic('next')}</button></span></div>
+    <div class="sr"><span>Fit timeline</span><span class="sg"><button class="chip" data-a="fit">Fit all</button></span></div>
+  </div><div class="ef"><span></span><button class="pillb pri" id="ed">Done</button></div>`;
+  p.classList.add('set');p.hidden=false;
+}
 function panel(){
   strip();const p=$('#panel');
+  if(tool=='settings'){if(!p.classList.contains('set')||p.hidden)settingsSheet();return}
+  p.classList.remove('set');
   if(!TOOLS.includes(tool)||!clips.length){p.hidden=true;esBase=null;document.body.classList.remove('es');return}
   if(!esBase)esBase=JSON.stringify({clips,texts,proj});
   let h='';const c=tool=='aspect'||tool=='text'?null:curSel();
@@ -469,9 +508,21 @@ P.addEventListener('input',e=>{
     else if(tool=='trans'){c.tr.d=+el.value;$('#rv').textContent=c.tr.d.toFixed(1)+' s'}
   }
   if(el.id=='ti'&&x){x.t=el.value||' ';renderTL()}
+  if(el.id=='zr'){pps=clamp(+el.value,2,240);renderTL()}
 });
 P.addEventListener('click',e=>{
   const b=e.target.closest('button');if(!b)return;const d=b.dataset;
+  if(P.classList.contains('set')){
+    const z=$('#zr');
+    if(b.id=='swsnap'){snapOn=!snapOn;b.classList.toggle('on',snapOn);try{localStorage.setItem('lite:snap',snapOn?'1':'0')}catch(_){} }
+    else if(b.id=='zo'){pps=clamp(pps/1.5,2,240);if(z)z.value=Math.round(pps);renderTL()}
+    else if(b.id=='zi'){pps=clamp(pps*1.5,2,240);if(z)z.value=Math.round(pps);renderTL()}
+    else if(b.id=='fb')nudge(-1/30);
+    else if(b.id=='ff')nudge(1/30);
+    else if(d.a=='fit'){fitZoom();if(z)z.value=Math.round(pps)}
+    else if(b.id=='ed'){tool=null;document.body.classList.remove('es');refresh()}
+    return;
+  }
   if(d.tp){const x=texts.find(y=>y.id==sel.id);x.tp=d.tp;P.querySelectorAll('[data-tp]').forEach(q=>q.classList.toggle('on',q===b))}
   if(d.f){curSel().f=d.f;panel()}
   if(d.ar){proj.ar=d.ar;applyProj();panel()}
@@ -497,7 +548,7 @@ $('#addf').onclick=()=>$('#file').click();
 document.fonts&&document.fonts.load('400 40px Anton');
 $('#fs').onclick=()=>$('.view').classList.toggle('fs');
 cv.onclick=()=>{playing?pause():play()};
-addEventListener('keydown',e=>{if(e.key=='Escape')$('.view').classList.remove('fs')});
+addEventListener('keydown',e=>{if(e.key=='Escape'){$('.view').classList.remove('fs');if(tool=='settings'){tool=null;refresh()}}});
 $('#play').onclick=()=>playing?pause():play();
 $('#empty').onclick=()=>$('#file').click();
 $('#file').onchange=e=>{[...e.target.files].forEach(addFile);e.target.value=''};
@@ -513,17 +564,12 @@ function trimTo(end){
   if(o<.15||o>dur(c)-.15)return toast('Move the playhead inside the clip');
   snap();pause();if(end)c.out=c.in+o*c.sp;else{c.in+=o*c.sp;t=c.s}refresh();
 }
-function nudge(dt){if(!clips.length)return;pause();t=clamp(t+dt,0,total);tl.scrollLeft=t*pps;seekVid()}
-function hold(b,dt){let iv,to;const st=()=>{clearTimeout(to);clearInterval(iv)};b.onpointerdown=e=>{e.preventDefault();nudge(dt);to=setTimeout(()=>iv=setInterval(()=>nudge(dt),70),350)};b.onpointerup=b.onpointerleave=b.onpointercancel=st}
-hold($('#fb'),-1/30);hold($('#ff'),1/30);
-$('#acts').addEventListener('click',e=>{
-  const b=e.target.closest('button');if(!b)return;const a=b.dataset.a;
-  if(a=='dup')dup();else if(a=='ts')trimTo(0);else if(a=='te')trimTo(1);
-  else if(a=='snap'){snapOn=!snapOn;b.classList.toggle('on',snapOn)}
-  else if(a=='fit'){pps=clamp(tl.clientWidth*.8/Math.max(total,1),2,240);renderTL()}
-});
-$('#zi').onclick=()=>{pps=Math.min(240,pps*1.5);renderTL()};
-$('#zo').onclick=()=>{pps=Math.max(2,pps/1.5);renderTL()};
+/* The timeline is display:none while a panel is open, so scrollLeft reads 0 there — writing it
+   would clobber the playhead via the scroll handler below. Only touch it when it is on screen. */
+function nudge(dt){if(!clips.length)return;pause();t=clamp(t+dt,0,total);if(tl.offsetParent)tl.scrollLeft=t*pps;seekVid()}
+function fitZoom(){const w=tl.clientWidth||(Math.min(innerWidth,960)-32);pps=clamp(w*.8/Math.max(total,1),2,240);renderTL()}
+try{if(localStorage.getItem('lite:snap')==='0')snapOn=false}catch(_){}
+$('#more').onclick=()=>{tool=tool=='settings'?null:'settings';panel()};
 $('#theme').onclick=()=>{const d=document.documentElement,dark=d.dataset.theme?d.dataset.theme=='dark':matchMedia('(prefers-color-scheme:dark)').matches;d.dataset.theme=dark?'light':'dark'};
 addEventListener('resize',()=>clips.length&&renderTL());
 addEventListener('keydown',e=>{

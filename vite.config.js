@@ -24,12 +24,14 @@ export default defineConfig({
         /* v4 keeps the full source dir under dest unless stripped — stripBase
            flattens so the file lands at <outDir>/docs/html-in-canvas/ */
         { src: 'docs/html-in-canvas/test-renderer.html', dest: 'docs/html-in-canvas', rename: { stripBase: true } },
-        /* The Studio Lite study pages: the tier/palette mock and the
-           YouTube-Create-style editor study. Like the HIC pages they load the
-           vendored Tailwind runtime and the fonts by RELATIVE path (../../vendor,
+        /* Every page in docs/studio-lite/ ships: the tier/palette mock, the
+           YouTube-Create study, both Clip Lite iterations, and index.html — the
+           folder's front door, which Pages serves for the bare directory URL
+           <base>docs/studio-lite/. Globbed rather than listed one by one so a new
+           prototype deploys without editing this file. Like the HIC pages they load
+           the vendored Tailwind runtime and the fonts by RELATIVE path (../../vendor,
            ../../fonts), so they need no bundling — only to exist under
-           <outDir>/docs/studio-lite/. Globbed rather than listed one by one:
-           every page in the folder is a study page and every one of them ships. */
+           <outDir>/docs/studio-lite/. */
         { src: 'docs/studio-lite/*.html', dest: 'docs/studio-lite', rename: { stripBase: true } },
         /* /designs gallery page + its synced data file (Phase A/B of
            docs/html-in-canvas/DESIGNS-GALLERY-PLAN.md) */
@@ -72,7 +74,9 @@ export default defineConfig({
         // place of the page. Folder-wide rather than one entry per page: the test
         // renderer, the designs gallery, the prompts builder and the Studio Lite
         // mock all live there, and each new one used to reintroduce the bug.
-        navigateFallbackDenylist: [/docs\/.*\.html$/],
+        // The second pattern catches the bare folder URL (/docs/studio-lite/), which
+        // carries no .html suffix and would otherwise be handed the app shell.
+        navigateFallbackDenylist: [/docs\/.*\.html$/, /docs\/[^?#]*\/$/],
         cleanupOutdatedCaches: true,
         // Runtime caching for the few remaining cross-origin calls:
         //   - unpkg / jsDelivr (CDN-first Lucide, any stray CDN scripts):

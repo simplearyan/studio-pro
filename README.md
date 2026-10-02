@@ -157,6 +157,16 @@ they and the editor share:
 | [`hic-theme.js`](docs/html-in-canvas/hic-theme.js) · [`hic-theme.css`](docs/html-in-canvas/hic-theme.css) | Shared theme boot + toggle |
 | [`designs.html`](docs/html-in-canvas/designs.html) · [`test-renderer.html`](docs/html-in-canvas/test-renderer.html) · [`prompts-engineer.html`](docs/html-in-canvas/prompts-engineer.html) | Standalone tools: design gallery, renderer test bench, AI prompt engineer |
 
+[`docs/studio-lite/`](docs/studio-lite/index.html) holds the **phone-first prototypes** — every page
+a single self-contained file, no framework and no build step:
+
+| Page | What it does |
+|---|---|
+| [`index.html`](docs/studio-lite/index.html) | The folder's front door — the prototypes and the studies behind them |
+| [`clip-lite-mock.html`](docs/studio-lite/clip-lite-mock.html) | **Clip Lite** — the working phone editor: real import, filmstrip, waveform, `MediaRecorder` export |
+| [`clip-lite-mock-v1.html`](docs/studio-lite/clip-lite-mock-v1.html) | The earlier iteration, kept byte-identical as the before-picture |
+| [`yt-create-mock.html`](docs/studio-lite/yt-create-mock.html) · [`mock.html`](docs/studio-lite/mock.html) | The YouTube-Create layout study and the tier/palette shell mock |
+
 ---
 
 ## 🤖 Code → video automation
@@ -337,6 +347,7 @@ studio-pro-editor/
 - [Contributing guide](CONTRIBUTING.md) — setup, conventions, testing checklist
 - [Automation guide](automation/README.md) — the pipelines in full
 - [HIC renderer, in isolation](docs/html-in-canvas/test-renderer.html) — the SVG `foreignObject` engine
+- [Studio Lite prototypes](docs/studio-lite/index.html) — the phone-first editor mocks, and the studies behind them
 - [HTML-in-Canvas pipeline plan](docs/automation/HTML-IN-CANVAS-PIPELINE-PLAN.md) — how the two automation folders became one
 - [HTML engine consolidation](docs/HTML-ENGINE-CONSOLIDATION-PLAN.md) — the WAAPI → HIC port
 - [Legacy clip removal](docs/LEGACY-CLIP-REMOVAL-PLAN.md) — retiring the html2canvas path
