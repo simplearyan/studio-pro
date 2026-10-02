@@ -508,6 +508,14 @@ The dock is the phone replacement for Pro's six-tab sidebar: `Add` (text/shape/i
 audio/HIC/captions/markdown), `Inspect` (properties for the selection), `Clips` (the list +
 track order), `Export`. Four destinations, each one thumb-height away.
 
+> **Open amendment (see [`studio-lite/CLIP-LITE-PATTERN-PLAN.md`](studio-lite/CLIP-LITE-PATTERN-PLAN.md) §5).**
+> A working phone-editor prototype argues that the **selection-bound property editors** (speed,
+> volume, filter, rotation, transition, text, canvas) should be an **in-flow bar above the dock**
+> that pushes the stage up — one tool at a time, live preview, `Cancel` / `Reset` / `Done` — and
+> that the rising sheet should be reserved for list-shaped, non-modal surfaces (project browser,
+> export options, add-media, settings). Reason: the sheet covers the preview during the most
+> common task, and its drag-to-dismiss competes with the sliders inside it. Decide before P5.
+
 ### 6.2 What a phone screen shows during a drag
 
 The stage must give up space to the thing you are manipulating: while a clip is being moved
@@ -718,5 +726,6 @@ the manual pass.
 | ESM renderer lineage | `src/html-in-canvas/renderer.js` |
 | Hand copies into another repo | `../IITM/site/public/vendor/hic-{frame,theme}.js`, `../IITM/runtime/hic-storyboard*.js` |
 | Abandoned forks | `../studio-pro-clean/` (30,211-line `index.html`), `../html-in-canvas-demos/html-in-canvas/` |
+| Executable phone-edit-loop prototype (2 iterations) | `docs/studio-lite/clip-lite-mock.html`, `clip-lite-mock-v1.html`; analysis in `CLIP-LITE-PATTERN-PLAN.md` |
 | 33 feature plans already written | `docs/features/` |
 | No test runner | `package.json` devDependencies; `automation/shared/tests/*` are ad-hoc |
