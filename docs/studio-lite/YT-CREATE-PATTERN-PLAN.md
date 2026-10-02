@@ -95,7 +95,7 @@ drives a decision I say so; treat the rest as proportions.
 
 | thing | screenshot px | CSS px | note |
 |---|---|---|---|
-| top bar (home / share / ⋮) | ~96 tall | 48 | two rows of icons on the right (share, ⋮) |
+| top bar (home / share / ⋮) | ~96 tall | 48 | two rows of icons on the right (share, ⋮) — **built**, see [`CHROME-DECLUTTER-PLAN.md`](CHROME-DECLUTTER-PLAN.md) §20 |
 | preview band bottom edge | y ≈ **800** (50% of height) | — | fixed in 01 and 02 |
 | preview box, ~1:1 canvas | 680 × 655 | 340 × 328 | 41% of screen height |
 | preview box, 9:16 canvas | 425 × 760 | 213 × 380 | 47.5% — grew upward, bottom unchanged |

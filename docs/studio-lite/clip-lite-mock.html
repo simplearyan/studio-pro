@@ -22,6 +22,26 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Anton&display=swap" rel="stylesheet">
 <title>Clip Lite – Video Editor</title>
+
+<!-- The theme is a stored choice, not a guess, and it has to be resolved before the first paint:
+     reading it in the main script would show the OS theme for a frame and then flip, which is exactly
+     the flash a dark-mode toggle must not have. Until the user says otherwise this still follows
+     prefers-color-scheme — that part is the media query in the CSS, not JS — and once they have said
+     otherwise the stored value wins on every visit, in both directions. A function declaration rather
+     than a var: this is a classic script, and a bare `t` here would collide with the timeline's. -->
+<script>
+function setTheme(t){
+  document.documentElement.dataset.theme=t;
+  try{localStorage.setItem('lite:theme',t)}catch(_){}          // private mode throws; the theme still applies
+  var m=document.querySelectorAll('meta[name="theme-color"]'),c=t=='dark'?'#0f0f0f':'#ffffff';
+  for(var i=0;i<m.length;i++)m[i].removeAttribute('media'),m[i].content=c   // pin the browser chrome to the choice
+}
+(function(){var t;try{t=localStorage.getItem('lite:theme')}catch(_){}
+if(t=='light'||t=='dark')setTheme(t)})();
+</script>
+<!-- The favicon is the one thing here that can only read prefers-color-scheme — an SVG data URI has no
+     access to localStorage — so a stored dark theme on a light OS keeps the red mark. Left alone
+     deliberately: the alternative is a second copy of the path in JS that can drift from this one. -->
 <style>
 :root{--bg:#fff;--sf:#f2f2f2;--sf2:#e5e5e5;--on:#0f0f0f;--on2:#606060;--pri:#0f0f0f;--onpri:#fff;--acc:#1a73e8;--pc:#e0e0e0;--onpc:#0f0f0f;--ol:#cfcfcf;--clip:#dcdcdc;--onclip:#0f0f0f;--tx:#a8c7fa;--ontx:#041e49;--ph:#0f0f0f;
 box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -41,10 +61,10 @@ svg{width:24px;height:24px;fill:currentColor;flex:none}
 .fill{background:var(--pri);color:var(--onpri);border-radius:20px;height:40px;padding:0 24px;font-weight:500;margin-left:8px}
 .fill:disabled{background:color-mix(in srgb,var(--on) 12%,transparent);color:color-mix(in srgb,var(--on) 38%,transparent);cursor:default}
 .view{position:relative;flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:10px 12px 12px}
-canvas{max-width:100%;max-height:100%;width:auto;height:auto;border-radius:8px;background:#000}
+canvas{max-width:100%;max-height:100%;width:auto;height:auto;border-radius:0;background:#000}
 #empty{position:absolute;display:flex;align-items:center;gap:10px;background:var(--pc);color:var(--onpc);height:48px;padding:0 20px 0 16px;border-radius:24px;font-size:15px;font-weight:500;box-shadow:0 1px 3px rgba(0,0,0,.3),0 4px 8px 3px rgba(0,0,0,.15)}
 #empty[hidden],#panel[hidden],#ov[hidden]{display:none}
-.dock{background:var(--sf);border-radius:28px 28px 0 0;padding-top:4px}
+.dock{background:var(--sf);border-radius:28px 28px 0 0}
 #panel{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:8px 16px 4px;padding:12px 16px;background:var(--sf2);border-radius:16px}
 #panel label{min-width:84px;color:var(--on2)}
 #panel label b{color:var(--on);font-weight:500}
@@ -74,8 +94,18 @@ canvas{max-width:100%;max-height:100%;width:auto;height:auto;border-radius:8px;b
 .h[data-h=l]{left:0}.h[data-h=r]{right:0}
 .tx{position:absolute;top:0;height:100%;background:var(--tx);color:var(--ontx);border:2px solid transparent;border-radius:10px;padding:5px 10px;font-size:12px;font-weight:500;overflow:hidden;white-space:nowrap;cursor:pointer}
 .tx.sel{border-color:var(--pri)}
-.ph{position:absolute;left:50%;top:2px;bottom:4px;width:2px;margin-left:-1px;background:var(--ph);pointer-events:none;border-radius:2px}
-.ph::before{content:"";position:absolute;top:0;left:-4px;width:10px;height:10px;border-radius:50%;background:var(--ph)}
+/* ── D2: the playhead is a hairline ─────────────────────────────────────
+   2px on a phone is 6 device pixels of a 3px-wide white bar cutting through
+   the filmstrip — heavier than the clips it crosses. 1px is what the reference
+   draws and it still reads on every DPR, because --ph is full-contrast against
+   both --clip and the selected state. Dropping border-radius:2px with it: at
+   1px the radius was rounding a line that has no corners. The knob above the
+   stem is centred by `left:50%` plus its own radius rather than by a hand-tuned
+   offset, so it stays on the play position whatever the stem's width is — it is
+   currently `display:none` in the phone styles, but a stem width is not something
+   worth re-deriving by hand later. */
+.ph{position:absolute;left:50%;top:2px;bottom:4px;width:1px;margin-left:-.5px;background:var(--ph);pointer-events:none}
+.ph::before{content:"";position:absolute;top:0;left:50%;margin-left:-5px;width:10px;height:10px;border-radius:50%;background:var(--ph)}
 .tools{display:flex;justify-content:space-around;padding:6px 4px 10px}
 .tools button{flex:1;max-width:96px;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px;font-weight:500;color:var(--on2);padding:4px 0}
 .pill{width:64px;height:32px;border-radius:16px;display:grid;place-items:center;transition:background .15s}
@@ -107,7 +137,7 @@ canvas{max-width:100%;max-height:100%;width:auto;height:auto;border-radius:8px;b
 .clip{padding:6px 8px}.clip span{position:relative;font-size:11px;background:rgba(0,0,0,.55);color:#fff;padding:2px 8px;border-radius:8px}
 .bar{height:56px;padding:0 6px}
 .ib:disabled{opacity:.35;cursor:default}.ib:disabled:hover{background:none}.ib.on{color:var(--acc)}
-.ar{display:flex;align-items:center;justify-content:space-between;padding:4px 8px 0}
+.ar{display:flex;align-items:center;justify-content:space-between;padding:0 8px}
 .play{background:none;color:var(--on);width:48px;height:48px}.play svg{width:30px;height:30px}
 #time{font-size:13px;letter-spacing:.02em;color:var(--on2);min-width:0;font-variant-numeric:tabular-nums}#time b{color:var(--on);font-weight:500}
 #ruler i{position:absolute;top:9px;width:3px;height:3px;margin-left:-1.5px;border-radius:50%;background:var(--on2);opacity:.7}
@@ -119,7 +149,7 @@ canvas{max-width:100%;max-height:100%;width:auto;height:auto;border-radius:8px;b
 .ef{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .pillb{height:44px;padding:0 24px;border-radius:22px;background:var(--sf2);font-weight:500}.pillb.ghost{background:none}.pillb.pri{background:var(--on);color:var(--bg)}
 body.es .dock{display:none}
-.tools{justify-content:flex-start;overflow-x:auto;gap:2px;padding:6px 8px 10px;scrollbar-width:none;-webkit-mask-image:linear-gradient(90deg,#000 90%,transparent);mask-image:linear-gradient(90deg,#000 90%,transparent)}
+.tools{justify-content:flex-start;overflow-x:auto;gap:2px;padding:2px 8px 6px;scrollbar-width:none;-webkit-mask-image:linear-gradient(90deg,#000 90%,transparent);mask-image:linear-gradient(90deg,#000 90%,transparent)}
 .tools::-webkit-scrollbar{display:none}
 .tools button{flex:none;width:76px;max-width:none;color:var(--on);border-radius:12px}
 .tools button span{font-size:12px;font-weight:500;color:var(--on2)}
@@ -133,7 +163,7 @@ svg{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-l
 .jn svg{width:14px;height:14px}.jn.has{background:var(--on);color:var(--bg)}
 .clip.sel .h{z-index:4}
 #fs{position:absolute;right:8px;bottom:8px;width:44px;height:44px;border-radius:50%;color:#fff;display:grid;place-items:center;z-index:9;filter:drop-shadow(0 1px 2px rgba(0,0,0,.8))}
-.view.fs{position:fixed;inset:0;z-index:8;background:#000;padding:0}.view.fs canvas{border-radius:0}
+.view.fs{position:fixed;inset:0;z-index:8;background:#000;padding:0}
 .sub{flex:1 1 100%;text-align:center;font-size:13px;color:var(--on2)}
 .dock{background:none;border-radius:0}
 #ruler{height:0}
@@ -142,6 +172,25 @@ svg{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-l
 #rd i{position:absolute;top:50%;width:2px;height:2px;margin:-1px 0 0 -1px;border-radius:50%;background:var(--on2);opacity:.55}
 #time{position:relative;z-index:1}
 .tlw{padding-bottom:8px}.ph{top:0;bottom:0}.ph::before{display:none}
+/* D3: the band was sized generously and nothing inside it was allowed to grow —
+   .tl is a block-sized scroll container at a fixed min-height, so every pixel the
+   dock handed it piled up as dead air under the audio lane (81px of it at
+   378x770). .tl now fills .tlw, .inn is a flex column, and the film lane is the
+   one row with flex:1 — it takes the slack and nothing else does. That is the
+   "video lane never collapses" rule from the reference, and it is why the band
+   is allowed to be big in the first place. min-height is what keeps the floor
+   honest, and fitView() subtracts the growth back out to recover it.
+
+   max-height is the correction, and it is not optional. Left unbounded the lane
+   took all 81px and reached 145px, and because a 9:16 thumbnail is cover-cropped
+   into a full-height strip, every frame became a 34px-wide vertical slice through
+   the middle of a face — taller lane, *less* readable frame, which is the opposite
+   of the point. The lane is capped just under the reference's 80px so a frame
+   still reads as a frame; the slack it no longer takes goes back to the preview
+   via VIEW_CEIL rather than piling up as air under the waveform. */
+.tl{height:100%}
+.inn{min-height:100%;display:flex;flex-direction:column}
+#track{flex:1 1 auto;min-height:64px;max-height:88px}
 .tl{min-height:140px}#ttrack{margin-top:0}
 .tx{top:auto;height:14px;padding:0 14px;border:0;border-radius:8px 8px 3px 3px;display:flex;align-items:center;overflow:visible;font-size:11px;font-weight:500;color:#111;transition:height .12s}
 .tx span{display:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -151,7 +200,7 @@ svg{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-l
 #atrack{height:44px}.aclip{background:var(--audio);border-radius:8px}
 .jn{width:36px;height:36px;margin:-18px 0 0 -18px;background:#2b2b2b;color:#fff;box-shadow:none}.jn svg{width:16px;height:16px}.jn.has{background:#fff;color:#111;box-shadow:0 0 0 1px #8a8a8a}
 .addf{position:absolute;right:10px;width:44px;height:44px;border-radius:50%;background:var(--on);color:var(--bg);display:grid;place-items:center;z-index:5;box-shadow:0 2px 8px rgba(0,0,0,.35)}.addf[hidden]{display:none}.addf svg{width:26px;height:26px;stroke-width:1.5}
-.tools{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 26px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 26px),transparent)}.tools button{width:auto;min-width:68px;padding:4px 12px}.tools button span{font-size:11px;color:var(--on2)}
+.tools{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 26px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 26px),transparent)}.tools button{width:auto;min-width:68px;padding:2px 12px}.tools button span{font-size:11px;color:var(--on2)}
 .vd{flex:none;width:1px;height:34px;align-self:center;background:var(--ol);margin:0 6px}
 .tpl{display:flex;gap:8px;flex:1 1 100%;justify-content:center;flex-wrap:wrap}
 .tpl .chip{height:40px;padding:0 14px}.tpl .chip span{font-family:Anton,Roboto,sans-serif;font-size:16px;letter-spacing:.02em}
@@ -159,7 +208,7 @@ svg{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-l
 .tp-neon{color:#00e5ff;text-shadow:0 0 8px #00e5ff}.tp-comic{color:#ffd400;text-shadow:1px 1px 0 #000,-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000}
 .tp-plain{background:rgba(0,0,0,.55);color:#fff;border-radius:8px;padding:2px 10px}
 .tools button:active{background:color-mix(in srgb,var(--on) 10%,transparent)}
-@media(max-width:360px){.tools button{min-width:60px}.ar{padding:2px 2px 0}#time{font-size:12px}.addf{width:40px;height:40px}}
+@media(max-width:360px){.tools button{min-width:60px}.ar{padding:0 2px}#time{font-size:12px}.addf{width:40px;height:40px}}
 @supports not (color:color-mix(in srgb,red 50%,blue)){.sr{border-bottom:1px solid rgba(127,127,127,.18)}}
 /* no sticky hover wash on touch devices — it reads as a broken pressed state */
 @media(hover:none){.ib:hover,.tools button:hover,.ib:hover{background:none}}
@@ -196,24 +245,52 @@ svg{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-l
    above this (z-index 8 vs 7), so the header disappears with the rest. */
 body{position:relative}
 .bar{position:absolute;inset:0 0 auto;z-index:7;height:56px;padding:0 6px}
-.view{padding-top:0}
+.view{padding-top:0;padding-bottom:0}
 
-/* ── B2: the scrim, which is not decoration ──────────────────────────────
-   Frame 2 of the reference gets away with a bare overlay over a dark picture.
-   This one cannot: with the canvas running under the icons, a bright frame
-   would swallow them.
+/* ── B2r: no scrim at all, and the header gets out of the picture ─────────
+   B2 argued a scrim was not optional — with the canvas running under the icons,
+   a bright frame would swallow them. The reference settles it the other way and
+   it is right: the wash was costing the top 84px of every portrait frame, which
+   is the one thing the user opened the app to look at. So .bar paints nothing
+   at all now — no background, no ::before, no gradient of any kind — and the
+   9:16 frame runs clean to the top edge under the icons.
 
-   Painted on a pseudo-element rather than on .bar itself, because a fade that
-   finishes inside 56px leaves the bottom of the 48px icon row at ~0.13 alpha —
-   exactly where the ⋮ and ⤴ sit. The plateau holds full weight to 40px and
-   fades out by 84px, so the whole icon row keeps >=0.5 while the wash ends at
-   16% of a 523px frame. Tied to --bg, so it darkens in dark theme and lifts in
-   light — where the icons are dark and a black scrim would hide them too. */
-.bar{background:none}
-.bar::before{content:"";position:absolute;left:0;right:0;top:0;height:84px;z-index:-1;pointer-events:none;
-  background:linear-gradient(180deg,color-mix(in srgb,var(--bg) 88%,transparent) 0,color-mix(in srgb,var(--bg) 70%,transparent) 40px,transparent)}
-@supports not (color:color-mix(in srgb,red 50%,blue)){
-  .bar::before{background:linear-gradient(180deg,rgba(127,127,127,.5) 0,rgba(127,127,127,.34) 40px,transparent)}}
+   Readability is solved with geometry instead of paint.
+
+   When the canvas leaves a margin wide enough to stand in, the icons move into
+   that margin, which is exactly what the reference does: ⌂ alone at the far
+   left, ⋮ at the far right on the top line, ⤴ sharing underneath it down the
+   same margin, ⛶ bottom-right. Dark-on-white in light theme, white-on-black in
+   dark — the icon sits on the app's own background, never on the frame. A 9:16
+   canvas at this ceiling leaves ~57–75px either side, so the icons clear the
+   picture by ~9–27px at every size measured.
+
+   **The icons are bare in every state.** There were two: the margin arrangement
+   above, and a 36px chip in --bg for the ratios that run canvas to the edge
+   (16:9, 1:1, 4:5). The chip is gone — it was a workaround for the arrangement
+   not having been tried first, and once the icons move out of the picture the
+   ratio only decides *where* they sit, never what they look like. A chip also
+   made the header look like it had cards in it, which is the clutter this whole
+   pass is removing. One icon, one appearance, both themes.
+
+   body.gut is measured, not hardcoded to a ratio: fitView() reads the gap the
+   canvas leaves and sets it (GUT_MIN there). 9:16 is the only ratio that ever
+   produces one, but deriving it from geometry means a future ceiling change
+   can't silently park an icon on top of a face.
+
+   pointer-events:none on the bar with auto back on the buttons — the header is
+   an overlay now, and an overlay should not eat taps aimed at the stage. */
+.bar{background:none;pointer-events:none}
+.bar .ib{pointer-events:auto}
+
+/* the arrangement change, gated on the margin being there. The bar grows to
+   hold the stack, which costs nothing: it is absolutely positioned over the
+   stage and out of flow. The 44px button is the same in both states — the
+   arrangement moves where the icons sit, never how big they are. */
+body.gut .bar{height:auto;padding:0 4px 8px;align-items:flex-start}
+body.gut .bar .ib{width:44px;height:44px}
+body.gut #theme,body.gut #more{margin-top:6px}
+body.gut .br{flex-direction:column;align-items:center;gap:14px}
 
 /* ── B3: one optical scale — a smaller glyph, the identical painted stroke ─
    stroke-width is in viewBox units, so shrinking the render thins the ink:
@@ -241,6 +318,48 @@ svg{width:22px;height:22px;stroke-width:1.75}
 .tools button span{font-size:11.5px}
 .eh{font-weight:600}
 @media(max-width:360px){#time{font-size:14px}}
+
+/* ── C1–C3: the preview gets a ceiling, and the band takes the slack ───────
+   With the header out of the flow the preview was the only row with flex:1 and
+   no ceiling, so it took every spare pixel on every device — 61% of a 378x770
+   screen against 19% for the timeline band. fitView() now sizes it from what the
+   canvas can actually use at full width, clamped to 46–54% of the viewport, and
+   hands the remainder to the dock, the only thing in the column that can absorb
+   it. The max-height here is the pre-first-fit default; the inline flex fitView()
+   writes takes over from there. Nothing below the lanes is centring: the band
+   grows *downward*, so #track never moves and renderTL()'s measurements hold. */
+.view{max-height:54%}
+.dock{display:flex;flex-direction:column;flex:1 1 auto}
+.ar,.ro{flex:0 0 auto}
+.tlw{flex:1 1 auto}
+#tools{flex:0 0 auto}
+
+/* ── D1: the chrome is flush, and the 20px it gives back goes to the lanes ─
+   Four rows of padding were standing between the preview and the timeline:
+   .view 12 bottom, .dock 4 top, .ar 4 top, .tools 6 top + 10 bottom. None of
+   it separates anything — the rows have their own backgrounds, borders and
+   heights, so the padding was only ever air the timeline was paying rent on.
+   All four are gone and the canvas is flush top and bottom.
+
+   The win is 20px of real timeline lane, and it is 20px rather than 32 because
+   fitView() decides the split from `want`, which is the height the canvas needs
+   *plus the stage padding*. Shrink the padding and `want` shrinks with it, so
+   the freed height flows down the ladder to the band instead of staying as
+   letterbox under the video. That is why `want` now reads pt/pb off the
+   computed style instead of carrying the old 12 as a literal: the two have to
+   move together or the preview quietly grows 12px of dead space.
+
+   .ar was already padding-bottom:0, so what it loses is the 4px top — its row is
+   now exactly the 48px of its buttons, and the play button touches the video the
+   way the reference has it. `.tlw`'s 8px bottom padding is deliberately left:
+   it is *inside* the flexible area rather than above it, so it costs the lanes
+   nothing, and fitView()'s `lanes=tl.scrollHeight+8` is counting it.
+
+   These two are longhands on purpose. `.view{padding:0 12px}` reads better and is
+   wrong: it is a shorthand, so at >=900px it would also beat the desktop
+   `padding:8px 32px 20px` that came earlier in the sheet and flatten the wide
+   layout's 32px gutters back to 12. Only the top and bottom are the business of
+   this pass; the sides belong to whoever set them. */
 </style>
 </head>
 <body>
@@ -299,8 +418,66 @@ const PLAY='<svg viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="
 const AR={'16:9':[1280,720],'9:16':[720,1280],'1:1':[1080,1080],'4:5':[864,1080]},BG=[['Black','#000000'],['Charcoal','#1e1e1e'],['Grey','#808080'],['White','#ffffff']];
 let proj={ar:'16:9',bg:'#000000'};
 const applyProj=()=>{const d=AR[proj.ar];W=d[0];H=d[1];cv.width=W;cv.height=H},restoreProj=o=>{if(o.proj){proj=o.proj;applyProj()}};
+
+/* The preview ceiling, in one place. The band wants the height its lanes need; the
+   preview wants the height the canvas can actually use at full width. Deriving that
+   from proj.ar is the whole point of C2: a 16:9 project cannot use the vertical room
+   a 9:16 one can, so it stops claiming it and the timeline gets it instead. Clamped
+   at both ends so no ratio can either waste the frame or squeeze it past usability. */
+const VIEW_FLOOR=.46,VIEW_CEIL=.54,BAND_AIR=24,GUT_MIN=52;
+function fitView(){
+  const v=$('.view'),dock=$('.dock');
+  /* The ceiling lives in the inline flex-basis below, so the CSS max-height that
+     guards the first paint is cleared here — leaving it at '' would let it clamp
+     the computed height back to a flat 54% and eat C2 entirely. */
+  v.style.maxHeight='none';
+  if(!dock.offsetHeight){v.style.flex='1 1 auto';return}   // sheet open — the stage fills
+  /* Read the stage's real padding rather than assuming the mobile 12px, so the
+     same numbers hold in the wide .view padding at >=900px — and so `want` below
+     tracks the padding it is meant to be adding, now that .view is flush. */
+  const cs=getComputedStyle(v),pl=parseFloat(cs.paddingLeft)||0,pr=parseFloat(cs.paddingRight)||0,
+        pt=parseFloat(cs.paddingTop)||0,pb=parseFloat(cs.paddingBottom)||0;
+  const d=AR[proj.ar],inner=Math.max(v.clientWidth-pl-pr,1);
+  const tr=$('#track');
+  const cap=innerHeight*VIEW_CEIL,floor=innerHeight*VIEW_FLOOR;
+  const want=clamp(inner*d[1]/d[0]+pt+pb,floor,cap);        // what this canvas would use
+  /* The band's floor: what the lanes need when the film lane is at its cap.
+     Derived from the rows themselves rather than from tl.scrollHeight, because
+     the film lane flexes — so scrollHeight *is* the band we just produced, and
+     measuring the floor from it makes the ladder feed back into itself: switch
+     16:9 -> 9:16 and the floor would still carry the taller band's number, and
+     the layout would creep 4px a switch instead of returning. Every term here
+     is read from CSS, so retuning a lane height needs no edit to this line. */
+  const inn=$('#inn'),ics=getComputedStyle(inn),tlws=getComputedStyle($('.tlw'));
+  let lanes=(parseFloat(ics.paddingTop)||0)+(parseFloat(ics.paddingBottom)||0)+
+            (parseFloat(getComputedStyle(tr).maxHeight)||tr.offsetHeight);
+  for(const e of inn.children)if(e!==tr)lanes+=e.offsetHeight+(parseFloat(getComputedStyle(e).marginTop)||0);
+  lanes+=(parseFloat(tlws.paddingBottom)||0);
+  const avail=document.body.clientHeight-($('.ar').offsetHeight+$('.ro').offsetHeight+$('#tools').offsetHeight+4);
+  let band=clamp(avail-want,lanes,lanes+BAND_AIR),view=avail-band;
+  if(view>cap){view=cap;band=avail-cap}                     // the ceiling wins; the surplus becomes band air
+  if(view<floor){view=floor;band=Math.max(lanes,avail-floor)}  // the floor wins; the band gives way
+  v.style.flex='0 0 '+Math.max(Math.round(view),1)+'px';
+  /* The film lane is the one row that flexes, so its height is an *output* of
+     this function rather than a constant — and the filmstrip's thumb width is
+     derived from it. Reading it has to happen after the flex-basis above is
+     written, or it is still measuring last layout. When it has moved, the strip
+     is re-laid-out; paintFilms() rewrites only the innerHTML of the .film boxes,
+     so it is far cheaper than a full renderTL() and cannot disturb the playhead
+     or the clip handles. */
+  if(tr.offsetHeight!==laneH){laneH=tr.offsetHeight;clips.length&&paintFilms()}
+  /* Does the canvas leave a margin the header can stand in? Mirrors the canvas
+     box rule (max-width:100%, max-height:100%) against the height decided above:
+     9:16 is height-bound and lands ~57px clear either side, every other ratio is
+     width-bound and lands flush. Measured to the body edge, not to the stage's
+     padding — the bar spans the body, so that is the space the icons get.
+     GUT_MIN is the 44px button, the bar's own 4px padding and 4px of air, so a
+     measured gap is a guarantee the glyph never lands on the frame. */
+  const cw=Math.min(inner,Math.max(view-pb,1)*d[0]/d[1]);
+  document.body.classList.toggle('gut',(document.body.clientWidth-cw)/2>=GUT_MIN);
+}
 const F={none:'none',vivid:'saturate(1.6) contrast(1.1)',mono:'grayscale(1)',warm:'sepia(.35) saturate(1.3)',cool:'hue-rotate(15deg) saturate(1.1) brightness(1.05)',fade:'contrast(.85) brightness(1.1) saturate(.8)'};
-let clips=[],texts=[],srcs={},t=0,total=0,playing=false,sel=null,pps=60,uid=0,active=null,ac,dest,hist=[],rec=null,W=1280,H=720,tool=null,cancelled=false,mime='';
+let clips=[],texts=[],srcs={},t=0,total=0,playing=false,sel=null,pps=60,uid=0,active=null,ac,dest,hist=[],rec=null,W=1280,H=720,tool=null,cancelled=false,mime='',laneH=0;
 const dur=c=>(c.out-c.in)/c.sp,esc=s=>s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 const fmt=s=>{s=Math.max(0,s);return Math.floor(s/60)+':'+(s%60).toFixed(1).padStart(4,'0')},fmtS=s=>Math.floor(s/60)+':'+String(s%60).padStart(2,'0');
 const fmtT=s=>String(Math.floor(s/60)).padStart(2,'0')+':'+String(Math.floor(s%60)).padStart(2,'0');
@@ -311,7 +488,7 @@ const at=x=>clips.find(c=>x>=c.s&&x<c.s+dur(c))||clips[clips.length-1];
 const redoS=[],snap=()=>{redoS.length=0;hist.push(JSON.stringify({clips,texts,proj}));if(hist.length>40)hist.shift()};
 function redo(){if(!redoS.length||rec)return;pause();hist.push(JSON.stringify({clips,texts,proj}));const o=JSON.parse(redoS.pop());clips=o.clips;texts=o.texts;restoreProj(o);sel=null;refresh()}
 function undo(){if(!hist.length||rec)return;pause();redoS.push(JSON.stringify({clips,texts,proj}));const o=JSON.parse(hist.pop());clips=o.clips;texts=o.texts;restoreProj(o);sel=null;refresh()}
-function refresh(){layout();t=Math.min(t,total);renderTL();panel();seekVid();$('#empty').hidden=clips.length>0;$('#export').disabled=!clips.length}
+function refresh(){layout();t=Math.min(t,total);renderTL();panel();fitView();seekVid();$('#empty').hidden=clips.length>0;$('#export').disabled=!clips.length}
 function seekVid(){if(!clips.length||playing)return;const c=at(t),v=srcs[c.src].v,w=c.in+(t-c.s)*c.sp;if(Math.abs(v.currentTime-w)>.03)v.currentTime=w}
 function addFile(f){
   if(!ac){ac=new AudioContext();dest=ac.createMediaStreamDestination()}
@@ -339,7 +516,13 @@ async function peaks(id,f){
     for(let i=0;i<n;i++)pk[i]/=mx;srcs[id].pk=pk;paintWaves();
   }catch(e){}
 }
-function film(c){const S=srcs[c.src];if(!S.th)return'';const w=dur(c)*pps,tw=Math.max(Math.round(S.ar*60),w/300);let h='';for(let x=0;x<w;x+=tw){const i=Math.min(S.th.length-1,Math.floor((c.in+(x+tw/2)/pps*c.sp)/S.st)),u=S.th[i];if(u)h+=`<img src="${u}" style="left:${x}px;width:${tw}px" draggable="false">`}return h}
+/* Thumb width is the frame's own aspect times the lane it is standing in — the
+   60 here used to be a literal, which was only right while the film lane was a
+   fixed 64px. Now that the lane flexes, a width derived from a stale height is
+   what made the strip look stretched: object-fit:cover then cropped 28% off
+   every frame to fit a lane it had never been sized for. Read the live height
+   and each thumb shows its whole frame, uncropped, at whatever the lane is. */
+function film(c){const S=srcs[c.src];if(!S.th)return'';const w=dur(c)*pps,tw=Math.max(Math.round(S.ar*(laneH||60)),w/300);let h='';for(let x=0;x<w;x+=tw){const i=Math.min(S.th.length-1,Math.floor((c.in+(x+tw/2)/pps*c.sp)/S.st)),u=S.th[i];if(u)h+=`<img src="${u}" style="left:${x}px;width:${tw}px" draggable="false">`}return h}
 function paintFilms(){document.querySelectorAll('.clip').forEach(el=>{const c=clips.find(k=>k.id==el.dataset.id),f=el.querySelector('.film');if(c&&f)f.innerHTML=film(c)})}
 async function thumbs(id){
   const S=srcs[id],v=document.createElement('video');v.muted=true;v.preload='auto';v.src=S.v.src;
@@ -537,7 +720,7 @@ const autoAr=()=>{const v=srcs[clips[0].src].v;return v.videoHeight>v.videoWidth
 /* The ⋮ sheet. Every control that is not used in most sessions lives here and nowhere else,
    so nothing disappears from the app — it just stops competing with play, split and delete. */
 function settingsSheet(){
-  const p=$('#panel');esBase=null;document.body.classList.add('es');
+  const p=$('#panel');esBase=null;document.body.classList.add('es');fitView();
   p.innerHTML=`<div class="eh">Settings</div><div class="eb st">
     <div class="sr"><span>Snap to edges</span><button class="sw${snapOn?' on':''}" id="swsnap" role="switch" aria-checked="${snapOn}" aria-label="Snap to edges"><i></i></button></div>
     <div class="sr"><span>Zoom</span><span class="sg"><button class="ib" id="zo" aria-label="Zoom out">${ic('zo')}</button><input type="range" id="zr" min="2" max="240" step="1" value="${Math.round(clamp(pps,2,240))}" aria-label="Timeline zoom"><button class="ib" id="zi" aria-label="Zoom in">${ic('zi')}</button></span></div>
@@ -550,11 +733,11 @@ function panel(){
   strip();const p=$('#panel');
   if(tool=='settings'){if(!p.classList.contains('set')||p.hidden)settingsSheet();return}
   p.classList.remove('set');
-  if(!TOOLS.includes(tool)||!clips.length){p.hidden=true;esBase=null;document.body.classList.remove('es');return}
+  if(!TOOLS.includes(tool)||!clips.length){p.hidden=true;esBase=null;document.body.classList.remove('es');fitView();return}
   if(!esBase)esBase=JSON.stringify({clips,texts,proj});
   let h='';const c=tool=='aspect'||tool=='text'?null:curSel();
   if(tool=='text'){
-    const x=sel&&sel.k=='t'&&texts.find(y=>y.id==sel.id);if(!x){p.hidden=true;document.body.classList.remove('es');return}
+    const x=sel&&sel.k=='t'&&texts.find(y=>y.id==sel.id);if(!x){p.hidden=true;document.body.classList.remove('es');fitView();return}
     h=`<input type="text" id="ti" maxlength="60" placeholder="Type your title" value="${esc(x.t).replace(/"/g,'&quot;')}"><div class="tpl">`+[['rainbow','Rainbow'],['plain','Plain'],['neon','Neon'],['comic','Comic']].map(([k,l])=>`<button class="chip${(x.tp||'plain')==k?' on':''}" data-tp="${k}"><span class="tp-${k}">${l}</span></button>`).join('')+`</div>`;
   }else if(tool=='speed')h=`<label><b id="rv">${c.sp}×</b></label><input type="range" id="r1" min=".25" max="4" step=".25" value="${c.sp}">`;
   else if(tool=='volume')h=`<label><b id="rv">${Math.round(c.vol*100)}%</b></label><input type="range" id="r1" min="0" max="1" step=".05" value="${c.vol}">`;
@@ -563,7 +746,7 @@ function panel(){
   else if(tool=='trans'){const k=c.tr?c.tr.k:'none';h=`<span class="sub">Between the previous clip and this one</span>`+[['none','None'],['black','Fade black'],['white','Fade white']].map(([v,l])=>`<button class="chip${k==v?' on':''}" data-tk="${v}">${l}</button>`).join('')+(k!='none'?`<label><b id="rv">${c.tr.d.toFixed(1)} s</b></label><input type="range" id="r1" min=".2" max="2" step=".1" value="${c.tr.d}">`:'')}
   else if(tool=='aspect')h=`<span class="sub">Aspect ratio</span>`+Object.keys(AR).map(k=>`<button class="chip${proj.ar==k?' on':''}" data-ar="${k}">${k}</button>`).join('')+`<span class="sub">Background</span>`+BG.map(([n,v])=>`<button class="chip${proj.bg==v?' on':''}" data-bg="${v}">${n}</button>`).join('');
   p.innerHTML=`<div class="eh">${TTL[tool]}</div><div class="eb">${h}</div><div class="ef"><button class="pillb" id="ec">Cancel</button>${tool!='text'?'<button class="pillb ghost" id="er">Reset</button>':''}<button class="pillb pri" id="ed">Done</button></div>`;
-  p.hidden=false;document.body.classList.add('es');
+  p.hidden=false;document.body.classList.add('es');fitView();
 }
 const P=$('#panel');
 P.addEventListener('input',e=>{
@@ -592,7 +775,7 @@ P.addEventListener('click',e=>{
   }
   if(d.tp){const x=texts.find(y=>y.id==sel.id);x.tp=d.tp;P.querySelectorAll('[data-tp]').forEach(q=>q.classList.toggle('on',q===b))}
   if(d.f){curSel().f=d.f;panel()}
-  if(d.ar){proj.ar=d.ar;applyProj();panel()}
+  if(d.ar){proj.ar=d.ar;applyProj();panel();fitView()}
   if(d.bg){proj.bg=d.bg;panel()}
   if(d.tk){const c=curSel();c.tr={k:d.tk,d:c.tr?c.tr.d:1};panel()}
   if(b.id=='r90'){const c=curSel();let r=(c.rot||0)+90;if(r>180)r-=360;c.rot=r;panel()}
@@ -613,9 +796,9 @@ $('#tools').addEventListener('click',e=>{
 $('#bdel').onclick=del;$('#bsplit').onclick=split;
 $('#addf').onclick=()=>$('#file').click();
 document.fonts&&document.fonts.load('400 40px Anton');
-$('#fs').onclick=()=>$('.view').classList.toggle('fs');
+$('#fs').onclick=()=>{$('.view').classList.toggle('fs');fitView()};   // fullscreen drops the padding, so re-measure
 cv.onclick=()=>{playing?pause():play()};
-addEventListener('keydown',e=>{if(e.key=='Escape'){$('.view').classList.remove('fs');if(tool=='settings'){tool=null;refresh()}}});
+addEventListener('keydown',e=>{if(e.key=='Escape'){$('.view').classList.remove('fs');fitView();if(tool=='settings'){tool=null;refresh()}}});
 $('#play').onclick=()=>playing?pause():play();
 $('#empty').onclick=()=>$('#file').click();
 $('#file').onchange=e=>{[...e.target.files].forEach(addFile);e.target.value=''};
@@ -637,8 +820,10 @@ function nudge(dt){if(!clips.length)return;pause();t=clamp(t+dt,0,total);if(tl.o
 function fitZoom(){const w=tl.clientWidth||(Math.min(innerWidth,960)-32);pps=clamp(w*.8/Math.max(total,1),2,240);renderTL()}
 try{if(localStorage.getItem('lite:snap')==='0')snapOn=false}catch(_){}
 $('#more').onclick=()=>{tool=tool=='settings'?null:'settings';panel()};
-$('#theme').onclick=()=>{const d=document.documentElement,dark=d.dataset.theme?d.dataset.theme=='dark':matchMedia('(prefers-color-scheme:dark)').matches;d.dataset.theme=dark?'light':'dark'};
-addEventListener('resize',()=>clips.length&&renderTL());
+/* Falls back to the OS only while the user has never chosen; after that the stored value is the
+   source of truth and the media query in CSS no longer applies. */
+$('#theme').onclick=()=>{const d=document.documentElement,dark=d.dataset.theme?d.dataset.theme=='dark':matchMedia('(prefers-color-scheme:dark)').matches;setTheme(dark?'light':'dark')};
+addEventListener('resize',()=>{fitView();clips.length&&renderTL()});
 addEventListener('keydown',e=>{
   if(e.target.tagName=='INPUT'&&e.target.type=='text')return;
   if(e.code=='Space'){e.preventDefault();playing?pause():play()}

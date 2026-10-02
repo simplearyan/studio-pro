@@ -448,12 +448,12 @@ no new controls. At 320×700 the same move is worth 56 of 700px — **8% of the 
 19% for the timeline band. B1 fixed the preview and broke the balance — see
 [`TIMELINE-SPACE-PLAN.md`](TIMELINE-SPACE-PLAN.md), which is Part C and is where this thread continues.
 
-**The scrim is not optional.** An overlay whose icons sit on a bright frame is unreadable. It is painted
-on `.bar::before` — 84px tall with a plateau to 40px — rather than on `.bar` itself, because a fade that
-finishes inside 56px leaves the bottom of the 48px icon row at ~0.13 alpha, exactly where the ⋮ and ⤴
-sit. The gradient is tied to `--bg`, so it darkens in dark theme and lifts in light, where the icons are
-dark and a black scrim would hide them too. The reference gets away with a bare overlay over a dark
-picture; the mock must not depend on luck.
+**The scrim was not optional — until the icons were moved out from under it.** This section originally
+called a scrim mandatory: an overlay whose icons sit on a bright frame is unreadable, so it was painted
+on `.bar::before`, 84px tall with a plateau to 40px, tied to `--bg`. That reasoning is sound and the
+conclusion was wrong, because it treated "the icon overlaps the frame" as a fixed fact. **Reversed — see
+§20.** The scrim is gone entirely and the header paints nothing; readability is bought with geometry
+(icons into the margin) instead of paint — and after D4, with no per-icon chip at all.
 
 **The tap guard (from §4, still required).** The canvas already binds tap-to-play. If the chrome is
 auto-hidden, the first tap must **only** reveal it — otherwise waking the chrome also toggles playback
@@ -653,7 +653,8 @@ already spent.
    84% → 0 across the 56px header, which leaves the bottom of the 48px icon row at about **0.13
 alpha** — precisely where the ⋮ and ⤴ sit. It looked fine over a dark frame and washed out over a
    bright one. The scrim moved to `.bar::before`, 84px tall with a plateau to 40px, so the whole row
-   holds better than 0.5 while the wash still ends 16% down a 523px frame.
+   holds better than 0.5 while the wash still ends 16% down a 523px frame. *(Superseded by §20 — the
+   scrim is deleted outright rather than tuned.)*
 2. **`chrome above the timeline` was the wrong metric and the prediction from it was wrong.** §13
    claimed 620 → 564px. Because `.view` is `flex:1`, nothing below the preview moves at all — the
    preview simply absorbs the freed 56px. Corrected in §13, and it is the reason Part C exists: a row
@@ -664,6 +665,100 @@ flanking the readout), and all of [`TIMELINE-SPACE-PLAN.md`](TIMELINE-SPACE-PLAN
 
 ---
 
-*Plan produced 2026-10-02; §11 records M1–M3, §19 records B1–B5, §12–§18 are Part B (the
-screenshot-driven geometry, icon and type pass). Measurements taken from `clip-lite-mock.html` at
-366×836, dark theme, one clip selected.*
+## 20. Applied: B2r — the scrim is gone, and the header learned to move
+
+**The reversal.** §13 and §19 both argued that a bare overlay over a picture is unreadable, and both
+were wrong, because both assumed the icons have to sit on the picture. The reference never does that:
+its icons live in the **black margin beside** the frame, on the app's own chrome, and the frame is left
+completely clean. Once the arrangement is allowed to change with the aspect ratio there is a third
+option that neither section considered — put the icons where the frame is not — and it costs nothing.
+
+**`.bar` now paints nothing at all.** No background, no `::before`, no gradient of any kind; verified
+in the browser that `background-image` is `none` on `.bar` and every descendant, and that `.bar::before`
+does not exist. A 9:16 frame runs clean to `top: 0` under the icons.
+
+**The arrangement, at 9:16 — the reference's read.** ⌂ alone at the far left, ⋮ at the far right on the
+top line, ⤴ sharing directly underneath it down the same margin, ⛶ bottom-right. Icons are **bare**,
+thin and bare: the glyph sits on `--bg` (white in light theme, `#0f0f0f` in dark), so the contrast is
+the app's own and never the frame's. The bar grows from 56px to 116px to hold the stack, which is free —
+it is absolutely positioned over the stage and out of flow.
+
+**There is no chip anywhere.** An earlier cut of this section gave the ratios that run canvas to the
+edge (16:9, 1:1, 4:5) a 36px rounded chip in `--bg` on each button, as a readability fallback. It is
+deleted. Once the arrangement is allowed to move with the ratio, the ratio only decides *where* the icons
+sit, never what they look like — and a chip made the header read as a row of cards, which is the exact
+clutter this pass exists to remove. The icons are bare in both states, and hover is the app's original
+48px wash again. Delete nothing to restore it; there is nothing left to restore.
+
+**`body.gut` is measured, not keyed to a ratio string.** `fitView()` already knows the preview's height
+and the ratio, so it derives the canvas width from the same rule the box uses
+(`max-width:100%; max-height:100%`) and measures the gap **to the body edge** — the bar spans the body,
+so that is the space the icons actually get. `GUT_MIN=52` is the 44px button plus the bar's 4px padding
+plus 4px of air. 9:16 is the only ratio that clears it, but a hardcoded `proj.ar==='9:16'` would break
+the moment the ceiling moved, and the failure would be an icon on somebody's face.
+
+**Measured, 9:16 with the portrait clip from [`TEST-MEDIA.md`](TEST-MEDIA.md):**
+
+| | 320×700 | 366×836 | 378×770 | 390×844 |
+|---|---|---|---|---|
+| canvas | 206×366 | 247×439 | 227×404 | 250×444 |
+| margin each side | **57px** | **60px** | **75px** | **70px** |
+| icon box → canvas edge | **9px clear** | **12px clear** | **27px clear** | **22px clear** |
+| arrangement | margin, stacked | margin, stacked | margin, stacked | margin, stacked |
+| chip on icon | none | none | none | none |
+
+Every other ratio at 378×770 measures a 12–14px margin (below `GUT_MIN`), so `body.gut` is off and all
+three icons take the chip — asserted for 16:9, 1:1 and 4:5, in both themes, with the chip resolving to
+`white/0.76` + a `#0f0f0f` glyph in light and `#0f0f0f/0.76` + a white glyph in dark.
+*(Superseded: the chip never shipped. See "There is no chip anywhere" above.)*
+
+**Three smaller things this pass had to fix to get there:**
+
+1. **`fitView()` was assuming a 24px stage padding** (`v.clientWidth-24`), which is only true below 900px.
+   It now reads the real padding, so the desktop `32px` gutter is included in the width the canvas plans
+   for. Without this the measured gap on a wide screen is wrong by 40px and the decision is made on a
+   number that does not exist.
+2. **`.bar` is `pointer-events:none` with `auto` back on the buttons.** It is an overlay over the stage;
+   an overlay should not eat taps aimed at the picture beneath it.
+3. **Entering and leaving fullscreen re-fits.** `.view.fs` drops the padding to 0, so the gap computed
+   from it is fiction — `#fs` and `Escape` both call `fitView()` again. A 9:16 round trip returns to
+   byte-identical geometry (250×444 → 390×693 → 250×444).
+4. **The canvas lost its 8px radius.** The preview is the picture, not a card, and once the header
+   stopped covering its top edge the rounded corners were the last thing making it look like a UI
+   surface floating over the page. `canvas{border-radius:0}` and the `.view.fs canvas{border-radius:0}`
+   override that existed only to undo it are both gone — fullscreen is now the same declaration rather
+   than a special case, which is the point. The offscreen thumbnail canvas in `thumbs()` is created but
+   never appended, so the global selector never touched it; the filmstrip keeps its radius from
+   `.film{overflow:hidden}` and `.clip`.
+5. **The theme is now a stored choice instead of a fresh guess every visit.** `#theme` wrote
+   `data-theme` and nothing else, so closing the tab threw the decision away and the app followed the
+   OS again — a user who picks dark on a light laptop got it back on every reload. It reads and writes
+   `lite:theme`, alongside the existing `lite:snap` key and behind the same `try/catch`, because
+   private mode throws on write and the theme must still apply when it does.
+
+   The read happens in a **6-line script in `<head>`**, before the first paint, not in the main script:
+   reading it later shows the OS theme for a frame and then flips, which is the one thing a dark-mode
+   toggle must never do. Until the user chooses, the CSS media query still follows the OS untouched —
+   JS only takes over once there is something stored to take over with.
+
+   It also pins the two `theme-color` metas by stripping their `media` and writing one colour, so the
+   browser's own chrome stops second-guessing the app. **The favicon cannot follow**, and this is the
+   one documented gap: it is an SVG data URI, which has no access to `localStorage`, so a stored dark
+   theme on a light OS keeps the red mark. The alternative was a second copy of the path in JS, free
+   to drift from the one in the markup, for an 8px tab glyph.
+
+   Verified all three states by reloading with the browser's colour scheme emulated against it: stored
+   `dark` on a light OS renders dark on first paint, stored `light` on a dark OS renders light, and no
+   stored value leaves the attribute unset with both metas still media-scoped.
+
+**Verified:** no page scroll at any of the four sizes, sheet open/close round-trips with the flag intact,
+the empty state falls back to 16:9 and therefore to the single-row arrangement, console clean, build passes. The screenshots
+in the Preview panel are the authority for how it reads; the numbers above are the authority for where
+every pixel landed.
+
+---
+
+*Plan produced 2026-10-02; §11 records M1–M3, §19 records B1–B5, §20 records B2r (the scrim deleted
+and the header rearranged), §12–§18 are Part B (the screenshot-driven geometry, icon and type pass).
+Measurements taken from `clip-lite-mock.html` at 320×700 / 366×836 / 378×770 / 390×844, both themes,
+one clip selected.*

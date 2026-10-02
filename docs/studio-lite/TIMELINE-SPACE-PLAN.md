@@ -1,7 +1,10 @@
 # Studio Lite — timeline space plan
 
-**Status:** plan only, nothing applied. Ships as **Part C** alongside the geometry work in
-[`CHROME-DECLUTTER-PLAN.md`](CHROME-DECLUTTER-PLAN.md) (B1–B5, applied).
+**Status:** **C1–C3 are applied** to the mock — the ceiling exists, it is ratio-aware, and it lives in one
+function (§10 records the measurements and the bug that hid it). **C4–C11 are still plans**, which means
+the band currently carries visible air: that air is precisely the space C6–C9 is meant to spend. Ships as
+**Part C** alongside the geometry work in [`CHROME-DECLUTTER-PLAN.md`](CHROME-DECLUTTER-PLAN.md) (B1–B5,
+applied).
 **Subject:** [`clip-lite-mock.html`](clip-lite-mock.html).
 **Spec:** [`../STUDIO-LITE-PLAN.md`](../STUDIO-LITE-PLAN.md) §5.3 (touch ergonomics), §6.1 (layout by tier).
 **Depends on:** [`CLIP-LITE-PATTERN-PLAN.md`](CLIP-LITE-PATTERN-PLAN.md) §11 — the text/caption lane split,
@@ -255,6 +258,9 @@ Each row adds up: preview + 48 + 30 + 60 + band = the viewport height.
 | **C10** | The ceiling's give-way rule when both lanes exist | medium | the §5 table reproduces; the 46% floor is never crossed |
 | **C11** | At 360px and below, fold the readout row into the transport | **medium** | 320×700 with text **and** captions keeps the lanes and lands at 46.3%, not 42.6% |
 
+**C1–C3 are done** — see §10. Everything from C4 down is still open, and until C6–C9 land the band holds
+more air than lanes, deliberately: that air is where the film, the waveform and the two new lanes go.
+
 **Regression tests.** The P1 invariant from [`CHROME-DECLUTTER-PLAN.md`](CHROME-DECLUTTER-PLAN.md) §13 — a
 ratio change must not move anything below the transport — now has a second half: **a ratio change must not
 change the band's own height either**, except through `fitView()`. Drive `9:16 → 16:9 → 1:1 → 4:5` and
@@ -296,5 +302,74 @@ the audio lane at its new height without a waveform to hide behind.
 
 ---
 
-*Plan produced 2026-10-02. Nothing applied. Measurements from `clip-lite-mock.html` at 378×770, light
-theme, one portrait clip (A in [`TEST-MEDIA.md`](TEST-MEDIA.md)).*
+## 10. Applied: C1–C3
+
+**Done in [`clip-lite-mock.html`](clip-lite-mock.html).** C4–C11 remain plans.
+
+**The mechanism, as built.** `fitView()` is the single place the preview's height is decided, and it
+computes a ladder rather than a percentage:
+
+```js
+const cap = innerHeight*0.54, floor = innerHeight*0.46;
+const want = clamp(innerWidth*d[1]/d[0] + 12, floor, cap);   // what THIS canvas would use
+const lanes = tl.scrollHeight + 8;                           // the band's floor: its lanes must fit
+const avail = document.body.clientHeight - (transport + readout + rail + dock padding);
+let band = clamp(avail - want, lanes, lanes + 64), view = avail - band;
+if (view > cap)   { view = cap;   band = avail - cap; }      // the ceiling wins; surplus becomes band air
+if (view < floor) { view = floor; band = Math.max(lanes, avail - floor); }
+```
+
+The preview's ceiling is the inline `flex-basis` that line writes; `.view{max-height:54%}` in CSS is only
+there to guard the first paint. `.dock` became a flex column and `.tlw` absorbs, which is the only reason
+the band can take the slack at all — `.tlw` was a block child before, so `flex:1` on it would have done
+nothing.
+
+**Measured, `getBoundingClientRect`, one portrait clip:**
+
+| viewport | ratio | preview before | preview after | band before | band after |
+|---|---|---|---|---|---|
+| 320×700 | 9:16 | 401 (57%) | **378 (54%)** | 148 (21%) | **171 (24%)** |
+| 320×700 | **16:9** | — | **337 (48%)** | — | **212 (30%)** |
+| 366×836 | 9:16 | 535 (64%) | **451 (54%)** | 148 (18%) | **232 (28%)** |
+| 378×770 | 9:16 | 469 (61%) | **416 (54%)** | 148 (19%) | **202 (26%)** |
+| 378×770 | **16:9** | — | **405 (53%)** | — | **212 (28%)** |
+| 390×844 | 9:16 | — | **456 (54%)** | — | **235 (28%)** |
+
+**C2 is real and it is largest where it matters most.** At 320×700 a landscape canvas gives the band
+**41px more** than a portrait one (212 against 171) and takes 41px less preview, because it genuinely
+cannot use the height. At 366×836 the difference disappears — not because the rule stopped working, but
+because the band is already at its air cap on a screen that tall, and the leftover is better spent on the
+preview than on a void. The ceiling holds at 54% in every measured case.
+
+**One bug, found by measuring rather than reasoning.** The first cut cleared the inline cap with
+`v.style.maxHeight=''`, which does not mean "no cap" — it means "fall back to the stylesheet", so
+`.view{max-height:54%}` clamped the computed height back to a flat 54% and **silently disabled C2
+entirely**. Every 16:9 and 1:1 measurement came out identical to 9:16 until the values were printed side
+by side. The line now writes `'none'` explicitly.
+
+**One behaviour changed in character, and it is worth naming.** Text is rendered in a lane *above* the
+film, so adding the first text overlay pushes `#track` down by the lane's full 36px. Before this change
+the band grew upward and absorbed 28 of it, so the film moved 8px and the *preview* paid. Now the band is
+sized first, so the film takes the whole 36px shift instead. The band's air absorbs it without anything
+clipping — verified: the audio lane's bottom stays inside the band at 320×700 and 366×836 — but this is
+[the pattern study's Correction 1](CLIP-LITE-PATTERN-PLAN.md) and it is **C8's** job to fix, by reserving
+a constant lane height. Until then, adding text moves the film.
+
+**Also verified:** the empty state sizes correctly with no clips; opening the settings sheet returns the
+stage to `flex:1 1 auto` so the preview fills, and closing it restores the computed height exactly; the
+rail stays pinned to the bottom with no page scroll (`scrollHeight === innerHeight` at 390×844); the P1
+invariant holds (`#tools` does not move when the ratio changes); and the console stays empty.
+
+**Since §10: `fitView()` grew a second job, and one of its inputs was a lie.** The header scrim was
+deleted ([`CHROME-DECLUTTER-PLAN.md`](CHROME-DECLUTTER-PLAN.md) §20), so the header now has to decide from
+the same numbers whether it can stand beside the picture instead of on it. `fitView()` derives the canvas
+width from the height it just chose and measures the leftover margin, which is exactly the same ladder
+above, one term further. It also stopped hardcoding `clientWidth-24` for the stage padding and reads the
+computed value instead — the assumed 24px is only true below 900px, and a width that does not exist is a
+bad input to a decision. Neither change touches the numbers in the table: at the four sizes in §10 the
+padding is 12px per side and the table still reproduces.
+
+---
+
+*Plan produced 2026-10-02. §10 records the C1–C3 implementation in the same file. Measurements from
+`clip-lite-mock.html` at the viewports in §10, one portrait clip (A in [`TEST-MEDIA.md`](TEST-MEDIA.md)).*
