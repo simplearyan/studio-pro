@@ -1,9 +1,10 @@
 # Studio Lite — chrome plan: declutter, then let the preview own the top
 
-**Status:** **M1–M3 are applied to the mock** (see §11 for the measured result and four bugs the work
-turned up). M4–M7 are still plans. **Part B (§12–§18) is new and entirely a plan** — it comes from
-two studio screenshots and covers the header-as-overlay geometry, the icon set and the type scale.
-Nothing has been applied to the app.
+**Status:** **M1–M3 and B1–B5 are applied to the mock.** §11 records M1–M3 and the four bugs it found;
+§19 records B1–B5 — the header is an overlay, the preview band runs from y=0, and the icon and type
+scales are retuned — with two predictions in §13–§15 corrected against the measurements. B6–B8 and
+M4–M7 are still plans. **Part C**, the vertical budget that B1 made necessary, is
+[`TIMELINE-SPACE-PLAN.md`](TIMELINE-SPACE-PLAN.md). Nothing has been applied to the app.
 **Subject:** [`clip-lite-mock.html`](clip-lite-mock.html) — the working phone-editor prototype.
 **Spec:** [`../STUDIO-LITE-PLAN.md`](../STUDIO-LITE-PLAN.md) §5.3 (touch ergonomics), §6.1 (layout by tier).
 **Studies:** [`YT-CREATE-PATTERN-PLAN.md`](YT-CREATE-PATTERN-PLAN.md) (what the reference does),
@@ -415,29 +416,44 @@ The change is two declarations:
 
 ```css
 body{position:relative}
-.bar{position:absolute;inset:0 0 auto;z-index:6;height:56px;padding:0 6px}
+.bar{position:absolute;inset:0 0 auto;z-index:7;height:56px;padding:0 6px}
+.view{padding-top:0}
 ```
 
-The header leaves the flow; `.view` becomes the first flex child and starts at 0. It absorbs exactly
-the 56px the header gave up:
+The header leaves the flow; `.view` becomes the first flex child and starts at 0.
+
+**Applied and measured.** The table below is the running mock at **366×836** with one portrait clip,
+not a prediction:
 
 | | before | after |
 |---|---|---|
 | header consumes a row | 56px | **0** |
-| preview band `.view` | 478px | **534px** |
-| **canvas (9:16)** | **257×456** | **288×512** |
-| canvas area | 117,192 px² | **147,456 px² (+26%)** |
-| chrome above the timeline | 620px | **564px** |
+| preview band `.view` | 478px | **535px** |
+| **canvas (9:16)** | **257×456** | **294×523** |
+| canvas area | 117,192 px² | **153,762 px² (+31%)** |
+| transport / readout / band / rail tops | 534 / 590 / 620 / 768 | **539 / 591 / 621 / 769** |
 | controls visible | 16 | **16** |
 
-+12.3% linear, +26% area on the single element the user is actually looking at, for two lines of CSS and
-no new controls. At 320×700 the same move is worth 56 of 700px — **8% of the screen** — and it is worth
-most exactly on the phones where the preview is most cramped.
+**One prediction in this section was wrong, and the correction matters.** It claimed chrome above the
+timeline would fall 620 → 564. It does not move at all: `.view` is `flex:1`, so it absorbs the freed
+56px and **everything below the preview stays within 1px of where it was**. The gain is real but it is
+entirely the preview's — the rows below do not shift, which is why the P1 invariant below holds for
+free rather than needing to be defended.
 
-**The scrim is not optional.** An overlay whose icons sit on a bright frame is unreadable. The header
-needs `background:linear-gradient(180deg,rgba(0,0,0,.55),transparent)` (or the light-theme equivalent)
-to stay legible over a white sky. The reference gets away with a bare overlay in frame 2 by luck of a
-dark picture; the mock must not depend on luck.
++14.4% linear, +31% area on the single element the user is actually looking at, for two lines of CSS and
+no new controls. At 320×700 the same move is worth 56 of 700px — **8% of the screen**.
+
+**And that is exactly the problem the next plan has to solve.** Because the preview is the only row with
+`flex:1` and no ceiling, it now takes every spare pixel on every device: 61% of a 378×770 screen against
+19% for the timeline band. B1 fixed the preview and broke the balance — see
+[`TIMELINE-SPACE-PLAN.md`](TIMELINE-SPACE-PLAN.md), which is Part C and is where this thread continues.
+
+**The scrim is not optional.** An overlay whose icons sit on a bright frame is unreadable. It is painted
+on `.bar::before` — 84px tall with a plateau to 40px — rather than on `.bar` itself, because a fade that
+finishes inside 56px leaves the bottom of the 48px icon row at ~0.13 alpha, exactly where the ⋮ and ⤴
+sit. The gradient is tied to `--bg`, so it darkens in dark theme and lifts in light, where the icons are
+dark and a black scrim would hide them too. The reference gets away with a bare overlay over a dark
+picture; the mock must not depend on luck.
 
 **The tap guard (from §4, still required).** The canvas already binds tap-to-play. If the chrome is
 auto-hidden, the first tap must **only** reveal it — otherwise waking the chrome also toggles playback
@@ -603,6 +619,51 @@ clip is the branch that matters, and a stub cannot reach it.
 
 ---
 
-*Plan produced 2026-10-02; §11 records the M1–M3 implementation in the same file, §12–§18 are Part B
-(the screenshot-driven geometry, icon and type pass). Measurements taken from `clip-lite-mock.html` at
+## 19. Applied: B1–B5, and the two corrections it forced
+
+**Done in [`clip-lite-mock.html`](clip-lite-mock.html).** B1 (header overlay), B2 (scrim), B3 (icon
+scale), B4 (type scale) and B5 (the fullscreen mark). B6–B8 remain plans.
+
+**Measured after, at 366×836 with the portrait clip from [`TEST-MEDIA.md`](TEST-MEDIA.md):**
+
+| | before | after |
+|---|---|---|
+| preview band `.view` | 478px | **535px** |
+| canvas (9:16) | 257×456 | **294×523** |
+| canvas area | 117,192 px² | **153,762 px² (+31%)** |
+| header covers the canvas | none | **56px (11% of the frame)** |
+| transport / readout / band / rail tops | 534 / 590 / 620 / 768 | **539 / 591 / 621 / 769** |
+| controls visible | 16 | **16** |
+
+**The icon scale is compensated, and it is checkable.** Glyphs are 20px in the header, 21px in the
+transport, 22px on the rail, 26px for play (was 24/24/24/30). Because `stroke-width` is in viewBox
+units, each group carries its own value — 1.92, 1.83, 1.75, 1.92 — so every group paints **exactly
+1.60 device px**, verified in the browser. Smaller icons, identical weight.
+
+**Type:** the readout is 15px/500 tabular (14px at 360px and below), rail labels 11.5px, the sheet
+title 600. The `.ro` row stayed at 30px, so the readout got louder without spending a pixel it had
+already spent.
+
+**The ⛶ is a bare glyph again** — 20px, with the faint rounded ring the reference draws as a
+`.view`-independent `::before` at inset 9px and 0.28 alpha. Delete that one rule to revert.
+
+**Two corrections to this plan, both from measuring rather than reasoning:**
+
+1. **A scrim that finishes inside the bar does not cover the icon row.** The first cut faded
+   84% → 0 across the 56px header, which leaves the bottom of the 48px icon row at about **0.13
+alpha** — precisely where the ⋮ and ⤴ sit. It looked fine over a dark frame and washed out over a
+   bright one. The scrim moved to `.bar::before`, 84px tall with a plateau to 40px, so the whole row
+   holds better than 0.5 while the wash still ends 16% down a 523px frame.
+2. **`chrome above the timeline` was the wrong metric and the prediction from it was wrong.** §13
+   claimed 620 → 564px. Because `.view` is `flex:1`, nothing below the preview moves at all — the
+   preview simply absorbs the freed 56px. Corrected in §13, and it is the reason Part C exists: a row
+   with `flex:1` and no ceiling takes every spare pixel on every device.
+
+**Still to do:** B6 (auto-fade + the tap guard), B7 (the audio lane as a rounded card), B8 (tick dots
+flanking the readout), and all of [`TIMELINE-SPACE-PLAN.md`](TIMELINE-SPACE-PLAN.md).
+
+---
+
+*Plan produced 2026-10-02; §11 records M1–M3, §19 records B1–B5, §12–§18 are Part B (the
+screenshot-driven geometry, icon and type pass). Measurements taken from `clip-lite-mock.html` at
 366×836, dark theme, one clip selected.*

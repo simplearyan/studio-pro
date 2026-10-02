@@ -442,6 +442,15 @@ words?" has two answers. Mitigation: the rail item that opens Text should highli
 the one that opens Captions the lane below, so the mapping is taught on the first tap rather than
 discovered.
 
+**What it costs in pixels, which nothing above pays for.** The stack this section describes is 264px
+tall — ruler gutter, text lane, film, caption lane, audio. The timeline band is **148px today and full**:
+its two lanes take 108 and the other 40 are gutter and padding, with no slack anywhere. So this section
+cannot be built until the vertical budget is rebalanced. See
+[`TIMELINE-SPACE-PLAN.md`](TIMELINE-SPACE-PLAN.md), which finds ~64px from the preview's ceiling and
+11px of chrome, then pins the preview's floor at 46% so the worst case still leaves a usable picture —
+and shows that at 320px the full stack needs one more lever (folding the readout row into the
+transport) before it fits above that floor.
+
 ---
 
 *Study produced 2026-10-02. Nothing built. `clip-lite-mock-v1.html` is byte-identical to
