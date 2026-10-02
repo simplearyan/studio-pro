@@ -189,6 +189,14 @@ Once Phase 3 has shipped for a release (or a project-age guard passes), remove:
   initial load and the precache, and no per-frame capture penalties in export.
 - **Verify:** the export-speed comparison in `docs/html-in-canvas/EXPORT-SPEED-COMPARISON.md`
   is the baseline; re-run it. Precache entry count should drop.
+- **Executed (2026-10-02):** the html2canvas branch and every helper on it are gone —
+  `preRenderHtmlClip` / `preRenderAllHtmlClips`, `addHtmlClipToTimeline`, `__waapiSeekFrame`,
+  `WAAPI_SEEK_ADAPTER` (plus its two consumers), the two `_needsHtmlWait` export waits, the
+  `<script>` tag, and `src/html-clips/`. The clip-state cleanup sites (`_htmlIframe`,
+  `_htmlCanvas`, …) and `#htmlEditorModal` remain as dead-but-inert UI, tracked in
+  [LEGACY-CLIP-REMOVAL-PLAN.md](LEGACY-CLIP-REMOVAL-PLAN.md) §G.1. `migrateLegacyHtmlClips` and
+  `htmlToHicCode` are kept; verified that a `type: 'html'` clip migrates to `type: 'hic'` and keeps
+  its HTML, and that the editor builds and boots with no console errors.
 
 ---
 

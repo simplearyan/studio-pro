@@ -494,13 +494,24 @@ shipped phase leaves traces; an unshipped one leaves the old code standing.
 | Phase 2 | `#btnAddHtml` gone, blank entry point present | ✅ | 21 grid cards with *Blank* first; `#btnAddHic` titled *Add Blank HTML-in-Canvas Clip* |
 | **Phase 0** | round-trip fixture + export baseline | ⚠️ | the round trip was **executed**, but ad hoc in the browser — no committed fixture file, no recorded export baseline (§H.6) |
 | **Phase 3** | load-time migration | ✅ | `migrateLegacyHtmlClips` at `index.html:27332`, called from `applyProject` at `33920` — see §H *(was ❌ at the time of this audit)* |
-| **Phase 4** | the legacy engine gone | ❌ | every target still present — see §G.1 |
+| **Phase 4** | the legacy engine gone | ✅ | html2canvas path retired 2026-10-02 — see §G.1 |
 
 Three commits exist on `main` (`4808621`, `00e64c4`, `a36f427`) and they cover Part A, Phase 1 and
-Phase 2. Phase 3 is implemented and verified but **uncommitted** (§H). Phase 4 has not been started,
-and Phase 0 was run without being written down as a fixture.
+Phase 2. Phase 3 is implemented and verified but **uncommitted** (§H). Phase 4's html2canvas
+retirement has since been **executed** (2026-10-02); the dead-but-inert UI it also names
+(`#htmlEditorModal`, the sidebar HTML cards, `_isWaaapi` read sites) is left for a follow-up. Phase 0
+was run without being written down as a fixture.
 
-### G.1 Phase 4's targets, still standing
+### G.1 Phase 4 targets — the html2canvas half is now retired
+
+> **Executed 2026-10-02.** The html2canvas library and `<script>` tag, the `type: 'html'` render
+> branch, `preRenderHtmlClip` / `preRenderAllHtmlClips`, `addHtmlClipToTimeline`, `__waapiSeekFrame`,
+> `WAAPI_SEEK_ADAPTER` (and its two consumers), and the two `_needsHtmlWait` export waits are all
+> deleted; `src/html-clips/` is gone. `migrateLegacyHtmlClips` + `htmlToHicCode` are kept. The table
+> below is the pre-execution audit, kept for provenance: its *Where it still is* column describes the
+> state **before** the change. Still inert-but-present: `#htmlEditorModal`, the sidebar HTML cards,
+> and the `_isWaaapi` read sites (all unreachable now that no clip can be `type: 'html'` or
+> `_isWaaapi`).
 
 | Target | Where it still is |
 |---|---|

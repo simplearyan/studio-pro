@@ -291,8 +291,10 @@ Resolution up to 1080p+, selectable FPS, time-range export, and custom aspect ra
 | Headless rendering | **Puppeteer** (`automation/`) |
 | App model | Vanilla JS single page — no framework, no backend, no telemetry |
 
-`html2canvas` still ships in `src/html-clips/` for the legacy HTML-clip path, which is being
-retired — see [`docs/LEGACY-CLIP-REMOVAL-PLAN.md`](docs/LEGACY-CLIP-REMOVAL-PLAN.md).
+The legacy `html2canvas` HTML-clip path has been **retired** — the library, its `<script>` tag, and
+the `type: 'html'` render branch are gone. Old projects still load: `migrateLegacyHtmlClips` /
+`htmlToHicCode` convert any legacy HTML clip to HTML-in-Canvas on open. See
+[`docs/LEGACY-CLIP-REMOVAL-PLAN.md`](docs/LEGACY-CLIP-REMOVAL-PLAN.md).
 
 ---
 
@@ -304,7 +306,6 @@ studio-pro-editor/
 ├── src/
 │   ├── styles/style.css        # custom styles on top of Tailwind
 │   ├── engines/hic/adapters/   # waapi.js — @keyframes → onFrame compiler
-│   ├── html-clips/             # html2canvas.min.js (legacy path, being retired)
 │   └── workers/export-worker.js# MediaBunny export worker
 │
 ├── public/

@@ -1,5 +1,10 @@
 # html2canvas Gotchas & Workarounds
 
+> **OBSOLETE (2026-10-02):** the editor's html2canvas path has been retired — the library, its
+> `<script>` tag, and the `type: 'html'` render branch are gone, and legacy clips migrate to
+> HTML-in-Canvas on load. Nothing here applies to the current engine. Kept for provenance only.
+> See [`docs/LEGACY-CLIP-REMOVAL-PLAN.md`](../../../docs/LEGACY-CLIP-REMOVAL-PLAN.md).
+
 > **CRITICAL:** html2canvas does NOT render HTML/CSS exactly like a browser.
 > AI agents MUST follow these rules to avoid rendering bugs.
 
