@@ -96,8 +96,6 @@ canvas{max-width:100%;max-height:100%;width:auto;height:auto;border-radius:0;bac
 .tl{overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-webkit-overflow-scrolling:touch;min-height:132px;touch-action:pan-x;overscroll-behavior-x:contain;-webkit-touch-callout:none}
 .tl::-webkit-scrollbar{display:none}
 .inn{width:max-content;min-width:100%}
-#ruler{position:relative;height:22px}
-#ruler b{position:absolute;top:4px;font-size:11px;font-weight:400;color:var(--on2);transform:translateX(-50%)}
 #track,#ttrack{position:relative;display:flex}
 #track{height:64px;min-width:1px}
 #ttrack{height:34px;margin-top:6px}
@@ -156,7 +154,6 @@ canvas{max-width:100%;max-height:100%;width:auto;height:auto;border-radius:0;bac
 .ar{display:flex;align-items:center;justify-content:space-between;padding:0 8px}
 .play{background:none;color:var(--on);width:48px;height:48px}.play svg{width:30px;height:30px}
 #time{font-size:13px;letter-spacing:.02em;color:var(--on2);min-width:0;font-variant-numeric:tabular-nums}#time b{color:var(--on);font-weight:500}
-#ruler i{position:absolute;top:9px;width:3px;height:3px;margin-left:-1.5px;border-radius:50%;background:var(--on2);opacity:.7}
 /* P3, revised: the sheet occupies the dock's slot, not its own height. With the
    preview pinned (P1) that slot is an exact number — whatever the dock was —
    so `flex:1 1 auto` makes the two the same height in every state instead of
@@ -192,10 +189,18 @@ svg{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-l
 .view.fs{position:fixed;inset:0;z-index:8;background:#000;padding:0}
 .sub{flex:1 1 100%;text-align:center;font-size:13px;color:var(--on2)}
 .dock{background:none;border-radius:0}
-#ruler{height:0}
-#rl{position:absolute;top:0;left:0;right:0;bottom:0;overflow:hidden;pointer-events:none;-webkit-mask-image:linear-gradient(90deg,transparent 0 14px,#000 24px,#000 calc(50% - 64px),transparent calc(50% - 56px) calc(50% + 56px),#000 calc(50% + 64px),#000 calc(100% - 24px),transparent calc(100% - 14px));mask-image:linear-gradient(90deg,transparent 0 14px,#000 24px,#000 calc(50% - 64px),transparent calc(50% - 56px) calc(50% + 56px),#000 calc(50% + 64px),#000 calc(100% - 24px),transparent calc(100% - 14px))}
+#rl{position:absolute;top:0;left:0;right:0;bottom:0;overflow:hidden;pointer-events:none;-webkit-mask-image:linear-gradient(90deg,transparent 0 14px,#000 24px,#000 calc(50% - 60px),transparent calc(50% - 10px),#000 calc(50% + 10px),transparent calc(50% + 60px),#000 calc(100% - 24px),transparent calc(100% - 14px));mask-image:linear-gradient(90deg,transparent 0 14px,#000 24px,#000 calc(50% - 60px),transparent calc(50% - 10px),#000 calc(50% + 10px),transparent calc(50% + 60px),#000 calc(100% - 24px),transparent calc(100% - 14px))}
 #rd{position:absolute;left:0;top:0;height:100%}
-#rd i{position:absolute;top:50%;width:2px;height:2px;margin:-1px 0 0 -1px;border-radius:50%;background:var(--on2);opacity:.55}
+/* R4: the label tier, revived. This rule used to be written for #ruler b and
+   has been dead since the D1 declutter, when #ruler was collapsed to height:0
+   and never populated again. The ruler that is actually live is .ro → #rl →
+   #rd, so the label lives there now and keeps the same `top:4px` it always had.
+   A labelled mark gets a 1px stem so it reads differently from a plain dot —
+   the dot sits at the label's own height, the way the reference interleaves
+   `·  00:05  ·  00:10  ·` on one line. */
+#rd b{position:absolute;top:4px;font-size:11px;font-weight:400;color:var(--on2);transform:translateX(-50%);white-space:nowrap;pointer-events:none;font-variant-numeric:tabular-nums}
+#rd b::after{content:"";position:absolute;left:50%;top:15px;width:1px;height:4px;background:var(--on2);opacity:.55}
+#rd i{position:absolute;top:11px;width:2px;height:2px;margin:-1px 0 0 -1px;border-radius:50%;background:var(--on2);opacity:.55}
 #time{position:relative;z-index:1}
 .tlw{padding-bottom:8px}.ph{top:0;bottom:0}.ph::before{display:none}
 /* D3: the band was sized generously and nothing inside it was allowed to grow —
@@ -481,7 +486,7 @@ svg{width:22px;height:22px;stroke-width:1.75}
     <span id="time"><b id="tc">00:00</b> / <span id="tt">00:00</span></span>
   </div>
   <div class="tlw">
-    <div class="tl" id="tl"><div class="inn" id="inn"><div id="ruler"></div><div id="ttrack"></div><div id="track"></div><div id="atrack"></div></div></div>
+    <div class="tl" id="tl"><div class="inn" id="inn"><div id="ttrack"></div><div id="track"></div><div id="atrack"></div></div></div>
     <button class="addf" id="addf" aria-label="Add clip" title="Add clip" hidden><svg data-i="plus"></svg></button><div id="snap" hidden></div><div id="tip" hidden></div><div class="ph"></div>
   </div>
   <nav class="tools" id="tools"></nav>
@@ -751,18 +756,95 @@ let adjKey='bright';
    first open — and re-read by renderTL() so a drag updates it too. */
 const txInfo=x=>`Shows ${fmtT(x.s)} – ${fmtT(x.s+x.d)} · ${x.d.toFixed(1)}s`;
 function lanes(){const e=[];[...texts].sort((a,b)=>a.s-b.s).forEach(x=>{let l=e.findIndex(v=>v<=x.s+.001);if(l<0)l=e.length;e[l]=x.s+x.d;x.l=l});return e.length}
+/* ── R2/R3: the ruler ladder ──────────────────────────────────────────────
+   Two rungs of one rule: every guide position is chosen by how many pixels it
+   would occupy, never by a raw interval, so the density follows the zoom
+   instead of a constant. The 5s default is meant to fall out of that
+   arithmetic rather than be tuned in — fitZoom gives pps = 378*0.8/20 = 15.1
+   for a 20s clip on a 378px phone, and a 56px label budget lands on the 5s
+   rung. LABEL_PX is a `00:05` label plus air; DOT_PX is a dot plus enough gap
+   to read as separate rather than as a rule. */
+const LABEL_PX=56,DOT_PX=14,MAJOR=[.5,1,2,5,10,15,30,60,120,300,600],SPLIT=[1,2,4,5,10],LABELS=7;
+/* The minor step is *derived*, not chosen. Two independent ladders have no
+   reason to divide each other — at pps 120 they gave 2.5 dots per label, so the
+   minor ticks stopped landing on the major ones, which is the one property the
+   reference gets right and the whole reason to copy the design at all. major/k
+   makes integer subdivision a guarantee instead of a coincidence; the cost is
+   that a minor step is sometimes unround (7.5s, 0.125s), which is what a real
+   ruler does when it halves a round interval. */
+let rulerMode='auto';
+function ticks(){
+  /* Spacing is the larger of an absolute floor and a share of the strip. A flat
+     56px is right on a phone — six labels across 378px — but the same 56px on a
+     1370px screen buys 22 of them, which is a wall rather than a ruler. Capping
+     the *count* is what makes the wide case clean and it leaves the phone
+     arithmetic untouched: at 378px the count budget asks for 54px and the 56px
+     floor wins anyway, so the Fit default stays 5s. */
+  const W=$('#rl').clientWidth,need=Math.max(LABEL_PX,W?W/LABELS:0);
+  const auto=MAJOR.find(s=>s*pps>=need)||MAJOR[MAJOR.length-1];
+  /* A pinned interval is a *floor*, not an override — "never label more often
+     than this", never "always label exactly this". Pinning 1s while zoomed out
+     to pps 15.7 produced 18 labels at 15.7px spacing, which is a wall of
+     overlapping text; taking the larger of pinned and auto makes that
+     impossible at any zoom, and is the more useful reading anyway — somebody who
+     wants 5s between labels still gets them when the screen is too tight to
+     show anything denser. */
+  const major=rulerMode==='auto'?auto:Math.max(rulerMode,auto);
+  const k=[...SPLIT].reverse().find(q=>major/q*pps>=DOT_PX)||1;
+  return {major,minor:major/k,k};
+}
+/* A label is mm:ss, and only carries a decimal when the rung actually needs
+   one. `s<1` was wrong at zero and read `0:00.0` for the very first tick; and
+   fmt() returns `m:ss`, so a half-second came out as `0:00.5` beside neighbours
+   saying `00:01`. Both formats now come from fmtT, so the ruler cannot
+   disagree with the transport readout about how a time is written. */
+const tickLabel=s=>{const f=Math.floor(s+1e-9),d=Math.round((s-f)*10);return d?fmtT(f)+'.'+d:fmtT(s)};
+let rulerAt=NaN;
+function paintRuler(){
+  const rl=$('#rl'),rd=$('#rd'),W=rl.clientWidth;
+  /* #rl has no width while a sheet is open — the dock is hidden, so there is
+     nothing to measure and nothing to draw. renderTL() repaints on the way out. */
+  if(!W){rd.innerHTML='';return}
+  const {major,minor,k}=ticks(),pad=W/2;       // the playhead is pinned at the strip's centre
+  /* Windowed, not exhaustive. Only the visible span plus one screen of margin
+     each side, so a half-screen scroll never empties the strip, and the node
+     count is bounded by the strip rather than by the project — emitting the
+     whole 0..total was 6000 dots on a 10-minute project at max zoom. */
+  const sc=tl.scrollLeft,edge=sc-pad,lo=(edge-W)/pps,hi=(edge+2*W)/pps;
+  const k0=Math.max(0,Math.ceil(lo/minor)),k1=Math.min(Math.ceil(total/minor),Math.floor(hi/minor));
+  const m0=Math.max(0,Math.ceil(lo/major)),m1=Math.min(Math.ceil(total/major),Math.floor(hi/major));
+  let h='';
+  for(let j=m0;j<=m1;j++)h+=`<b style="left:${pad+j*major*pps}px">${tickLabel(j*major)}</b>`;
+  /* j%k skips the minors that coincide with a major, which is exact — j is the
+     index, so this never asks a float whether it divides evenly. */
+  for(let j=k0;j<=k1;j++)if(j%k)h+=`<i style="left:${pad+j*minor*pps}px"></i>`;
+  rd.innerHTML=h;rd.style.width=(Math.max(total*pps,1)+2*pad)+'px';
+  /* The readout owns the centre, and CSS does that — the mask on #rl ramps the
+     guides out across 50px either side of the playhead and back in, so a label
+     sliding under the readout fades instead of being sliced.
+
+     This loop used to *remove* any label the readout would collide with. That
+     was solving the same problem twice, and worse: the DOM changed as the
+     timeline scrolled, so labels popped out of existence on the way in and
+     popped back on the way out — the flicker reported on the ruler. Visibility
+     is now continuous and nothing is added or removed while scrolling, which
+     also drops a per-label offsetWidth read on every repaint. */
+  rulerAt=Math.round(sc/DOT_PX);
+}
+/* Repaint only once the window has moved a whole dot. The screen of margin
+   covers the lag, so a stale strip is never visible during a fast scroll. */
+function paintRulerSoon(){if(Math.round(tl.scrollLeft/DOT_PX)!==rulerAt)paintRuler()}
 function renderTL(){
   layout();const pad=tl.clientWidth/2;$('#inn').style.padding='20px '+pad+'px 0';
   const w=Math.max(total*pps,1),n=lanes();
-  $('#track').style.width=$('#atrack').style.width=$('#ruler').style.width=$('#ttrack').style.width=w+'px';$('#ttrack').style.height=(n?n*16+20:0)+'px';
-  let r='';const st=pps>=12?1:[2,5,10,30,60].find(v=>v*pps>=12)||60;for(let i=0;i<=Math.ceil(total);i+=st)r+=`<i style="left:${pad+i*pps}px"></i>`;$('#rd').innerHTML=r;$('#rd').style.width=(w+2*pad)+'px';
+  $('#track').style.width=$('#atrack').style.width=$('#ttrack').style.width=w+'px';$('#ttrack').style.height=(n?n*16+20:0)+'px';
   $('#track').innerHTML=clips.map(c=>`<div class="clip${sel&&sel.k=='c'&&sel.id==c.id?' sel':''}" data-id="${c.id}" style="width:${dur(c)*pps}px"><div class="film">${film(c)}</div><span>${esc(srcs[c.src].name)} · ${dur(c).toFixed(1)}s${c.sp!=1?' · '+c.sp+'×':''}</span><i class="h" data-h="l"></i><i class="h" data-h="r"></i></div>`).join('')+clips.slice(1).map(c=>`<button class="jn${c.tr&&c.tr.k!='none'?' has':''}" data-id="${c.id}" style="left:${c.s*pps}px" aria-label="Transition">${ic('trans')}</button>`).join('');
   $('#atrack').innerHTML=clips.map(c=>`<div class="aclip" style="width:${dur(c)*pps}px">${wave(c)}</div>`).join('');
   $('#ttrack').innerHTML=texts.map(x=>`<div class="tx${sel&&sel.k=='t'&&sel.id==x.id?' sel':''}" data-id="${x.id}" style="left:${x.s*pps}px;width:${x.d*pps}px;bottom:${x.l*16}px;background:${TXC[x.id%5]}"><i class="h" data-h="l"></i><span>${esc(x.t)}</span><b class="td">${fmtT(x.d)}</b><i class="h" data-h="r"></i></div>`).join('');
   /* The caption sheet repeats the same two numbers, so the length of a caption
      is readable whether the timeline is on screen or the sheet has covered it. */
   const ti=$('#txinfo');if(ti&&sel&&sel.k=='t'){const x=texts.find(y=>y.id==sel.id);if(x)ti.textContent=txInfo(x)}
-  tl.classList.toggle('multi',clips.length>1);{const a=$('#addf'),k=$('#track');a.hidden=!clips.length;a.style.top=(k.offsetTop+(k.offsetHeight-42)/2)+'px'}tl.scrollLeft=t*pps;
+  tl.classList.toggle('multi',clips.length>1);{const a=$('#addf'),k=$('#track');a.hidden=!clips.length;a.style.top=(k.offsetTop+(k.offsetHeight-42)/2)+'px'}tl.scrollLeft=t*pps;paintRuler();
 }
 function tip(s){const e=$('#tip');if(s==null){e.hidden=true;return}e.hidden=false;e.textContent=s;const r=$('.tlw').getBoundingClientRect();e.style.left=clamp(curX-r.left,30,r.width-30)+'px'}
 function showSnap(v){const e=$('#snap');if(v==null){e.hidden=true;lastHit=null;return}e.hidden=false;e.style.left=(v*pps+tl.clientWidth/2-tl.scrollLeft)+'px';if(v!==lastHit&&navigator.vibrate)navigator.vibrate(6);lastHit=v}
@@ -809,7 +891,7 @@ function reorder(e,cl,el){
   const put=()=>{ins.style.left=(idx?others[idx-1].s+dur(others[idx-1]):0)*pps+'px'};put();
   drag(e,d=>{d=clamp(d,lo,hi);el.style.transform=`translateX(${d*pps}px)`;idx=others.filter(c=>c.s+dur(c)/2<mid0+d).length;put()},()=>{if(idx!==orig){snap();clips=[...others.slice(0,idx),cl,...others.slice(idx)]}sel={k:'c',id:cl.id};settle()});
 }
-tl.addEventListener('scroll',()=>{if(!tl.offsetParent||playing||rec||dragging||Math.abs(tl.scrollLeft-t*pps)<1.5)return;t=clamp(tl.scrollLeft/pps,0,total);seekVid()});
+tl.addEventListener('scroll',()=>{paintRulerSoon();if(!tl.offsetParent||playing||rec||dragging||Math.abs(tl.scrollLeft-t*pps)<1.5)return;t=clamp(tl.scrollLeft/pps,0,total);seekVid()});
 tl.addEventListener('contextmenu',e=>e.preventDefault());
 tl.addEventListener('click',e=>{
   if(Date.now()-noClick<300)return;
@@ -969,6 +1051,7 @@ function settingsSheet(){
   p.innerHTML=`<div class="eh">Settings</div><div class="eb st">
     <div class="sr"><span>Timeline zoom</span><span class="sg"><b class="val" id="zv"></b><button class="ib" id="zo" aria-label="Zoom out">${ic('zo')}</button><button class="ib" id="zi" aria-label="Zoom in">${ic('zi')}</button><button class="chip" data-a="fit">Fit</button></span></div>
     <div class="sr"><span>Step one frame</span><span class="sg"><button class="ib" id="fb" aria-label="Previous frame">${ic('prev')}</button><button class="ib" id="ff" aria-label="Next frame">${ic('next')}</button></span></div>
+    <div class="sr"><span>Ruler interval</span><button class="chip" id="rulercyc" aria-label="Ruler interval">${rulerLabel()}</button></div>
     <div class="sr"><span>Snap to edges</span><button class="sw${snapOn?' on':''}" id="swsnap" role="switch" aria-checked="${snapOn}" aria-label="Snap to edges"><i></i></button></div>
   </div><div class="ef"><span></span><button class="pillb pri" id="ed">Done</button></div>`;
   p.classList.add('set');p.hidden=false;syncZoom();
@@ -1023,6 +1106,11 @@ P.addEventListener('click',e=>{
        level you wanted. Fit covers the coarse end, so fine is all this needs. */
     else if(b.id=='zo'||b.id=='zi'){pps=clamp(b.id=='zo'?pps/1.25:pps*1.25,ZOOM_MIN,ZOOM_MAX);renderTL();syncZoom()}
     else if(d.a=='fit'){fitZoom();syncZoom()}
+    /* Pinning overrides the *major* step only. The minor step is still major/k,
+       so the subdivision holds while pinned and pinning can never produce a
+       solid line of dots — the thing automatic mode would let happen. */
+    else if(b.id=='rulercyc'){const i=(RULER_MODES.indexOf(rulerMode)+1)%RULER_MODES.length;rulerMode=RULER_MODES[i];
+      try{localStorage.setItem('lite:ruler',rulerMode)}catch(_){}b.textContent=rulerLabel();paintRuler()}
     else if(b.id=='ed'){tool=null;document.body.classList.remove('es');refresh()}
     return;
   }
@@ -1086,7 +1174,14 @@ function nudge(dt){if(!clips.length)return;pause();t=clamp(t+dt,0,total);if(tl.o
    which is why the range is not presented as a linear slider any more. */
 const ZOOM_MIN=2,ZOOM_MAX=240;
 function fitZoom(){const w=tlWidth();pps=clamp(w*.8/Math.max(total,1),ZOOM_MIN,ZOOM_MAX);renderTL();syncZoom()}
+/* R5: what automatic mode cannot do is disagree. Somebody trimming to a 30s
+   music bed wants `00:30` labelled at every zoom, not `00:02` because they
+   pinched. View state, not document state — not in snap(), not undoable, the
+   same as snapOn. */
+const RULER_MODES=['auto',1,5,10,30,60];
+const rulerLabel=()=>rulerMode==='auto'?'Auto':'≥'+(rulerMode>=60?rulerMode/60+'m':rulerMode+'s');
 try{if(localStorage.getItem('lite:snap')==='0')snapOn=false}catch(_){}
+try{const rm=localStorage.getItem('lite:ruler'),i=RULER_MODES.map(String).indexOf(rm);if(i>-1)rulerMode=RULER_MODES[i]}catch(_){}
 $('#more').onclick=()=>{tool=tool=='settings'?null:'settings';panel()};
 /* Falls back to the OS only while the user has never chosen; after that the stored value is the
    source of truth and the media query in CSS no longer applies. */
