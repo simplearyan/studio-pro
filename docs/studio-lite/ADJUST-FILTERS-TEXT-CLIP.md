@@ -138,6 +138,38 @@ single clip (`Only one clip to apply to`) rather than silently succeeding.
 
 ---
 
+## Two bugs these shelves shipped with
+
+**Selecting a knob scrolled the row away from it.** The row was rebuilt from a
+string on every selection change — the slider underneath belongs to whichever
+knob is lit, so the code called `panel()`. A rebuilt row starts at
+`scrollLeft 0`, so a knob you had scrolled out to and tapped jumped back off the
+left edge while remaining the selected one, with the slider now sitting under a
+different name than the one you were holding. Selection writes in place instead
+(`adjSync`): the ring, the label weight, the value and the readout all go onto
+nodes that already exist, so the row is not touched. The rebuild path cannot go
+away — picking a filter has to add and remove the strength slider — so `panel()`
+now carries the scroll offset across the rebuild, and re-centres the selection
+only when it is not already visible. Re-centring unconditionally would be the
+same jump in the other direction: every tap on a visible knob would yank the row.
+
+**Filters and Adjust had the same icon.** Both were two rails with a travelling
+dot, differing only in where the dots sat. That is not a distinction anyone can
+make at 22px, two buttons apart in the dock — and it is the difference between
+the shelf of eleven looks and the shelf of eight values. They are now different
+shapes: a filter is the one control in the app that narrows a set down to one, so
+it is a funnel; an adjustment is a value you move, so it is a mixer — three
+rails, a taller silhouette than the funnel beside it. Neither metaphor is
+borrowed from the other, and neither appears anywhere else in the map.
+
+**Highlights was a smaller sun.** Brightness is a sun; Highlights was the same
+eight rays around a smaller disc, one size down — the same picture twice in one
+row. It is a light *source* now: a dome rising off a horizon, a different
+silhouette (flat base, no full disc) that pairs with the crescent below it as the
+light-from-above / light-from-below pair the two knobs actually are.
+
+---
+
 ## Verified
 
 | | |
@@ -149,11 +181,10 @@ single clip (`Only one clip to apply to`) rather than silently succeeding.
 | Caption move | drag `+0.5s` steps the start and the tooltip together; snaps to the playhead |
 | Caption trim | left and right handles move start and duration; badge live at every step |
 | Cancel / Done / undo | Cancel reverts the sheet; Done commits; undo restores; redo repopulates |
+| Row keeps its place | at 393×844 the row sits at `scrollLeft 261` with Warmth selected, taps Sharpen at the same 261, re-taps the visible knob without moving it, and re-centres only an off-screen pick (Fade picked at 0 → 261) |
+| Icons | Filters and Adjust are a funnel and a three-rail mixer, checked side by side in both themes at 393×844 and 357×836; the eight knob glyphs are sun, half-disc, sunrise, crescent, drop, thermometer, sparkle, fading lines |
+| Values still reach the pixels | centre 80×80 sample sums 931917 at Sharpen +0.24, 766885 at +0.90, 931917 on the way back |
 | Shell | no console errors; `scrollHeight === clientHeight` at 378×836; `npm run build` clean |
 
 The known dev-only service-worker 404 and the `willReadFrequently` warning from
 the pixel probe are not app errors.
-
-**Not committed.** The tree is dirty at `ec6fa66` with
-[`clip-lite-mock.html`](clip-lite-mock.html), the reserved-gutter fix from the
-header-icon bug, and this file.
