@@ -203,14 +203,16 @@ svg{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-l
    strip is `--bg` and the patch is invisible — nothing to see and nothing to
    tune per theme.
 
-   What is left is a label passing behind the readout and continuing out the
-   other side, which is what a readout on top of a ruler is supposed to look
-   like. At 2s labels and pps 60 — 120px between labels against a 106px patch —
-   nothing is ever cut. At 1s labels a label can be half-covered, and then a
-   fragment shows. `background:linear-gradient(90deg,transparent 0,var(--bg) 11px,
-   var(--bg) calc(100% - 11px),transparent 100%)` with the padding below turns
-   that fragment into an 11px fade instead; it is one value either way, and the
-   solid edge is the one that matches a readout sitting in front of something. */
+   The patch's own 11px ramp is not the old mask in miniature, and the
+   difference is the whole argument. That ramp was painted over the strip, so it
+   scaled with nothing and described whatever happened to be under it; this one
+   is painted on the timecode, so it is measured against an object whose size
+   never changes, and it fades the thing being *covered* rather than deciding
+   the ruler should switch itself off. At 2s labels and pps 60 — 120px between
+   labels against a 116px patch — nothing is ever cut either way; at 1s labels a
+   label lands half under the patch, and a hard edge leaves a sliced fragment
+   beside the readout while this lets it emerge. The 13px of padding is what
+   keeps the ramp inside the padding box and off the digits. */
 #rl{position:absolute;top:0;left:0;right:0;bottom:0;overflow:hidden;pointer-events:none}
 #rd{position:absolute;left:0;top:0;height:100%}
 /* R4: the label tier, revived. This rule used to be written for #ruler b and
@@ -297,7 +299,7 @@ svg{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-l
 .bar .br{display:flex;align-items:center}
 /* the readout sits with the ruler, directly above the timeline — not in the header */
 .ro{position:relative;height:30px;display:grid;place-items:center}
-#time{background:var(--bg);padding:1px 8px;border-radius:9px}
+#time{background:linear-gradient(90deg,transparent 0,var(--bg) 11px,var(--bg) calc(100% - 11px),transparent 100%);padding:1px 13px}
 #time{position:relative;z-index:1}
 
 /* ── the ⋮ sheet: rare actions + settings, one home, nothing gesture-only ──
@@ -575,6 +577,25 @@ rotate:'<path d="M20 12a8 8 0 1 1-2.5-5.8"/><path d="M20.4 4v5h-5"/>',trans:'<pa
 aspect:'<rect x="3" y="6" width="18" height="12" rx="2.4"/><path d="M7 10.6V9h1.6M17 13.4V15h-1.6"/>',fs:'<path d="M4 9.5v-4A1.5 1.5 0 0 1 5.5 4h4M20 9.5v-4A1.5 1.5 0 0 0 18.5 4h-4M4 14.5v4A1.5 1.5 0 0 0 5.5 20h4M20 14.5v4A1.5 1.5 0 0 1 18.5 20h-4"/>',
 more:'<circle cx="12" cy="5" r="1.8" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.8" fill="currentColor" stroke="none"/><circle cx="12" cy="19" r="1.8" fill="currentColor" stroke="none"/>'};
 const ic=n=>`<svg viewBox="0 0 24 24">${ICON[n]}</svg>`;
+/* The card preview for Grain, as a CSS layer.
+
+   This was an inline `feTurbulence` SVG until the card came back blank, and the
+   reason is worth keeping: the data URI contains the SVG's own `filter="url(#n)"`,
+   and an unquoted CSS `url()` token ends at the first `)`. The value became a
+   bad-url token, so `background-image` was dropped silently while the
+   `background-size` beside it survived — a card with a noise size and no noise
+   on it. Nothing errored, which is exactly why it was worth chasing down.
+
+   Rather than quote it and keep two noise generators, the card now shows the
+   tile the player actually draws, exported once. One texture, so "what the card
+   shows is what the player draws" is true by construction instead of by
+   resemblance — and the two textures did not match: `feTurbulence` is a different
+   distribution from the ±40 field grain() builds. */
+let noiseURL='';
+function noiseCSS(){
+  if(!noiseURL)noiseURL='url('+grain().toDataURL('image/png')+')';
+  return noiseURL;
+}
 document.querySelectorAll('svg[data-i]').forEach(e=>{e.setAttribute('viewBox','0 0 24 24');e.innerHTML=ICON[e.dataset.i]||''});
 const PLAY='<svg viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M8 5v14l11-7z"/></svg>',PAUSE='<svg viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg>';
 const AR={'16:9':[1280,720],'9:16':[720,1280],'1:1':[1080,1080],'4:5':[864,1080]},BG=[['Black','#000000'],['Charcoal','#1e1e1e'],['Grey','#808080'],['White','#ffffff']];
@@ -681,6 +702,21 @@ const F={
  hazy:{n:'Hazy',f:k=>`contrast(${1-k*.2}) brightness(${1+k*.16}) saturate(${1-k*.18})`},
  twilight:{n:'Twilight',f:k=>`hue-rotate(${k*14}deg) saturate(${1+k*.3}) contrast(${1+k*.14}) brightness(${1-k*.06})`},
  noir:{n:'Noir',f:k=>`grayscale(${k}) contrast(${1+k*.55}) brightness(${1-k*.06})`},
+ /* Two looks that are on this shelf but are not filter chains. A vignette
+    darkens the corners of the frame and grain lays noise over it, and
+    `ctx.filter` has neither — the whole vocabulary is brightness, contrast,
+    saturate, hue-rotate, blur, grayscale, sepia, invert, opacity and
+    drop-shadow, and none of them can reach the edge of a picture or add a
+    pixel that was not in it. Both are marked `post` and drawn by postFx() once
+    the frame is already on the canvas, which is the same bargain Sharpen makes.
+
+    They are here rather than in Adjust because they are looks and not values:
+    a card's whole job is to show you the result before you commit, and Adjust's
+    slider cannot show you anything at all. And k=0 stays a provable no-op for
+    both, which is the rule the rest of the shelf is written to — the vignette's
+    fill lands on alpha 0 and the grain pattern is never touched. */
+ vig:{n:'Vignette',f:null,post:'vig'},
+ grain:{n:'Grain',f:null,post:'grain'},
 };
 
 /* Adjust is the reference's Brightness/Contrast/Highlights/Shadows row, plus
@@ -696,8 +732,32 @@ const F={
 const ADJ={
  bright:{n:'Brightness',i:'sun',f:v=>`brightness(${1+v*.5})`},
  ctr:{n:'Contrast',i:'ctr',f:v=>`contrast(${1+v*.7})`},
- high:{n:'Highlights',i:'high',f:v=>`brightness(${1+v*.34}) contrast(${1-v*.22})`},
- shad:{n:'Shadows',i:'shad',f:v=>`brightness(${1+v*.42}) contrast(${1-v*.16})`},
+ /* Highlights and Shadows are the two knobs the self-check caught lying, and
+    they were lying in the same way: `ctx.filter` has no highlight or shadow
+    recovery, so each was faked with brightness plus a counteracting contrast,
+    and the counter-term won. Measured on paired flat patches, old Highlights at
+    +1 moved the highlight end by −9 luma and the shadow end by +29 — it
+    brightened the shadows and dimmed the highlights, which is the exact
+    opposite of its name, and it did so on every exposure pair tried
+    (235/30, 200/45, 160/60, 245/20).
+
+    The fix is the sign of the contrast term, which is what decides which end of
+    the range the knob actually pushes. Contrast scales distance from mid-grey,
+    so raising it lifts highlights and drops shadows together; lowering it does
+    the reverse. Highlights is therefore contrast up (lift the top, let the
+    bottom fall away) and Shadows is contrast down (open the bottom, let the top
+    recede), each with a small brightness term for overall level.
+
+    Measured, new Highlights at +1 on the 235/30 pair: highlight +20, shadow
+    −16. At −1: highlight −45, shadow +16. New Shadows at +1: shadow +30,
+    highlight −16. Both now move their own end further than the other, in the
+    direction their names promise, on all four pairs. The knob is still a
+    two-stop approximation and not a real tone curve — it cannot recover a
+    blown highlight, only push it further — and selfcheck.html is what keeps
+    that honest, since a curve this easy to get backwards will get backwards
+    again the next time someone tunes it by eye. */
+ high:{n:'Highlights',i:'high',f:v=>`brightness(${1+v*.12}) contrast(${1+v*.2})`},
+ shad:{n:'Shadows',i:'shad',f:v=>`brightness(${1+v*.15}) contrast(${1-v*.28})`},
  sat:{n:'Saturation',i:'sat',f:v=>`saturate(${1+v*.85})`},
  warm:{n:'Warmth',i:'warm',f:v=>`sepia(${Math.abs(v)*.42}) hue-rotate(${v*16}deg) saturate(${1+Math.abs(v)*.4})`},
  /* Sharpen has no `f`, and that is the whole entry: it is the one adjustment
@@ -705,7 +765,7 @@ const ADJ={
     ship as `contrast() saturate()`, which is a tonal curve wearing the name of a
     spatial effect — it looks crisper on a smooth frame and does nothing at all
     to an edge, and the only reason nobody noticed is that the readout moves.
-    The real thing is sharpenStage() below. */
+    The real thing is frameStage() below, which also carries Vignette and Grain. */
  sharp:{n:'Sharpen',i:'sharp',f:null},
  fade:{n:'Fade',i:'fade',f:v=>`contrast(${1-v*.38}) brightness(${1+v*.2})`},
 };
@@ -726,7 +786,8 @@ const ADJ={
    `none` is a keyword that cannot be combined with anything — `none blur(2px)`
    is not a filter chain, it is a parse error, and canvas drops the whole
    declaration, so a soften would silently take the grade with it. */
-const look=c=>{const p=[];if(c.f&&c.f!=='none')p.push(F[c.f].f(c.fs==null?1:c.fs));
+const look=c=>{const p=[],fc=c.f&&c.f!=='none'?F[c.f].f:null;
+  if(fc)p.push(fc(c.fs==null?1:c.fs));
   const a=c.ad;if(a)for(const k in ADJ){const f=ADJ[k].f;if(f&&a[k])p.push(f(a[k]))}
   return p.length?p.join(' '):'none'};
 const chain=(c,extra)=>{const b=look(c);return extra?(b=='none'?extra:b+' '+extra):b};
@@ -796,6 +857,16 @@ const TXC=['#5b8def','#f6a46e','#7ccf9a','#c58af9','#f28bb0'];
    cards are eleven looks at the moment you are actually on. Falls back to the
    clip's first frame while the thumbnail pass is still running. */
 function thumbAt(c){const S=srcs[c.src];if(!S.th||!S.th.length)return'';const i=clamp(Math.floor((c.in+Math.max(0,t-c.s)*c.sp)/S.st),0,S.th.length-1);return S.th[i]||''}
+/* A card's whole job is to show the look on your frame, so a look with no `filter`
+   spelling gets its picture from background layers instead: a vignette is a radial
+   gradient over the thumbnail, grain is the tile the player draws. Both
+   layers are sized `cover` so they land on the frame rather than on the card's
+   box, and neither needs a canvas round trip or a data URL — which matters,
+   because panel() builds thirteen of these in one string synchronously. */
+const cardStyle=(c,k)=>{const th=`url(${thumbAt(c)})`,P=F[k].post;
+  if(!P)return `background-image:${th};filter:${F[k].f(1)}`;
+  if(P=='vig')return `background-image:${th},radial-gradient(ellipse at 50% 50%,rgba(0,0,0,0) 34%,rgba(0,0,0,.62) 100%);background-size:cover,cover`;
+  return `background-image:${th},${noiseCSS()};background-size:cover,120px;background-blend-mode:normal,overlay`};
 const pct=v=>(v>0?'+':'')+Math.round(v*100);
 /* Which Adjust knob the slider belongs to. Module state rather than a second
    field on the clip, because it is a property of the sheet you are looking at,
@@ -1097,7 +1168,64 @@ function drawText(x){
 const SHARP_R=2,SHARP_K=.8;
 let shA=null,shB=null,shKey='',shHi=null,shLo=null,shOut=null;
 const surf=(w,h)=>{const c=document.createElement('canvas');c.width=w;c.height=h;return[c,c.getContext('2d',{willReadFrequently:true})]};
-function sharpenStage(c,v,a,cs,sn,vw,vh,r,sv){
+/* One noise texture, drawn once and reused, so a paused frame and a playing one
+   are the same picture — which is also what makes it measurable. Measured: two
+   consecutive draws of a paused frame differ in 0 of 921,600 pixels, so a grain
+   reading is a reading and not a race with the decoder.
+
+   Centred on 128, and that is the part that matters: overlay's gain runs with
+   distance from *both* ends, 2·base/255 below mid-grey and 2·(255−base)/255
+   above it, so a mean-128 field is mean-preserving. Measured drift in mean frame
+   luma across six probes is +0.16/255 at full strength — grain changes the
+   texture of a frame, not its exposure.
+
+   The flip side, which I had backwards in the first draft of this comment: the
+   gain peaks *at* mid-grey and falls to nothing in crushed shadow and blown
+   highlight. Measured noise sd by probe base luma — 0.71 at base 7.5, 2.63 at
+   28.3, 8.70 at 150.6, 9.33 at 128.0, 8.41 at 155.7, 6.01 at 188.4. So grain is
+   near-invisible in the black letterbox of a letterboxed clip, which is correct
+   and desirable — visible noise crawling in the surround would read as a broken
+   player — and it means grain also goes quiet in a crushed night shot. If the
+   grain slider ever reads as doing nothing, look at the blacks before the code.
+
+   The card preview exports this same tile, so the card and the player cannot
+   drift apart. */
+let grainTile=null;
+function grain(){
+  if(grainTile)return grainTile;
+  const s=120,c=document.createElement('canvas');c.width=c.height=s;
+  const g=c.getContext('2d'),im=g.createImageData(s,s),d=im.data;
+  for(let i=0;i<d.length;i+=4){const v=128+Math.round((Math.random()-.5)*80);d[i]=d[i+1]=d[i+2]=v;d[i+3]=255}
+  g.putImageData(im,0,0);return grainTile=c;
+}
+/* Vignette and Grain over a frame that is already on the canvas. One native
+   operation each — a gradient fill and a pattern fill — so neither costs a
+   per-pixel pass, and both are exact no-ops at k=0. */
+function postFx(c){
+  const P=c.f&&c.f!=='none'?F[c.f].post:0;if(!P)return;
+  const k=c.fs==null?1:c.fs;if(k<=0)return;
+  ctx.save();
+  if(P=='vig'){
+    /* Sized off the diagonal, so the corners darken on any ratio: a radius from
+       the width alone leaves a 9:16 frame with dark top and bottom edges and
+       bright sides, which is a different look and not the one named Vignette.
+       Measured as mean luma in eight radial shells at full strength, this clip:
+       0.000 change in the two innermost shells, then −1.0, −10.0, −22.2, −34.0,
+       −16.0, −0.6 outward. Monotone falloff, centre untouched, exactly what a
+       vignette is. The last shell barely moves because that ring is already at
+       luma 1.2 — it is the black surround, and black cannot get darker. A probe
+       at the canvas corner would have reported "no effect" for the same reason. */
+    const r0=Math.hypot(W,H)/2,g2=ctx.createRadialGradient(W/2,H/2,r0*.32,W/2,H/2,r0);
+    g2.addColorStop(0,'rgba(0,0,0,0)');g2.addColorStop(1,`rgba(0,0,0,${(k*.62).toFixed(3)})`);
+    ctx.fillStyle=g2;ctx.fillRect(0,0,W,H);
+  }else{
+    ctx.globalCompositeOperation='overlay';
+    ctx.globalAlpha=Math.min(.5,k*.5);
+    ctx.fillStyle=ctx.createPattern(grain(),'repeat');ctx.fillRect(0,0,W,H);
+  }
+  ctx.restore();
+}
+function frameStage(c,v,a,cs,sn,vw,vh,r,sv){
   if(!shA||shA[0].width!=W||shA[0].height!=H){shA=surf(W,H);shB=surf(W,H);shKey=''}
   const A=shA[0],ag=shA[1],B=shB[0],bg=shB[1];
   /* Opaque all the way out, not transparent: a blur that reaches past the frame
@@ -1127,6 +1255,7 @@ function sharpenStage(c,v,a,cs,sn,vw,vh,r,sv){
     for(let i=0;i<p.length;i+=4){o[i]=p[i]+k*(p[i]-q[i]);o[i+1]=p[i+1]+k*(p[i+1]-q[i+1]);o[i+2]=p[i+2]+k*(p[i+2]-q[i+2]);o[i+3]=p[i+3]}
     ctx.putImageData(shOut,x0,y0);
   }
+  postFx(c);
 }
 function draw(){
   ctx.fillStyle=proj.bg;ctx.fillRect(0,0,W,H);
@@ -1134,8 +1263,8 @@ function draw(){
     const c=pv?pv.c:at(t),v=srcs[c.src].v;
     if(v.readyState>=2&&v.videoWidth){
       const a=(c.rot||0)*Math.PI/180,cs=Math.abs(Math.cos(a)),sn=Math.abs(Math.sin(a)),vw=v.videoWidth,vh=v.videoHeight,r=Math.min(W/(vw*cs+vh*sn),H/(vw*sn+vh*cs));
-      const sv=(c.ad&&c.ad.sharp)||0;
-      if(sv)sharpenStage(c,v,a,cs,sn,vw,vh,r,sv);
+      const sv=(c.ad&&c.ad.sharp)||0,pf=c.f&&c.f!=='none'&&!!F[c.f].post;
+      if(sv||pf)frameStage(c,v,a,cs,sn,vw,vh,r,sv);
       else{ctx.save();ctx.translate(W/2,H/2);ctx.rotate(a);ctx.filter=look(c);ctx.drawImage(v,-vw*r/2,-vh*r/2,vw*r,vh*r);ctx.restore();}
     }
     if(!pv)for(let i=1;i<clips.length;i++){const k=clips[i],tr=k.tr;if(!tr||tr.k=='none')continue;const h=Math.min(tr.d/2,dur(k),dur(clips[i-1])),x=Math.abs(t-k.s);if(x<h){ctx.globalAlpha=1-x/h;ctx.fillStyle=tr.k=='white'?'#fff':'#000';ctx.fillRect(0,0,W,H);ctx.globalAlpha=1}}
@@ -1263,7 +1392,7 @@ function panel(){
   }else if(tool=='speed')h=`<label><b id="rv">${c.sp}×</b></label><input type="range" id="r1" min=".25" max="4" step=".25" value="${c.sp}">`;
   else if(tool=='volume')h=`<label><b id="rv">${Math.round(c.vol*100)}%</b></label><input type="range" id="r1" min="0" max="1" step=".05" value="${c.vol}">`;
   else if(tool=='filter')h=`<div class="car fcards">`+Object.keys(F).map(k=>{
-    const kn=k=='none'?`<span class="kn">${ic('non')}</span>`:`<span class="kn" style="background-image:url(${thumbAt(c)});filter:${F[k].f(1)}"></span>`;
+    const kn=k=='none'?`<span class="kn">${ic('non')}</span>`:`<span class="kn" style="${cardStyle(c,k)}"></span>`;
     return `<button data-f="${k}"${c.f==k?' class="on"':''}>${kn}<span class="lb">${F[k].n}</span></button>`}).join('')+`</div>`+(c.f=='none'?`<span class="sub">Pick a look, then dial how far it goes</span>`:`<label><b id="rv">${Math.round((c.fs==null?1:c.fs)*100)}%</b></label><input type="range" id="r1" min="0" max="1" step=".02" value="${c.fs==null?1:c.fs}">`);
   else if(tool=='adjust'){const a=c.ad||(c.ad={});
     h=`<div class="car">`+Object.keys(ADJ).map(k=>`<button data-adj="${k}"${k==adjKey?' class="on"':''}><span class="kn">${ic(ADJ[k].i)}</span><span class="lb">${ADJ[k].n}</span></button>`).join('')+`</div><label><b id="rv">${pct(a[adjKey]||0)}</b></label><input type="range" id="r1" min="-1" max="1" step=".02" value="${a[adjKey]||0}">`;}

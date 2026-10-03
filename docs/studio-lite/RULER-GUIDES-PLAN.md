@@ -248,10 +248,24 @@ no per-theme tuning, and `#rl` needs no mask at all. A label passing behind the
 readout and continuing out the other side is what a readout on top of a ruler
 looks like.
 
-At 2s labels and pps 60 (120px between labels against a 106px patch) nothing is
-ever cut. At 1s labels a label can be half-covered and a fragment shows; that is
-the accepted cost of not masking, and the one-value alternative is a 11px ramp on
-the patch's own gradient.
+At 2s labels and pps 60 (120px between labels against a 116px patch) nothing is
+ever cut. At 1s labels a label lands half under the patch, and there the patch
+carries its **own 11px ramp** at each end:
+
+```css
+#time{background:linear-gradient(90deg,transparent 0,var(--bg) 11px,
+        var(--bg) calc(100% - 11px),transparent 100%);padding:1px 13px}
+```
+
+which makes a label emerge from behind the readout rather than being sliced by it.
+This ramp is **not** the old mask in miniature, and the difference is the whole
+argument. That one was painted over the strip, so its geometry was in screen
+pixels while the labels' was in seconds per pixel — a fixed window that lied at
+every zoom. This one is painted on the timecode, so it is measured against an
+object whose size never changes, and it fades the thing being *covered* rather
+than deciding the ruler should switch itself off. The 13px of padding is what
+keeps the ramp inside the padding box and off the digits: the patch measures
+116px, with an opaque core of 94px and 11px of fade at each end.
 
 **4. What ships at the two ends: nothing at all.** This one took four attempts,
 and the reasons the first three failed are why it is right.
@@ -371,7 +385,7 @@ Dot and label share a position, so the label costs no extra layout.
 | **Text inside a per-frame transformed layer.** `#rd` gets `translateX()` every rAF frame; today it holds only 2px dots. | Low. The layer composites once and the transform is compositor-only — no re-layout, no re-raster per frame. | Measure with a long timeline and a continuous scroll. If text raster is the cost, the fallback is a second non-transformed layer positioned by `left` at low frequency — **not** a canvas, which would cost text crispness and selection. |
 | **Node count.** Unbounded if ticks are emitted exhaustively — 6 000 on a 10-minute project at max zoom. | **Real.** | §4.5 windowing, not a cap. Bounded at ~68 nodes regardless of project length. |
 | `paintRuler()` on scroll adds work to a path that today does none. | Medium. | Throttle to one re-render per `DOT_PX` of travel. Reuse the existing scroll handler rather than adding a listener. |
-| Labels colliding with the readout. | **Real** — see §5. | The readout is opaque and sits on top; no mask, and nothing is skipped, because both of those were tried and both flickered or lied at some zoom. |
+| Labels colliding with the readout. | **Real** — see §5. | The readout is opaque and sits on top, with its own 11px ramp at each end. No mask, and nothing is skipped, because both of those were tried and both flickered or lied at some zoom. |
 | Labels cut by the strip's own edges. | **Real** — at pps 48 every scroll position had one. | Clip, and nothing else: full strength, `overflow:hidden` ends it. Skipping popped and fading hid a timecode. |
 | The guard assumes a fixed label half-width. | `10:00` is wider than `00:05`. | Measure once from a real node, per repaint, from the first label. |
 | Minor steps are not round numbers (`7.5s`, `0.125s`). | Cosmetic, and deliberate. | §4.2. Subdividing a round interval is what a ruler does; a round dot interval that misses the labels is worse. |
