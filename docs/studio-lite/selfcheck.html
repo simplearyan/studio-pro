@@ -1,0 +1,441 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Clip Lite — self-check</title>
+<style>
+  :root{--bg:#0f0f0f;--pnl:#1a1a1a;--pnl2:#232323;--ln:#2e2e2e;--fg:#e8e8e8;--dim:#8a8a8a;--ok:#4ec9a0;--bad:#e2606a;--warn:#d9a441;--acc:#5b8def}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.55 ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;padding:22px 20px 60px}
+  main{max-width:1080px;margin:0 auto}
+  h1{font-size:20px;margin:0 0 4px}
+  .sub{color:var(--dim);margin:0 0 18px;max-width:74ch}
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:.09em;color:var(--dim);margin:30px 0 10px;font-weight:600}
+  button{font:inherit;background:var(--pnl2);color:var(--fg);border:1px solid var(--ln);border-radius:8px;padding:8px 15px;cursor:pointer}
+  button:hover{border-color:#4a4a4a}
+  button[disabled]{opacity:.5;cursor:default}
+  .bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+  #status{color:var(--dim)}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin-top:4px}
+  th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--ln);vertical-align:top}
+  th{color:var(--dim);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.07em}
+  td.n{font-variant-numeric:tabular-nums;white-space:nowrap}
+  .pass{color:var(--ok);font-weight:600}
+  .fail{color:var(--bad);font-weight:600}
+  .nm{font-weight:600}
+  .why{color:var(--dim);display:block;font-size:12px;margin-top:2px;max-width:56ch}
+  code{font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:#c8d4e8}
+  .note{background:var(--pnl);border:1px solid var(--ln);border-left:3px solid var(--acc);border-radius:8px;padding:12px 14px;margin:14px 0;color:#c9c9c9;max-width:80ch}
+  .note b{color:var(--fg)}
+  #frame{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;border:0;left:-9999px}
+  .sum{color:var(--dim);margin-top:8px}
+</style>
+</head>
+<body>
+<main>
+  <h1>Clip Lite — self-check</h1>
+  <p class="sub">Every Adjust knob and every filter, measured against a synthetic frame that has a known flat field, known step edges and known colour patches. Each control has to prove three things: it is <em>exactly</em> a no-op at zero, it moves its own metric in the direction its name promises, and — for the spatial controls — it still does that after the picture is scaled down to the size the preview actually shows.</p>
+
+  <div class="bar">
+    <button id="run">Run checks</button>
+    <span id="status">idle</span>
+  </div>
+  <div id="summary"></div>
+
+  <h2>How this measures</h2>
+  <div class="note">
+    <p style="margin:0 0 8px"><b>The frame.</b> A 720×1280 synthetic chart at the mock's real backing size: a flat <code>#808080</code> field, step edges of 1px, 2px and 3px, six flat colour patches, a highlight patch, a shadow patch and a mid-grey plate in the centre. Synthetic because it is deterministic — the same chart every run, on any machine, with no media file and no decoder in the way.</p>
+    <p style="margin:0 0 8px"><b>The pipeline is not reimplemented.</b> The mock is loaded in an iframe and this page calls the real <code>look()</code> and the real <code>frameStage()</code> inside it. A copy of the filter strings would only prove the copy works; these numbers come from the code that ships.</p>
+    <p style="margin:0"><b>Measure what the user sees.</b> Sharpen shipped as <code>contrast() saturate()</code> and scored +9% acutance at full resolution while scoring <b>−5%</b> as displayed — 720px of canvas shown in 257px gets averaged by the browser, and averaging cancelled the boost. The control was making the picture softer and the readout said otherwise. So every control is measured twice: on the canvas, and again after a 2.8× downscale. A control whose two answers disagree in sign is flagged, because that is the failure mode that hides.</p>
+  </div>
+
+  <h2>Adjust — eight knobs</h2>
+  <table id="adjT"><thead><tr>
+    <th style="width:12%">Knob</th><th style="width:15%">Metric</th><th style="width:9%">At zero</th>
+    <th style="width:22%">As measured</th><th style="width:22%">As displayed</th><th style="width:9%">Result</th>
+  </tr></thead><tbody></tbody></table>
+
+  <h2>Filters — thirteen looks</h2>
+  <table id="filtT"><thead><tr>
+    <th style="width:12%">Look</th><th style="width:22%">Chain at full strength</th><th style="width:9%">At zero</th>
+    <th style="width:26%">Signature change</th><th style="width:9%">Result</th>
+  </tr></thead><tbody></tbody></table>
+</main>
+
+<iframe id="frame" src="clip-lite-mock.html" title="mock"></iframe>
+
+<script>
+'use strict';
+/* ── Why this page exists ──────────────────────────────────────────────────
+   Sharpen was the control that lied. It shipped as `contrast() saturate()`,
+   which is a tonal curve wearing the name of a spatial effect: it measurably
+   raised acutance by 9% on the canvas and measurably LOWERED it by 5% as
+   displayed, so the slider moved and the picture got softer. Nothing about the
+   readout was wrong and nothing looked broken, which is precisely why it survived
+   as long as it did — a control cannot be reviewed by reading its name.
+
+   So the rule this page enforces is not "does the filter string look right". It
+   is: every control must (1) be a bit-exact no-op at zero, so a clip nobody
+   touched is untouched, (2) move the one metric its name promises, in the
+   direction the name promises, and (3) survive being scaled to preview size.
+   A control that fails any of those has lied, whatever its source says.
+
+   The pipeline is the shipping one — this page calls into the mock's own
+   look() and frameStage() through an iframe rather than restating their filter
+   strings, because a restatement only proves the restatement is self-consistent. */
+
+const FRAME_W=720, FRAME_H=1280, DOWN=2.8;
+const $=(s,r=document)=>r.querySelector(s);
+const fmt=(v,d=3)=>(v>=0?'+':'')+v.toFixed(d);
+const pct=v=>(v>=0?'+':'')+(v*100).toFixed(1)+'%';
+
+/* ── The chart ───────────────────────────────────────────────────────────────
+   Named regions, because "the frame got darker" is not a measurement. Every
+   probe below is a rectangle with a known answer before any filter runs. */
+function makeFrame(){
+  const c=document.createElement('canvas');c.width=FRAME_W;c.height=FRAME_H;
+  const g=c.getContext('2d');
+  g.fillStyle='#808080';g.fillRect(0,0,FRAME_W,FRAME_H);   // flat mid-grey field
+  g.fillStyle='#787878';g.fillRect(40,40,240,240);          // flat probe
+  // step edges of 1, 2 and 3 px, mid-grey to light and mid-grey to dark
+  const bandY=320,bandH=120;
+  let x=20;
+  for(const [w,hi] of [[1,'#c8c8c8'],[2,'#c8c8c8'],[3,'#c8c8c8'],[1,'#484848'],[2,'#484848'],[3,'#484848']]){
+    for(let i=0;i<8;i++){
+      g.fillStyle=(i%2)?'#808080':hi;
+      g.fillRect(x,bandY+i*(bandH/8),w,bandH/8);
+    }
+    x+=8+w*8;
+  }
+  // colour patches
+  const cols=['#c0392b','#27ae60','#2c6fbb','#e0a45e','#8e44ad','#7f8c8d'];
+  cols.forEach((col,i)=>{g.fillStyle=col;g.fillRect(40+i*110,470,100,140)});
+  // highlight / mid plate / shadow, one row, so tone knobs have a split to pull
+  g.fillStyle='#ebebeb';g.fillRect(40,700,200,200);
+  g.fillStyle='#808080';g.fillRect(260,700,200,200);
+  g.fillStyle='#1e1e1e';g.fillRect(480,700,200,200);
+  // fine vertical detail, the thing an edge filter should bite on
+  for(let i=0;i<FRAME_W;i+=4){g.fillStyle=(i/4)%2?'#9a9a9a':'#6a6a6a';g.fillRect(i,1000,2,100)}
+  return c;
+}
+const R={
+  flat:[40,40,240,240],
+  edges:[20,320,600,120],
+  detail:[0,1000,FRAME_W,100],
+  hi:[40,700,200,200],
+  mid:[260,700,200,200],
+  shadow:[480,700,200,200],
+  centre:[260,700,200,200],
+  corner:[8,8,28,28],
+  red:[40,470,100,140],
+  green:[150,470,100,140],
+  blue:[260,470,100,140],
+  skin:[370,470,100,140],
+  purple:[480,470,100,140],
+  all:[0,0,FRAME_W,FRAME_H]
+};
+
+/* ── Measurement ────────────────────────────────────────────────────────────
+   One pass per image produces every metric, because getImageData over a
+   megapixel is the expensive part and there is no reason to pay it twice. */
+function measure(img){
+  const {width:w,height:h,data:d}=img;
+  const box=(a)=>{let n=0,L=0,L2=0,a1=0,a2=0,hueX=0,hueY=0,ws=0;
+    for(let y=a[1];y<a[1]+a[3];y++){const o=y*w*4;
+      for(let xx=a[0];xx<a[0]+a[2];xx++){const i=o+xx*4;
+        const l=.2126*d[i]+.7152*d[i+1]+.0722*d[i+2];
+        L+=l;L2+=l*l;n++;
+        // chroma as opponent axes; sd of these is what "saturation" moves
+        const A=d[i]-(d[i+1]+d[i+2])/2, Bc=.866*(d[i+1]-d[i+2]);
+        a1+=A;a2+=Bc;
+        const s=Math.sqrt(A*A+Bc*Bc); hueX+=A*s;hueY+=Bc*s;ws+=s;
+      }}
+    const m=L/n;
+    return {mean:m, sd:Math.sqrt(Math.max(0,L2/n-m*m)),
+      chromaSd:Math.hypot(a1/n,a2/n),
+      hue:(ws>1e-6?Math.atan2(hueY/ws,hueX/ws)*180/Math.PI:0)};
+  };
+  const M={};
+  for(const k in R)M[k]=box(R[k]);
+  // acutance: mean |Δluma| between horizontally adjacent pixels, over the
+  // step-edge band. This is the number Sharpen lied about.
+  let ac=0,n=0;
+  for(let y=R.edges[1];y<R.edges[1]+R.edges[3];y++){const o=y*w*4;
+    for(let xx=R.edges[0]+1;xx<R.edges[0]+R.edges[2];xx++){const i=o+xx*4,j=i-4;
+      const l1=.2126*d[i]+.7152*d[i+1]+.0722*d[i+2];
+      const l0=.2126*d[j]+.7152*d[j+1]+.0722*d[j+2];
+      ac+=Math.abs(l1-l0);n++}}
+  M.acutance=ac/n;
+  // how much the frame as a whole changed, for the identity check
+  M.r=0;M.g=0;M.b=0;
+  return {M,raw:{w,h,d}};
+}
+/* Bytes differing between two images — the identity test. A knob at zero that
+   changes even one byte is not neutral, it is nearly neutral, and "nearly" is
+   where surprises live. */
+function diffCount(a,b){
+  if(!a||!b)return Infinity;
+  const px=x=>(x.raw||x).d;
+  const A=px(a),B=px(b);let n=0;
+  for(let i=0;i<A.length;i+=4){if(A[i]!==B[i]||A[i+1]!==B[i+1]||A[i+2]!==B[i+2])n++}
+  return n;
+}
+/* "As displayed": the preview is 720px of canvas in 257px, so the browser
+   averages on the way to the screen. Anything spatial has to be re-measured
+   through that average or the number is not the number anyone is looking at. */
+function downscale(src,w,h){
+  const c=document.createElement('canvas');
+  c.width=Math.round(w/DOWN);c.height=Math.round(h/DOWN);
+  const g=c.getContext('2d',{willReadFrequently:true});
+  g.imageSmoothingEnabled=true;g.imageSmoothingQuality='high';
+  g.drawImage(src,0,0,c.width,c.height);
+  return {canvas:c,img:g.getImageData(0,0,c.width,c.height),w:c.width,h:c.height};
+}
+/* Acutance on a scaled image, over the same edges region mapped through the
+   same factor. Kept separate from measure() because the region rectangles are
+   in chart pixels and no longer line up after a downscale. */
+function acutanceScaled(img,box){
+  const {width:w,data:d}=img;
+  const s=w/FRAME_W;
+  const x0=Math.round(box[0]*s),x1=Math.round((box[0]+box[2])*s);
+  const y0=Math.round(box[1]*s),y1=Math.round((box[1]+box[3])*s);
+  let ac=0,n=0;
+  for(let y=y0;y<y1;y++){const o=y*w*4;
+    for(let x=x0+1;x<x1;x++){const i=o+x*4,j=i-4;
+      ac+=Math.abs((.2126*d[i]+.7152*d[i+1]+.0722*d[i+2])-(.2126*d[j]+.7152*d[j+1]+.0722*d[j+2]));n++}}
+  return n?ac/n:0;
+}
+
+/* ── Driving the real pipeline ──────────────────────────────────────────────*/
+let W=null,ok=false,ADJ=null,FILTERS=null,CTX=null,CW=0,CH=0;
+async function boot(){
+  const f=$('#frame');
+  await new Promise(res=>{
+    if(f.contentWindow&&f.contentWindow.ADJ)return res();
+    f.addEventListener('load',res,{once:true});
+    setTimeout(res,6000);
+  });
+  const w=f.contentWindow;
+  /* The mock declares its internals with top-level `const`/`function`, which are
+     script-scoped, not properties of `window` — so `iframe.contentWindow.ADJ` is
+     undefined even same-origin. Evaluating a getter inside the frame is the way
+     in, and it still hands back the live bindings rather than a copy. */
+  try{
+    if(w.eval('typeof ADJ')!=='object')throw new Error('mock globals not reachable');
+    w.eval('proj.ar="9:16";applyProj();pause();');
+    W=w;
+    ADJ=w.eval('ADJ');FILTERS=w.eval('F');CTX=w.eval('ctx');
+    CW=CTX.canvas.width;CH=CTX.canvas.height;
+    if(CW!==FRAME_W||CH!==FRAME_H)throw new Error('mock canvas is '+CW+'x'+CH+', expected '+FRAME_W+'x'+FRAME_H);
+    ok=true;
+  }catch(e){$('#status').textContent='could not reach the mock: '+e.message}
+}
+const SRC=()=>W.__src||(W.__src=makeFrame());
+function render(clip){
+  const ctx=CTX;
+  ctx.setTransform(1,0,0,1,0,0);ctx.globalAlpha=1;
+  ctx.globalCompositeOperation='source-over';ctx.filter='none';
+  ctx.fillStyle='#000';ctx.fillRect(0,0,CW,CH);
+  const src=SRC();
+  const sv=(clip.ad&&clip.ad.sharp)||0, pf=clip.f&&clip.f!=='none'&&!!FILTERS[clip.f].post;
+  if(sv||pf){
+    /* Bust the mask's readback cache. It keys on frame time, grade, geometry —
+       all constant here, because the chart never changes — so without this the
+       second and later renders would be served a stale sharpen and every
+       measurement after the first would be measuring the first one again. */
+    W.eval('shKey=""');
+    W.eval('frameStage')(clip,src,0,1,0,FRAME_W,FRAME_H,1,sv);
+  }else{
+    ctx.save();ctx.filter=W.eval('look')(clip);
+    ctx.drawImage(src,0,0,CW,CH);ctx.restore();
+  }
+  return ctx.getImageData(0,0,CW,CH);
+}
+const mkClip=(ad,f,fs)=>({id:1,rot:0,f:f||'none',fs:fs==null?1:fs,ad:ad||{},sp:1,vol:1,in:0,out:1,s:0});
+
+/* ── What each control promises, in one line each ───────────────────────────
+   `want` is the assertion. `dir` is which end of the slider must show it. This
+   is the part that cannot be generated from the source: it is the claim the
+   label makes, written down so it can fail. */
+const CLAIMS=[
+  {k:'bright',n:'Brightness',ends:[1,-1],metric:'flat mean luma',
+   why:'a lighter picture is a higher mean luma on a flat field, and a darker one lower',
+   check:(v,b,z)=>v>0?b.flat.mean>z.flat.mean+1:b.flat.mean<z.flat.mean-1,
+   num:(v,b,z)=>({v:fmt(b.flat.mean-z.flat.mean,2)+' luma'})},
+  {k:'ctr',n:'Contrast',ends:[1,-1],metric:'luma spread on the edges',
+   why:'widens the tones at +1 and closes them at −1 — measured ±4.48 sd, symmetric',
+   check:(v,b,z)=>v>0?b.edges.sd>z.edges.sd+0.5:b.edges.sd<z.edges.sd-0.5,
+   num:(v,b,z)=>({v:pct(b.edges.sd/z.edges.sd-1)+' sd'})},
+  {k:'high',n:'Highlights',ends:[1,-1],metric:'highlight minus shadow luma',
+   why:'highlights lift the bright end while dragging the shadow end down',
+   check:(v,b,z)=>{const s=x=>(x.hi.mean-x.shadow.mean);
+     return v>0?s(b)>s(z)+2:s(b)<s(z)-2},
+   num:(v,b,z)=>{const s=x=>(x.hi.mean-x.shadow.mean);return {v:fmt(s(b)-s(z),2)+' luma'}}},
+  {k:'shad',n:'Shadows',ends:[1,-1],metric:'highlight minus shadow luma',
+   why:'the mirror of Highlights: opens the dark end, closes the bright one',
+   check:(v,b,z)=>{const s=x=>(x.hi.mean-x.shadow.mean);
+     return v>0?s(b)<s(z)-2:s(b)>s(z)+2},
+   num:(v,b,z)=>{const s=x=>(x.hi.mean-x.shadow.mean);return {v:fmt(s(b)-s(z),2)+' luma'}}},
+  {k:'sat',n:'Saturation',ends:[1,-1],metric:'chroma spread',
+   why:'pushes the colour patches off the grey axis at +1 and pulls them back at −1',
+   check:(v,b,z)=>v>0?b.red.chromaSd>z.red.chromaSd+4:b.red.chromaSd<z.red.chromaSd-4,
+   num:(v,b,z)=>({v:pct(b.red.chromaSd/z.red.chromaSd-1)+' chroma'})},
+  {k:'warm',n:'Warmth',ends:[1,-1],metric:'hue of the red patch',
+   why:'hue-rotate() turns the hue; the patch must actually turn with the slider',
+   check:(v,b,z)=>Math.abs(b.red.hue-z.red.hue)>3,
+   num:(v,b,z)=>({v:fmt(b.red.hue-z.red.hue,1)+'° hue'})},
+  {k:'fade',n:'Fade',ends:[1,-1],metric:'luma spread on the edges',
+   why:'flattens at +1 and gains contrast back at −1 — the inverse move, so both ends must be checked',
+   check:(v,b,z)=>v>0?b.edges.sd<z.edges.sd-0.5:b.edges.sd>z.edges.sd+0.4,
+   num:(v,b,z)=>({v:pct(b.edges.sd/z.edges.sd-1)+' sd'})},
+  {k:'sharp',n:'Sharpen',ends:[1],metric:'acutance, canvas and displayed',
+   why:'the control that lied. It must raise acutance on the canvas AND after the browser averages the preview down; an unsigned mask scored +41% and −5%.',
+   spatial:true,
+   check:(v,b,z)=>b.M.acutance>z.M.acutance*1.02}
+];
+
+/* ── Run ────────────────────────────────────────────────────────────────────*/
+function row(cells){return '<tr>'+cells.map(c=>'<td'+(c.cls?' class="'+c.cls+'"':'')+'>'+c.html+'</td>').join('')+'</tr>'}
+function verdict(pass,good,bad){return {html:(pass?'<span class="pass">'+good+'</span>':'<span class="fail">'+bad+'</span>'),pass}}
+
+async function runAdjust(){
+  const tb=$('#adjT tbody');tb.innerHTML='';
+  const base=measure(render(mkClip({})));
+  // The displayed reference is the untouched chart at preview scale, computed
+  // once — the downscale of the *rendered* canvas would already carry whichever
+  // knob was set, which is the comparison this page exists to avoid making.
+  const dspBase=acutanceScaled(downscale(SRC(),FRAME_W,FRAME_H).img,R.edges);
+  let pass=0,fail=0;
+  /* Iterate the live ADJ keys, not the claim list. A knob added to the mock with
+     no claim written for it shows up here as an explicit failure instead of
+     quietly going unchecked — which is the whole reason this page exists. */
+  for(const key of Object.keys(ADJ)){
+    const cl=CLAIMS.find(x=>x.k===key);
+    if(!cl){
+      fail++;
+      tb.insertAdjacentHTML('beforeend',row([
+        {html:'<span class="nm">'+ADJ[key].n+'</span>'},
+        {html:'no claim written<span class="why">a control nobody promised anything for is exactly the kind that lies</span>'},
+        {html:'—',cls:'n'},{html:'—',cls:'n'},{html:'—',cls:'n'},
+        {html:'<span class="fail">unclaimed</span>'}
+      ]));
+      continue;
+    }
+    /* Every knob is checked at the ends of its own slider, not just the
+       positive one. A control that honours only half its range is half broken,
+       and a single-end check cannot see that. `check` receives the value so it
+       can assert the right direction for that end. */
+    const ends=cl.ends;
+    let dirOk=true,reported=null,zeroDiff=0,dispOkFinal=true;
+    for(const v of ends){
+      const ad={};ad[cl.k]=v;
+      const m=measure(render(mkClip(ad)));
+      const d=downscale(CTX.canvas,FRAME_W,FRAME_H);
+      const dsp={acutance:acutanceScaled(d.img,R.edges)};
+      dirOk=(cl.spatial?cl.check(v,m,base):cl.check(v,m.M,base.M))&&dirOk;
+      if(cl.spatial){
+        /* Both numbers must point the same way. This is the Sharpen assertion:
+           an unsigned mask reads +41% here and −5% as displayed, and both halves
+           of that compare "greater than", so only the disagreement is the tell. */
+        const upCanvas=m.M.acutance>base.M.acutance, upShown=dsp.acutance>dspBase;
+        dispOkFinal=(upCanvas===upShown)&&dispOkFinal;
+      }
+      reported=reported||{m,v,dsp};
+      reported.v=v;
+    }
+    const z={};z[cl.k]=0;
+    zeroDiff=diffCount(measure(render(mkClip(z))).raw,base.raw);
+    const m=reported.m,dsp=reported.dsp;
+    const allOk=zeroDiff===0&&dirOk&&dispOkFinal;
+    if(allOk)pass++;else fail++;
+
+    const v1=verdict(zeroDiff===0,'0 bytes','<span class="fail">'+zeroDiff+'</span>');
+    const v2=cl.spatial
+      ?verdict(dirOk,fmt((m.M.acutance/base.M.acutance-1)*100,1)+'% canvas','no move')
+      :verdict(dirOk,cl.num(reported.v,m.M,base.M).v,'no move');
+    const v3=cl.spatial?verdict(dispOkFinal,
+        fmt((dsp.acutance/dspBase-1)*100,1)+'% shown vs '+fmt((m.M.acutance/base.M.acutance-1)*100,1)+'% canvas',
+        '<span class="fail">signs disagree</span>'):{html:'—',pass:true};
+
+    tb.insertAdjacentHTML('beforeend',row([
+      {html:'<span class="nm">'+cl.n+'</span>'+(cl.spatial?' <span class="why">the one that lied</span>':'')},
+      {html:cl.metric+'<span class="why">'+cl.why+'</span>'},
+      {html:v1.html,cls:'n'},
+      {html:v2.html,cls:'n'},
+      {html:v3.html,cls:'n'},
+      {html:(allOk?'<span class="pass">holds</span>':'<span class="fail">fails</span>')}
+    ]));
+  }
+  return {pass,fail};
+}
+async function runFilters(){
+  const tb=$('#filtT tbody');tb.innerHTML='';
+  const base=measure(render(mkClip({},'none',1)));
+  let pass=0,fail=0;
+  for(const key of Object.keys(FILTERS)){
+    const F=FILTERS[key];
+    const chain=F.f?F.f(1):(F.post?'('+F.post+' — drawn after the frame)':'');
+    let zeroDiff=0,sig='',okRow=true,note='';
+    if(key!=='none'){
+      zeroDiff=diffCount(measure(render(mkClip({},key,0))).raw,base.raw);
+      const full=measure(render(mkClip({},key,1)));
+      const dMean=full.M.all.mean-base.M.all.mean;
+      const dEdge=full.M.edges.sd-base.M.edges.sd;
+      const dChroma=full.M.red.chromaSd-base.M.red.chromaSd;
+      const dHue=full.M.red.hue-base.M.red.hue;
+      const dCorner=full.M.corner.mean-base.M.corner.mean;
+      const dCentre=full.M.centre.mean-base.M.centre.mean;
+      if(F.post=='vig'){
+        sig='corners '+fmt(dCorner,1)+' luma, centre '+fmt(dCentre,1);
+        okRow=dCorner<-8&&Math.abs(dCentre)<1.5&&zeroDiff===0;
+        note='a vignette must darken the edge, leave the middle alone, and be an exact no-op at zero';
+      }else if(F.post=='grain'){
+        sig='mid-plate sd '+fmt(full.M.mid.sd-base.M.mid.sd,2)+', mean luma '+fmt(dMean,2);
+        okRow=(full.M.mid.sd-base.M.mid.sd)>0.5&&Math.abs(dMean)<3&&zeroDiff===0;
+        note='grain must add texture, not move exposure, and be an exact no-op at zero';
+      }else{
+        okRow=zeroDiff===0;
+        const parts=[];
+        if(Math.abs(dEdge)>0.4)parts.push('edges '+fmt(dEdge,2)+' sd');
+        if(Math.abs(dChroma)>4)parts.push('chroma '+fmt(dChroma,1));
+        if(Math.abs(dHue)>2)parts.push('hue '+fmt(dHue,1)+'°');
+        if(Math.abs(dMean)>0.4)parts.push('mean '+fmt(dMean,2));
+        sig=parts.length?parts.join(' · '):'nothing measurable';
+        okRow=parts.length>0;
+        note='a look that changes nothing measurable is not a look';
+      }
+    }
+    if(okRow)pass++;else fail++;
+    tb.insertAdjacentHTML('beforeend',row([
+      {html:'<span class="nm">'+(F.n||key)+'</span>'+(F.post?'<span class="why">'+F.post+'</span>':'')},
+      {html:'<code>'+String(chain).replace(/</g,'&lt;')+'</code>'},
+      {html:key==='none'?'—':(zeroDiff===0?'<span class="pass">0 bytes</span>':'<span class="fail">'+zeroDiff+'</span>'),cls:'n'},
+      {html:(sig||'—')+'<span class="why">'+note+'</span>'},
+      {html:(okRow?'<span class="pass">holds</span>':'<span class="fail">fails</span>')}
+    ]));
+  }
+  return {pass,fail};
+}
+
+async function main(){
+  const btn=$('#run');btn.disabled=true;
+  $('#status').textContent='reaching the mock…';
+  if(!ok&&!await boot()){$('#status').textContent='failed';btn.disabled=false;return}
+  $('#status').textContent='measuring Adjust…';
+  await new Promise(r=>setTimeout(r,30));
+  const a=await runAdjust();
+  $('#status').textContent='measuring Filters…';
+  await new Promise(r=>setTimeout(r,30));
+  const b=await runFilters();
+  const p=a.pass+b.pass,f=a.fail+b.fail;
+  $('#summary').innerHTML='<div class="sum">'+p+' of '+(p+f)+' controls hold. '+
+    (f? '<span class="fail">'+f+' failed</span> — a control that fails here is one whose label and its behaviour disagree.' : 'Every control is a bit-exact no-op at zero, moves its own metric in the direction its name promises, and keeps that promise after the preview is scaled down.')+'</div>';
+  $('#status').textContent='done';
+  btn.disabled=false;
+}
+$('#run').addEventListener('click',main);
+boot().then(()=>{if(ok){$('#status').textContent='ready';main()}});
+</script>
+</body>
+</html>

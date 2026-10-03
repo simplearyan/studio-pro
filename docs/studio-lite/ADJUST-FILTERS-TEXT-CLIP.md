@@ -65,11 +65,11 @@ angular glyph in the set, and every other knob is a curve.
 
 ---
 
-## 2. Filters — eleven looks, each previewed on the real frame
+## 2. Filters — thirteen looks, each previewed on the real frame
 
 The reference's shelf is a row of square cards, each showing a thumbnail of
 **your** clip with that filter already on it, plus a `None` card carrying a
-crossed disc. Adopted as-is, and extended from six looks to **eleven**.
+crossed disc. Adopted as-is, and extended from six looks to **thirteen**.
 
 **Filters are generators, not strings.** The reference has a strength slider and
 so do we, and a fixed CSS string cannot be dialled. Each filter is a function of
@@ -85,11 +85,73 @@ having no filter*, not a weak version of one. Verified: at `fs=0` the emitted
 chain is `contrast(1) saturate(1) brightness(1)`.
 
 The card thumbnail is the frame under the playhead (`thumbAt()`), carrying that
-filter's own CSS — so the eleven cards are eleven genuinely different pictures
+filter's own CSS — so the thirteen cards are thirteen genuinely different pictures
 of the same moment, which is the only way to choose a look. `None` is the
 crossed disc rather than an unfiltered thumbnail, because an unfiltered card
-next to seven filtered ones reads as *"there is no filter"*, not as *"this is the
+next to twelve filtered ones reads as *"there is no filter"*, not as *"this is the
 filter you are on"*.
+
+### Vignette and Grain — the two looks `ctx.filter` cannot spell
+
+Eleven of the thirteen are filter chains. These two are not, and the reason is
+worth stating because it is a hard limit rather than an oversight: the whole CSS
+filter vocabulary is brightness, contrast, saturate, hue-rotate, blur, grayscale,
+sepia, invert, opacity and drop-shadow. **None of them can reach the edge of a
+picture or add a pixel that was not in it.** A vignette darkens corners; grain
+lays noise over the frame. Neither is expressible, so both are marked `post` and
+drawn by `postFx()` once the frame is already on the canvas — the same bargain
+Sharpen makes, and for the same reason.
+
+They are on the Filters shelf rather than in Adjust because they are *looks*, not
+values: a card's whole job is to show you the result before you commit, and
+Adjust's slider cannot show you anything at all.
+
+**The gradient is sized off the diagonal**, not the width. A radius from the
+width alone leaves a 9:16 frame with dark top and bottom edges and bright sides,
+which is a different look and not the one named Vignette. Measured as mean luma
+in eight radial shells at full strength: `0.000, 0.000, −1.0, −10.0, −22.2,
+−34.0, −16.0, −0.6` from the centre outward — monotone, centre untouched. The
+outermost shell barely moves because that ring is already at luma 1.2: it is the
+black surround, and black cannot get darker.
+
+> **A probe at the canvas corner would have reported "no effect"** for exactly
+> that reason. The first measurement of this effect did, and looked like a
+> regression. Measure the region you mean, not the corner of the buffer.
+
+**Grain's tile is centred on 128**, which is the part that matters: `overlay`'s
+gain runs with distance from *both* ends, so a mean-128 field is
+mean-preserving. Measured drift in mean frame luma across six probes is
+**+0.16/255** at full strength — grain changes the texture of a frame, not its
+exposure. The flip side, which is worth knowing before filing a bug: the gain
+peaks *at* mid-grey and falls away in crushed shadow and blown highlight
+(measured noise sd 0.71 at base luma 7.5, 8.70 at 150.6, 9.33 at 128.0, 6.01 at
+188.4). So grain is near-invisible in the letterbox of a letterboxed clip — which
+is correct, since visible noise crawling in the surround reads as a broken
+player — and it also goes quiet in a crushed night shot. **If the grain slider
+ever reads as doing nothing, look at the blacks before the code.**
+
+The tile is built once and reused, so a paused frame and a playing one are the
+same picture — which is also what makes it measurable: two consecutive draws of a
+paused frame differ in **0 of 921,600** pixels.
+
+### The blank Grain card, and what it was actually about
+
+The Grain card rendered as an empty grey square. The computed style showed
+`background-image` **empty** while `background-size` beside it was intact —
+`cover, 120px`, a noise size for a layer that did not exist.
+
+The cause is a CSS tokenizer rule: an unquoted `url()` token ends at the first
+`)`. The card's noise was an inline `feTurbulence` SVG, and that data URI
+contains the SVG's own `filter="url(#n)"`. The `)` closed the `url(` early, the
+value became a bad-url token, and **the entire declaration was dropped silently**.
+Nothing errored, nothing logged, and the property sitting next to it kept its
+value — which is why it read as a card with a noise size and no noise on it.
+
+Quoting the URL would have fixed it. The better fix removes the second noise
+generator: the card now exports **the tile the player actually draws**. The two
+textures did not match — `feTurbulence` is a different distribution from the ±40
+field `grain()` builds — so "what the card shows is what the player draws" was
+true by resemblance rather than by construction. It is now true by construction.
 
 ### The bug this found, and why it is written down
 
@@ -244,6 +306,78 @@ row. It is a light *source* now: a dome rising off a horizon, a different
 silhouette (flat base, no full disc) that pairs with the crescent below it as the
 light-from-above / light-from-below pair the two knobs actually are.
 
+**Highlights and Shadows were both doing the opposite of their names.** This is
+the one the [self-check page](selfcheck.html) caught, and it is the second time a
+knob has lied on this shelf, so the finding is written up rather than patched.
+
+Neither knob can be expressed in `ctx.filter` — there is no highlight or shadow
+recovery in the vocabulary — so both were faked with a `brightness()` plus a
+counteracting `contrast()`, and **the counter-term was winning**. Measured on
+paired flat patches, old **Highlights at +1** moved the highlight end by
+**−9 luma** and the shadow end by **+29**: it brightened the shadows and dimmed
+the highlights. On every exposure pair tried (235/30, 200/45, 160/60, 245/20).
+
+The fix is the **sign of the contrast term**, which is what decides which end of
+the range the knob actually pushes — `contrast()` scales distance from mid-grey,
+so raising it lifts highlights and drops shadows together, and lowering it does
+the reverse. Highlights is now contrast **up**, Shadows contrast **down**:
+
+```js
+high:{n:'Highlights',i:'high',f:v=>`brightness(${1+v*.12}) contrast(${1+v*.2})`},
+shad:{n:'Shadows',i:'shad',f:v=>`brightness(${1+v*.15}) contrast(${1-v*.28})`},
+```
+
+Measured, new Highlights at +1 on the 235/30 pair: highlight **+20**, shadow
+**−16**. At −1: highlight **−45**, shadow **+16**. New Shadows at +1: shadow
+**+30**, highlight **−16**. Both now move their own end further than the other,
+in the direction the label promises.
+
+The knob is still a two-stop approximation and not a real tone curve — it cannot
+*recover* a blown highlight, only push it further — and that is exactly why the
+self-check exists: a curve this easy to get backwards will get backwards again
+the next time someone tunes it by eye.
+
+---
+
+## The self-check — a control whose only output is a number needs a pixel test
+
+Sharpen shipped as `contrast() saturate()` and survived review because the
+readout moved. [selfcheck.html](selfcheck.html) is the thing that stops that
+class of bug from recurring, and it found two real liars on its first run.
+
+It loads the mock in an iframe and calls the **real** `look()` and `frameStage()`
+inside it — a copy of the filter strings would only prove the copy is
+self-consistent. It measures against a synthetic 720×1280 chart with a known flat
+field, 1px/2px/3px step edges, flat colour patches, and highlight/shadow plates:
+deterministic, no media file, no decoder in the way.
+
+Every control must prove three things:
+
+1. **It is a bit-exact no-op at zero.** Not *nearly* — 0 differing bytes against
+   no knob at all. "Nearly" is where surprises live.
+2. **It moves its own metric, in the direction its name promises** — at *both*
+   ends of its slider, because a control that honours only half its range is
+   half broken and a single-end check cannot see it.
+3. **For spatial controls, it still does that as displayed.** Sharpen scored +9%
+   acutance on the canvas and **−5%** as displayed, because 720px of canvas shown
+   in 257px gets averaged by the browser and averaging cancelled the boost. So
+   every control is measured twice, and a control whose two answers disagree in
+   *sign* is flagged — that disagreement is the failure mode that hides.
+
+The claim list is hand-written per knob, because it is the claim the label makes,
+written down so it can fail. And the page iterates the **live `ADJ` keys**, not
+the claim list: a knob added to the mock with no claim written for it appears as
+an explicit `unclaimed` failure rather than quietly going unchecked.
+
+Current result: **21 of 21 controls hold** — 8 knobs and 13 looks.
+
+Two of the three bugs it found were in the page's own claims, not the mock, and
+that is worth saying too: Contrast at −1 legitimately *reduces* spread,
+Saturation at −1 legitimately desaturates, and Fade at −1 legitimately *gains*
+contrast. The first draft asserted all three move the same way at both ends,
+which would have been a *wrong* test passing a *right* control — and a test that
+is wrong in the convenient direction is how a suite stops being trusted.
+
 ---
 
 ## Verified
@@ -251,7 +385,7 @@ light-from-above / light-from-below pair the two knobs actually are.
 | | |
 |---|---|
 | Adjust | 8 knobs, per-knob values retained, all compose; footer `Cancel / Apply to all / Done` |
-| Filters | 11 cards, 10 carrying real frames, each pre-filtered with its own chain; strength `0%` is a no-op, `100%` is the full look |
+| Filters | 13 cards, 12 carrying real frames, each pre-filtered with its own chain; strength `0%` is a no-op, `100%` is the full look |
 | Apply to all | 2 clips → both `{bright, warm}` + `moody@0.6`; objects cloned, not aliased |
 | Adjust is real | centre pixel `[255,209,167]` → `[255,255,217]` at `bright +0.6`, `[178,146,119]` at `−0.6` |
 | Caption move | drag `+0.5s` steps the start and the tooltip together; snaps to the playhead |
@@ -259,6 +393,12 @@ light-from-above / light-from-below pair the two knobs actually are.
 | Cancel / Done / undo | Cancel reverts the sheet; Done commits; undo restores; redo repopulates |
 | Row keeps its place | at 393×844 the row sits at `scrollLeft 261` with Warmth selected, taps Sharpen at the same 261, re-taps the visible knob without moving it, and re-centres only an off-screen pick (Fade picked at 0 → 261) |
 | Sharpen is a mask, not a curve | acutance +41% at full res, +14% as displayed, −27% at `−1`; flat field beside the edge is bit-identical at every amount; `sharp 0` is 0 differing bytes against no knob at all, including with a grade and a 90° rotation |
+| Vignette | radial-shell mean luma `0.000, 0.000, −1.0, −10.0, −22.2, −34.0, −16.0, −0.6` centre→edge at full strength; `fs=0` is 0 differing bytes; centre probe moves −0.4 while corners move −74.5 |
+| Grain | mean luma drift +0.16/255 across six probes (mean-preserving); mid-plate sd +11.5; repeat draws of a paused frame differ in 0 of 921,600 pixels; `fs=0` is 0 differing bytes |
+| Grain card | shows the player's own exported tile; `background-image` parses to 2 layers with `background-blend-mode: normal, overlay` — the unquoted-`url()` drop is fixed |
+| Filter shelf at 357 and 393 | 13 cards, `scrollHeight === clientHeight`, no page-level horizontal scroll, shelf scrolls 677px (393) / 713px (357) |
+| Highlights / Shadows | corrected sign; at `+1` Highlights moves the highlight end +20 and the shadow end −16, Shadows moves the shadow end +30 and the highlight end −16, on all four exposure pairs |
+| Self-check | 21 of 21 controls hold; every knob is 0 differing bytes at zero and checked at both ends of its slider; Sharpen reads +98.7% canvas / +77.9% shown, same sign |
 | Sharpen leaves no outline | 9:16 clip in a 16:9 project: the backdrop outside the picture is unchanged and the edge pixels are the frame's own, not a bright rim |
 | Icons | Filters and Adjust are a funnel and a three-rail mixer, checked side by side in both themes at 393×844 and 357×836; the eight knob glyphs use eight different geometric families — sun, half disc, chevrons, crescent, drop, thermometer, sparkle, stacked lines |
 | Values still reach the pixels | centre 80×80 sample sums 931917 at Sharpen +0.24, 766885 at +0.90, 931917 on the way back |
