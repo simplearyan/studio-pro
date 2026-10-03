@@ -189,7 +189,29 @@ svg{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-l
 .view.fs{position:fixed;inset:0;z-index:8;background:#000;padding:0}
 .sub{flex:1 1 100%;text-align:center;font-size:13px;color:var(--on2)}
 .dock{background:none;border-radius:0}
-#rl{position:absolute;top:0;left:0;right:0;bottom:0;overflow:hidden;pointer-events:none;-webkit-mask-image:linear-gradient(90deg,transparent 0 14px,#000 24px,#000 calc(50% - 60px),transparent calc(50% - 10px),#000 calc(50% + 10px),transparent calc(50% + 60px),#000 calc(100% - 24px),transparent calc(100% - 14px));mask-image:linear-gradient(90deg,transparent 0 14px,#000 24px,#000 calc(50% - 60px),transparent calc(50% - 10px),#000 calc(50% + 10px),transparent calc(50% + 60px),#000 calc(100% - 24px),transparent calc(100% - 14px))}
+/* The readout owns the centre, and it does it by covering the guides rather than
+   by fading them. This strip used to carry a mask that ramped the guides out over
+   50px either side of the playhead — a fixed pixel width doing a job whose scale
+   changes with zoom, so at one label interval it swallowed a whole label and at
+   the next it swallowed none of it. That inconsistency is what a mask on a
+   scrolling strip always costs: its geometry is in screen pixels while the
+   content's geometry is in seconds per pixel.
+
+   The timecode has neither problem. It is a fixed-size object in a fixed place,
+   so the honest way to stop the two colliding is to let the timecode be opaque
+   and sit on top. `.dock` and `.ro` are both transparent, so what is behind the
+   strip is `--bg` and the patch is invisible — nothing to see and nothing to
+   tune per theme.
+
+   What is left is a label passing behind the readout and continuing out the
+   other side, which is what a readout on top of a ruler is supposed to look
+   like. At 2s labels and pps 60 — 120px between labels against a 106px patch —
+   nothing is ever cut. At 1s labels a label can be half-covered, and then a
+   fragment shows. `background:linear-gradient(90deg,transparent 0,var(--bg) 11px,
+   var(--bg) calc(100% - 11px),transparent 100%)` with the padding below turns
+   that fragment into an 11px fade instead; it is one value either way, and the
+   solid edge is the one that matches a readout sitting in front of something. */
+#rl{position:absolute;top:0;left:0;right:0;bottom:0;overflow:hidden;pointer-events:none}
 #rd{position:absolute;left:0;top:0;height:100%}
 /* R4: the label tier, revived. This rule used to be written for #ruler b and
    has been dead since the D1 declutter, when #ruler was collapsed to height:0
@@ -275,6 +297,7 @@ svg{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-l
 .bar .br{display:flex;align-items:center}
 /* the readout sits with the ruler, directly above the timeline — not in the header */
 .ro{position:relative;height:30px;display:grid;place-items:center}
+#time{background:var(--bg);padding:1px 8px;border-radius:9px}
 #time{position:relative;z-index:1}
 
 /* ── the ⋮ sheet: rare actions + settings, one home, nothing gesture-only ──
@@ -526,12 +549,16 @@ ts:'<path d="M5 5v14M9.5 12h9M15 8.6l3.4 3.4-3.4 3.4"/>',te:'<path d="M19 5v14M1
    lets the row run off the edge; we ship eight because a shelf you have to
    scroll to discover is a shelf most people never find. */
 ctr:'<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor" stroke="none"/>',
-/* Highlights was a smaller version of Brightness's sun: same circle, same eight
-   rays, one size down, so the two sat in the same row as the same picture. It is
-   a light *source* now — a dome rising off a horizon, which is a different
-   silhouette (flat base, no full disc) and pairs with the crescent below it as
-   the light-from-above / light-from-below pair the two knobs actually are. */
-high:'<path d="M3.4 15.4h17.2"/><path d="M6.9 15.4a5.1 5.1 0 0 1 10.2 0"/><path d="M12 4.4V6M5.6 7.2l1.2 1.2M18.4 7.2l-1.2 1.2"/>',
+/* Highlights went through two shapes before this one. It was a smaller version
+   of Brightness's sun — same circle, same eight rays, one size down, so the two
+   sat in the same row as the same picture. The second attempt, a dome rising off
+   a horizon, was a real improvement and still read as a sun at 22px, which is
+   the only size it is ever drawn at. So the row now has a rule: no two knobs
+   share a geometric family, and each family is used once. Sun, half disc,
+   chevrons, crescent, drop, thermometer, sparkle, stacked lines. Chevrons
+   pointing up say "lift" and cannot be read as a light source at all, and they
+   are the only angular glyph in the set — every other knob is a curve. */
+high:'<path d="m6.4 13.6 5.6-6.2 5.6 6.2"/><path d="m6.4 19.4 5.6-6.2 5.6 6.2"/>',
 shad:'<path d="M20.5 14.8A8.8 8.8 0 0 1 9.2 3.5 8.8 8.8 0 1 0 20.5 14.8z"/>',
 sat:'<path d="M12 3.6s6.2 6.6 6.2 10.3a6.2 6.2 0 1 1-12.4 0C5.8 10.2 12 3.6 12 3.6z"/>',
 warm:'<path d="M10 14.6V5.3a2 2 0 1 1 4 0v9.3a4 4 0 1 1-4 0z"/><path d="M12 9.4v6.1"/>',
@@ -673,7 +700,13 @@ const ADJ={
  shad:{n:'Shadows',i:'shad',f:v=>`brightness(${1+v*.42}) contrast(${1-v*.16})`},
  sat:{n:'Saturation',i:'sat',f:v=>`saturate(${1+v*.85})`},
  warm:{n:'Warmth',i:'warm',f:v=>`sepia(${Math.abs(v)*.42}) hue-rotate(${v*16}deg) saturate(${1+Math.abs(v)*.4})`},
- sharp:{n:'Sharpen',i:'sharp',f:v=>`contrast(${1+v*.5}) saturate(${1+v*.3})`},
+ /* Sharpen has no `f`, and that is the whole entry: it is the one adjustment
+    that is not a filter chain, so look() has nothing to emit for it. It used to
+    ship as `contrast() saturate()`, which is a tonal curve wearing the name of a
+    spatial effect — it looks crisper on a smooth frame and does nothing at all
+    to an edge, and the only reason nobody noticed is that the readout moves.
+    The real thing is sharpenStage() below. */
+ sharp:{n:'Sharpen',i:'sharp',f:null},
  fade:{n:'Fade',i:'fade',f:v=>`contrast(${1-v*.38}) brightness(${1+v*.2})`},
 };
 /* One composer for the whole grade, and it exists because of a bug this file
@@ -687,9 +720,16 @@ const ADJ={
    a pixel of the canvas, not by looking at the sheet — which is the argument
    for having done that. Nothing here interpolates a bare keyword any more:
    parts are collected, joined with a space, and an empty result is `none`. */
+/* Sharpen is the one adjustment with no chain to emit, so look() steps over any
+   knob whose f is null rather than pushing `undefined` into the string. The
+   second half is the same trap one level down: `ctx.filter` is a CSS list, and
+   `none` is a keyword that cannot be combined with anything — `none blur(2px)`
+   is not a filter chain, it is a parse error, and canvas drops the whole
+   declaration, so a soften would silently take the grade with it. */
 const look=c=>{const p=[];if(c.f&&c.f!=='none')p.push(F[c.f].f(c.fs==null?1:c.fs));
-  const a=c.ad;if(a)for(const k in ADJ)if(a[k])p.push(ADJ[k].f(a[k]));
+  const a=c.ad;if(a)for(const k in ADJ){const f=ADJ[k].f;if(f&&a[k])p.push(f(a[k]))}
   return p.length?p.join(' '):'none'};
+const chain=(c,extra)=>{const b=look(c);return extra?(b=='none'?extra:b+' '+extra):b};
 let clips=[],texts=[],srcs={},t=0,total=0,playing=false,sel=null,pps=60,uid=0,active=null,ac,dest,hist=[],rec=null,W=1280,H=720,tool=null,cancelled=false,mime='',laneH=0,chrome=0,laneFloor=0;
 const dur=c=>(c.out-c.in)/c.sp,esc=s=>s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 const fmt=s=>{s=Math.max(0,s);return Math.floor(s/60)+':'+(s%60).toFixed(1).padStart(4,'0')},fmtS=s=>Math.floor(s/60)+':'+String(s%60).padStart(2,'0');
@@ -813,7 +853,7 @@ function ticks(){
    saying `00:01`. Both formats now come from fmtT, so the ruler cannot
    disagree with the transport readout about how a time is written. */
 const tickLabel=s=>{const f=Math.floor(s+1e-9),d=Math.round((s-f)*10);return d?fmtT(f)+'.'+d:fmtT(s)};
-let rulerAt=NaN;
+let rulerAt=NaN,lblHalf=14;
 function paintRuler(){
   const rl=$('#rl'),rd=$('#rd'),W=rl.clientWidth;
   /* #rl has no width while a sheet is open — the dock is hidden, so there is
@@ -827,22 +867,56 @@ function paintRuler(){
   const sc=tl.scrollLeft,edge=sc-pad,lo=(edge-W)/pps,hi=(edge+2*W)/pps;
   const k0=Math.max(0,Math.ceil(lo/minor)),k1=Math.min(Math.ceil(total/minor),Math.floor(hi/minor));
   const m0=Math.max(0,Math.ceil(lo/major)),m1=Math.min(Math.ceil(total/major),Math.floor(hi/major));
+  /* Nothing hides a label. It is drawn at full strength and the strip's own
+     `overflow:hidden` is the only thing that ends it, so a label crossing an
+     edge is cut where the strip ends and nowhere else. That is a plain scroll
+     container doing what a scroll container does, and it is the fourth thing
+     tried here — the first two are in §5 of the plan because the reasons they
+     failed are the reason this one is right:
+
+       1. skipping a label that would collide with the readout — nodes added and
+          removed mid-scroll, which flickered;
+       2. a mask on #rl — a fixed pixel window pretending to describe labels
+          whose spacing changes with zoom;
+       3. a per-label opacity ramp at the edges — smooth, and wrong, because it
+          makes a label *disappear* while the ruler is plainly still there. A
+          timecode that fades away is a timecode you cannot read at the exact
+          moment you are looking for it.
+
+     A label wholly outside the strip is still skipped, which changes nothing on
+     screen — `overflow:hidden` would hide it anyway — and keeps the node count
+     down. The decision is made before the HTML is built, so no node is ever
+     added or removed after the strip is in the DOM.
+
+     The half-width is only used by that skip, and it is measured once per
+     repaint from the widest label rather than per label — one layout read after
+     the write, and the seed keeps the very first paint honest. Measuring the
+     widest matters even for a skip: `00:01.5` is a character wider than `00:02`,
+     and a half-width taken from the first label misjudges every long one. */
+  const hw=lblHalf;
   let h='';
-  for(let j=m0;j<=m1;j++)h+=`<b style="left:${pad+j*major*pps}px">${tickLabel(j*major)}</b>`;
+  for(let j=m0;j<=m1;j++){const x=pad+j*major*pps-sc;
+    if(x+hw<0||x-hw>W)continue;
+    h+=`<b style="left:${pad+j*major*pps}px">${tickLabel(j*major)}</b>`}
   /* j%k skips the minors that coincide with a major, which is exact — j is the
-     index, so this never asks a float whether it divides evenly. */
+     index, so this never asks a float whether it divides evenly. Dots are 2px
+     and are never dropped: a dot sliced by the edge is indistinguishable from a
+     dot that is simply not there yet. */
   for(let j=k0;j<=k1;j++)if(j%k)h+=`<i style="left:${pad+j*minor*pps}px"></i>`;
   rd.innerHTML=h;rd.style.width=(Math.max(total*pps,1)+2*pad)+'px';
-  /* The readout owns the centre, and CSS does that — the mask on #rl ramps the
-     guides out across 50px either side of the playhead and back in, so a label
-     sliding under the readout fades instead of being sliced.
-
-     This loop used to *remove* any label the readout would collide with. That
-     was solving the same problem twice, and worse: the DOM changed as the
-     timeline scrolled, so labels popped out of existence on the way in and
-     popped back on the way out — the flicker reported on the ruler. Visibility
-     is now continuous and nothing is added or removed while scrolling, which
-     also drops a per-label offsetWidth read on every repaint. */
+  /* One layout read for the strip, and the *widest* label wins. Measuring the
+     first one is not enough: a decimal label (`00:01.5`) is a character wider
+     than `00:02`, and a half-width taken from the short one misjudges every long
+     one. The reads are batched after the write, so this costs one layout rather
+     than one per label, and the value lags by a frame — harmless, because it
+     only decides whether a wholly invisible label is emitted at all. */
+  let w=0;for(const e of rd.children)if(e.offsetWidth>w)w=e.offsetWidth;
+  if(w)lblHalf=w/2+.5;
+  /* The readout owns the centre, and CSS does that: #time is opaque and sits
+     above the strip, so a label sliding under it is covered rather than sliced,
+     and #rl carries no mask at all (see the rule). Nothing here is aware of the
+     readout, which is the point — the two are separate objects and the one on
+     top wins. */
   rulerAt=Math.round(sc/DOT_PX);
 }
 /* Repaint only once the window has moved a whole dot. The screen of margin
@@ -980,13 +1054,89 @@ function drawText(x){
   }
   ctx.globalAlpha=1;
 }
+/* Sharpen, for real. An unsharp mask is out = A + k·(A − blur(A)): it needs a
+   signed difference between two images of the same frame, and no CSS filter can
+   express a difference at all — so this is the one adjustment in the row that is
+   not a filter chain. The frame is graded onto one surface, a blurred copy of it
+   goes on another, and the per-pixel loop is the entire operator.
+
+   It has to be the *signed* difference, and that is worth saying out loud,
+   because the canvas-native version of this was tried first and measured worse
+   than doing nothing. Canvas can do a difference only as an absolute value, so
+   the cheap route is A + k·|A − B| composited with 'lighter'. It sharpens the
+   full-resolution frame — edge slope up 9% on synthetic steps — and then the
+   preview does what a preview does: it is 720px of canvas shown in 253px, so
+   the browser averages it, and averaging cancels an unsigned boost. Measured as
+   *displayed*, the same setting scored −5% acutance: the control was making the
+   picture softer. A signed mask survives that averaging, because the boost and
+   the cut are on opposite sides of the edge and stay opposite after a box blur.
+   This is the same lesson as the pixel probe from the Filters work, one level
+   up: a number on the canvas is not the number the user is looking at.
+
+   Radius and multiplier are measured, not chosen — swept against synthetic 1px,
+   2px and 3px step edges, where acutance keeps climbing to a peak and then falls
+   back as the overshoot starts eating the transition. 2px and 0.8 sit on that
+   peak: +39% acutance on the real frame at full resolution, +23% as displayed.
+   The radius is a constant and the knob is the multiplier, because a radius that
+   grows with the value changes *what* is sharpened (fine grain at one end, edges
+   at the other) as well as how much, and the slider would stop meaning one thing.
+
+   A mask has only one sign, so the negative end is a real blur rather than an
+   inverted mask: soften is what the other end of the same axis means, and
+   `blur()` is an honest operator to spend it on.
+
+   Cost is two readbacks and one write of the picture's bounding box per frame,
+   paid only while the knob is off zero, and both scratch surfaces are
+   willReadFrequently so the pixels stay on the CPU instead of making a round
+   trip. The readbacks are cached on (frame time, grade, geometry), so dragging
+   the slider on a paused frame — the usual way anyone uses this — costs only the
+   ~6ms loop, not the blur and the two transfers.
+
+   Export captures this same canvas through `captureStream`, so the mask is in
+   the recorded file and not only on the screen. */
+const SHARP_R=2,SHARP_K=.8;
+let shA=null,shB=null,shKey='',shHi=null,shLo=null,shOut=null;
+const surf=(w,h)=>{const c=document.createElement('canvas');c.width=w;c.height=h;return[c,c.getContext('2d',{willReadFrequently:true})]};
+function sharpenStage(c,v,a,cs,sn,vw,vh,r,sv){
+  if(!shA||shA[0].width!=W||shA[0].height!=H){shA=surf(W,H);shB=surf(W,H);shKey=''}
+  const A=shA[0],ag=shA[1],B=shB[0],bg=shB[1];
+  /* Opaque all the way out, not transparent: a blur that reaches past the frame
+     mixes in transparency, and transparency is a difference like any other. */
+  ag.setTransform(1,0,0,1,0,0);ag.globalAlpha=1;ag.globalCompositeOperation='source-over';ag.filter='none';
+  ag.fillStyle=proj.bg;ag.fillRect(0,0,W,H);
+  ag.save();ag.translate(W/2,H/2);ag.rotate(a);
+  ag.filter=sv<0?chain(c,`blur(${(-sv*SHARP_R).toFixed(2)}px)`):look(c);
+  ag.drawImage(v,-vw*r/2,-vh*r/2,vw*r,vh*r);ag.restore();
+  /* The picture's own bounding box, in whole pixels: the mask is zero out on the
+     letterbox, so there is nothing to compute there. For a rotation this is the
+     axis-aligned box, and the corners inside it hold background — a signed mask
+     straddles that edge symmetrically, so it leaves no outline. */
+  const ex=vw*r/2*cs+vh*r/2*sn,ey=vw*r/2*sn+vh*r/2*cs,
+        x0=Math.max(0,Math.round(W/2-ex)),y0=Math.max(0,Math.round(H/2-ey)),
+        w=Math.max(1,Math.min(W-x0,Math.round(ex*2))),h=Math.max(1,Math.min(H-y0,Math.round(ey*2)));
+  ctx.drawImage(A,0,0);
+  if(sv>0){
+    const key=v.currentTime+'|'+look(c)+'|'+proj.bg+'|'+W+'x'+H+'|'+r+'|'+a;
+    if(key!=shKey){
+      bg.setTransform(1,0,0,1,0,0);bg.globalAlpha=1;bg.globalCompositeOperation='source-over';bg.filter='none';
+      bg.clearRect(0,0,W,H);bg.filter=`blur(${SHARP_R}px)`;bg.drawImage(A,0,0);bg.filter='none';
+      shHi=ag.getImageData(x0,y0,w,h);shLo=bg.getImageData(x0,y0,w,h);
+      shOut=ag.createImageData(w,h);shKey=key;
+    }
+    const p=shHi.data,q=shLo.data,o=shOut.data,k=sv*SHARP_K;
+    for(let i=0;i<p.length;i+=4){o[i]=p[i]+k*(p[i]-q[i]);o[i+1]=p[i+1]+k*(p[i+1]-q[i+1]);o[i+2]=p[i+2]+k*(p[i+2]-q[i+2]);o[i+3]=p[i+3]}
+    ctx.putImageData(shOut,x0,y0);
+  }
+}
 function draw(){
   ctx.fillStyle=proj.bg;ctx.fillRect(0,0,W,H);
   if(clips.length){
     const c=pv?pv.c:at(t),v=srcs[c.src].v;
     if(v.readyState>=2&&v.videoWidth){
       const a=(c.rot||0)*Math.PI/180,cs=Math.abs(Math.cos(a)),sn=Math.abs(Math.sin(a)),vw=v.videoWidth,vh=v.videoHeight,r=Math.min(W/(vw*cs+vh*sn),H/(vw*sn+vh*cs));
-      ctx.save();ctx.translate(W/2,H/2);ctx.rotate(a);ctx.filter=look(c);ctx.drawImage(v,-vw*r/2,-vh*r/2,vw*r,vh*r);ctx.restore();
+      const sv=(c.ad&&c.ad.sharp)||0;
+      if(sv)sharpenStage(c,v,a,cs,sn,vw,vh,r,sv);
+      else{ctx.save();ctx.translate(W/2,H/2);ctx.rotate(a);ctx.filter=look(c);ctx.drawImage(v,-vw*r/2,-vh*r/2,vw*r,vh*r);ctx.restore();}
     }
     if(!pv)for(let i=1;i<clips.length;i++){const k=clips[i],tr=k.tr;if(!tr||tr.k=='none')continue;const h=Math.min(tr.d/2,dur(k),dur(clips[i-1])),x=Math.abs(t-k.s);if(x<h){ctx.globalAlpha=1-x/h;ctx.fillStyle=tr.k=='white'?'#fff':'#000';ctx.fillRect(0,0,W,H);ctx.globalAlpha=1}}
   }

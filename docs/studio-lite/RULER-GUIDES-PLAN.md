@@ -55,11 +55,10 @@ alive.
 
 ```
 .ro                    30px row, already counted in fitView()'s `chrome`
-  #rl                  position:absolute, overflow:hidden
-                       mask: fades both edges, clears a 112px window at centre
+  #rl                  position:absolute, overflow:hidden — **no mask**
   #rd                  the ticks; transform: translateX(-scrollLeft) every frame
     #rd i              2px dot, --on2 at 0.55
-  #time                centred readout, `00:00 / 00:00`
+  #time                centred readout, `00:00 / 00:00`, opaque --bg
 ```
 
 **Dead** — leftovers from before the D1 declutter:
@@ -212,29 +211,95 @@ subdivision the whole design rests on.
 
 ## 5. The centre exclusion — the one real hazard
 
-The readout `00:07 / 00:30` is ~112px wide and sits dead centre. The mask on
-`#rl` already clears a 112px window, so a label underneath it is *invisible* —
-but a label **centred** on the playhead gets sliced in half by the mask edge,
-which looks like a rendering fault rather than an omission.
+> **Superseded three times; this section now describes what ships.** It is left in
+> place because the reasoning is still the reasoning. Four positions have been
+> tried here, in order, and the first three are wrong for reasons worth keeping.
 
-So a label is **skipped**, not masked, when it would collide:
+The readout `00:07 / 00:30` is ~106px wide and sits dead centre, on top of the
+ruler. A label underneath it must not compete with it. Three ways to arrange
+that, and what happened to each:
+
+**1. Skip the label in JS when it would collide.** The original plan:
 
 ```js
-const GUARD = 56 + labelHalfWidth();   // 56px mask window + half the label
+const GUARD = 56 + labelHalfWidth();   // 56px window + half the label
 if (Math.abs(pad + i*pps - half) < GUARD) continue;   // readout owns this space
 ```
 
-Two details that are not optional:
+Correct in principle, and it is what the reference appears to do — in its
+screenshot there is no `00:07` label, because `00:07` is where the readout is.
+Shipped, and **wrong**: the playhead is pinned to the centre, so a label crosses
+that fixed spot continuously as the timeline moves. The DOM changed under a
+stationary pixel, and labels popped out of existence and back — the flicker that
+was reported on the ruler. Removing and re-adding nodes mid-scroll is the defect,
+not the collision.
+
+**2. A mask on `#rl`, fading a 100px window at the centre.** Also shipped, and
+wrong for a subtler reason: the mask's geometry is in screen pixels while the
+labels' geometry is in seconds per pixel. A fixed window therefore behaves
+differently at every zoom — at one label interval it swallowed a label whole, at
+the next it swallowed none of it. A mask on a scrolling strip is always a fixed
+shape pretending to describe moving content.
+
+**3. The readout is opaque and the mask is gone.** `#time` carries
+`background:var(--bg)` and sits above the strip. `.dock` and `.ro` are both
+transparent, so what is behind the strip *is* `--bg` and the patch is invisible —
+no per-theme tuning, and `#rl` needs no mask at all. A label passing behind the
+readout and continuing out the other side is what a readout on top of a ruler
+looks like.
+
+At 2s labels and pps 60 (120px between labels against a 106px patch) nothing is
+ever cut. At 1s labels a label can be half-covered and a fragment shows; that is
+the accepted cost of not masking, and the one-value alternative is a 11px ramp on
+the patch's own gradient.
+
+**4. What ships at the two ends: nothing at all.** This one took four attempts,
+and the reasons the first three failed are why it is right.
+
+The mask also faded the strip's **two ends** — `transparent 0 14px, #000 24px` —
+so labels near an edge were always meant to disappear, and that part was doing
+real work: at pps 48 *every* scroll position had a half-drawn label at the right
+edge. With the mask gone there were three candidates:
+
+- **Skip** any label not wholly inside the strip. Correct on paper, and it *pops*:
+  a 27px label goes from fully drawn to nothing in one scroll step, which reads
+  as a glitch rather than as an edge.
+- **Fade** each label with a per-label `opacity` ramp over the last 14px — the
+  mask's own effect, computed per label so it could not be zoom-inconsistent.
+  Smooth, and still wrong: it makes a timecode *vanish* while the ruler is
+  plainly still there, at the exact moment you are trying to read it. "Never
+  hide" is the correct instinct for a readout.
+- **Clip.** Emit the label at full strength and let the strip's `overflow:hidden`
+  end it. That is a scroll container doing what a scroll container does, and it
+  is what ships:
+
+```js
+for(let j=m0;j<=m1;j++){const x=pad+j*major*pps-sc;
+  if(x+hw<0||x-hw>W)continue;                      // wholly outside: invisible anyway
+  h+=`<b style="left:${pad+j*major*pps}px">${tickLabel(j*major)}</b>`}
+```
+
+The skip is left in only because `overflow:hidden` would hide those labels
+anyway and dropping the nodes keeps the count down — it is decided *before* the
+HTML is built, so nothing is ever added or removed after paint and the flicker of
+approach 1 cannot come back. No opacity is written at all.
+
+Verified at 357, 393 and 728 wide across the full scroll range at pps 15.7, 48,
+60, 120 and 240 — ~25,000 label reads: **zero faded, zero hidden while partly
+visible, zero inline `opacity` attributes**, and the label counts are unchanged
+(4 at `Fit`, 7 at 728px, 5 at 393px). A label 1.7px over the left edge renders at
+computed `opacity: 1`.
+
+**The two details from the original plan are both still right:**
 
 - **Measure `#rl`, do not reuse `pad`.** `pad = tl.clientWidth/2` and
   `rl.clientWidth/2` are equal today only because `.ro` and `.tl` are both
   full-width children of a paddingless dock. That is a coincidence, and §4.5
   needs the real width anyway. The §20 lesson from the gutter bug, again.
 - **Measure the label half-width from a real node**, once, rather than assuming
-  18px. `10:00` is wider than `00:05`, and a guard tuned to the short one lets
-  the long one collide.
-
-**The reference does exactly this**: in its screenshot there is no `00:07` label,
+  18px — and take the **widest** one, not the first. `00:01.5` is a character
+  wider than `00:02`; a half-width taken from the short one misjudged every long
+  label, which is how a build briefly shipped labels lying about their own width.
 because `00:07` is where the readout is.
 
 ---
@@ -306,8 +371,9 @@ Dot and label share a position, so the label costs no extra layout.
 | **Text inside a per-frame transformed layer.** `#rd` gets `translateX()` every rAF frame; today it holds only 2px dots. | Low. The layer composites once and the transform is compositor-only — no re-layout, no re-raster per frame. | Measure with a long timeline and a continuous scroll. If text raster is the cost, the fallback is a second non-transformed layer positioned by `left` at low frequency — **not** a canvas, which would cost text crispness and selection. |
 | **Node count.** Unbounded if ticks are emitted exhaustively — 6 000 on a 10-minute project at max zoom. | **Real.** | §4.5 windowing, not a cap. Bounded at ~68 nodes regardless of project length. |
 | `paintRuler()` on scroll adds work to a path that today does none. | Medium. | Throttle to one re-render per `DOT_PX` of travel. Reuse the existing scroll handler rather than adding a listener. |
-| Labels colliding with the readout. | **Real** — see §5. | Skip, do not mask. |
-| The guard assumes a fixed label half-width. | `10:00` is wider than `00:05`. | Measure once from a real node; clamp to the widest format the ladder produces. |
+| Labels colliding with the readout. | **Real** — see §5. | The readout is opaque and sits on top; no mask, and nothing is skipped, because both of those were tried and both flickered or lied at some zoom. |
+| Labels cut by the strip's own edges. | **Real** — at pps 48 every scroll position had one. | Clip, and nothing else: full strength, `overflow:hidden` ends it. Skipping popped and fading hid a timecode. |
+| The guard assumes a fixed label half-width. | `10:00` is wider than `00:05`. | Measure once from a real node, per repaint, from the first label. |
 | Minor steps are not round numbers (`7.5s`, `0.125s`). | Cosmetic, and deliberate. | §4.2. Subdividing a round interval is what a ruler does; a round dot interval that misses the labels is worse. |
 | The `15` rung reads oddly beside `10` and `30`. | Cosmetic. | Deliberate: at pps≈5 a 30s label leaves two labels on screen and a 10s leaves four crowded ones. **Worth a second opinion before shipping** — it is the one rung that exists purely to keep the strip readable. |
 | Ruler work must not change band height. | — | The ruler lives in `.ro`, which `fitView()` already counts in `chrome`. Any pixel of growth here is a regression to the preview, and `TIMELINE-SPACE-PLAN.md` has no slack to give. |

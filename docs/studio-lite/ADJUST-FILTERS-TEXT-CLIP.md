@@ -35,7 +35,33 @@ eight compose.
 real implementation masks by luminance. What ships here is a brightness paired
 with an opposite contrast move, which reads the same way on a face and costs no
 per-pixel pass. Worth knowing before anyone treats those two as equivalent to
-the reference's.
+the reference's. Sharpen used to be in the same category and no longer is — see
+§4.
+
+**Eight, and not twelve.** Exposure and Tint are the two obvious next knobs and
+both were measured against `ctx.filter` before being declined:
+
+- **Exposure** is the same axis as Brightness. `ctx.filter` has `brightness`, not
+  an exposure stop, so a second knob would be a second name for the first
+  slider.
+- **Tint** cannot be an *independent* knob at all. Green↔magenta is only
+  reachable by rotating the hue wheel, and `hue-rotate` composes by addition —
+  a chain of two of them is one rotation of the sum. Warmth and Tint side by side
+  would be one knob wearing two labels: push both to maximum and you have asked
+  for 76° once, and pulling one back does not restore the other. A tint that is
+  genuinely a different axis needs a per-pixel colour matrix.
+
+The row is the control, and a control you have to hunt through is worse than a
+smaller one. Vignette and Grain are the candidates that *would* be honest, but
+they are looks rather than values, so they belong on the filter shelf where each
+card already previews itself on a real frame.
+
+**The glyphs have a rule now: no two knobs share a geometric family.** Highlights
+shipped for a week as a smaller sun — Brightness's icon, one size down — and the
+sunrise that replaced it was still a sun at 22px, which is the only size these are
+ever drawn at. So each family is used exactly once: sun, half disc, **chevrons**,
+crescent, drop, thermometer, sparkle, stacked lines. Chevrons are the only
+angular glyph in the set, and every other knob is a curve.
 
 ---
 
@@ -138,6 +164,56 @@ single clip (`Only one clip to apply to`) rather than silently succeeding.
 
 ---
 
+## 4. Sharpen is now actually sharpening
+
+`sharp:{f:null}` is the entry: it is the one adjustment in the row with no filter
+chain, because an unsharp mask is `out = A + k·(A − blur(A))` and **no CSS filter
+can express a difference at all**. The frame is graded onto one surface, a blurred
+copy goes on another, and a per-pixel loop is the entire operator.
+
+It shipped for a week as `contrast(1.5) saturate(1.3)`, which is a tonal curve
+wearing the name of a spatial effect. It reads as "crisper" on a smooth frame and
+does nothing whatsoever to an edge — the only reason it survived is that the
+readout moved, which is the same failure this file already documents for the
+`nonebrightness()` bug: **a control whose only visible output is a number needs a
+pixel test.**
+
+**The canvas-native version was tried first and measured worse than doing
+nothing.** Canvas can only difference images as an *absolute* value, so the cheap
+route is `A + k·|A − B|` composited with `'lighter'`, and it does sharpen the
+full-resolution frame (+9% edge slope on synthetic steps). But the preview is 720px
+of canvas shown in **253px**, so the browser averages it — and averaging cancels
+an unsigned boost. Measured as *displayed*, that same setting scored **−5%
+acutance**: the control was making the picture softer. A signed mask survives the
+averaging because the boost and the cut sit on opposite sides of the edge and stay
+opposite after a box blur. This is the pixel-probe lesson one level up — a number
+on the canvas is not the number the user is looking at.
+
+Constants are measured, not chosen. Sweeping radius against amount on synthetic
+1px/2px/3px step edges, acutance climbs to a peak and then *falls back* as the
+overshoot starts eating the transition it was meant to steepen — so the
+strongest-looking setting is the weakest one. **2px and 0.8** sit on that peak.
+
+| | full canvas | as displayed (253px) |
+|---|---|---|
+| `sharp +1` | +41% | +14% |
+| `sharp −1` | −29% | −27% |
+
+The radius is a constant and the knob is the multiplier: a radius that grows with
+the value changes *what* is sharpened (fine grain at one end, edges at the other)
+as well as how much, so the slider would stop meaning one thing. A mask has only
+one sign, so the negative end is a real `blur()` — soften is what the other end
+of the same axis means.
+
+Cost is two readbacks and one write of the picture's bounding box per frame, paid
+only while the knob is off zero, with both scratch surfaces `willReadFrequently`
+so the pixels stay on the CPU. The readbacks are cached on (frame time, grade,
+geometry), so dragging the slider on a paused frame costs only the ~6ms loop
+rather than the blur and the two transfers. Export goes through `captureStream` on
+this same canvas, so the mask is in the recorded file.
+
+---
+
 ## Two bugs these shelves shipped with
 
 **Selecting a knob scrolled the row away from it.** The row was rebuilt from a
@@ -182,7 +258,9 @@ light-from-above / light-from-below pair the two knobs actually are.
 | Caption trim | left and right handles move start and duration; badge live at every step |
 | Cancel / Done / undo | Cancel reverts the sheet; Done commits; undo restores; redo repopulates |
 | Row keeps its place | at 393×844 the row sits at `scrollLeft 261` with Warmth selected, taps Sharpen at the same 261, re-taps the visible knob without moving it, and re-centres only an off-screen pick (Fade picked at 0 → 261) |
-| Icons | Filters and Adjust are a funnel and a three-rail mixer, checked side by side in both themes at 393×844 and 357×836; the eight knob glyphs are sun, half-disc, sunrise, crescent, drop, thermometer, sparkle, fading lines |
+| Sharpen is a mask, not a curve | acutance +41% at full res, +14% as displayed, −27% at `−1`; flat field beside the edge is bit-identical at every amount; `sharp 0` is 0 differing bytes against no knob at all, including with a grade and a 90° rotation |
+| Sharpen leaves no outline | 9:16 clip in a 16:9 project: the backdrop outside the picture is unchanged and the edge pixels are the frame's own, not a bright rim |
+| Icons | Filters and Adjust are a funnel and a three-rail mixer, checked side by side in both themes at 393×844 and 357×836; the eight knob glyphs use eight different geometric families — sun, half disc, chevrons, crescent, drop, thermometer, sparkle, stacked lines |
 | Values still reach the pixels | centre 80×80 sample sums 931917 at Sharpen +0.24, 766885 at +0.90, 931917 on the way back |
 | Shell | no console errors; `scrollHeight === clientHeight` at 378×836; `npm run build` clean |
 
