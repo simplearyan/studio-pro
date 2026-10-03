@@ -691,27 +691,52 @@ sit, never what they look like — and a chip made the header read as a row of c
 clutter this pass exists to remove. The icons are bare in both states, and hover is the app's original
 48px wash again. Delete nothing to restore it; there is nothing left to restore.
 
-**`body.gut` is measured, not keyed to a ratio string.** `fitView()` already knows the preview's height
-and the ratio, so it derives the canvas width from the same rule the box uses
-(`max-width:100%; max-height:100%`) and measures the gap **to the body edge** — the bar spans the body,
-so that is the space the icons actually get. `GUT_MIN=52` is the 44px button plus the bar's 4px padding
-plus 4px of air. 9:16 is the only ratio that clears it, but a hardcoded `proj.ar==='9:16'` would break
-the moment the ceiling moved, and the failure would be an icon on somebody's face.
+> **Corrected — see “The gutter is reserved, not measured” below.** The argument this section used to
+> make, that `body.gut` must be measured rather than keyed to the ratio “so a future ceiling change
+> can't park an icon on somebody's face”, is what produced the reported bug. Measuring the leftover
+> margin inherits every pixel of viewport drift, and the leftover is not a constant.
 
-**Measured, 9:16 with the portrait clip from [`TEST-MEDIA.md`](TEST-MEDIA.md):**
+**The gutter is reserved, not measured.** `body.gut` is now a **ratio test** — `GUT_RATIO=9/16`, the
+aspect at or past which the canvas is height-bound — and the 52px it needs is **reserved as stage
+padding** (`body.gut .view{padding-left:52px;padding-right:52px}`), not inferred from whatever the
+canvas happened to leave over. `fitView()` reads that padding as ordinary padding, so the width the
+canvas may use is already narrower by the time anything is measured, and the 44px button cannot land
+on the frame. Fullscreen drops it: there the picture is the whole screen.
 
-| | 320×700 | 366×836 | 378×770 | 390×844 |
-|---|---|---|---|---|
-| canvas | 206×366 | 247×439 | 227×404 | 250×444 |
-| margin each side | **57px** | **60px** | **75px** | **70px** |
-| icon box → canvas edge | **9px clear** | **12px clear** | **27px clear** | **22px clear** |
-| arrangement | margin, stacked | margin, stacked | margin, stacked | margin, stacked |
-| chip on icon | none | none | none | none |
+**Why the old measured version broke.** The leftover margin at 9:16 is not a constant — it is
+`(bodyWidth - previewHeight * 9/16) / 2`, and `previewHeight` is `clamp(...)` off `innerHeight`, so the
+margin moves with *both* screen dimensions. Measured across the sizes in the bug report:
 
-Every other ratio at 378×770 measures a 12–14px margin (below `GUT_MIN`), so `body.gut` is off and all
-three icons take the chip — asserted for 16:9, 1:1 and 4:5, in both themes, with the chip resolving to
-`white/0.76` + a `#0f0f0f` glyph in light and `#0f0f0f/0.76` + a white glyph in dark.
-*(Superseded: the chip never shipped. See "There is no chip anywhere" above.)*
+| | 347×770 | **357×836** | 366×836 | 378×770 | 387×836 |
+|---|---|---|---|---|---|
+| leftover margin, 9:16 | 56.5px | **51.6px** | 56px | 72px | 66.5px |
+| vs the 52px test | pass | **fail by 0.4px** | pass | pass | pass |
+| arrangement | stacked | **single row** | stacked | stacked | stacked |
+
+One viewport sat **0.4px** under the threshold. `GUT_MIN=52` was a cliff, and 357×836 fell off it, so
+the same ratio put ⌂ and ⋮ on one 56px bar at one size and in the stacked margin at the next. Any
+threshold on a derived quantity has this failure mode; the number is not the bug, deriving it is.
+The reserved padding has no threshold to cross — the arrangement follows the ratio, and the geometry
+follows the arrangement.
+
+**Measured after the fix, 9:16, portrait clip from [`TEST-MEDIA.md`](TEST-MEDIA.md):** every size below
+reports `body.gut` on, bar height 116px (the stacked arrangement), and both icon columns clear the
+canvas edge. The canvas is 2–9px narrower than before at the tight sizes — that is the reserved
+gutter being paid for honestly, out of the picture, instead of being hoped for.
+
+| | 320×700 | 347×770 | **357×836** | 366×836 | 378×770 | 387×836 | 1280×800 |
+|---|---|---|---|---|---|---|---|
+| canvas | 213×378 | 234×416 | 253×450 | 254×451 | 234×416 | 254×451 | 243×432 |
+| `body.gut` | on | on | **on** | on | on | on | on |
+| ⌂ → canvas edge | 6px clear | 9px | **4px** | 8px | 24px | 19px | clear |
+| ⤴ → canvas edge | 6px clear | 8px | **4px** | 8px | 24px | 19px | clear |
+| scrollHeight = clientHeight | yes | yes | **yes** | yes | yes | yes | yes |
+
+Every other ratio (16:9, 1:1, 4:5) stays off `body.gut` and keeps the single-row bar, asserted at
+320×700, 357×836 and 1280×800, in both themes — the icon geometry is byte-identical between light and
+dark, since the arrangement no longer depends on anything a theme can change.
+
+*(The chip this table used to mention never shipped. See "There is no chip anywhere" above.)*
 
 **Three smaller things this pass had to fix to get there:**
 
@@ -788,8 +813,11 @@ previews at one size behind the Format sheet and another behind the taller Setti
 Settings open gives `.view` 504; a taller sheet gives 416. The preview size became a function of which
 tool you tapped.
 
-The `gut` flip is the same dead branch: the gutter measurement sits *after* the return, so it is
-simply not executed while a sheet is open. Same for `laneH`/`paintFilms()`.
+The `gut` flip is the same dead branch: the gutter decision sits *after* the return, so it is
+simply not executed while a sheet is open — the header would rearrange itself behind a sheet. Same for
+`laneH`/`paintFilms()`. *(Resolved: the decision is now a ratio test set before any measurement, and
+there is no early return. Verified at 320×700 with the Format sheet open: canvas 54→266px before and
+after, `body.gut` on throughout.)*
 
 **Why it looks like a shift rather than a resize.** At 9:16 the canvas is height-bound, so it scales.
 At 16:9 / 1:1 / 4:5 it is width-bound, so a taller `.view` cannot make it bigger — it only moves, because
@@ -817,10 +845,11 @@ unchanged. Same bug, two different-looking symptoms, which is why this reads as 
   so a tall sheet shrinks within the space the pinned preview leaves and scrolls there. Its current
   `min-height:260px` is a floor that would fight this. `#panel.set` already has
   `max-height:64vh; overflow-y:auto`, which is the shape to generalise.
-- **P4 — one exit from `fitView()`.** The gutter measurement and the filmstrip re-layout currently live
+- **P4 — one exit from `fitView()`.** The gutter decision and the filmstrip re-layout currently live
   past a `return`, so both are skipped in one whole class of states. Move them above every exit, or
   delete the early returns. This is the part that would be easy to leave behind and expensive to
-  rediscover.
+  rediscover. *(Resolved: the early return is gone, and the gutter is a ratio test set before the
+  measurements rather than a measurement of its own.)*
 - **P5 — reconcile the CSS guard.** `v.style.maxHeight='none'` is written on every call, which is right
   (the stylesheet's 54% is a first-paint guard), but it means the inline path and the stylesheet
   permanently disagree. Say so once in the comment rather than leaving it as a trap.

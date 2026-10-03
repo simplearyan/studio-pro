@@ -233,6 +233,32 @@ svg{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-l
 .tp-rainbow{background-image:linear-gradient(90deg,#ff3b30,#ff9500,#34c759,#2f6cff,#af52de);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
 .tp-neon{color:#00e5ff;text-shadow:0 0 8px #00e5ff}.tp-comic{color:#ffd400;text-shadow:1px 1px 0 #000,-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000}
 .tp-plain{background:rgba(0,0,0,.55);color:#fff;border-radius:8px;padding:2px 10px}
+/* ── Adjust and Filters: the two shelves the reference puts under the player ──
+   Both are a horizontal row of round targets with a label under each and one
+   slider underneath, and both are useless without the row: a slider with no
+   choice of what it is adjusting is one control pretending to be eight. The row
+   scrolls rather than wraps, so adding a knob never costs the sheet a row of
+   height, and the dock below has no slack to give. */
+.car{display:flex;gap:14px;flex:1 1 100%;min-width:0;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding:4px 2px 2px;scroll-snap-type:x proximity}
+.car::-webkit-scrollbar{display:none}
+.car button{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:6px;width:64px;padding:0;background:none;scroll-snap-align:center}
+.car .kn{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;border:1.5px solid var(--ol);color:var(--on2);background-color:var(--sf2);background-size:cover;background-position:center;overflow:hidden}
+.car .kn svg{width:22px;height:22px}
+.car button.on .kn{border:2px solid var(--on);color:var(--on)}
+.car .lb{font-size:11px;line-height:1.25;color:var(--on2);text-align:center}
+.car button.on .lb{color:var(--on);font-weight:500}
+/* A filter card is a real frame from the clip, carrying that filter's own CSS —
+   so the eleven cards are eleven genuinely different pictures of the same
+   moment, which is the only way to choose a look. "None" is the crossed disc
+   the reference uses, because an unfiltered thumbnail next to ten filtered ones
+   reads as "there is no filter", not as the filter you are currently on. */
+.car.fcards .kn{width:64px;height:82px;border-radius:10px}
+.car.fcards button{width:66px}
+.car.fcards .kn svg{width:26px;height:26px}
+/* The duration badge on a text clip. A caption's length is the one number you
+   cannot see by looking at it — the block's width is the length, and width is
+   exactly what you are dragging — so it is written on the block. */
+.tx .td{position:absolute;left:6px;bottom:1px;font-size:9px;line-height:1.6;font-weight:500;font-variant-numeric:tabular-nums;background:rgba(0,0,0,.62);color:#fff;border-radius:3px;padding:0 4px;pointer-events:none}
 .tools button:active{background:color-mix(in srgb,var(--on) 10%,transparent)}
 @media(max-width:360px){.tools button{min-width:60px}.ar{padding:0 2px}#time{font-size:12px}.addf{width:40px;height:40px}}
 @supports not (color:color-mix(in srgb,red 50%,blue)){.sr{border-bottom:1px solid rgba(127,127,127,.18)}}
@@ -315,20 +341,35 @@ body{position:relative}
    made the header look like it had cards in it, which is the clutter this whole
    pass is removing. One icon, one appearance, both themes.
 
-   body.gut is measured, not hardcoded to a ratio: fitView() reads the gap the
-   canvas leaves and sets it (GUT_MIN there). 9:16 is the only ratio that ever
-   produces one, but deriving it from geometry means a future ceiling change
-   can't silently park an icon on top of a face.
+   body.gut is decided by the ratio's own shape, not by the pixels the canvas
+   happens to leave over. The old test measured the leftover margin and asked
+   whether it cleared 52px, and that was a bug dressed as robustness: at
+   9:16 the leftover is 72px at 378x770 but 51.6px at 357x836, so the same
+   ratio put the icons in the margin at one size and on top of the picture at
+   the next. Anything derived from the leftover inherits that drift.
 
-   pointer-events:none on the bar with auto back on the buttons — the header is
-   an overlay now, and an overlay should not eat taps aimed at the stage. */
+   So the ratio decides — 9:16 is the only format at or past 16/9 — and the
+   gutter it needs is then *reserved* as stage padding, so the margin is a
+   property of the layout rather than a coincidence of the viewport. That is
+   what the old comment meant to buy and did not: the 44px button can no
+   longer land on a face, because the canvas is capped short of it.
+
+   The reserved gutter is stage padding, and it is read by fitView() as
+   ordinary padding — so the width the canvas may use is already narrower by
+   the time it is measured. 52px is the 44px button, the bar's own 4px and 4px
+   of air. Fullscreen drops it: there the picture is the whole screen. */
+
+/* the header is an overlay, so it must not eat taps aimed at the stage —
+   pointer-events:none on the bar with auto back on the buttons. */
 .bar{background:none;pointer-events:none}
 .bar .ib{pointer-events:auto}
+body.gut .view{padding-left:52px;padding-right:52px}
+body.gut .view.fs{padding:0}
 
-/* the arrangement change, gated on the margin being there. The bar grows to
-   hold the stack, which costs nothing: it is absolutely positioned over the
-   stage and out of flow. The 44px button is the same in both states — the
-   arrangement moves where the icons sit, never how big they are. */
+/* The arrangement change. The bar grows to hold the stack, which costs
+   nothing: it is absolutely positioned over the stage and out of flow. The
+   44px button is the same in both states — the arrangement moves where the
+   icons sit, never how big they are. */
 body.gut .bar{height:auto;padding:0 4px 8px;align-items:flex-start}
 body.gut .bar .ib{width:44px;height:44px}
 body.gut #theme,body.gut #more{margin-top:6px}
@@ -465,6 +506,25 @@ speed:'<path d="M4.6 18a8 8 0 1 1 14.8 0"/><path d="M12 18v-6l3.4-3.4"/>',volume
 filter:'<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>',
 dup:'<rect x="8" y="8" width="12" height="12" rx="2.4"/><path d="M16 8V6.4A2.4 2.4 0 0 0 13.6 4H6.4A2.4 2.4 0 0 0 4 6.4v7.2A2.4 2.4 0 0 0 6.4 16H8"/>',
 ts:'<path d="M5 5v14M9.5 12h9M15 8.6l3.4 3.4-3.4 3.4"/>',te:'<path d="M19 5v14M14.5 12h-9M9 8.6 5.6 12 9 15.4"/>',
+/* The Adjust shelf. Eight knobs, eight glyphs, all on the same 24px grid as the
+   rest of the map so the rail reads as one set. Each is a *shape* rather than a
+   metaphor: half a disc is contrast, a crescent is shadows, a drop is
+   saturation, a thermometer is warmth. The reference names four of these and
+   lets the row run off the edge; we ship eight because a shelf you have to
+   scroll to discover is a shelf most people never find. */
+ctr:'<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor" stroke="none"/>',
+high:'<circle cx="12" cy="12" r="3.1"/><path d="M12 3.4v2.2M12 18.4v2.2M3.4 12h2.2M18.4 12h2.2M5.9 5.9l1.6 1.6M16.5 16.5l1.6 1.6M18.1 5.9l-1.6 1.6M7.5 16.5l-1.6 1.6"/>',
+shad:'<path d="M20.5 14.8A8.8 8.8 0 0 1 9.2 3.5 8.8 8.8 0 1 0 20.5 14.8z"/>',
+sat:'<path d="M12 3.6s6.2 6.6 6.2 10.3a6.2 6.2 0 1 1-12.4 0C5.8 10.2 12 3.6 12 3.6z"/>',
+warm:'<path d="M10 14.6V5.3a2 2 0 1 1 4 0v9.3a4 4 0 1 1-4 0z"/><path d="M12 9.4v6.1"/>',
+sharp:'<path d="m12 3.2 2.3 5.9 5.9 2.3-5.9 2.3-2.3 5.9-2.3-5.9L3.8 11.4l5.9-2.3z"/>',
+fade:'<path d="M4 16.6h16" stroke-opacity=".9"/><path d="M4 12.6h16" stroke-opacity=".55"/><path d="M4 8.6h16" stroke-opacity=".25"/>',
+non:'<circle cx="12" cy="12" r="8.2"/><path d="m6.2 6.2 11.6 11.6"/>',
+/* The rail's entry point for the Adjust shelf. Two rails and two travelling
+   knobs — the universal "mixer" mark, and deliberately not the existing `filter`
+   glyph (two rails with a dot on each of *different* rails) so the two shelves
+   are distinguishable from the rail at a glance. */
+adjust:'<path d="M4 8.2h16M4 15.8h16"/><circle cx="9.2" cy="8.2" r="2.3"/><circle cx="14.8" cy="15.8" r="2.3"/>',
 rotate:'<path d="M20 12a8 8 0 1 1-2.5-5.8"/><path d="M20.4 4v5h-5"/>',trans:'<path d="M4 6v12l8-6zM20 6v12l-8-6z"/>',
 aspect:'<rect x="3" y="6" width="18" height="12" rx="2.4"/><path d="M7 10.6V9h1.6M17 13.4V15h-1.6"/>',fs:'<path d="M4 9.5v-4A1.5 1.5 0 0 1 5.5 4h4M20 9.5v-4A1.5 1.5 0 0 0 18.5 4h-4M4 14.5v4A1.5 1.5 0 0 0 5.5 20h4M20 14.5v4A1.5 1.5 0 0 1 18.5 20h-4"/>',
 more:'<circle cx="12" cy="5" r="1.8" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.8" fill="currentColor" stroke="none"/><circle cx="12" cy="19" r="1.8" fill="currentColor" stroke="none"/>'};
@@ -479,10 +539,19 @@ const applyProj=()=>{const d=AR[proj.ar];W=d[0];H=d[1];cv.width=W;cv.height=H},r
    preview wants the height the canvas can actually use at full width. Deriving that
    from proj.ar is the whole point of C2: a 16:9 project cannot use the vertical room
    a 9:16 one can, so it stops claiming it and the timeline gets it instead. Clamped
-   at both ends so no ratio can either waste the frame or squeeze it past usability. */
-const VIEW_FLOOR=.46,VIEW_CEIL=.54,BAND_AIR=24,GUT_MIN=52;
+   at both ends so no ratio can either waste the frame or squeeze it past usability.
+
+   GUT_RATIO is the aspect at which the header switches to the margin arrangement:
+   9:16 is the tallest format offered and the only one at or past it, so it is the
+   only one that reserves a gutter. VIEW_FLOOR/CEIL and BAND_AIR are the ladder. */
+const VIEW_FLOOR=.46,VIEW_CEIL=.54,BAND_AIR=24,GUT_RATIO=9/16;
 function fitView(){
   const v=$('.view'),dock=$('.dock'),tr=$('#track');
+  /* Set before anything is measured: the reserved gutter is padding, so the
+     width the canvas may use is narrower in this state, and every measurement
+     below has to see that. Class order does not matter — toggling a class
+     invalidates style, and the first clientWidth read forces the recalc. */
+  document.body.classList.toggle('gut',AR[proj.ar][0]/AR[proj.ar][1]<=GUT_RATIO);
   /* The ceiling lives in the inline flex-basis below, so the CSS max-height that
      guards the first paint is cleared here — leaving it at '' would let it clamp
      the computed height back to a flat 54% and eat C2 entirely. */
@@ -542,17 +611,66 @@ function fitView(){
      so it is far cheaper than a full renderTL() and cannot disturb the playhead
      or the clip handles. */
   if(tr.offsetHeight!==laneH){laneH=tr.offsetHeight;clips.length&&paintFilms()}
-  /* Does the canvas leave a margin the header can stand in? Mirrors the canvas
-     box rule (max-width:100%, max-height:100%) against the height decided above:
-     9:16 is height-bound and lands ~57px clear either side, every other ratio is
-     width-bound and lands flush. Measured to the body edge, not to the stage's
-     padding — the bar spans the body, so that is the space the icons get.
-     GUT_MIN is the 44px button, the bar's own 4px padding and 4px of air, so a
-     measured gap is a guarantee the glyph never lands on the frame. */
-  const cw=Math.min(inner,Math.max(view-pb,1)*d[0]/d[1]);
-  document.body.classList.toggle('gut',(document.body.clientWidth-cw)/2>=GUT_MIN);
 }
-const F={none:'none',vivid:'saturate(1.6) contrast(1.1)',mono:'grayscale(1)',warm:'sepia(.35) saturate(1.3)',cool:'hue-rotate(15deg) saturate(1.1) brightness(1.05)',fade:'contrast(.85) brightness(1.1) saturate(.8)'};
+
+/* ── Filters and Adjust ───────────────────────────────────────────────────
+   Filters are *generators*, not strings. The reference has a strength slider on
+   this sheet and so do we, and a fixed CSS string cannot be dialled — so each
+   filter is a function of k, the strength, and every one of them is written so
+   that k=0 is a provable no-op (all multipliers land on 1) and k=1 is the full
+   look. That is what makes the slider honest: dragging it to zero is the same
+   as having no filter, not "a weak version of one".
+
+   Ten looks, not six. The old six were a sample; a shelf is a menu, and a menu
+   with two-thirds of itself off the right edge is a guess. */
+const F={
+ none:{n:'None',f:()=>'none'},
+ vivid:{n:'Vivid',f:k=>`saturate(${1+k*.9}) contrast(${1+k*.3}) brightness(${1+k*.05})`},
+ mono:{n:'Mono',f:k=>`grayscale(${k}) contrast(${1+k*.25})`},
+ warm:{n:'Warm',f:k=>`sepia(${k*.5}) saturate(${1+k*.45})`},
+ cool:{n:'Cool',f:k=>`hue-rotate(${-k*16}deg) saturate(${1+k*.35}) brightness(${1+k*.05})`},
+ fade:{n:'Fade',f:k=>`contrast(${1-k*.28}) brightness(${1+k*.12}) saturate(${1-k*.26})`},
+ oldie:{n:'Oldie',f:k=>`sepia(${k*.65}) saturate(${1+k*.35}) contrast(${1-k*.08})`},
+ moody:{n:'Moody',f:k=>`contrast(${1+k*.42}) saturate(${1-k*.44}) brightness(${1-k*.1})`},
+ hazy:{n:'Hazy',f:k=>`contrast(${1-k*.2}) brightness(${1+k*.16}) saturate(${1-k*.18})`},
+ twilight:{n:'Twilight',f:k=>`hue-rotate(${k*14}deg) saturate(${1+k*.3}) contrast(${1+k*.14}) brightness(${1-k*.06})`},
+ noir:{n:'Noir',f:k=>`grayscale(${k}) contrast(${1+k*.55}) brightness(${1-k*.06})`},
+};
+
+/* Adjust is the reference's Brightness/Contrast/Highlights/Shadows row, plus
+   four more, and it is a different idea from a filter: a filter is a look you
+   pick, an adjustment is a value you set. So each knob is a function of v in
+   -1..1 and they compose — all eight at once, which is why the player needs
+   to repaint on every drag and not on a commit.
+
+   Highlights and Shadows are the two that cannot be done honestly in CSS
+   alone. A real implementation masks by luminance; the honest approximation
+   here is a brightness paired with an opposite contrast move, which reads the
+   same way on a face and costs no per-pixel pass. */
+const ADJ={
+ bright:{n:'Brightness',i:'sun',f:v=>`brightness(${1+v*.5})`},
+ ctr:{n:'Contrast',i:'ctr',f:v=>`contrast(${1+v*.7})`},
+ high:{n:'Highlights',i:'high',f:v=>`brightness(${1+v*.34}) contrast(${1-v*.22})`},
+ shad:{n:'Shadows',i:'shad',f:v=>`brightness(${1+v*.42}) contrast(${1-v*.16})`},
+ sat:{n:'Saturation',i:'sat',f:v=>`saturate(${1+v*.85})`},
+ warm:{n:'Warmth',i:'warm',f:v=>`sepia(${Math.abs(v)*.42}) hue-rotate(${v*16}deg) saturate(${1+Math.abs(v)*.4})`},
+ sharp:{n:'Sharpen',i:'sharp',f:v=>`contrast(${1+v*.5}) saturate(${1+v*.3})`},
+ fade:{n:'Fade',i:'fade',f:v=>`contrast(${1-v*.38}) brightness(${1+v*.2})`},
+};
+/* One composer for the whole grade, and it exists because of a bug this file
+   shipped for an hour: the filter and the adjustments were two functions
+   concatenated as `filterOf(c)+adjustOf(c)`, and the no-filter case makes the
+   first return the literal `none` — so an adjustment on a clip with no filter
+   produced `nonebrightness(1.45)`, which is not a filter chain at all. Canvas
+   drops the whole declaration when it cannot parse it, so the adjustments did
+   nothing at all, while looking like they worked, because the value readout
+   updated perfectly and the readout is all you can see. It was found by reading
+   a pixel of the canvas, not by looking at the sheet — which is the argument
+   for having done that. Nothing here interpolates a bare keyword any more:
+   parts are collected, joined with a space, and an empty result is `none`. */
+const look=c=>{const p=[];if(c.f&&c.f!=='none')p.push(F[c.f].f(c.fs==null?1:c.fs));
+  const a=c.ad;if(a)for(const k in ADJ)if(a[k])p.push(ADJ[k].f(a[k]));
+  return p.length?p.join(' '):'none'};
 let clips=[],texts=[],srcs={},t=0,total=0,playing=false,sel=null,pps=60,uid=0,active=null,ac,dest,hist=[],rec=null,W=1280,H=720,tool=null,cancelled=false,mime='',laneH=0,chrome=0,laneFloor=0;
 const dur=c=>(c.out-c.in)/c.sp,esc=s=>s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 const fmt=s=>{s=Math.max(0,s);return Math.floor(s/60)+':'+(s%60).toFixed(1).padStart(4,'0')},fmtS=s=>Math.floor(s/60)+':'+String(s%60).padStart(2,'0');
@@ -573,7 +691,7 @@ function addFile(f){
     const id=++uid;srcs[id]={v,name:f.name.replace(/\.[^.]+$/,''),dur:v.duration};
     try{const n=ac.createMediaElementSource(v);n.connect(dest);n.connect(ac.destination)}catch(e){}
     if(!clips.length){proj.ar=v.videoHeight>v.videoWidth?'9:16':'16:9';applyProj()}
-    snap();clips.push({id:++uid,src:id,in:0,out:v.duration,sp:1,vol:1,f:'none'});refresh();thumbs(id);peaks(id,f);
+    snap();clips.push({id:++uid,src:id,in:0,out:v.duration,sp:1,vol:1,f:'none',fs:1,ad:{}});refresh();thumbs(id);peaks(id,f);
   };
   v.onerror=()=>toast('Could not open '+f.name);
 }
@@ -615,6 +733,23 @@ async function thumbs(id){
   }catch(e){}
 }
 const TXC=['#5b8def','#f6a46e','#7ccf9a','#c58af9','#f28bb0'];
+/* Which frame a filter card shows: the one under the playhead, so the eleven
+   cards are eleven looks at the moment you are actually on. Falls back to the
+   clip's first frame while the thumbnail pass is still running. */
+function thumbAt(c){const S=srcs[c.src];if(!S.th||!S.th.length)return'';const i=clamp(Math.floor((c.in+Math.max(0,t-c.s)*c.sp)/S.st),0,S.th.length-1);return S.th[i]||''}
+const pct=v=>(v>0?'+':'')+Math.round(v*100);
+/* Which Adjust knob the slider belongs to. Module state rather than a second
+   field on the clip, because it is a property of the sheet you are looking at,
+   not of the clip — open Adjust on clip A, turn Highlights, Done, open it on
+   clip B, and you want Highlights waiting, not Brightness. */
+let adjKey='bright';
+/* What a caption's length costs and where it sits, in the app's own timecode.
+   fmtT and not fmtS, so the badge, the sheet and the transport readout all read
+   `00:03` rather than mixing `0:03` in the one place a caption's own numbers
+   live. Written in both places that can show it — the sheet is built before
+   renderTL() next runs, so filling it only from the timeline leaves it blank on
+   first open — and re-read by renderTL() so a drag updates it too. */
+const txInfo=x=>`Shows ${fmtT(x.s)} – ${fmtT(x.s+x.d)} · ${x.d.toFixed(1)}s`;
 function lanes(){const e=[];[...texts].sort((a,b)=>a.s-b.s).forEach(x=>{let l=e.findIndex(v=>v<=x.s+.001);if(l<0)l=e.length;e[l]=x.s+x.d;x.l=l});return e.length}
 function renderTL(){
   layout();const pad=tl.clientWidth/2;$('#inn').style.padding='20px '+pad+'px 0';
@@ -623,7 +758,10 @@ function renderTL(){
   let r='';const st=pps>=12?1:[2,5,10,30,60].find(v=>v*pps>=12)||60;for(let i=0;i<=Math.ceil(total);i+=st)r+=`<i style="left:${pad+i*pps}px"></i>`;$('#rd').innerHTML=r;$('#rd').style.width=(w+2*pad)+'px';
   $('#track').innerHTML=clips.map(c=>`<div class="clip${sel&&sel.k=='c'&&sel.id==c.id?' sel':''}" data-id="${c.id}" style="width:${dur(c)*pps}px"><div class="film">${film(c)}</div><span>${esc(srcs[c.src].name)} · ${dur(c).toFixed(1)}s${c.sp!=1?' · '+c.sp+'×':''}</span><i class="h" data-h="l"></i><i class="h" data-h="r"></i></div>`).join('')+clips.slice(1).map(c=>`<button class="jn${c.tr&&c.tr.k!='none'?' has':''}" data-id="${c.id}" style="left:${c.s*pps}px" aria-label="Transition">${ic('trans')}</button>`).join('');
   $('#atrack').innerHTML=clips.map(c=>`<div class="aclip" style="width:${dur(c)*pps}px">${wave(c)}</div>`).join('');
-  $('#ttrack').innerHTML=texts.map(x=>`<div class="tx${sel&&sel.k=='t'&&sel.id==x.id?' sel':''}" data-id="${x.id}" style="left:${x.s*pps}px;width:${x.d*pps}px;bottom:${x.l*16}px;background:${TXC[x.id%5]}"><i class="h" data-h="l"></i><span>${esc(x.t)}</span><i class="h" data-h="r"></i></div>`).join('');
+  $('#ttrack').innerHTML=texts.map(x=>`<div class="tx${sel&&sel.k=='t'&&sel.id==x.id?' sel':''}" data-id="${x.id}" style="left:${x.s*pps}px;width:${x.d*pps}px;bottom:${x.l*16}px;background:${TXC[x.id%5]}"><i class="h" data-h="l"></i><span>${esc(x.t)}</span><b class="td">${fmtT(x.d)}</b><i class="h" data-h="r"></i></div>`).join('');
+  /* The caption sheet repeats the same two numbers, so the length of a caption
+     is readable whether the timeline is on screen or the sheet has covered it. */
+  const ti=$('#txinfo');if(ti&&sel&&sel.k=='t'){const x=texts.find(y=>y.id==sel.id);if(x)ti.textContent=txInfo(x)}
   tl.classList.toggle('multi',clips.length>1);{const a=$('#addf'),k=$('#track');a.hidden=!clips.length;a.style.top=(k.offsetTop+(k.offsetHeight-42)/2)+'px'}tl.scrollLeft=t*pps;
 }
 function tip(s){const e=$('#tip');if(s==null){e.hidden=true;return}e.hidden=false;e.textContent=s;const r=$('.tlw').getBoundingClientRect();e.style.left=clamp(curX-r.left,30,r.width-30)+'px'}
@@ -648,9 +786,20 @@ function trimMain(e,cl,el,left){
 function editText(e,x,el,mode){
   const s0=x.s,d0=x.d;snap();
   drag(e,d=>{let hit=null;
-    if(mode=='m'){const raw=s0+d,a=snapV(raw,x),b=snapV(raw+d0,x)-d0,ua=Math.abs(a-raw)<=Math.abs(b-raw);let s=ua?a:b;const c=clamp(s,0,Math.max(0,total-d0));if(c===s&&s!==raw)hit=ua?s:s+d0;x.s=c;tip(fmt(x.s))}
-    else if(mode=='l'){const v=snapV(s0+d,x),ns=clamp(v,0,s0+d0-.5);if(ns===v&&v!==s0+d)hit=ns;x.s=ns;x.d=s0+d0-ns;tip(x.d.toFixed(1)+'s')}
-    else{const v=snapV(s0+d0+d,x),en=clamp(v,s0+.5,total);if(en===v&&v!==s0+d0+d)hit=en;x.d=en-s0;tip(x.d.toFixed(1)+'s')}
+    if(mode=='m'){const raw=s0+d,a=snapV(raw,x),b=snapV(raw+d0,x)-d0,ua=Math.abs(a-raw)<=Math.abs(b-raw);let s=ua?a:b;const c=clamp(s,0,Math.max(0,total-d0));if(c===s&&s!==raw)hit=ua?s:s+d0;x.s=c;
+      /* The playhead is the guide, so the number worth reading while dragging is
+         the distance from it — "line the caption up with this word" is an offset,
+         not a clock time. When the leading edge lands on the playhead the tip
+         says exactly that, because at that moment the snap has done the work and
+         the user should not have to infer it from a number. */
+      const onPlay=Math.abs(c-t)<.02;
+      tip((onPlay?'At playhead · ':(c-t>=0?'+':'')+(c-t).toFixed(1)+'s from playhead · ')+x.d.toFixed(1)+'s long')}
+    else if(mode=='l'){const v=snapV(s0+d,x),ns=clamp(v,0,s0+d0-.5);if(ns===v&&v!==s0+d)hit=ns;x.s=ns;x.d=s0+d0-ns;tip(x.d.toFixed(1)+'s long')}
+    else{const v=snapV(s0+d0+d,x),en=clamp(v,s0+.5,total);if(en===v&&v!==s0+d0+d)hit=en;x.d=en-s0;tip(x.d.toFixed(1)+'s long')}
+    /* The badge is re-rendered by renderTL() only when the drag settles, which
+       would leave it stale for the whole gesture — and a length that changes
+       under your thumb but does not change on screen is worse than no badge. */
+    const td=el.querySelector('.td');if(td)td.textContent=fmtT(x.d);
     el.style.left=x.s*pps+'px';el.style.width=x.d*pps+'px';showSnap(hit)},settle);
 }
 function reorder(e,cl,el){
@@ -741,7 +890,7 @@ function draw(){
     const c=pv?pv.c:at(t),v=srcs[c.src].v;
     if(v.readyState>=2&&v.videoWidth){
       const a=(c.rot||0)*Math.PI/180,cs=Math.abs(Math.cos(a)),sn=Math.abs(Math.sin(a)),vw=v.videoWidth,vh=v.videoHeight,r=Math.min(W/(vw*cs+vh*sn),H/(vw*sn+vh*cs));
-      ctx.save();ctx.translate(W/2,H/2);ctx.rotate(a);ctx.filter=F[c.f];ctx.drawImage(v,-vw*r/2,-vh*r/2,vw*r,vh*r);ctx.restore();
+      ctx.save();ctx.translate(W/2,H/2);ctx.rotate(a);ctx.filter=look(c);ctx.drawImage(v,-vw*r/2,-vh*r/2,vw*r,vh*r);ctx.restore();
     }
     if(!pv)for(let i=1;i<clips.length;i++){const k=clips[i],tr=k.tr;if(!tr||tr.k=='none')continue;const h=Math.min(tr.d/2,dur(k),dur(clips[i-1])),x=Math.abs(t-k.s);if(x<h){ctx.globalAlpha=1-x/h;ctx.fillStyle=tr.k=='white'?'#fff':'#000';ctx.fillRect(0,0,W,H);ctx.globalAlpha=1}}
   }
@@ -781,11 +930,11 @@ let esBase=null;
    longer than the rail can carry cleanly and borrowed. "Format" covers the
    ratio and the backdrop in one word. The rest are already plain: what the
    control does, in the fewest words that still say it. */
-const LBL={add:'Add video',text:'Text',edit:'Edit text',speed:'Speed',volume:'Volume',filter:'Filter',rotate:'Rotate',trans:'Transition',aspect:'Format',dup:'Duplicate',ts:'Trim start',te:'Trim end'};
-const TOOLS=['speed','volume','filter','rotate','trans','aspect','text'],TTL={speed:'Speed',volume:'Volume',filter:'Filter',rotate:'Rotation',trans:'Transition',aspect:'Format',text:'Text'};
+const LBL={add:'Add video',text:'Text',edit:'Edit text',speed:'Speed',volume:'Volume',filter:'Filters',adjust:'Adjust',rotate:'Rotate',trans:'Transition',aspect:'Format',dup:'Duplicate',ts:'Trim start',te:'Trim end'};
+const TOOLS=['speed','volume','filter','adjust','rotate','trans','aspect','text'],TTL={speed:'Speed',volume:'Volume',filter:'Filters',adjust:'Adjust',rotate:'Rotation',trans:'Transition',aspect:'Format',text:'Text'};
 function strip(){
   const ci=sel&&sel.k=='c'?clips.findIndex(c=>c.id==sel.id):-1;
-  const k=!clips.length?['add']:!sel?['add','text','aspect']:sel.k=='t'?['edit','dup','ts','te']:['speed','volume','filter','rotate',...(ci>0?['trans']:[]),'dup','ts','te'];
+  const k=!clips.length?['add']:!sel?['add','text','aspect']:sel.k=='t'?['edit','dup','ts','te']:['speed','volume','filter','adjust','rotate',...(ci>0?['trans']:[]),'dup','ts','te'];
   $('#tools').innerHTML=k.map(x=>(x=='aspect'?'<i class="vd"></i>':'')+`<button data-t="${x}">${ic(x)}<span>${LBL[x]}</span></button>`).join('');
 }
 function addText(){
@@ -833,14 +982,18 @@ function panel(){
   let h='';const c=tool=='aspect'||tool=='text'?null:curSel();
   if(tool=='text'){
     const x=sel&&sel.k=='t'&&texts.find(y=>y.id==sel.id);if(!x){p.hidden=true;document.body.classList.remove('es');fitView();return}
-    h=`<input type="text" id="ti" maxlength="60" placeholder="Type your title" value="${esc(x.t).replace(/"/g,'&quot;')}"><div class="tpl">`+[['rainbow','Rainbow'],['plain','Plain'],['neon','Neon'],['comic','Comic']].map(([k,l])=>`<button class="chip${(x.tp||'plain')==k?' on':''}" data-tp="${k}"><span class="tp-${k}">${l}</span></button>`).join('')+`</div>`;
+    h=`<input type="text" id="ti" maxlength="60" placeholder="Type your title" value="${esc(x.t).replace(/"/g,'&quot;')}"><div class="tpl">`+[['rainbow','Rainbow'],['plain','Plain'],['neon','Neon'],['comic','Comic']].map(([k,l])=>`<button class="chip${(x.tp||'plain')==k?' on':''}" data-tp="${k}"><span class="tp-${k}">${l}</span></button>`).join('')+`</div><div class="sub" id="txinfo">${txInfo(x)}</div>`;
   }else if(tool=='speed')h=`<label><b id="rv">${c.sp}×</b></label><input type="range" id="r1" min=".25" max="4" step=".25" value="${c.sp}">`;
   else if(tool=='volume')h=`<label><b id="rv">${Math.round(c.vol*100)}%</b></label><input type="range" id="r1" min="0" max="1" step=".05" value="${c.vol}">`;
-  else if(tool=='filter')h=Object.keys(F).map(k=>`<button class="chip${c.f==k?' on':''}" data-f="${k}">${k[0].toUpperCase()+k.slice(1)}</button>`).join('');
+  else if(tool=='filter')h=`<div class="car fcards">`+Object.keys(F).map(k=>{
+    const kn=k=='none'?`<span class="kn">${ic('non')}</span>`:`<span class="kn" style="background-image:url(${thumbAt(c)});filter:${F[k].f(1)}"></span>`;
+    return `<button data-f="${k}"${c.f==k?' class="on"':''}>${kn}<span class="lb">${F[k].n}</span></button>`}).join('')+`</div>`+(c.f=='none'?`<span class="sub">Pick a look, then dial how far it goes</span>`:`<label><b id="rv">${Math.round((c.fs==null?1:c.fs)*100)}%</b></label><input type="range" id="r1" min="0" max="1" step=".02" value="${c.fs==null?1:c.fs}">`);
+  else if(tool=='adjust'){const a=c.ad||(c.ad={});
+    h=`<div class="car">`+Object.keys(ADJ).map(k=>`<button data-adj="${k}"${k==adjKey?' class="on"':''}><span class="kn">${ic(ADJ[k].i)}</span><span class="lb">${ADJ[k].n}</span></button>`).join('')+`</div><label><b id="rv">${pct(a[adjKey]||0)}</b></label><input type="range" id="r1" min="-1" max="1" step=".02" value="${a[adjKey]||0}">`;}
   else if(tool=='rotate')h=`<label><b id="rv">${c.rot||0}°</b></label><input type="range" id="r1" min="-180" max="180" step="1" value="${c.rot||0}"><button class="chip" id="r90">Rotate 90°</button>`;
   else if(tool=='trans'){const k=c.tr?c.tr.k:'none';h=`<span class="sub">Between the previous clip and this one</span>`+[['none','None'],['black','Fade black'],['white','Fade white']].map(([v,l])=>`<button class="chip${k==v?' on':''}" data-tk="${v}">${l}</button>`).join('')+(k!='none'?`<label><b id="rv">${c.tr.d.toFixed(1)} s</b></label><input type="range" id="r1" min=".2" max="2" step=".1" value="${c.tr.d}">`:'')}
   else if(tool=='aspect')h=`<span class="sub">Aspect ratio</span>`+Object.keys(AR).map(k=>`<button class="chip${proj.ar==k?' on':''}" data-ar="${k}">${k}</button>`).join('')+`<span class="sub">Background</span>`+BG.map(([n,v])=>`<button class="chip${proj.bg==v?' on':''}" data-bg="${v}">${n}</button>`).join('');
-  p.innerHTML=`<div class="eh">${TTL[tool]}</div><div class="eb">${h}</div><div class="ef"><button class="pillb" id="ec">Cancel</button>${tool!='text'?'<button class="pillb ghost" id="er">Reset</button>':''}<button class="pillb pri" id="ed">Done</button></div>`;
+  p.innerHTML=`<div class="eh">${TTL[tool]}</div><div class="eb">${h}</div><div class="ef">${['filter','adjust'].includes(tool)?`<button class="pillb" id="ec">Cancel</button><button class="pillb ghost" id="ea">Apply to all</button>`:`<button class="pillb" id="ec">Cancel</button>${tool!='text'?'<button class="pillb ghost" id="er">Reset</button>':''}`}<button class="pillb pri" id="ed">Done</button></div>`;
   p.hidden=false;document.body.classList.add('es');fitView();
 }
 const P=$('#panel');
@@ -851,6 +1004,11 @@ P.addEventListener('input',e=>{
     else if(tool=='volume'){c.vol=+el.value;$('#rv').textContent=Math.round(c.vol*100)+'%';if(v)v.volume=c.vol}
     else if(tool=='rotate'){c.rot=+el.value;$('#rv').textContent=c.rot+'°'}
     else if(tool=='trans'){c.tr.d=+el.value;$('#rv').textContent=c.tr.d.toFixed(1)+' s'}
+    /* Both shelves repaint through the rAF loop's own draw(), so there is
+       nothing to call here — look() reads the value on the next frame, which is
+       why the player updates while the thumb is still down. */
+    else if(tool=='filter'){c.fs=+el.value;$('#rv').textContent=Math.round(+el.value*100)+'%'}
+    else if(tool=='adjust'){(c.ad||(c.ad={}))[adjKey]=+el.value;$('#rv').textContent=pct(+el.value)}
   }
   if(el.id=='ti'&&x){x.t=el.value||' ';renderTL()}
 });
@@ -869,7 +1027,18 @@ P.addEventListener('click',e=>{
     return;
   }
   if(d.tp){const x=texts.find(y=>y.id==sel.id);x.tp=d.tp;P.querySelectorAll('[data-tp]').forEach(q=>q.classList.toggle('on',q===b))}
-  if(d.f){curSel().f=d.f;panel()}
+  /* Selecting a knob redraws the sheet because the slider underneath belongs to
+     whichever knob is lit — the value it shows is that knob's, and both are
+     lost if the row and the slider are not re-rendered together. */
+  if(d.adj){adjKey=d.adj;panel()}
+  if(d.f){const c=curSel();c.f=d.f;if(d.f!='none'&&c.fs==null)c.fs=1;panel()}
+  /* "Apply to all" copies the look and the numbers to every other clip, which is
+     the whole reason it exists: matching a grade across a multi-clip timeline by
+     hand means opening this sheet once per clip. The source clip is skipped so
+     its own values are not aliased — a shared object would make the next drag on
+     one clip move all of them. */
+  if(b.id=='ea'){const c=curSel();if(clips.length<2)return toast('Only one clip to apply to');
+    clips.forEach(k=>{if(k!==c){k.ad={...(c.ad||{})};k.f=c.f;k.fs=c.fs}});toast('Applied to all clips');refresh()}
   if(d.ar){proj.ar=d.ar;applyProj();panel();fitView()}
   if(d.bg){proj.bg=d.bg;panel()}
   if(d.tk){const c=curSel();c.tr={k:d.tk,d:c.tr?c.tr.d:1};panel()}
@@ -878,7 +1047,7 @@ P.addEventListener('click',e=>{
   if(b.id=='ed')closeEdit(true);
   if(b.id=='er'){
     if(tool=='aspect'){proj={ar:autoAr(),bg:'#000000'};applyProj()}
-    else{const c=curSel();if(tool=='speed')c.sp=1;if(tool=='volume'){c.vol=1;srcs[c.src].v.volume=1}if(tool=='filter')c.f='none';if(tool=='rotate')c.rot=0;if(tool=='trans')c.tr=null}
+    else{const c=curSel();if(tool=='speed')c.sp=1;if(tool=='volume'){c.vol=1;srcs[c.src].v.volume=1}if(tool=='filter'){c.f='none';c.fs=1}if(tool=='adjust')c.ad={};if(tool=='rotate')c.rot=0;if(tool=='trans')c.tr=null}
     refresh();
   }
 });
@@ -886,7 +1055,7 @@ $('#tools').addEventListener('click',e=>{
   const b=e.target.closest('button');if(!b)return;const k=b.dataset.t;
   if(k=='add')$('#file').click();else if(k=='text')addText();
   else if(k=='dup')dup();else if(k=='ts')trimTo(0);else if(k=='te')trimTo(1);
-  else{tool=k=='edit'?'text':k;panel();const i=$('#ti');if(i)i.focus()}
+  else{if(k=='adjust')adjKey='bright';tool=k=='edit'?'text':k;panel();const i=$('#ti');if(i)i.focus()}
 });
 $('#bdel').onclick=del;$('#bsplit').onclick=split;
 $('#addf').onclick=()=>$('#file').click();
