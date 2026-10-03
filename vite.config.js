@@ -92,6 +92,19 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,woff2,woff,ttf,png,svg,ico,webp,jpg,jpeg}'],
+        // Nothing under docs/ is precached, and that is the point of the line.
+        // A workbox precache is served cache-first and only revalidated when its
+        // manifest changes, so a phone that installed the app once keeps the HTML
+        // it first downloaded — indefinitely — while a desktop on the same build
+        // fetches the new one. That is how a prototype can sit three commits
+        // behind on the device that is supposed to be demonstrating it, and it is
+        // not fixable from the page: there is no reload that beats a cache-first
+        // precache. The pages under here are prototypes and design studies, not
+        // app features, so paying a network round trip for them is the right
+        // trade. Nothing in src/ or index.html fetches a docs/ path at runtime —
+        // the references there are comments — so the app shell is unaffected.
+        // Verified against a built sw.js: 14 docs paths before, 0 after.
+        globIgnores: ['docs/**'],
         // MathJax's combined bundle (tex-svg.js) is ~2.1 MB — above workbox's
         // 2 MB default precache limit, so raise it.
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
