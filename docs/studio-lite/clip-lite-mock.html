@@ -271,7 +271,12 @@ svg{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-l
 .car{display:flex;gap:14px;flex:1 1 100%;min-width:0;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding:4px 2px 2px;scroll-snap-type:x proximity}
 .car::-webkit-scrollbar{display:none}
 .car button{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:6px;width:64px;padding:0;background:none;scroll-snap-align:center}
-.car .kn{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;border:1.5px solid var(--ol);color:var(--on2);background-color:var(--sf2);background-size:cover;background-position:center;overflow:hidden}
+.car .kn{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;border:1.5px solid var(--ol);color:var(--on2);background-color:var(--sf2);background-size:cover;background-position:center;overflow:hidden;position:relative}
+/* A card's effect layer rides in a child so the card's own `filter` grades only
+   the thumbnail. Putting both on one element would run the chain over the
+   vignette and the noise too, and a saturate over a noise tile retints the grain
+   — the card would stop being the picture. */
+.car .kn>i{position:absolute;inset:0;display:block;background-size:cover;background-position:center}
 .car .kn svg{width:22px;height:22px}
 .car button.on .kn{border:2px solid var(--on);color:var(--on)}
 .car .lb{font-size:11px;line-height:1.25;color:var(--on2);text-align:center}
@@ -710,11 +715,23 @@ const F={
     pixel that was not in it. Both are marked `post` and drawn by postFx() once
     the frame is already on the canvas, which is the same bargain Sharpen makes.
 
-    They are here rather than in Adjust because they are looks and not values:
-    a card's whole job is to show you the result before you commit, and Adjust's
-    slider cannot show you anything at all. And k=0 stays a provable no-op for
-    both, which is the rule the rest of the shelf is written to — the vignette's
-    fill lands on alpha 0 and the grain pattern is never touched. */
+    `post` is a *kind*, not an identity. These used to be selected the way every
+    other card is — by writing themselves into `c.f` — which meant picking Grain
+    deleted Vivid, because `c.f` holds one look and these were competing for the
+    same slot. That is a limitation of the storage, not of the effects: a
+    vignette and a grade are not alternatives, they are layers, and the whole
+    point of a vignette is that it sits on top of whatever the grade did. So they
+    are now independent strengths on the clip (`c.vig`, `c.grain`) that postFx()
+    applies on top of whichever chain look is selected, and the card's `f` is
+    null only to mark it as not-a-chain.
+
+    They stay on this shelf rather than in Adjust because they are looks and not
+    values: a card's whole job is to show you the result before you commit, and
+    Adjust's slider cannot show you anything at all. Adjust is also bipolar
+    (−1…1) and neither of these has an honest negative end — you cannot un-grain
+    a picture — so a bipolar slider here would have to invent one. And each stays
+    a provable no-op at 0, which is the rule the rest of the shelf is written
+    to: the vignette's fill lands on alpha 0 and the grain pattern is untouched. */
  vig:{n:'Vignette',f:null,post:'vig'},
  grain:{n:'Grain',f:null,post:'grain'},
 };
@@ -811,7 +828,7 @@ function addFile(f){
     const id=++uid;srcs[id]={v,name:f.name.replace(/\.[^.]+$/,''),dur:v.duration};
     try{const n=ac.createMediaElementSource(v);n.connect(dest);n.connect(ac.destination)}catch(e){}
     if(!clips.length){proj.ar=v.videoHeight>v.videoWidth?'9:16':'16:9';applyProj()}
-    snap();clips.push({id:++uid,src:id,in:0,out:v.duration,sp:1,vol:1,f:'none',fs:1,ad:{}});refresh();thumbs(id);peaks(id,f);
+    snap();clips.push({id:++uid,src:id,in:0,out:v.duration,sp:1,vol:1,f:'none',fs:1,vig:0,grain:0,ad:{}});refresh();thumbs(id);peaks(id,f);
   };
   v.onerror=()=>toast('Could not open '+f.name);
 }
@@ -862,17 +879,38 @@ function thumbAt(c){const S=srcs[c.src];if(!S.th||!S.th.length)return'';const i=
    gradient over the thumbnail, grain is the tile the player draws. Both
    layers are sized `cover` so they land on the frame rather than on the card's
    box, and neither needs a canvas round trip or a data URL — which matters,
-   because panel() builds thirteen of these in one string synchronously. */
-const cardStyle=(c,k)=>{const th=`url(${thumbAt(c)})`,P=F[k].post;
-  if(!P)return `background-image:${th};filter:${F[k].f(1)}`;
-  if(P=='vig')return `background-image:${th},radial-gradient(ellipse at 50% 50%,rgba(0,0,0,0) 34%,rgba(0,0,0,.62) 100%);background-size:cover,cover`;
-  return `background-image:${th},${noiseCSS()};background-size:cover,120px;background-blend-mode:normal,overlay`};
+   because panel() builds thirteen of these in one string synchronously.
+
+   Two things here are about honesty rather than looks. The chain look already on
+   the clip is drawn *underneath* the effect, because that is the result picking
+   this card would actually produce now that the two layer instead of competing.
+   And the chain looks show the layers that are currently on, because a card that
+   hid them would promise a Vivid clip with a vignette on it and deliver a Vivid
+   clip with the vignette still on — the same gap between what a control says and
+   what it does that this whole pass has been about. The result is that the eleven
+   chain cards look alike while a vignette is up. That similarity is the truth. */
+const postLayers=(c,extra)=>{
+  let h='';
+  if((c.vig||0)>0||extra=='vig')h+=`<i style="background-image:radial-gradient(ellipse at 50% 50%,rgba(0,0,0,0) 34%,rgba(0,0,0,.62) 100%)"></i>`;
+  if((c.grain||0)>0||extra=='grain')h+=`<i style="background-image:${noiseCSS()};background-size:cover,120px;mix-blend-mode:overlay"></i>`;
+  return h;
+};
+const cardStyle=(c,k)=>{const P=F[k].post;
+  /* The chain this card is previewing: its own look, or the one already on the
+     clip when the card is a layer that stacks on top. */
+  const chain=P?(c.f&&c.f!=='none'?F[c.f].f(c.fs==null?1:c.fs):'none'):F[k].f(1);
+  return {css:`background-image:url(${thumbAt(c)});filter:${chain}`,layers:postLayers(c,P)};};
 const pct=v=>(v>0?'+':'')+Math.round(v*100);
 /* Which Adjust knob the slider belongs to. Module state rather than a second
    field on the clip, because it is a property of the sheet you are looking at,
    not of the clip — open Adjust on clip A, turn Highlights, Done, open it on
    clip B, and you want Highlights waiting, not Brightness. */
 let adjKey='bright';
+/* Which Filters control the strength slider is currently editing — 'vig',
+   'grain', or a chain look's key. Module state for the same reason adjKey is:
+   it is a property of the sheet in front of you, not of the clip, so opening
+   Filters on another clip does not carry a slider that belonged to the last. */
+let postKey='vig',sliderKey=null;
 /* What a caption's length costs and where it sits, in the app's own timecode.
    fmtT and not fmtS, so the badge, the sheet and the transport readout all read
    `00:03` rather than mixing `0:03` in the one place a caption's own numbers
@@ -1200,12 +1238,19 @@ function grain(){
 }
 /* Vignette and Grain over a frame that is already on the canvas. One native
    operation each — a gradient fill and a pattern fill — so neither costs a
-   per-pixel pass, and both are exact no-ops at k=0. */
+   per-pixel pass, and both are exact no-ops at 0.
+
+   Both run, in that order, every frame: the vignette is a tone change and grain
+   is a texture change, so the noise sits on top of the darkened frame rather
+   than under it. Grain last also happens to be the only order that matches what
+   the cards show, since a card's layers composite with the noise on top. Each
+   strength is read from the clip independently, which is what lets a graded
+   clip carry a vignette and grain at the same time. */
 function postFx(c){
-  const P=c.f&&c.f!=='none'?F[c.f].post:0;if(!P)return;
-  const k=c.fs==null?1:c.fs;if(k<=0)return;
+  const kv=c.vig||0,kg=c.grain||0;
+  if(kv<=0&&kg<=0)return;
   ctx.save();
-  if(P=='vig'){
+  if(kv>0){
     /* Sized off the diagonal, so the corners darken on any ratio: a radius from
        the width alone leaves a 9:16 frame with dark top and bottom edges and
        bright sides, which is a different look and not the one named Vignette.
@@ -1216,11 +1261,12 @@ function postFx(c){
        luma 1.2 — it is the black surround, and black cannot get darker. A probe
        at the canvas corner would have reported "no effect" for the same reason. */
     const r0=Math.hypot(W,H)/2,g2=ctx.createRadialGradient(W/2,H/2,r0*.32,W/2,H/2,r0);
-    g2.addColorStop(0,'rgba(0,0,0,0)');g2.addColorStop(1,`rgba(0,0,0,${(k*.62).toFixed(3)})`);
+    g2.addColorStop(0,'rgba(0,0,0,0)');g2.addColorStop(1,`rgba(0,0,0,${(kv*.62).toFixed(3)})`);
     ctx.fillStyle=g2;ctx.fillRect(0,0,W,H);
-  }else{
+  }
+  if(kg>0){
     ctx.globalCompositeOperation='overlay';
-    ctx.globalAlpha=Math.min(.5,k*.5);
+    ctx.globalAlpha=Math.min(.5,kg*.5);
     ctx.fillStyle=ctx.createPattern(grain(),'repeat');ctx.fillRect(0,0,W,H);
   }
   ctx.restore();
@@ -1263,7 +1309,7 @@ function draw(){
     const c=pv?pv.c:at(t),v=srcs[c.src].v;
     if(v.readyState>=2&&v.videoWidth){
       const a=(c.rot||0)*Math.PI/180,cs=Math.abs(Math.cos(a)),sn=Math.abs(Math.sin(a)),vw=v.videoWidth,vh=v.videoHeight,r=Math.min(W/(vw*cs+vh*sn),H/(vw*sn+vh*cs));
-      const sv=(c.ad&&c.ad.sharp)||0,pf=c.f&&c.f!=='none'&&!!F[c.f].post;
+      const sv=(c.ad&&c.ad.sharp)||0,pf=(c.vig||0)>0||(c.grain||0)>0;
       if(sv||pf)frameStage(c,v,a,cs,sn,vw,vh,r,sv);
       else{ctx.save();ctx.translate(W/2,H/2);ctx.rotate(a);ctx.filter=look(c);ctx.drawImage(v,-vw*r/2,-vh*r/2,vw*r,vh*r);ctx.restore();}
     }
@@ -1391,9 +1437,54 @@ function panel(){
     h=`<input type="text" id="ti" maxlength="60" placeholder="Type your title" value="${esc(x.t).replace(/"/g,'&quot;')}"><div class="tpl">`+[['rainbow','Rainbow'],['plain','Plain'],['neon','Neon'],['comic','Comic']].map(([k,l])=>`<button class="chip${(x.tp||'plain')==k?' on':''}" data-tp="${k}"><span class="tp-${k}">${l}</span></button>`).join('')+`</div><div class="sub" id="txinfo">${txInfo(x)}</div>`;
   }else if(tool=='speed')h=`<label><b id="rv">${c.sp}×</b></label><input type="range" id="r1" min=".25" max="4" step=".25" value="${c.sp}">`;
   else if(tool=='volume')h=`<label><b id="rv">${Math.round(c.vol*100)}%</b></label><input type="range" id="r1" min="0" max="1" step=".05" value="${c.vol}">`;
-  else if(tool=='filter')h=`<div class="car fcards">`+Object.keys(F).map(k=>{
-    const kn=k=='none'?`<span class="kn">${ic('non')}</span>`:`<span class="kn" style="${cardStyle(c,k)}"></span>`;
-    return `<button data-f="${k}"${c.f==k?' class="on"':''}>${kn}<span class="lb">${F[k].n}</span></button>`}).join('')+`</div>`+(c.f=='none'?`<span class="sub">Pick a look, then dial how far it goes</span>`:`<label><b id="rv">${Math.round((c.fs==null?1:c.fs)*100)}%</b></label><input type="range" id="r1" min="0" max="1" step=".02" value="${c.fs==null?1:c.fs}">`);
+  else if(tool=='filter'){
+    /* One row of thirteen cards, but three different kinds of selection behind
+       it, and conflating them is what used to make Grain delete Vivid. A chain
+       card picks the look. A layer card toggles that layer on or off and leaves
+       the look alone. The slider below belongs to whichever of the three is
+       currently relevant — the look if one is picked, otherwise the last layer
+       touched — so there is one slider and one readout, not three.
+
+       That is the compromise: three strengths on one slider means the control
+       under your thumb has to change meaning when you tap a different card, and
+       the alternative (a slider per layer) is three stacked controls on a phone
+       where the sheet already has to share its height with the frame. The card
+       you tap is always the thing the slider then edits, which is the same
+       bargain the Adjust row makes with adjKey. */
+    /* Which of the three controls the slider is bound to, in priority order: the
+       layer you last tapped, if that layer is on; then any layer that is on; then
+       the layer you last tapped even at zero, so tapping a card arms its slider;
+       then the look. Post-translation this used to read postKey first and alone,
+       which is what let a chain card win over a layer that was on — and tapping
+       None left the slider holding c.fs, a strength for a look that is not
+       there, so the one control on the sheet was adjusting something invisible.
+       Scanning F's order instead of the tapped card is not enough either: with
+       both layers up, Vignette is first, so tapping Grain moved nothing. */
+    const lays=Object.keys(F).filter(k=>F[k].post),
+      lay= lays.includes(postKey)?postKey:null,
+      active=(lay&&(c[F[lay].post]||0)>0?lay:null)||lays.find(k=>(c[F[k].post]||0)>0),
+      sliderOn=active||lay||(c.f!=='none'?c.f:null);
+    const sv=sliderOn?(sliderOn==='vig'||sliderOn==='grain'?c[sliderOn]:c.fs):0;
+    /* Record what the slider it just rendered is bound to. Deriving it again in
+       the input handler from postKey is what used to break: tapping a look card
+       while a vignette was up left postKey naming the look, the sheet then bound
+       the slider to the vignette because it was the one that was on, and the
+       thumb you were holding turned the look strength while the readout showed
+       the vignette's. One decision, made once, read by both. */
+    sliderKey=sliderOn;
+    h=`<div class="car fcards">`+Object.keys(F).map(k=>{
+      /* cardStyle returns two things and they cannot share one attribute: the
+         card's own CSS goes in style=, and the effect layers are child <i>
+         elements. Returning them as one string and quoting it into style= made
+         the <i> markup part of the attribute value, where only the last one
+         parsed — so with a vignette and grain both up, every card silently
+         showed the grain alone. */
+      const cs=cardStyle(c,k);
+      const kn=k=='none'?`<span class="kn">${ic('non')}</span>`:`<span class="kn" style="${cs.css}">${cs.layers}</span>`;
+      const sel=F[k].post?(c[F[k].post]||0)>0:c.f==k;
+      return `<button data-f="${k}"${sel?' class="on"':''}>${kn}<span class="lb">${F[k].n}</span></button>`}).join('')+`</div>`+
+      (sliderOn?`<label><b id="rv">${Math.round(sv*100)}%</b></label><input type="range" id="r1" min="0" max="1" step=".02" value="${sv}">`
+        :`<span class="sub">Pick a look, then dial how far it goes</span>`);}
   else if(tool=='adjust'){const a=c.ad||(c.ad={});
     h=`<div class="car">`+Object.keys(ADJ).map(k=>`<button data-adj="${k}"${k==adjKey?' class="on"':''}><span class="kn">${ic(ADJ[k].i)}</span><span class="lb">${ADJ[k].n}</span></button>`).join('')+`</div><label><b id="rv">${pct(a[adjKey]||0)}</b></label><input type="range" id="r1" min="-1" max="1" step=".02" value="${a[adjKey]||0}">`;}
   else if(tool=='rotate')h=`<label><b id="rv">${c.rot||0}°</b></label><input type="range" id="r1" min="-180" max="180" step="1" value="${c.rot||0}"><button class="chip" id="r90">Rotate 90°</button>`;
@@ -1422,7 +1513,14 @@ P.addEventListener('input',e=>{
     /* Both shelves repaint through the rAF loop's own draw(), so there is
        nothing to call here — look() reads the value on the next frame, which is
        why the player updates while the thumb is still down. */
-    else if(tool=='filter'){c.fs=+el.value;$('#rv').textContent=Math.round(+el.value*100)+'%'}
+    else if(tool=='filter'){
+      /* The slider edits whichever control sliderKey names — the one panel()
+         decided when it drew this slider — so the same input event drives a
+         chain look's strength or a layer's without the handler needing to know
+         which kind it is looking at, and without the two disagreeing. */
+      const v=+el.value;
+      if(sliderKey==='vig'||sliderKey==='grain')c[sliderKey]=v;else c.fs=v;
+      $('#rv').textContent=Math.round(v*100)+'%'}
     else if(tool=='adjust'){(c.ad||(c.ad={}))[adjKey]=+el.value;$('#rv').textContent=pct(+el.value)}
   }
   if(el.id=='ti'&&x){x.t=el.value||' ';renderTL()}
@@ -1453,14 +1551,26 @@ P.addEventListener('click',e=>{
   if(d.adj){adjKey=d.adj;adjSync();return}
   /* A filter pick does rebuild, because the strength slider only exists once a
      look is on. The scroll offset survives the rebuild via panel(). */
-  if(d.f){const c=curSel();c.f=d.f;if(d.f!='none'&&c.fs==null)c.fs=1;panel()}
+  if(d.f){
+    const c=curSel(),lay=F[d.f].post;
+    if(lay){
+      /* A layer toggles. Tapping it on sets it to full and points the slider at
+         it; tapping it again takes it back to 0, which is the same state as
+         never having touched it — no key is left behind on the clip. Crucially
+         this does not read or write c.f, which is what used to make the two
+         layers delete the chain look and each other. */
+      c[lay]=(c[lay]||0)>0?0:1;postKey=lay;
+    }else{
+      c.f=d.f;if(d.f!='none'&&c.fs==null)c.fs=1;postKey=d.f;
+    }
+    panel()}
   /* "Apply to all" copies the look and the numbers to every other clip, which is
      the whole reason it exists: matching a grade across a multi-clip timeline by
      hand means opening this sheet once per clip. The source clip is skipped so
      its own values are not aliased — a shared object would make the next drag on
      one clip move all of them. */
   if(b.id=='ea'){const c=curSel();if(clips.length<2)return toast('Only one clip to apply to');
-    clips.forEach(k=>{if(k!==c){k.ad={...(c.ad||{})};k.f=c.f;k.fs=c.fs}});toast('Applied to all clips');refresh()}
+    clips.forEach(k=>{if(k!==c){k.ad={...(c.ad||{})};k.f=c.f;k.fs=c.fs;k.vig=c.vig||0;k.grain=c.grain||0}});toast('Applied to all clips');refresh()}
   if(d.ar){proj.ar=d.ar;applyProj();panel();fitView()}
   if(d.bg){proj.bg=d.bg;panel()}
   if(d.tk){const c=curSel();c.tr={k:d.tk,d:c.tr?c.tr.d:1};panel()}
@@ -1469,7 +1579,7 @@ P.addEventListener('click',e=>{
   if(b.id=='ed')closeEdit(true);
   if(b.id=='er'){
     if(tool=='aspect'){proj={ar:autoAr(),bg:'#000000'};applyProj()}
-    else{const c=curSel();if(tool=='speed')c.sp=1;if(tool=='volume'){c.vol=1;srcs[c.src].v.volume=1}if(tool=='filter'){c.f='none';c.fs=1}if(tool=='adjust')c.ad={};if(tool=='rotate')c.rot=0;if(tool=='trans')c.tr=null}
+    else{const c=curSel();if(tool=='speed')c.sp=1;if(tool=='volume'){c.vol=1;srcs[c.src].v.volume=1}if(tool=='filter'){c.f='none';c.fs=1;c.vig=0;c.grain=0}if(tool=='adjust')c.ad={};if(tool=='rotate')c.rot=0;if(tool=='trans')c.tr=null}
     refresh();
   }
 });

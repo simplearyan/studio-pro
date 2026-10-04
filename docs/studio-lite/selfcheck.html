@@ -56,9 +56,10 @@
     <th style="width:22%">As measured</th><th style="width:22%">As displayed</th><th style="width:9%">Result</th>
   </tr></thead><tbody></tbody></table>
 
-  <h2>Filters — thirteen looks</h2>
+  <h2>Filters — eleven chains and two layers</h2>
+  <p class="sub">The eleven looks are chains: one of them can be on, at its own strength. Vignette and Grain are not chains — they are layers drawn <em>after</em> the frame, over whichever chain is picked, each with its own strength. So each layer is measured twice: once on a bare clip for its own signature, and again on top of a graded clip, because a layer that quietly replaced the grade would still pass the first test.</p>
   <table id="filtT"><thead><tr>
-    <th style="width:12%">Look</th><th style="width:22%">Chain at full strength</th><th style="width:9%">At zero</th>
+    <th style="width:12%">Look or layer</th><th style="width:22%">What it applies</th><th style="width:9%">At zero</th>
     <th style="width:26%">Signature change</th><th style="width:9%">Result</th>
   </tr></thead><tbody></tbody></table>
 </main>
@@ -238,7 +239,11 @@ function render(clip){
   ctx.globalCompositeOperation='source-over';ctx.filter='none';
   ctx.fillStyle='#000';ctx.fillRect(0,0,CW,CH);
   const src=SRC();
-  const sv=(clip.ad&&clip.ad.sharp)||0, pf=clip.f&&clip.f!=='none'&&!!FILTERS[clip.f].post;
+  /* The route the mock itself takes. Since the layers became independent this
+     keys on the two strengths rather than on the look: a Vivid clip with no
+     vignette must not be sent through the mask stage at all, and one with a
+     vignette must be even when the look is None. */
+  const sv=(clip.ad&&clip.ad.sharp)||0, pf=(clip.vig||0)>0||(clip.grain||0)>0;
   if(sv||pf){
     /* Bust the mask's readback cache. It keys on frame time, grade, geometry —
        all constant here, because the chart never changes — so without this the
@@ -252,7 +257,11 @@ function render(clip){
   }
   return ctx.getImageData(0,0,CW,CH);
 }
-const mkClip=(ad,f,fs)=>({id:1,rot:0,f:f||'none',fs:fs==null?1:fs,ad:ad||{},sp:1,vol:1,in:0,out:1,s:0});
+/* `post` is a kind, not an identity. A chain look rides in f/fs; the two layers
+   are their own per-clip strengths, because that is what lets all three be on at
+   once. Every layer claim below therefore names which field it is asserting. */
+const mkClip=(ad,f,fs,vig,grain)=>({id:1,rot:0,f:f||'none',fs:fs==null?1:fs,
+  vig:vig||0,grain:grain||0,ad:ad||{},sp:1,vol:1,in:0,out:1,s:0});
 
 /* ── What each control promises, in one line each ───────────────────────────
    `want` is the assertion. `dir` is which end of the slider must show it. This
@@ -375,25 +384,46 @@ async function runFilters(){
   let pass=0,fail=0;
   for(const key of Object.keys(FILTERS)){
     const F=FILTERS[key];
-    const chain=F.f?F.f(1):(F.post?'('+F.post+' — drawn after the frame)':'');
+    const chain=F.f?F.f(1):(F.post?'clip.'+F.post+' — drawn after the frame, over any look':'');
     let zeroDiff=0,sig='',okRow=true,note='';
     if(key!=='none'){
       zeroDiff=diffCount(measure(render(mkClip({},key,0))).raw,base.raw);
-      const full=measure(render(mkClip({},key,1)));
+      const full=measure(render(F.post?mkClip({},'none',1,key==='vig'?1:0,key==='grain'?1:0):mkClip({},key,1)));
       const dMean=full.M.all.mean-base.M.all.mean;
       const dEdge=full.M.edges.sd-base.M.edges.sd;
       const dChroma=full.M.red.chromaSd-base.M.red.chromaSd;
       const dHue=full.M.red.hue-base.M.red.hue;
       const dCorner=full.M.corner.mean-base.M.corner.mean;
       const dCentre=full.M.centre.mean-base.M.centre.mean;
-      if(F.post=='vig'){
-        sig='corners '+fmt(dCorner,1)+' luma, centre '+fmt(dCentre,1);
-        okRow=dCorner<-8&&Math.abs(dCentre)<1.5&&zeroDiff===0;
-        note='a vignette must darken the edge, leave the middle alone, and be an exact no-op at zero';
-      }else if(F.post=='grain'){
-        sig='mid-plate sd '+fmt(full.M.mid.sd-base.M.mid.sd,2)+', mean luma '+fmt(dMean,2);
-        okRow=(full.M.mid.sd-base.M.mid.sd)>0.5&&Math.abs(dMean)<3&&zeroDiff===0;
-        note='grain must add texture, not move exposure, and be an exact no-op at zero';
+      if(F.post=='vig'||F.post=='grain'){
+        /* A layer is only honest if it stacks. Setting it on a graded clip must
+           add its own effect *on top of* that grade rather than replace it, so
+           the same assertion is re-run with a look underneath and compared
+           against that look on its own. Before this the two layers were c.f
+           values competing with the looks, so turning one on deleted the
+           other — a claim no per-layer test could have caught, because each
+           layer was individually fine. */
+        const laid=measure(render(mkClip({},'vivid',1,key==='vig'?1:0,key==='grain'?1:0))).M;
+        const under=measure(render(mkClip({},'vivid',1))).M;
+        const onTop=key==='vig'
+          ? laid.corner.mean-under.corner.mean
+          : laid.mid.sd-under.mid.sd;
+        const alone=key==='vig'?dCorner:(full.M.mid.sd-base.M.mid.sd);
+        sig=(key==='vig'?'corners ':'mid-plate sd ')+fmt(alone,key==='vig'?1:2)
+          +' alone, '+fmt(onTop,key==='vig'?1:2)+' over a look';
+        const stacks=(key==='vig'?onTop<-8&&Math.abs(laid.centre.mean-under.centre.mean)<1.5:onTop>0.5);
+        /* The other half of "stacks": the grade has to still be there with a
+           layer up. `onTop` alone cannot see a replacement — a vignette that
+           wiped the look and redrew the edges would still measure about the
+           same corner delta — so the look's own loudest signature is checked
+           against the bare clip directly. Vivid moves chroma by an order of
+           magnitude, which makes it the cheapest honest witness. */
+        const gradeKept=laid.red.chromaSd>base.M.red.chromaSd+20;
+        sig+=' · grade still under it ('+fmt(laid.red.chromaSd-base.M.red.chromaSd,0)+' chroma vs '
+          +fmt(under.red.chromaSd-base.M.red.chromaSd,0)+' without)';
+        if(key=='vig')okRow=dCorner<-8&&Math.abs(dCentre)<1.5&&zeroDiff===0&&stacks&&gradeKept;
+        else okRow=(full.M.mid.sd-base.M.mid.sd)>0.5&&Math.abs(dMean)<3&&zeroDiff===0&&stacks&&gradeKept;
+        note='a vignette must darken the edge, leave the middle alone, be an exact no-op at zero, and survive a look being picked; grain must add texture, not move exposure, do both of those, and survive one too';
       }else{
         okRow=zeroDiff===0;
         const parts=[];
@@ -408,7 +438,7 @@ async function runFilters(){
     }
     if(okRow)pass++;else fail++;
     tb.insertAdjacentHTML('beforeend',row([
-      {html:'<span class="nm">'+(F.n||key)+'</span>'+(F.post?'<span class="why">'+F.post+'</span>':'')},
+      {html:'<span class="nm">'+(F.n||key)+'</span>'+(F.post?'<span class="why">layer — clip.'+F.post+'</span>':'')},
       {html:'<code>'+String(chain).replace(/</g,'&lt;')+'</code>'},
       {html:key==='none'?'—':(zeroDiff===0?'<span class="pass">0 bytes</span>':'<span class="fail">'+zeroDiff+'</span>'),cls:'n'},
       {html:(sig||'—')+'<span class="why">'+note+'</span>'},
@@ -430,7 +460,7 @@ async function main(){
   const b=await runFilters();
   const p=a.pass+b.pass,f=a.fail+b.fail;
   $('#summary').innerHTML='<div class="sum">'+p+' of '+(p+f)+' controls hold. '+
-    (f? '<span class="fail">'+f+' failed</span> — a control that fails here is one whose label and its behaviour disagree.' : 'Every control is a bit-exact no-op at zero, moves its own metric in the direction its name promises, and keeps that promise after the preview is scaled down.')+'</div>';
+    (f? '<span class="fail">'+f+' failed</span> — a control that fails here is one whose label and its behaviour disagree.' : 'Every control is a bit-exact no-op at zero, moves its own metric in the direction its name promises, keeps that promise after the preview is scaled down, and the two layers still land on top of a graded clip instead of replacing it.')+'</div>';
   $('#status').textContent='done';
   btn.disabled=false;
 }

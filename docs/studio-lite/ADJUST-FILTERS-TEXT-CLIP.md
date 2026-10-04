@@ -65,7 +65,7 @@ angular glyph in the set, and every other knob is a curve.
 
 ---
 
-## 2. Filters — thirteen looks, each previewed on the real frame
+## 2. Filters — eleven chains and two layers, each previewed on the real frame
 
 The reference's shelf is a row of square cards, each showing a thumbnail of
 **your** clip with that filter already on it, plus a `None` card carrying a
@@ -91,6 +91,77 @@ crossed disc rather than an unfiltered thumbnail, because an unfiltered card
 next to twelve filtered ones reads as *"there is no filter"*, not as *"this is the
 filter you are on"*.
 
+### Two kinds of card, because `post` was doing two jobs
+
+Eleven of the thirteen cards are **chains**: exactly one can be on, at one
+strength. The other two are **layers**: both can be on, each with its own
+strength, and both sit on top of whichever chain is picked. So `post` is a
+*kind*, not an identity, and the clip needs two numbers that are not `f`/`fs`:
+
+```js
+vig:{n:'Vignette',f:null,post:'vig'},      // a layer — clip.vig,  0…1
+grain:{n:'Grain',f:null,post:'grain'},    // a layer — clip.grain, 0…1
+```
+
+Vignette and Grain used to be chains like the rest, competing for `c.f` — which
+meant tapping Grain deleted Vivid and then deleted itself, and there was no
+arrangement of the two you could want. The obvious alternative, making them
+Adjust knobs, was rejected: Adjust's slider is bipolar `−1…1`, and neither of
+these has an honest negative end. `−1` vignette is not a weaker vignette, it is
+an inverted one. They are looks, and a look's job is to be picked, so they stay
+on the Filters shelf.
+
+**One slider for three strengths** is the honest compromise, and it needs a
+rule about which strength the slider is editing. The rule is, in order: the layer
+you last tapped, if that layer is on; then any layer that is on; then the layer
+you last tapped even at zero, so tapping a card arms its slider; then the chain.
+
+```js
+const lay=lays.includes(postKey)?postKey:null,
+  active=(lay&&(c[F[lay].post]||0)>0?lay:null)||lays.find(k=>(c[F[k].post]||0)>0),
+  sliderOn=active||lay||(c.f!=='none'?c.f:null);
+sliderKey=sliderOn;
+```
+
+Two earlier versions of that rule were wrong in ways worth recording, because
+both produced a sheet whose slider and readout disagreed. Reading `postKey`
+alone let a chain card win over a layer that was up, and tapping `None` left the
+slider holding `c.fs` — a strength for a look that is not there, so the only
+visible control on the sheet was adjusting something invisible. Scanning `F`'s
+order instead is not enough either: with both layers up, Vignette comes first, so
+tapping Grain moved nothing.
+
+`sliderKey` is written by `panel()` and read by the input handler, rather than
+both deriving the answer. When each side decided for itself they disagreed: the
+sheet bound the thumb to the vignette while the handler wrote `c.fs`.
+
+### A card's CSS and a card's layers cannot share one attribute
+
+A card shows the frame under the playhead with the effect drawn *on top of* it,
+which is HTML, not CSS — `background-image` and `filter` cannot hold a second
+element. So `cardStyle()` returns **two** things and they go in two places:
+
+```js
+return {css:`background-image:url(${thumbAt(c)});filter:${chain}`,layers:postLayers(c,P)};
+```
+
+Returning both as one string and quoting it into `style=` made the `<i>` markup
+part of the attribute value, where only the last layer parsed — so with a
+vignette and grain both up, **every one of the thirteen cards showed the grain
+alone**. No error, no warning; the shelf simply lied about all twelve looks at
+once.
+
+The layers shown are the ones *currently on the clip*, which is why the eleven
+chain cards look alike while a vignette is up. That similarity is the truth: they
+all produce that same vignette on top. Hiding it would promise a Vivid clip with
+the vignette still on.
+
+> A second, dumber bug in the same edit: the fix dropped `cardStyle`'s closing
+> `}`, so the following `const pct=…` merged into its body and every later
+> `P` became a redeclaration. **After any edit that moves a brace in a minified
+> script, re-run the syntax check — it catches this in one second and the
+> browser only tells you at load.**
+
 ### Vignette and Grain — the two looks `ctx.filter` cannot spell
 
 Eleven of the thirteen are filter chains. These two are not, and the reason is
@@ -98,13 +169,27 @@ worth stating because it is a hard limit rather than an oversight: the whole CSS
 filter vocabulary is brightness, contrast, saturate, hue-rotate, blur, grayscale,
 sepia, invert, opacity and drop-shadow. **None of them can reach the edge of a
 picture or add a pixel that was not in it.** A vignette darkens corners; grain
-lays noise over the frame. Neither is expressible, so both are marked `post` and
-drawn by `postFx()` once the frame is already on the canvas — the same bargain
-Sharpen makes, and for the same reason.
+lays noise over the frame. Neither is expressible, so both are drawn by
+`postFx()` once the frame is already on the canvas — the same bargain Sharpen
+makes, and for the same reason.
 
-They are on the Filters shelf rather than in Adjust because they are *looks*, not
-values: a card's whole job is to show you the result before you commit, and
-Adjust's slider cannot show you anything at all.
+```js
+function postFx(c){
+  const kv=c.vig||0,kg=c.grain||0;
+  if(kv<=0&&kg<=0)return;
+  ...
+}
+```
+
+Both run, in that order, every frame, and both read their strength from the clip
+independently — which is the whole mechanism. **A vignette is a tone change and
+grain is a texture change**, so the noise belongs on top of the darkened frame
+rather than under it. Grain last also happens to be the only order that matches
+what the cards show, since a card's layers composite with the noise on top.
+
+The early-out is not a micro-optimisation, it is the no-op guarantee: at zero the
+function returns before touching a pixel, which is why all thirteen controls can
+still claim 0 differing bytes.
 
 **The gradient is sized off the diagonal**, not the width. A radius from the
 width alone leaves a 9:16 frame with dark top and bottom edges and bright sides,
@@ -369,6 +454,25 @@ written down so it can fail. And the page iterates the **live `ADJ` keys**, not
 the claim list: a knob added to the mock with no claim written for it appears as
 an explicit `unclaimed` failure rather than quietly going unchecked.
 
+**Layers get a fourth assertion, which the first version of this page could not
+have written.** A layer is only honest if it *stacks*, and neither half of that
+is visible in the layer's own test:
+
+- *It still does its own thing over a grade.* Vignette darkens corners **−74.5**
+  luma on a bare clip and **−78.0** on a Vivid one; grain lifts mid-plate sd
+  **+11.56** and **+11.01**.
+- *The grade is still there underneath.* This is the half that matters, and
+  `onTop` alone cannot see it: a vignette that wiped the look and redrew the
+  edges would still measure about the same corner delta. So Vivid's own loudest
+  signature is checked against the bare clip with the layer up — **+93 chroma
+  with the vignette on, +111 with grain on, +111 with neither.** The vignette
+  reads lower because it darkens the outer edges where the red patch sits; the
+  grain reads identical because it is mean-preserving.
+
+Before the layers were split out, a per-layer test would have passed while the
+shelf was still broken, because each layer was individually fine and only the
+*pair* was broken.
+
 Current result: **21 of 21 controls hold** — 8 knobs and 13 looks.
 
 Two of the three bugs it found were in the page's own claims, not the mock, and
@@ -386,6 +490,10 @@ is wrong in the convenient direction is how a suite stops being trusted.
 |---|---|
 | Adjust | 8 knobs, per-knob values retained, all compose; footer `Cancel / Apply to all / Done` |
 | Filters | 13 cards, 12 carrying real frames, each pre-filtered with its own chain; strength `0%` is a no-op, `100%` is the full look |
+| Layers stack | `f:'vivid'` with `vig:1` and `grain:1` keeps all three lit and paints all three; what the app's rAF loop painted is byte-identical to a manual `frameStage` render at the same settings (**0** differing pixels of 921,600), and removing the two layers changes **736,100** |
+| Layer independence | None → Grain → Vivid → Vignette → Grain off keeps `c.f` alive throughout; tapping a layer never reads or writes `c.f`; `Apply to all` copies `vig`/`grain` alongside `f`/`fs` |
+| Slider binds to one thing | tapping Grain arms the grain slider, Vignette arms the vignette, tapping a look leaves the slider on whichever layer is up, and tapping `None` with no layer up shows the prompt instead of a dead strength |
+| Cards show both layers | with vignette and grain up, all 12 non-`None` cards carry **2** `<i>` layers (24 total), the grain one `mix-blend-mode: overlay` — the `style=`-attribute bug that showed grain alone is fixed |
 | Apply to all | 2 clips → both `{bright, warm}` + `moody@0.6`; objects cloned, not aliased |
 | Adjust is real | centre pixel `[255,209,167]` → `[255,255,217]` at `bright +0.6`, `[178,146,119]` at `−0.6` |
 | Caption move | drag `+0.5s` steps the start and the tooltip together; snaps to the playhead |
@@ -393,12 +501,13 @@ is wrong in the convenient direction is how a suite stops being trusted.
 | Cancel / Done / undo | Cancel reverts the sheet; Done commits; undo restores; redo repopulates |
 | Row keeps its place | at 393×844 the row sits at `scrollLeft 261` with Warmth selected, taps Sharpen at the same 261, re-taps the visible knob without moving it, and re-centres only an off-screen pick (Fade picked at 0 → 261) |
 | Sharpen is a mask, not a curve | acutance +41% at full res, +14% as displayed, −27% at `−1`; flat field beside the edge is bit-identical at every amount; `sharp 0` is 0 differing bytes against no knob at all, including with a grade and a 90° rotation |
-| Vignette | radial-shell mean luma `0.000, 0.000, −1.0, −10.0, −22.2, −34.0, −16.0, −0.6` centre→edge at full strength; `fs=0` is 0 differing bytes; centre probe moves −0.4 while corners move −74.5 |
+| Vignette | radial-shell mean luma `0.000, 0.000, −1.0, −10.0, −22.2, −34.0, −16.0, −0.6` centre→edge at full strength, and `0, 0, −1.3, −11.5, −25.5, −40.2, −18.8, −0.5` on top of Vivid — the falloff survives the grade; `vig=0` is 0 differing bytes; centre probe moves −0.4 while corners move −74.5 |
 | Grain | mean luma drift +0.16/255 across six probes (mean-preserving); mid-plate sd +11.5; repeat draws of a paused frame differ in 0 of 921,600 pixels; `fs=0` is 0 differing bytes |
 | Grain card | shows the player's own exported tile; `background-image` parses to 2 layers with `background-blend-mode: normal, overlay` — the unquoted-`url()` drop is fixed |
 | Filter shelf at 357 and 393 | 13 cards, `scrollHeight === clientHeight`, no page-level horizontal scroll, shelf scrolls 677px (393) / 713px (357) |
 | Highlights / Shadows | corrected sign; at `+1` Highlights moves the highlight end +20 and the shadow end −16, Shadows moves the shadow end +30 and the highlight end −16, on all four exposure pairs |
-| Self-check | 21 of 21 controls hold; every knob is 0 differing bytes at zero and checked at both ends of its slider; Sharpen reads +98.7% canvas / +77.9% shown, same sign |
+| Self-check | 21 of 21 controls hold; every knob is 0 differing bytes at zero and checked at both ends of its slider; Sharpen reads +98.7% canvas / +77.9% shown, same sign; both layers are additionally measured over a graded clip, for their own effect and for the grade surviving |
+| Determinism | all 13 looks at `fs=0` are 0 differing bytes against `f:'none'`; the same settings rendered twice differ in **0** of 921,600 pixels |
 | Sharpen leaves no outline | 9:16 clip in a 16:9 project: the backdrop outside the picture is unchanged and the edge pixels are the frame's own, not a bright rim |
 | Icons | Filters and Adjust are a funnel and a three-rail mixer, checked side by side in both themes at 393×844 and 357×836; the eight knob glyphs use eight different geometric families — sun, half disc, chevrons, crescent, drop, thermometer, sparkle, stacked lines |
 | Values still reach the pixels | centre 80×80 sample sums 931917 at Sharpen +0.24, 766885 at +0.90, 931917 on the way back |
