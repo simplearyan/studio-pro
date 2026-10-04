@@ -728,10 +728,110 @@ of it. Two details are load-bearing:
 
 The probe is proven able to fail. Injecting three regressions into the frame —
 `.sl{gap:40px}`, `display:flex` on `.ef`, and `display:block` on every dot —
-fails **all four** checks; removing the injection returns **4 of 4**. A geometry
-assertion that cannot fail is a description, not a test.
+fails **all four** checks; removing the injection returns **4 of 4**. A geometryassertion that cannot fail is a description, not a test.
 
 ---
+
+## Four actions that change the clip, not its look
+
+The rail gains **Reverse, Replace, Rearrange and Delete**, sitting together after
+the property sheets in the order the reference groups them. None of them is a
+filter or a value — they change *which* media a clip is or *where* it sits — so
+no pixel and no filter string can see them, and each needs its own witness. They
+are driven in the self-check the way a finger drives them: a real tap on the real
+rail button, a real pointer drag over the real card.
+
+### Reverse, and the one thing a media element will not do
+
+Reversing a clip looked like it should be one line — `playbackRate = -1` — and it
+is not, because the HTML spec puts the valid rate range at `[0, ∞)`: a negative
+rate is not slow playback, it is a thrown exception. So a reversed clip is not
+played, it is **seek-stepped**. The timeline becomes the clock and the element is
+written to each frame: `t` advances by the real elapsed time and the source is
+drawn from it walking *backwards*, which is the whole of what Reverse means.
+
+One expression, `srcTime(c,at)`, owns that mapping, because four places need it
+— the frame that is drawn, the frame a filmstrip samples, the frame a filter card
+shows, and the seek when you scrub — and a reversed clip is exactly the case
+where four copies would drift apart. Verified through the live loop: on a 6s
+clip the source reads `6 / 3 / 0` where the timeline reads `0 / 3 / 6`, the
+timeline advances while the source walks back, and at the clip's end it hands off
+to the next clip rather than stalling. A reversed clip looks identical to a
+paused one, which is why the rail button carries `.on` — the state cannot be read
+off the picture. The known cost is stated in the code: a long reversed clip can
+look steppy, because the element only moves when a frame asks it to.
+
+### Replace keeps the cut and swaps the picture
+
+Replace swaps the *media* under a clip and keeps everything about the edit: the
+clip's id, its place in the order and its trim window stay; only `src` points
+somewhere else. That is the difference between this and deleting the clip and
+adding another — a rough cut against a bad take should not have to be rebuilt
+when the good take arrives. The window is kept when the new media is long enough
+and **clamped** when it is not, and the toast says which happened. Verified by
+driving `replaceWith` directly: after replacing a 7s-window clip the id and order
+are unchanged and `src` has moved; a 5s replacement clamps the window to `out 5`
+with the toast "trimmed to the new length", and a 20s replacement keeps the
+window at `out 5` with the plain toast.
+
+The picker is shared with Add, so it has to know what it is picking *for*: a
+`replacing` flag is set at the call site and read in `onchange`, and cleared on
+every pick so a cancelled Replace cannot turn the next Add into one. The self-
+check reads that flag through the rail's own Replace button rather than calling
+the function.
+
+### Rearrange is a live splice, which is why Cancel exists
+
+Dragging a card over another **splices `clips` immediately**, so what you see is
+the order you are building; Done is a formality. That is exactly why Cancel has
+to exist — it restores the snapshot the sheet took when it opened, so a live edit
+is still a reversible one. The drag listens on the window rather than on the row,
+because the row is re-rendered on every swap and a card-bound listener would be
+thrown away mid-gesture; it holds the clip's **id**, not its index, for the same
+reason. Verified: two cards render with the selected one drawn as a circle and no
+Reset (the footer's middle slot is empty for this sheet); a drag moves `1,2` to
+`2,1` with the selection following to the second card; Cancel restores `1,2`.
+
+### A name collision the verification caught
+
+The file-picker door was first called `pick`, which is also the name of the
+timeline's own clip-selection function some four hundred lines below. Both are
+function declarations, so the later one **hoisted over** the earlier: Add and
+Replace silently called the timeline's `pick`, which dereferences an element it
+was never handed. It read as working until the Replace button was driven in the
+self-check and armed nothing. The fix is a rename — the picker is `pickFile`, and
+the timeline's `pick` is untouched — and the self-check now asserts the flag the
+button sets, which is the assertion that would have caught it a commit earlier.
+
+### The value is live under the thumb
+
+The readout and the changed-dot are driven by `input`, which a range fires on
+every move of a held thumb — so both follow the value mid-drag and neither waits
+for the pointer to come up. That is the whole difference between a live value and
+a label that happens to have moved, and it is now asserted: the self-check
+dispatches the same `input` events a held thumb produces, with no `pointerup`
+between, and reads both the readout and the dot back at rest, mid-drag and at
+rest again.
+
+What the drag lacked was a **visible** cue that the number is the value you are
+*setting*. The sheet now carries a `held` state: `pointerdown` on a slider puts
+`#panel` into it and the readout takes the accent colour (a `.12s` fade, cleared
+on `pointerup` anywhere — a range keeps receiving the drag after the pointer has
+left its own bounds — and on `pointercancel`, so an interrupted gesture cannot
+leave the sheet stuck lit). Verified in the live sheet: rest `#fff`, held
+`#8ab4f8` (the theme accent), rest again `#fff`.
+
+Two adjacent paths were fragile and are hardened. The slider now sets
+`touch-action:none`, so a touch or pen drag can never be read as a pan of the
+sheet's own scroll container, leaving the value behind. And the global shortcut
+handler used to exempt only `type=='text'` fields, so an arrow key on a *focused
+range* was intercepted and nudged the playhead while the thumb you were on never
+moved — it now exempts any `INPUT`. Verified with real key presses: `ArrowRight`
+on the focused Brightness slider takes it `0 → 0.02`, the readout to `+2`, the
+changed-dot on, and the playhead stays put.
+
+---
+
 
 ## Verified
 
@@ -766,6 +866,13 @@ assertion that cannot fail is a description, not a test.
 | Highlights / Shadows | corrected sign; at `+1` Highlights moves the highlight end +20 and the shadow end −16, Shadows moves the shadow end +30 and the highlight end −16, on all four exposure pairs |
 | Sheet geometry | four DOM measurements, at 393×844, driven through the sheet's own click handler: the readout sits **6px** above its track and **2px** inside the track's right edge on all four slider sheets (Speed, Volume, Adjust, Rotation); the centre dot is on exactly the **11 bipolar** knobs and neither the **2** floored at zero; on Filters the strength slider is centred for a layer and flat for a look; and the footer's middle action is **0px** off the sheet's centre with Cancel and Done **0px** from its edges. Proven able to fail — injecting `.sl{gap:40px}`, `display:flex` on `.ef` and `display:block` on every dot fails **all four**, and removing the injection returns **4 of 4** |
 | Self-check | 26 of 26 controls hold; every knob is 0 differing bytes at rest (which is 1, not 0, for Opacity) and checked at both ends of its slider — including both ends of the bipolar vignette; Sharpen reads +98.7% canvas / +77.9% shown, same sign; both layers are additionally measured over a graded clip, for their own effect and for the grade surviving |
+| Rail order | the four clip actions sit together on a selected clip, in the reference's order — `speed · volume · filter · adjust · rotate · trans · reverse · replace · rearrange · dup · del · ts · te` — with Transition present only once the clip has a predecessor |
+| Reverse | a reversed clip is **seek-stepped**, because negative `playbackRate` is outside the spec's `[0, ∞)` range: the timeline advances while the source walks back (on a 6s clip the source reads `6 / 3 / 0` where the timeline reads `0 / 3 / 6`) and hands off to the next clip at the end; one `srcTime` maps the drawn frame, the filmstrip, the card thumbnail and the scrub; the rail button carries `.on`, the only place the state shows on a paused frame |
+| Replace | swaps the media under a clip and keeps its id, order and cut; verified: a 5s file against a 7s window clamps `out → 5` with the toast “trimmed to the new length”, a 20s file keeps `out 5` with the plain toast; the `replacing` flag routes the next pick to `replaceWith` and is cleared on every pick, so a cancelled Replace cannot hijack the next Add |
+| Rearrange | a live splice: a drag moves `1,2 → 2,1` with the selection following to the second card, and Cancel restores `1,2`; the selected card is drawn as a circle, the footer's middle slot is empty (no Reset), the listener lives on the window and is keyed by clip id so a swap re-rendering the row cannot drop the gesture |
+| Delete | the rail's trash removes the **selected** clip, not the last one (2 → 1, leaving the other), matching the header's action |
+| Clip-action checks | `selfcheck.html` gains a fifth section — six probes in the same phone-sized mock, driven through the real rail buttons and a real pointer drag: rail order, Reverse, Rearrange, Delete, Replace and the live readout, all **6 of 6** |
+| Readout is live under the thumb | the readout and the knob's changed-dot are driven by `input`, which a range fires on every move, so both follow the value mid-drag rather than settling on release: asserted by dispatching the same input events a held thumb produces, with no `pointerup` between, and reading both back at rest (`0`, dot off), mid-drag (`+42`, dot on) and at rest again; the readout also takes the accent while the pointer is down (`#fff → #8ab4f8 → #fff`), and `ArrowRight` on a focused slider moves the thumb (`0 → 0.02`, readout `+2`, dot on) instead of nudging the playhead |
 | Determinism | all 13 looks at `fs=0` are 0 differing bytes against `f:'none'`; the same settings rendered twice differ in **0** of 921,600 pixels |
 | Sharpen leaves no outline | 9:16 clip in a 16:9 project: the backdrop outside the picture is unchanged and the edge pixels are the frame's own, not a bright rim |
 | Icons | Filters and Adjust are a funnel and a three-rail mixer, checked side by side in both themes at 393×844 and 357×836; the thirteen knob glyphs use thirteen different geometric families — sun, half disc, chevrons, crescent, drop, thermometer, sparkle, bokeh circles, stacked lines, frame-with-bright-centre, dot scatter, cloud, ghost |

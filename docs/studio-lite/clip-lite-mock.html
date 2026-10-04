@@ -181,14 +181,19 @@ canvas{max-width:100%;max-height:100%;width:auto;height:auto;border-radius:0;bac
    width, so every sheet with a slider gets the same shape. */
 .sl{flex:1 1 100%;min-width:0;display:flex;flex-direction:column;gap:6px}
 .sv{display:flex;justify-content:flex-end;padding:0 2px;line-height:1;min-height:16px}
-.sv b{font-size:15px;font-weight:500;color:var(--on);font-variant-numeric:tabular-nums}
+.sv b{font-size:15px;font-weight:500;color:var(--on);font-variant-numeric:tabular-nums;transition:color .12s ease}
+/* While the thumb is held, the number is the value you are *setting* rather than
+   a label that happens to have moved, so it wears the accent for as long as the
+   pointer is down and drops back to the ink colour on release. The value and the
+   changed-dot already repaint on every `input`; this is the grab itself. */
+#panel.held .sv b{color:var(--acc)}
 /* The track wrapper exists only to hold the centre dot, which has to sit in the
    track's vertical middle and at the slider's horizontal middle — the two
    positions a native pseudo-element will not give you. */
 .slx{position:relative}
 .slx .dot{position:absolute;left:50%;top:50%;width:4px;height:4px;margin:-2px 0 0 -2px;border-radius:50%;background:var(--on2);opacity:.7;pointer-events:none;display:none}
 .sl.bi .slx .dot{display:block}
-.sl input[type=range]{-webkit-appearance:none;appearance:none;display:block;width:100%;height:26px;margin:0;padding:0;background:none;flex:none}
+.sl input[type=range]{-webkit-appearance:none;appearance:none;display:block;width:100%;height:26px;margin:0;padding:0;background:none;flex:none;touch-action:none}
 .sl input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:linear-gradient(90deg,var(--on) 0,var(--on) var(--p,0%),var(--sf2) var(--p,0%),var(--sf2) 100%)}
 .sl input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;margin-top:-9px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.45)}
 .sl input[type=range]::-moz-range-track{height:4px;border-radius:2px;background:var(--sf2)}
@@ -215,6 +220,11 @@ body.es .dock{display:none}
 .tools::-webkit-scrollbar{display:none}
 .tools button{flex:none;width:76px;max-width:none;color:var(--on);border-radius:12px}
 .tools button span{font-size:12px;font-weight:500;color:var(--on2)}
+/* A rail button that is a *state* rather than an action — Reverse is the only
+   one — lit in the accent, the same mark the armed snap toggle and the header's
+   active icons use. It matters because Reverse is invisible on the picture
+   itself when paused: the lit button is the only place it shows. */
+.tools button.on,.tools button.on span{color:var(--acc)}
 .tools button:hover{background:color-mix(in srgb,var(--on) 8%,transparent)}
 @media(min-width:900px){.tools{justify-content:center;-webkit-mask-image:none;mask-image:none}#panel{width:min(960px,100%);margin:0 auto 20px;border-radius:28px}}
 svg{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
@@ -343,6 +353,18 @@ svg{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-l
 .stack .stx{font-size:12px;line-height:1.35;color:var(--on2);text-align:center}
 .stack .stx b{color:var(--on);font-weight:500}
 .stack .chip{flex:none;height:30px;padding:0 12px;font-size:13px}
+/* ── Rearrange: the clips themselves, as a row you drag ────────────────────
+   A different subject from the Filters row — clips in order rather than looks —
+   so it is square, carries each clip's length, and draws the selected clip as a
+   circle. `touch-action:none` is load-bearing: the whole point of this row is
+   that a press-and-move on it must move a clip, not scroll the sheet. */
+.rcar{display:flex;gap:14px;flex:1 1 100%;min-width:0;overflow-x:auto;scrollbar-width:none;padding:6px 2px}
+.rcar::-webkit-scrollbar{display:none}
+.rc{flex:0 0 auto;position:relative;width:72px;height:72px;border-radius:14px;padding:0;background:var(--sf2);overflow:hidden;border:2px solid transparent;touch-action:none}
+.rc img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none;-webkit-user-drag:none}
+.rc.sel{border-radius:50%;border-color:var(--on)}
+.rc.drag{opacity:.5;border-color:var(--acc)}
+.rc .td{position:absolute;left:5px;bottom:3px;font-size:10px;font-weight:500;color:#fff;background:rgba(0,0,0,.55);border-radius:4px;padding:0 4px;font-variant-numeric:tabular-nums}
 /* The duration badge on a text clip. A caption's length is the one number you
    cannot see by looking at it — the block's width is the length, and width is
    exactly what you are dragging — so it is written on the block. */
@@ -648,6 +670,23 @@ blur:'<circle cx="9.3" cy="10.5" r="3.5" stroke-opacity=".95"/><circle cx="15.3"
    two eyes — so it cannot be confused with any of the other twelve at 22px, and
    it is already the thing "fading out" looks like. */
 opacity:'<path d="M5.6 19.6V11a6.4 6.4 0 0 1 12.8 0v8.6l-2.13-1.5-2.14 1.5-2.13-1.5-2.14 1.5-2.13-1.5z"/><circle cx="9.8" cy="11.5" r=".95" fill="currentColor" stroke="none"/><circle cx="14.2" cy="11.5" r=".95" fill="currentColor" stroke="none"/>',
+/* ── The four structural actions ────────────────────────────────────────────
+   These sit together on the rail because they all change the *clip* rather
+   than how it looks, and each takes the one mark that says it at 22px:
+
+   Reverse is rewind — two solid triangles pointing back, the transport mark
+   everyone already reads as "run it the other way". It is deliberately solid
+   where the tone knobs' chevrons (Highlights) are stroked, so the rail cannot
+   confuse the two.
+   Replace is two opposed arcs with arrowheads: a swap of the media, which is a
+   cycle, and not Rotate's single open arc (one direction, one arrowhead).
+   Rearrange is two opposed *straight* arrows, the drag-and-drop mark, so it
+   differs from Replace's curves at a glance even in the same row.
+   Delete is the trash can the header already uses — one glyph, one meaning, in
+   both places. */
+reverse:'<path d="M11.6 12 5 7.4v9.2z" fill="currentColor" stroke="none"/><path d="M19.2 12l-6.6-4.6v9.2z" fill="currentColor" stroke="none"/>',
+replace:'<path d="M4.4 12a7.6 7.6 0 0 1 12.9-5.4"/><path d="M19.6 12a7.6 7.6 0 0 1-12.9 5.4"/><path d="M17.6 3.2v3.6H14"/><path d="M6.4 20.8v-3.6H10"/>',
+rearrange:'<path d="M4 9.2h13"/><path d="m14 6 3 3.2-3 3.2"/><path d="M20 14.8H7"/><path d="m10 11.6-3 3.2 3 3.2"/>',
 non:'<circle cx="12" cy="12" r="8.2"/><path d="m6.2 6.2 11.6 11.6"/>',
 /* The rail's entry point for the Adjust shelf: three rails, three travelling
    knobs. Two rails would have done, but three is the mark people already
@@ -942,6 +981,13 @@ const look=c=>{const p=[],fc=c.f&&c.f!=='none'?F[c.f].f:null;
 const chain=(c,extra)=>{const b=look(c);return extra?(b=='none'?extra:b+' '+extra):b};
 let clips=[],texts=[],srcs={},t=0,total=0,playing=false,sel=null,pps=60,uid=0,active=null,ac,dest,hist=[],rec=null,W=1280,H=720,tool=null,cancelled=false,mime='',laneH=0,chrome=0,laneFloor=0;
 const dur=c=>(c.out-c.in)/c.sp,esc=s=>s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+/* Where in the source the playhead sits for a clip. One expression, because
+   four places need it — the frame that is drawn, the frame a filmstrip samples,
+   the frame a filter card shows, and the seek when you scrub — and a reversed
+   clip is exactly the case where four copies would drift apart. Reversed, the
+   source time walks *backwards* from `out`, which is the whole of what Reverse
+   means; everything else on the timeline is unchanged by it. */
+const srcTime=(c,at)=>c.rev?c.out-Math.max(0,at-c.s)*c.sp:c.in+Math.max(0,at-c.s)*c.sp;
 const fmt=s=>{s=Math.max(0,s);return Math.floor(s/60)+':'+(s%60).toFixed(1).padStart(4,'0')},fmtS=s=>Math.floor(s/60)+':'+String(s%60).padStart(2,'0');
 const fmtT=s=>String(Math.floor(s/60)).padStart(2,'0')+':'+String(Math.floor(s%60)).padStart(2,'0');
 function syncBtns(){const h=!clips.length;$('#bdel').disabled=$('#bsplit').disabled=h;$('#undo').disabled=!hist.length||!!rec;$('#redo').disabled=!redoS.length||!!rec}
@@ -952,7 +998,14 @@ const redoS=[],snap=()=>{redoS.length=0;hist.push(JSON.stringify({clips,texts,pr
 function redo(){if(!redoS.length||rec)return;pause();hist.push(JSON.stringify({clips,texts,proj}));const o=JSON.parse(redoS.pop());clips=o.clips;texts=o.texts;restoreProj(o);sel=null;refresh()}
 function undo(){if(!hist.length||rec)return;pause();redoS.push(JSON.stringify({clips,texts,proj}));const o=JSON.parse(hist.pop());clips=o.clips;texts=o.texts;restoreProj(o);sel=null;refresh()}
 function refresh(){layout();t=Math.min(t,total);renderTL();panel();fitView();seekVid();$('#empty').hidden=clips.length>0;$('#export').disabled=!clips.length}
-function seekVid(){if(!clips.length||playing)return;const c=at(t),v=srcs[c.src].v,w=c.in+(t-c.s)*c.sp;if(Math.abs(v.currentTime-w)>.03)v.currentTime=w}
+function seekVid(){if(!clips.length||playing)return;const c=at(t),v=srcs[c.src].v,w=srcTime(c,t);if(Math.abs(v.currentTime-w)>.03)v.currentTime=w}
+/* One door to the file picker, so the picker always knows what it is picking
+   *for*. Both "add" and "replace" open the same hidden input; a flag set at the
+   call site and read in `onchange` is what tells them apart, and clearing it on
+   every pick is what stops a cancelled Replace from turning the next Add into
+   one. */
+function pickFile(id){replacing=id||null;$('#file').click()}
+let replacing=null;
 function addFile(f){
   if(!ac){ac=new AudioContext();dest=ac.createMediaStreamDestination()}
   const v=document.createElement('video');v.src=URL.createObjectURL(f);v.playsInline=true;v.preload='auto';
@@ -961,6 +1014,31 @@ function addFile(f){
     try{const n=ac.createMediaElementSource(v);n.connect(dest);n.connect(ac.destination)}catch(e){}
     if(!clips.length){proj.ar=v.videoHeight>v.videoWidth?'9:16':'16:9';applyProj()}
     snap();clips.push({id:++uid,src:id,in:0,out:v.duration,sp:1,vol:1,f:'none',fs:1,vig:0,grain:0,ad:{}});refresh();thumbs(id);peaks(id,f);
+  };
+  v.onerror=()=>toast('Could not open '+f.name);
+}
+/* Replace swaps the *media* under a clip and keeps the cut. The clip's id, its
+   place in the order and its trim window stay; only `src` points somewhere else.
+   That is the difference between this and deleting a clip then adding another:
+   the edit you made against the picture survives the picture changing, which is
+   the whole reason the action exists — a rough cut against a bad take should not
+   have to be rebuilt when the good take arrives.
+
+   The window is kept when the new media is long enough and clamped when it is
+   not: a 4s window over a 2s file is not a trim, it is a lie, and the toast says
+   which of the two happened. */
+function replaceWith(id,f){
+  const c=clips.find(k=>k.id==id);if(!c)return;
+  if(!ac){ac=new AudioContext();dest=ac.createMediaStreamDestination()}
+  const v=document.createElement('video');v.src=URL.createObjectURL(f);v.playsInline=true;v.preload='auto';
+  v.onloadedmetadata=()=>{
+    const nid=++uid;srcs[nid]={v,name:f.name.replace(/\.[^.]+$/,''),dur:v.duration};
+    try{const n=ac.createMediaElementSource(v);n.connect(dest);n.connect(ac.destination)}catch(e){}
+    snap();
+    const keep=dur(c)*c.sp;
+    c.src=nid;c.in=0;c.out=Math.min(keep,v.duration);
+    refresh();thumbs(nid);peaks(nid,f);
+    toast('Replaced with '+f.name+(keep>v.duration?' — trimmed to the new length':''));
   };
   v.onerror=()=>toast('Could not open '+f.name);
 }
@@ -985,7 +1063,11 @@ async function peaks(id,f){
    what made the strip look stretched: object-fit:cover then cropped 28% off
    every frame to fit a lane it had never been sized for. Read the live height
    and each thumb shows its whole frame, uncropped, at whatever the lane is. */
-function film(c){const S=srcs[c.src];if(!S.th)return'';const w=dur(c)*pps,tw=Math.max(Math.round(S.ar*(laneH||60)),w/300);let h='';for(let x=0;x<w;x+=tw){const i=Math.min(S.th.length-1,Math.floor((c.in+(x+tw/2)/pps*c.sp)/S.st)),u=S.th[i];if(u)h+=`<img src="${u}" style="left:${x}px;width:${tw}px" draggable="false">`}return h}
+/* The filmstrip samples the source at the same moments the player will show, so
+   a reversed clip's strip reads right-to-left like its playback does. Sampling
+   forward would leave the strip naming frames the clip never shows at that
+   position — the strip is the clip's own keyframe list, not decoration. */
+function film(c){const S=srcs[c.src];if(!S.th)return'';const w=dur(c)*pps,tw=Math.max(Math.round(S.ar*(laneH||60)),w/300);let h='';for(let x=0;x<w;x+=tw){const src=c.rev?c.out-(x+tw/2)/pps*c.sp:c.in+(x+tw/2)/pps*c.sp;const i=Math.min(S.th.length-1,Math.max(0,Math.floor(src/S.st))),u=S.th[i];if(u)h+=`<img src="${u}" style="left:${x}px;width:${tw}px" draggable="false">`}return h}
 function paintFilms(){document.querySelectorAll('.clip').forEach(el=>{const c=clips.find(k=>k.id==el.dataset.id),f=el.querySelector('.film');if(c&&f)f.innerHTML=film(c)})}
 async function thumbs(id){
   const S=srcs[id],v=document.createElement('video');v.muted=true;v.preload='auto';v.src=S.v.src;
@@ -1005,7 +1087,7 @@ const TXC=['#5b8def','#f6a46e','#7ccf9a','#c58af9','#f28bb0'];
 /* Which frame a filter card shows: the one under the playhead, so the eleven
    cards are eleven looks at the moment you are actually on. Falls back to the
    clip's first frame while the thumbnail pass is still running. */
-function thumbAt(c){const S=srcs[c.src];if(!S.th||!S.th.length)return'';const i=clamp(Math.floor((c.in+Math.max(0,t-c.s)*c.sp)/S.st),0,S.th.length-1);return S.th[i]||''}
+function thumbAt(c){const S=srcs[c.src];if(!S.th||!S.th.length)return'';const i=clamp(Math.floor(srcTime(c,t)/S.st),0,S.th.length-1);return S.th[i]||''}
 /* A card's whole job is to show the look on your frame, so a look with no `filter`
    spelling gets its picture from background layers instead: a vignette is a radial
    gradient over the thumbnail, grain is the tile the player draws. Both
@@ -1350,12 +1432,23 @@ tl.addEventListener('touchstart',e=>{if(e.touches.length==2){pd=dist(e);pp=pps}}
 tl.addEventListener('touchmove',e=>{if(e.touches.length==2&&pd){e.preventDefault();pps=clamp(pp*dist(e)/pd,ZOOM_MIN,ZOOM_MAX);renderTL()}},{passive:false});
 tl.addEventListener('touchend',()=>{pd=0});
 tl.addEventListener('wheel',e=>{if(e.ctrlKey){e.preventDefault();pps=clamp(pps*(e.deltaY<0?1.1:.9),ZOOM_MIN,ZOOM_MAX);renderTL()}else if(Math.abs(e.deltaY)>Math.abs(e.deltaX)){e.preventDefault();tl.scrollLeft+=e.deltaY}},{passive:false});
+/* A reversed clip is not played, it is *seeked*. A media element cannot run at
+   a negative playbackRate — the spec's rate range starts at 0 — so the only two
+   honest implementations are to step `currentTime` down every frame (what every
+   browser editor does, and what this does) or to pre-decode every frame into
+   memory (exact, and far too much memory for a phone prototype). The cost of
+   the first is that the frame on screen lags the request by one decode, so a
+   long reversed clip can look steppy; that is a real limitation of the
+   technique and not of this implementation, and it is the reason the seek is
+   written every frame rather than on a timer. */
 function activate(c){
   Object.values(srcs).forEach(s=>s.v.pause());
-  const v=srcs[c.src].v;v.playbackRate=c.sp;v.volume=c.vol;v.currentTime=c.in+(t-c.s)*c.sp;v.play().catch(()=>{});active=c;
+  const v=srcs[c.src].v;v.playbackRate=c.sp;v.volume=c.vol;v.currentTime=srcTime(c,t);
+  if(!c.rev)v.play().catch(()=>{});
+  active=c;lastFrame=0;
 }
 function play(){if(!clips.length)return;if(t>=total-.05)t=0;if(ac&&ac.state=='suspended')ac.resume();playing=true;active=null}
-function pause(){playing=false;active=null;Object.values(srcs).forEach(s=>s.v.pause())}
+function pause(){playing=false;active=null;lastFrame=0;Object.values(srcs).forEach(s=>s.v.pause())}
 const RB=['#ff3b30','#34c759','#2f6cff','#ff9500','#ff2d9b','#af52de','#00c7be'];
 const dk=h=>'#'+[1,3,5].map(i=>Math.round(parseInt(h.substr(i,2),16)*.5).toString(16).padStart(2,'0')).join('');
 function wrapT(txt,font,maxW){ctx.font=font;const L=[];let cur='';txt.split(/\s+/).forEach(k=>{const n=cur?cur+' '+k:k;if(cur&&ctx.measureText(n).width>maxW){L.push(cur);cur=k}else cur=n});if(cur)L.push(cur);return L}
@@ -1595,12 +1688,28 @@ function draw(){
   }
   texts.forEach(x=>{if(t>=x.s&&t<x.s+x.d)drawText(x)});
 }
-let lastIcon='';
+let lastIcon='',lastFrame=0;
+/* A clip ran out: step to the next one, or stop at the end. Factored out because
+   the two directions arrive here by different routes — a forward clip because
+   the element reached `out`, a reversed one because the *timeline* did. */
+function nextClip(c){const i=clips.indexOf(c);if(i<clips.length-1)t=clips[i+1].s;else{t=total;pause();if(rec)setTimeout(()=>rec&&rec.state=='recording'&&rec.stop(),250)}}
 function loop(){
   if(playing){
     const c=at(t),v=srcs[c.src].v;if(active!==c)activate(c);
-    t=c.s+(v.currentTime-c.in)/c.sp;
-    if(v.currentTime>=c.out-.03||v.ended){const i=clips.indexOf(c);if(i<clips.length-1)t=clips[i+1].s;else{t=total;pause();if(rec)setTimeout(()=>rec&&rec.state=='recording'&&rec.stop(),250)}}
+    if(c.rev){
+      /* Reversed clips invert the two roles: the timeline becomes the clock and
+         the element is written to. Everything else — the reach-the-end test, the
+         step to the next clip, the ruler follow — is the same, which is why this
+         stays inside loop() rather than becoming a second play mode. */
+      const now=performance.now();const dt=Math.min(.25,(now-(lastFrame||now))/1000);lastFrame=now;
+      t+=dt;
+      if(t>=c.s+dur(c)-.001||v.currentTime<=c.in+.03)nextClip(c);
+      else v.currentTime=srcTime(c,t);
+    }else{
+      lastFrame=0;
+      t=c.s+(v.currentTime-c.in)/c.sp;
+      if(v.currentTime>=c.out-.03||v.ended)nextClip(c);
+    }
     tl.scrollLeft=t*pps;
   }
   draw();
@@ -1629,18 +1738,58 @@ let esBase=null;
    longer than the rail can carry cleanly and borrowed. "Format" covers the
    ratio and the backdrop in one word. The rest are already plain: what the
    control does, in the fewest words that still say it. */
-const LBL={add:'Add video',text:'Text',edit:'Edit text',speed:'Speed',volume:'Volume',filter:'Filters',adjust:'Adjust',rotate:'Rotate',trans:'Transition',aspect:'Format',dup:'Duplicate',ts:'Trim start',te:'Trim end'};
-const TOOLS=['speed','volume','filter','adjust','rotate','trans','aspect','text'],TTL={speed:'Speed',volume:'Volume',filter:'Filters',adjust:'Adjust',rotate:'Rotation',trans:'Transition',aspect:'Format',text:'Text'};
+const LBL={add:'Add video',text:'Text',edit:'Edit text',speed:'Speed',volume:'Volume',filter:'Filters',adjust:'Adjust',rotate:'Rotate',trans:'Transition',aspect:'Format',dup:'Duplicate',ts:'Trim start',te:'Trim end',reverse:'Reverse',replace:'Replace',rearrange:'Rearrange',del:'Delete'};
+const TOOLS=['speed','volume','filter','adjust','rotate','trans','aspect','text','rearrange'],TTL={speed:'Speed',volume:'Volume',filter:'Filters',adjust:'Adjust',rotate:'Rotation',trans:'Transition',aspect:'Format',text:'Text',rearrange:'Rearrange'};
 /* The volume a Mute tap will come back to. Module state and not a clip field,
    because it is a property of the *gesture* — how loud was this clip a moment
    ago — rather than of the project; two clips muted in a row each remember the
    level they were muted from only if the sheet is rebuilt between them, which
    it is, so the shared slot is honest here and does not clone into the file. */
 let muteVol=1;
+/* The clips as draggable cards, in order. The selected one is drawn as a circle
+   — the reference's own mark for "this is the clip you came from" — which costs
+   no extra control, and every card carries its length, because "which of these
+   is the 26s one" is the question you are actually asking while reordering. */
+const rcards=()=>clips.map((c,i)=>`<button class="rc${sel&&sel.k=='c'&&sel.id==c.id?' sel':''}" data-rc="${i}"><img src="${thumbAt(c)}" alt="" draggable="false"><span class="td">${fmtT(dur(c))}</span></button>`).join('');
+/* ── Rearrange: hold, drag, drop ─────────────────────────────────────────────
+   The reorder is a live splice: dragging a card over another swaps it into that
+   slot immediately, so what you see is the order you are building and Done is a
+   formality rather than the moment anything happens. That is exactly why Cancel
+   has to exist — it restores the snapshot `panel()` took when the sheet opened,
+   so the "live" version is still reversible.
+
+   The listeners go on the window, not on the row: the row is re-rendered on
+   every swap because the cards' indices change, so anything bound to the row or
+   to a card would be thrown away mid-gesture. `rdrag` holds the *clip id* for
+   the same reason — an index would go stale the moment the first swap landed. */
+let rdrag=null;
+function rdmove(e){
+  if(!rdrag)return;
+  if(!rdrag.armed){if(Math.hypot(e.clientX-rdrag.x0,e.clientY-rdrag.y0)<6)return;rdrag.armed=true}
+  const car=$('#rcar');if(!car)return;
+  let to=-1;
+  car.querySelectorAll('[data-rc]').forEach(el=>{const r=el.getBoundingClientRect();if(to<0&&e.clientX>=r.left&&e.clientX<=r.right)to=+el.dataset.rc});
+  if(to<0)return;
+  const from=clips.findIndex(c=>c.id==rdrag.id);
+  if(from<0||to===from)return;
+  const [c]=clips.splice(from,1);clips.splice(to,0,c);
+  car.innerHTML=rcards();
+  renderTL();
+  const nb=car.querySelector('[data-rc="'+to+'"]');if(nb)nb.classList.add('drag');
+}
+function rdend(){rdrag=null;removeEventListener('pointermove',rdmove);removeEventListener('pointerup',rdend);removeEventListener('pointercancel',rdend)}
+/* The rail. The property sheets keep the front of it — that is where muscle
+   memory lives — and the four actions that change the clip itself now sit
+   together after them, in the order the reference groups them: Reverse,
+   Replace, Rearrange, Duplicate, Delete. Trim stays last, because it is the
+   only pair there that is about *where* the clip starts and ends rather than
+   what it is. Reverse carries `.on` while it is set, so a state you cannot see
+   on the picture (it looks identical paused) is still visible on the rail. */
 function strip(){
   const ci=sel&&sel.k=='c'?clips.findIndex(c=>c.id==sel.id):-1;
-  const k=!clips.length?['add']:!sel?['add','text','aspect']:sel.k=='t'?['edit','dup','ts','te']:['speed','volume','filter','adjust','rotate',...(ci>0?['trans']:[]),'dup','ts','te'];
-  $('#tools').innerHTML=k.map(x=>(x=='aspect'?'<i class="vd"></i>':'')+`<button data-t="${x}">${ic(x)}<span>${LBL[x]}</span></button>`).join('');
+  const cs=ci>=0?clips[ci]:null;
+  const k=!clips.length?['add']:!sel?['add','text','aspect']:sel.k=='t'?['edit','dup','ts','te']:['speed','volume','filter','adjust','rotate',...(ci>0?['trans']:[]),'reverse','replace','rearrange','dup','del','ts','te'];
+  $('#tools').innerHTML=k.map(x=>(x=='aspect'?'<i class="vd"></i>':'')+`<button data-t="${x}"${x=='reverse'&&cs&&cs.rev?' class="on"':''}>${ic(x)}<span>${LBL[x]}</span></button>`).join('');
 }
 function addText(){
   if(!clips.length)return toast('Add a video first');
@@ -1803,6 +1952,12 @@ function panel(fromRowTap){
        Brightness, but a clip can arrive with warmth and a vignette already set. */
     h=`<div class="car">`+Object.keys(ADJ).map(k=>{const cl=[k==adjKey?'on':'',Math.abs(adjVal(c,k)-adjNeutral(k))>0.005?'chg':''].filter(Boolean).join(' ');
       return `<button data-adj="${k}"${cl?` class="${cl}"`:''}><span class="kn">${ic(ADJ[k].i)}</span><span class="lb">${ADJ[k].n}</span></button>`}).join('')+`</div>`+sl(adjTxt(adjKey,v),rng[0],rng[1],v,'.02',ADJ[adjKey].grad);}
+  /* Rearrange is the one sheet here that edits the *order* rather than a value,
+     so it is the clips themselves and nothing else: no slider, no readout. The
+     reference's own sheet is a title, one line of instruction, the clips and
+     Done, and that is the right amount — the action is the picture, and a
+     strength control under a reorder row would be a control with no subject. */
+  else if(tool=='rearrange')h=`<div class="rcar" id="rcar">${rcards()}</div><div class="sub">Hold, drag and drop a clip to move it</div>`;
   else if(tool=='rotate')h=sl((c.rot||0)+'°',-180,180,c.rot||0,1)+`<button class="chip" id="r90">Rotate 90°</button>`;
   else if(tool=='trans'){const k=c.tr?c.tr.k:'none';h=`<span class="sub">Between the previous clip and this one</span>`+[['none','None'],['black','Fade black'],['white','Fade white']].map(([v,l])=>`<button class="chip${k==v?' on':''}" data-tk="${v}">${l}</button>`).join('')+(k!='none'?sl(c.tr.d.toFixed(1)+' s','.2','2',c.tr.d,'.1'):'')}
   else if(tool=='aspect')h=`<span class="sub">Aspect ratio</span>`+Object.keys(AR).map(k=>`<button class="chip${proj.ar==k?' on':''}" data-ar="${k}">${k}</button>`).join('')+`<span class="sub">Background</span>`+BG.map(([n,v])=>`<button class="chip${proj.bg==v?' on':''}" data-bg="${v}">${n}</button>`).join('');
@@ -1812,7 +1967,10 @@ function panel(fromRowTap){
      reference centres it on the sheet. An empty .m still holds the column, which
      is what keeps Done pinned to the right edge on the sheets that have no
      middle action at all. */
-  p.innerHTML=`<div class="eh">${TTL[tool]}</div><div class="eb">${h}</div><div class="ef"><div class="l"><button class="pillb" id="ec">Cancel</button></div><div class="m">${['filter','adjust'].includes(tool)?`<button class="pillb ghost" id="ea">Apply to all</button>`:(tool!='text'?'<button class="pillb ghost" id="er">Reset</button>':'')}</div><div class="r"><button class="pillb pri" id="ed">Done</button></div></div>`;
+  /* Rearrange has no middle action: Reset would restore the order the sheet
+     opened with, which is exactly what Cancel already does, and "Apply to all"
+     has no meaning for an order. Same shape as the caption sheet. */
+  p.innerHTML=`<div class="eh">${TTL[tool]}</div><div class="eb">${h}</div><div class="ef"><div class="l"><button class="pillb" id="ec">Cancel</button></div><div class="m">${['filter','adjust'].includes(tool)?`<button class="pillb ghost" id="ea">Apply to all</button>`:(!['text','rearrange'].includes(tool)?'<button class="pillb ghost" id="er">Reset</button>':'')}</div><div class="r"><button class="pillb pri" id="ed">Done</button></div></div>`;
   p.hidden=false;document.body.classList.add('es');
   /* Put the row back where the user left it. panel() throws the sheet's markup
      away and rebuilds it, and a new .car is scrolled to 0 — which is how the
@@ -1937,21 +2095,54 @@ P.addEventListener('click',e=>{
     refresh();
   }
 });
+P.addEventListener('pointerdown',e=>{
+  if(tool!='rearrange')return;
+  const b=e.target.closest('[data-rc]');if(!b)return;
+  const c=clips[+b.dataset.rc];if(!c)return;
+  rdrag={id:c.id,x0:e.clientX,y0:e.clientY,armed:false};
+  e.preventDefault();
+  addEventListener('pointermove',rdmove);addEventListener('pointerup',rdend);addEventListener('pointercancel',rdend);
+});
+/* The slider is live under the thumb: every value change already repaints the
+   readout and the Adjust knob's changed-dot through the input handler below, and
+   this marks the *grab* itself — the readout wears the accent for as long as the
+   pointer is down, so the number reads as the value you are setting rather than a
+   label that moved. The class is cleared on pointerup anywhere, because a range
+   keeps receiving the drag after the pointer has left its own bounds, and on
+   pointercancel so an interrupted gesture does not leave the sheet stuck lit. */
+P.addEventListener('pointerdown',e=>{
+  const r=e.target.closest('input[type=range]');if(!r)return;
+  P.classList.add('held');
+  const off=()=>{P.classList.remove('held');removeEventListener('pointerup',off);removeEventListener('pointercancel',off)};
+  addEventListener('pointerup',off);addEventListener('pointercancel',off);
+});
 $('#tools').addEventListener('click',e=>{
   const b=e.target.closest('button');if(!b)return;const k=b.dataset.t;
-  if(k=='add')$('#file').click();else if(k=='text')addText();
+  if(k=='add')pickFile();else if(k=='text')addText();
   else if(k=='dup')dup();else if(k=='ts')trimTo(0);else if(k=='te')trimTo(1);
+  /* Three one-tap actions. Reverse and Replace change the clip and say so in a
+     toast; Delete is the header's own trash repeated in the tool row, because
+     that is where the reference puts it and a destructive action should be where
+     you are already looking. Reverse clears `active` so the player re-establishes
+     the element in the new direction rather than carrying the old one over. */
+  else if(k=='reverse'){const c=curSel();if(!c)return;snap();c.rev=!c.rev;active=null;refresh();toast(c.rev?'Reversed':'Back to forward')}
+  else if(k=='replace'){const c=curSel();if(!c)return;pickFile(c.id)}
+  else if(k=='del')del();
   else{if(k=='adjust')adjKey='bright';tool=k=='edit'?'text':k;panel();const i=$('#ti');if(i)i.focus()}
 });
 $('#bdel').onclick=del;$('#bsplit').onclick=split;
-$('#addf').onclick=()=>$('#file').click();
+$('#addf').onclick=()=>pickFile();
 document.fonts&&document.fonts.load('400 40px Anton');
 $('#fs').onclick=()=>{$('.view').classList.toggle('fs');fitView()};   // fullscreen drops the padding, so re-measure
 cv.onclick=()=>{playing?pause():play()};
 addEventListener('keydown',e=>{if(e.key=='Escape'){$('.view').classList.remove('fs');fitView();if(tool=='settings'){tool=null;refresh()}}});
 $('#play').onclick=()=>playing?pause():play();
-$('#empty').onclick=()=>$('#file').click();
-$('#file').onchange=e=>{[...e.target.files].forEach(addFile);e.target.value=''};
+$('#empty').onclick=()=>pickFile();
+$('#file').onchange=e=>{
+  const fs=[...e.target.files];e.target.value='';
+  if(replacing){const id=replacing;replacing=null;if(fs[0])replaceWith(id,fs[0]);return}
+  fs.forEach(addFile);
+};
 $('#undo').onclick=undo;$('#redo').onclick=redo;
 function dup(){
   if(sel&&sel.k=='t'){const x=texts.find(y=>y.id==sel.id);snap();const n={...x,id:++uid,s:Math.min(x.s+x.d,Math.max(0,total-x.d))};texts.push(n);sel={k:'t',id:n.id};return refresh()}
@@ -1986,7 +2177,10 @@ $('#more').onclick=()=>{tool=tool=='settings'?null:'settings';panel()};
 $('#theme').onclick=()=>{const d=document.documentElement,dark=d.dataset.theme?d.dataset.theme=='dark':matchMedia('(prefers-color-scheme:dark)').matches;setTheme(dark?'light':'dark')};
 addEventListener('resize',()=>{fitView();paintRange($('#r1'));clips.length&&renderTL()});
 addEventListener('keydown',e=>{
-  if(e.target.tagName=='INPUT'&&e.target.type=='text')return;
+  /* Any focused field owns its keys — a range slider included, so an arrow key
+     moves the thumb it is on and not the playhead. Restricting this to text
+     inputs left arrow keys hijacked on every focused slider. */
+  if(e.target.tagName=='INPUT')return;
   if(e.code=='Space'){e.preventDefault();playing?pause():play()}
   else if(e.key=='s')split();else if(e.key=='Delete'||e.key=='Backspace')del();
   else if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()=='z'){e.preventDefault();e.shiftKey?redo():undo()}else if((e.ctrlKey||e.metaKey)&&e.key=='y'){e.preventDefault();redo()}else if(e.key=='ArrowLeft'){e.preventDefault();nudge(e.shiftKey?-1:-1/30)}else if(e.key=='ArrowRight'){e.preventDefault();nudge(e.shiftKey?1:1/30)}else if(e.key=='d')dup();else if(e.key=='[')trimTo(0);else if(e.key==']')trimTo(1)

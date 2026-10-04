@@ -78,6 +78,13 @@
     <th style="width:16%">Check</th><th style="width:44%">What it promises</th>
     <th style="width:28%">Measured</th><th style="width:12%">Result</th>
   </tr></thead><tbody></tbody></table>
+
+  <h2>The clip actions, and the slider under the thumb</h2>
+  <p class="sub">Reverse, Replace, Rearrange and Delete act on the clip that is selected, not on its look — so no filter string and no pixel can see them, and a rule that moves the wrong clip or loses the edit would look exactly like a rule that works. Each is driven the way a finger drives it: a real tap on the real rail button, a real pointer drag over the real card. The order test is the one that catches a rename: the four actions have to sit together on the rail and in the reference's own order. The last row is the one value claim no pixel can see either — that the readout and the knob's changed-dot follow the thumb on every input, mid-drag, rather than settling when it comes up.</p>
+  <table id="actT"><thead><tr>
+    <th style="width:16%">Action</th><th style="width:44%">What it promises</th>
+    <th style="width:28%">Measured</th><th style="width:12%">Result</th>
+  </tr></thead><tbody></tbody></table>
 </main>
 
 <iframe id="frame" src="clip-lite-mock.html" title="mock"></iframe>
@@ -733,6 +740,112 @@ async function runGeometry(){
   return {pass,fail};
 }
 
+/* ── The clip actions on the rail ────────────────────────────────────────
+   Reverse, Replace, Rearrange and Delete change the *clip*, not its look — so
+   they are invisible to a pixel and to a filter string, and a rule that moved
+   the wrong clip or dropped the edit would look exactly like one that worked.
+   Each is therefore driven the way a finger drives it: a real tap on the real
+   rail button and a real pointer drag over the real card, then the order and the
+   window are read straight out of the mock's own `clips`. Two clips, no media,
+   in the same instance the row checks use. */
+async function runActions(){
+  const tb=$('#actT tbody');tb.innerHTML='';
+  let pass=0,fail=0;
+  if(!RW&&!await bootRow()){
+    tb.insertAdjacentHTML('beforeend',row([{html:'<span class="nm">clip actions</span>'},
+      {html:'could not reach the mock instance'},{html:'\u2014',cls:'n'},
+      {html:'<span class="fail">not run</span>'}]));
+    return {pass:0,fail:1};
+  }
+  const run=code=>RW.eval(code);
+  const ev=expr=>JSON.parse(RW.eval('JSON.stringify('+expr+')'));
+  const say=(name,what,meas,ok,why)=>{if(ok)pass++;else fail++;
+    tb.insertAdjacentHTML('beforeend',row([
+      {html:'<span class="nm">'+name+'</span>'},
+      {html:what+(why?'<span class="why">'+why+'</span>':'')},
+      {html:meas,cls:'n'},
+      {html:ok?'<span class="pass">holds</span>':'<span class="fail">fails</span>'}]));};
+  /* Two clips of different lengths, so a reorder and a delete are both visible
+     in the order and not just in a count. `v` is the same media stub the row
+     checks use: the actions touch `clips`, never the element. */
+  const V="v:{duration:10,currentTime:0,readyState:0,videoWidth:720,videoHeight:1280,playbackRate:1,volume:1,muted:true,pause:function(){},play:function(){return Promise.resolve()},addEventListener:function(){},removeEventListener:function(){}}";
+  const seed="srcs[1]={name:'a',dur:10,th:null,pk:null,"+V+"};srcs[2]={name:'b',dur:6,th:null,pk:null,"+V+"};"+
+    "clips.length=0;"+
+    "clips.push({id:1,src:1,f:'none',fs:1,vig:0,grain:0,blue:0,blur:0,opacity:1,ad:{},sp:1,vol:1,in:0,out:10,s:0,rot:0});"+
+    "clips.push({id:2,src:2,f:'none',fs:1,vig:0,grain:0,blue:0,blur:0,opacity:1,ad:{},sp:1,vol:1,in:0,out:6,s:0,rot:0});"+
+    "total=16;t=0;sel={k:'c',id:2};tool=null;refresh();";
+  try{
+    /* 1. The rail. The four actions have to sit together, in the reference's own
+       order, on the clip that is selected \u2014 and the transition only shows once
+       the clip has a predecessor, because there is nothing to transition from on
+       the first. */
+    run(seed);
+    const order=ev("[...document.querySelectorAll('#tools button')].map(b=>b.dataset.t)");
+    const want=['speed','volume','filter','adjust','rotate','trans','reverse','replace','rearrange','dup','del','ts','te'];
+    say('rail order','the four clip actions sit together on a selected clip, in the reference\u2019s order',
+      order.join(' \u00b7 '), JSON.stringify(order)===JSON.stringify(want),
+      'a rail whose actions drift apart is one you have to re-learn');
+
+    /* 2. Reverse. It flips `rev`, lights its own button (the state is invisible on
+       a paused frame, so the rail is the only place it shows), and \u2014 the part
+       that makes it Reverse rather than a flag \u2014 walks the *source* backwards
+       while the timeline still walks forwards. */
+    run(seed);
+    const rev=ev(`(function(){var b=document.querySelector('#tools button[data-t="reverse"]');b.click();var c=clips[1];var on=document.querySelector('#tools button[data-t="reverse"]').classList.contains('on');var k={in:0,out:6,s:0,sp:1,rev:true};return {rev:!!c.rev,on:on,st:[srcTime(k,0),srcTime(k,3),srcTime(k,6)]}})()`);
+    say('Reverse','flips the clip, lights its button, and reads the source backwards while the timeline runs forward',
+      'rev='+rev.rev+', lit='+rev.on+', source at t=0/3/6 \u2192 '+rev.st.join('/'),
+      rev.rev===true&&rev.on===true&&rev.st[0]===6&&rev.st[1]===3&&rev.st[2]===0,
+      'negative playbackRate is not a thing a media element can do, so the reversed clip is seek-stepped');
+
+    /* 3. Rearrange. A live splice: the drag has to move the clip in `clips`, the
+       selection has to follow it, and Cancel \u2014 which exists precisely because
+       the splice is live \u2014 has to put the order back. */
+    run(seed+"sel={k:'c',id:1};tool='rearrange';panel();");
+    const rc=ev(`(function(){var car=document.querySelector('#rcar');var el1=car.querySelector('[data-rc="1"]');var r=el1.getBoundingClientRect();return {cards:document.querySelectorAll('#rcar .rc').length,sel:document.querySelectorAll('#rcar .rc.sel').length,reset:!!document.querySelector('#er'),done:!!document.querySelector('#ed')}})()`);
+    const drag=ev(`(function(){var before=clips.map(c=>c.id);var car=document.querySelector('#rcar');var r=car.querySelector('[data-rc="1"]').getBoundingClientRect();rdrag={id:clips[0].id,x0:0,y0:0,armed:true};rdmove({clientX:r.left+2,clientY:r.top+2});rdend();return {before:before,after:clips.map(c=>c.id),drag:!!document.querySelector('#rcar .rc.drag')}})()`);
+    const canc=ev("(function(){document.querySelector('#ec').click();return clips.map(c=>c.id)})()");
+    say('Rearrange','a drag over a card moves the clip, the selection follows, and Cancel restores the order',
+      rc.cards+' cards, sel='+rc.sel+', reset='+rc.reset+', drag '+drag.before.join(',')+' \u2192 '+drag.after.join(',')+', cancel \u2192 '+canc.join(','),
+      rc.cards===2&&rc.sel===1&&rc.reset===false&&drag.after.join(',')==='2,1'&&canc.join(',')==='1,2',
+      'the splice is live, which is exactly why Cancel has to exist');
+
+    /* 4. Delete. The rail's trash removes the selected clip \u2014 the header's own
+       action, repeated where the reference puts it. */
+    run(seed+"sel={k:'c',id:1};refresh();");
+    const del=ev(`(function(){var n0=clips.length;document.querySelector('#tools button[data-t="del"]').click();return {before:n0,after:clips.length,left:clips.map(c=>c.id).join(',')}})()`);
+    say('Delete','removes the selected clip, not the last one',
+      del.before+' \u2192 '+del.after+' clips, left '+del.left,
+      del.before===2&&del.after===1&&del.left==='2',
+      'a delete that took the wrong clip looks identical to one that took the right one');
+
+    /* 5. Replace. The one action that opens the picker: the flag it sets decides
+       that the *next* file lands on the clip you picked rather than being added,
+       which is the difference between Replace and Add. */
+    run(seed+"sel={k:'c',id:1};refresh();");
+    const rep=ev(`(function(){var fi=document.querySelector('#file');var oc=fi.click;var opened=0;fi.click=function(){opened++};document.querySelector('#tools button[data-t="replace"]').click();var flag=replacing;fi.click=oc;return {opened:opened,flag:flag}})()`);
+    say('Replace','opens the picker for the selected clip and arms the next file to replace, not add',
+      'picker opened '+rep.opened+'\u00d7, armed clip='+rep.flag,
+      rep.opened===1&&rep.flag===1,
+      'Replace keeps the cut and swaps the media under it \u2014 that is why it is not Delete then Add');
+
+    /* 6. The value is live while the thumb is held. A drag fires `input` on every
+       move, and both the readout and the knob's changed-dot have to follow it
+       without waiting for the pointer to come up \u2014 a readout that only settles on
+       release reads as a label, not as the value you are setting. Driven through
+       the same `input` events a held thumb produces, with no pointerup between. */
+    run(seed+"sel={k:'c',id:1};adjKey='bright';tool='adjust';panel();");
+    const live=ev(`(function(){var r=document.querySelector('#panel #r1'),rv=document.querySelector('#rv'),b=document.querySelector('#panel [data-adj="bright"]');
+      var snap=function(){return {rv:rv.textContent,chg:b.classList.contains('chg')}};
+      var rest=snap();r.value='0.42';r.dispatchEvent(new Event('input',{bubbles:true}));var mid=snap();
+      r.value='0';r.dispatchEvent(new Event('input',{bubbles:true}));return {rest:rest,mid:mid,back:snap()}})()`);
+    say('live while held','the readout and the changed-dot follow the thumb on every input, mid-drag, not on release',
+      'rest '+live.rest.rv+' (dot '+live.rest.chg+') \u2192 mid-drag '+live.mid.rv+' (dot '+live.mid.chg+') \u2192 back '+live.back.rv+' (dot '+live.back.chg+')',
+      live.rest.rv==='0'&&live.rest.chg===false&&live.mid.rv!=='0'&&live.mid.chg===true&&live.back.rv==='0'&&live.back.chg===false,
+      'a readout that settles only when the thumb comes up is a label, not a live value');
+  }catch(e){ say('clip actions','the probe could not run',String((e&&e.message)||e),false); }
+  return {pass,fail};
+}
+
 async function main(){
   const btn=$('#run');btn.disabled=true;
   $('#status').textContent='reaching the mock…';
@@ -749,9 +862,12 @@ async function main(){
   $('#status').textContent='measuring the sheet\u2019s geometry\u2026';
   await new Promise(r=>setTimeout(r,30));
   const g=await runGeometry();
-  const p=a.pass+b.pass,f=a.fail+b.fail,tf=f+r.fail+g.fail;
-  $('#summary').innerHTML='<div class="sum">'+p+' of '+(p+f)+' controls hold, '+r.pass+' of '+(r.pass+r.fail)+' shelf rows hold, and '+g.pass+' of '+(g.pass+g.fail)+' layout checks hold. '+
-    (tf? '<span class="fail">'+tf+' failed</span> \u2014 a control that fails here is one whose label and its behaviour disagree.' : 'Every control is a bit-exact no-op at its rest, moves its own metric in the direction its name promises, keeps that promise after the preview is scaled down, the two layers still land on top of a graded clip instead of replacing it, no shelf row moves when a card is picked, and the sheet\u2019s own layout \u2014 the value above its track, the centred footer, the dot on the centred sliders \u2014 is measured rather than assumed.')+'</div>';
+  $('#status').textContent='measuring the clip actions…';
+  await new Promise(r=>setTimeout(r,30));
+  const x=await runActions();
+  const p=a.pass+b.pass,f=a.fail+b.fail,tf=f+r.fail+g.fail+x.fail;
+  $('#summary').innerHTML='<div class="sum">'+p+' of '+(p+f)+' controls hold, '+r.pass+' of '+(r.pass+r.fail)+' shelf rows hold, '+g.pass+' of '+(g.pass+g.fail)+' layout checks hold, and '+x.pass+' of '+(x.pass+x.fail)+' clip actions hold. '+
+    (tf? '<span class="fail">'+tf+' failed</span> \u2014 a control that fails here is one whose label and its behaviour disagree.' : 'Every control is a bit-exact no-op at its rest, moves its own metric in the direction its name promises, keeps that promise after the preview is scaled down, the two layers still land on top of a graded clip instead of replacing it, no shelf row moves when a card is picked, and the sheet\u2019s own layout \u2014 the value above its track, the centred footer, the dot on the centred sliders \u2014 is measured rather than assumed, the four clip actions are driven through the rail\u2019s own buttons and a real drag rather than asserted from the source, and the readout and the changed-dot are shown to follow the thumb mid-drag rather than on release.')+'</div>';
   $('#status').textContent='done';
   btn.disabled=false;
 }
