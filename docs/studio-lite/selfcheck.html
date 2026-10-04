@@ -79,12 +79,13 @@
     <th style="width:28%">Measured</th><th style="width:12%">Result</th>
   </tr></thead><tbody></tbody></table>
 
-  <h2>The clip actions, and the slider under the thumb</h2>
+  <h2>The clip actions, the live readout, and the Format split</h2>
   <p class="sub">Reverse, Replace, Rearrange and Delete act on the clip that is selected, not on its look — so no filter string and no pixel can see them, and a rule that moves the wrong clip or loses the edit would look exactly like a rule that works. Each is driven the way a finger drives it: a real tap on the real rail button, a real pointer drag over the real card. The order test is the one that catches a rename: the four actions have to sit together on the rail and in the reference's own order. The last row is the one value claim no pixel can see either — that the readout and the knob's changed-dot follow the thumb on every input, mid-drag, rather than settling when it comes up.</p>
   <table id="actT"><thead><tr>
     <th style="width:16%">Action</th><th style="width:44%">What it promises</th>
     <th style="width:28%">Measured</th><th style="width:12%">Result</th>
   </tr></thead><tbody></tbody></table>
+  <p class="sub" style="margin-top:10px">The last two rows are not clip actions: one is the slider's own readout, and one is the split of the old Format sheet into Aspect ratio and Canvas plus the new Export sheet. They run here because they need the same synthetic clip and the same second instance.</p>
 </main>
 
 <iframe id="frame" src="clip-lite-mock.html" title="mock"></iframe>
@@ -781,7 +782,7 @@ async function runActions(){
        the first. */
     run(seed);
     const order=ev("[...document.querySelectorAll('#tools button')].map(b=>b.dataset.t)");
-    const want=['speed','volume','filter','adjust','rotate','trans','reverse','replace','rearrange','dup','del','ts','te'];
+    const want=['speed','volume','filter','adjust','rotate','trans','reverse','replace','rearrange','dup','del','ts','te','aspect','canvas'];
     say('rail order','the four clip actions sit together on a selected clip, in the reference\u2019s order',
       order.join(' \u00b7 '), JSON.stringify(order)===JSON.stringify(want),
       'a rail whose actions drift apart is one you have to re-learn');
@@ -842,6 +843,25 @@ async function runActions(){
       'rest '+live.rest.rv+' (dot '+live.rest.chg+') \u2192 mid-drag '+live.mid.rv+' (dot '+live.mid.chg+') \u2192 back '+live.back.rv+' (dot '+live.back.chg+')',
       live.rest.rv==='0'&&live.rest.chg===false&&live.mid.rv!=='0'&&live.mid.chg===true&&live.back.rv==='0'&&live.back.chg===false,
       'a readout that settles only when the thumb comes up is a label, not a live value');
+
+    /* 7. "Format" was one sheet answering two questions — the shape of the frame
+       and the colour behind it — so the split is only real if each panel now
+       carries one of them and neither carries both. Export is the third sheet the
+       split made room for, and its three rows have to come from one descriptor
+       with the options opened on demand rather than nine buttons drawn at once. */
+    run("tool='aspect';panel()");
+    await sleep(40);
+    const asp=ev(`(function(){return {title:document.querySelector('#panel .eh').textContent,tiles:document.querySelectorAll('#panel .rt').length,sw:document.querySelectorAll('#panel .swt').length}})()`);
+    run("tool='canvas';panel()");
+    await sleep(40);
+    const can=ev(`(function(){return {title:document.querySelector('#panel .eh').textContent,sw:document.querySelectorAll('#panel .swt').length,tiles:document.querySelectorAll('#panel .rt').length}})()`);
+    run("tool='export';EXP.open=null;panel()");
+    await sleep(40);
+    const xp=ev(`(function(){var rows=[...document.querySelectorAll('#panel .xr')].map(r=>r.dataset.x);document.querySelector('#panel .xr[data-x=\"res\"]').click();return {title:document.querySelector('#panel .eh').textContent,rows:rows,opts:document.querySelectorAll('#panel .xo .chip').length,pri:document.querySelector('#panel .r button').id}})()`);
+    say('Format is two sheets, Export a third','Aspect ratio and Canvas each answer one question, and Export draws its rows from one descriptor with the options opened on demand',
+      asp.title+' ('+asp.tiles+' tiles, '+asp.sw+' swatches) \u00b7 '+can.title+' ('+can.sw+' swatches, '+can.tiles+' tiles) \u00b7 '+xp.title+' rows '+xp.rows.join('/')+' \u2192 '+xp.opts+' options, primary #'+xp.pri,
+      asp.title==='Aspect ratio'&&asp.tiles===4&&asp.sw===0&&can.title==='Canvas'&&can.sw===5&&can.tiles===0&&xp.title==='Export'&&xp.rows.join(',')==='fps,fmt,res'&&xp.opts===3&&xp.pri==='exr',
+      'one label standing in for two questions is one label too few');
   }catch(e){ say('clip actions','the probe could not run',String((e&&e.message)||e),false); }
   return {pass,fail};
 }
@@ -866,8 +886,8 @@ async function main(){
   await new Promise(r=>setTimeout(r,30));
   const x=await runActions();
   const p=a.pass+b.pass,f=a.fail+b.fail,tf=f+r.fail+g.fail+x.fail;
-  $('#summary').innerHTML='<div class="sum">'+p+' of '+(p+f)+' controls hold, '+r.pass+' of '+(r.pass+r.fail)+' shelf rows hold, '+g.pass+' of '+(g.pass+g.fail)+' layout checks hold, and '+x.pass+' of '+(x.pass+x.fail)+' clip actions hold. '+
-    (tf? '<span class="fail">'+tf+' failed</span> \u2014 a control that fails here is one whose label and its behaviour disagree.' : 'Every control is a bit-exact no-op at its rest, moves its own metric in the direction its name promises, keeps that promise after the preview is scaled down, the two layers still land on top of a graded clip instead of replacing it, no shelf row moves when a card is picked, and the sheet\u2019s own layout \u2014 the value above its track, the centred footer, the dot on the centred sliders \u2014 is measured rather than assumed, the four clip actions are driven through the rail\u2019s own buttons and a real drag rather than asserted from the source, and the readout and the changed-dot are shown to follow the thumb mid-drag rather than on release.')+'</div>';
+  $('#summary').innerHTML='<div class="sum">'+p+' of '+(p+f)+' controls hold, '+r.pass+' of '+(r.pass+r.fail)+' shelf rows hold, '+g.pass+' of '+(g.pass+g.fail)+' layout checks hold, and '+x.pass+' of '+(x.pass+x.fail)+' panel checks hold. '+
+    (tf? '<span class="fail">'+tf+' failed</span> \u2014 a control that fails here is one whose label and its behaviour disagree.' : 'Every control is a bit-exact no-op at its rest, moves its own metric in the direction its name promises, keeps that promise after the preview is scaled down, the two layers still land on top of a graded clip instead of replacing it, no shelf row moves when a card is picked, and the sheet\u2019s own layout \u2014 the value above its track, the centred footer, the dot on the centred sliders \u2014 is measured rather than assumed, the four clip actions are driven through the rail\u2019s own buttons and a real drag rather than asserted from the source, the readout and the changed-dot are shown to follow the thumb mid-drag rather than on release, and Format is shown to have become two sheets with Export a third.')+'</div>';
   $('#status').textContent='done';
   btn.disabled=false;
 }

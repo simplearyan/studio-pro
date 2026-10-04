@@ -365,6 +365,55 @@ svg{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-l
 .rc.sel{border-radius:50%;border-color:var(--on)}
 .rc.drag{opacity:.5;border-color:var(--acc)}
 .rc .td{position:absolute;left:5px;bottom:3px;font-size:10px;font-weight:500;color:#fff;background:rgba(0,0,0,.55);border-radius:4px;padding:0 4px;font-variant-numeric:tabular-nums}
+/* ── Aspect ratio: four tiles, one choice ─────────────────────────────────
+   The ratio is a shape, so the control is the shape: each tile draws the format
+   at its own proportions inside a square, which says "9:16 is the tall one"
+   without reading a word. This replaced a row of text chips, where four buttons
+   differed only in the numbers printed on them and the glyph had to be imagined
+   from the label. */
+/* The tiles divide the row rather than each claiming a fixed width: four of them
+   have to share the sheet's 336px at 393 and its 320px at 360, and a fixed 88px
+   tile wrapped 3 + 1 at both, which reads as a layout that ran out of room.
+   `flex:1 1 0` with a cap lets them meet the row at any width, and the glyph is
+   sized in percentages so it scales with the tile it is standing in. */
+.rts{display:flex;gap:10px;flex:1 1 100%;justify-content:center}
+.rt{flex:1 1 0;min-width:0;max-width:96px;display:flex;flex-direction:column;align-items:center;gap:8px;padding:0;background:none;color:var(--on2)}
+.rt>i{width:100%;aspect-ratio:1/1;border-radius:16px;background:var(--sf2);border:2px solid transparent;display:grid;place-items:center}
+.rt>i>b{display:block;background:var(--on2);border-radius:2px}
+.rt.on>i{border-color:var(--on)}
+.rt.on>i>b{background:var(--on)}
+.rt>span{font-size:12px;line-height:1.2;text-align:center}
+.rt.on>span{color:var(--on);font-weight:500}
+/* ── Canvas: the backdrop as swatches ─────────────────────────────────────
+   A background is a colour, so it is chosen from colours rather than named in
+   words. The custom chip is the one control here that is not a preset: a
+   rainbow disc standing in for the whole wheel, with a real color input behind
+   it, because four named greys cannot express every backdrop a clip might want. */
+.sws{display:flex;gap:14px;flex:1 1 100%;align-items:center;justify-content:center;flex-wrap:wrap}
+.swt{width:40px;height:40px;border-radius:50%;padding:0;border:2px solid transparent;box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--on) 22%,transparent)}
+.swt.on{border-color:var(--on)}
+.swt.custom{position:relative;overflow:hidden;background:conic-gradient(#ff3b30,#ff9500,#ffe000,#34c759,#00c7be,#2f6cff,#af52de,#ff3b30)}
+.swt.custom input{position:absolute;inset:-8px;width:calc(100% + 16px);height:calc(100% + 16px);border:0;padding:0;opacity:0;cursor:pointer}
+/* `#panel label` carries min-width:84px for the old slider rows. The custom
+   swatch is a label too, so without this it becomes the widest chip in the row
+   and pushes the presets out of line. */
+#panel label.swt{min-width:0}
+.vd2{flex:none;width:1px;height:32px;background:var(--ol)}
+/* ── Export: settings rows and one commit ─────────────────────────────────
+   A settings row is a label and its current value, and the options appear under
+   it only while it is the row you are changing, so three settings never draw
+   nine buttons at once. The chevron is the reference's own mark, turned to point
+   down while the options are open. */
+.xlist{flex:1 1 100%;display:flex;flex-direction:column}
+.xr{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;padding:15px 6px;background:none;border-radius:12px;color:var(--on);text-align:left}
+.xr:hover,.xr.open{background:color-mix(in srgb,var(--on) 6%,transparent)}
+.xr .xl{font-size:15px}
+.xr .xv{display:flex;align-items:center;gap:8px;font-size:15px;color:var(--on2)}
+.xr.open .xv{color:var(--on)}
+.xr svg{width:16px;height:16px;transition:transform .14s ease}
+.xr.open svg{transform:rotate(180deg)}
+.xo{display:flex;gap:8px;flex-wrap:wrap;padding:2px 6px 14px}
+.xo .chip{height:36px;padding:0 14px;font-size:14px}
 /* The duration badge on a text clip. A caption's length is the one number you
    cannot see by looking at it — the block's width is the length, and width is
    exactly what you are dragging — so it is written on the block. */
@@ -695,7 +744,16 @@ non:'<circle cx="12" cy="12" r="8.2"/><path d="m6.2 6.2 11.6 11.6"/>',
    scrolled into view together. */
 adjust:'<path d="M3.2 7.2h17.6M3.2 12h17.6M3.2 16.8h17.6"/><circle cx="8.6" cy="7.2" r="2.1"/><circle cx="15.4" cy="12" r="2.1"/><circle cx="10.4" cy="16.8" r="2.1"/>',
 rotate:'<path d="M20 12a8 8 0 1 1-2.5-5.8"/><path d="M20.4 4v5h-5"/>',trans:'<path d="M4 6v12l8-6zM20 6v12l-8-6z"/>',
-aspect:'<rect x="3" y="6" width="18" height="12" rx="2.4"/><path d="M7 10.6V9h1.6M17 13.4V15h-1.6"/>',fs:'<path d="M4 9.5v-4A1.5 1.5 0 0 1 5.5 4h4M20 9.5v-4A1.5 1.5 0 0 0 18.5 4h-4M4 14.5v4A1.5 1.5 0 0 0 5.5 20h4M20 14.5v4A1.5 1.5 0 0 1 18.5 20h-4"/>',
+aspect:'<rect x="3" y="6" width="18" height="12" rx="2.4"/><path d="M7 10.6V9h1.6M17 13.4V15h-1.6"/>',
+/* Canvas is the backdrop colour, so it is a swatch: a chip with one quadrant
+   filled, which is the mark for "a surface with a colour on it". It is not a
+   paint drop (that is already Saturation on the Adjust shelf) and not a pair of
+   discs (that would read as the vignette's bokeh). */
+canvas:'<rect x="4.2" y="4.2" width="15.6" height="15.6" rx="4.4"/><path d="M12 12h7.8v3.4a4.4 4.4 0 0 1-4.4 4.4H12z" fill="currentColor" stroke="none"/>',
+/* The export row's value marker: a solid down triangle, exactly the reference's
+   chevron, and it turns to point down while the row's options are open. */
+tri:'<path d="M6.4 9.6h11.2L12 16z" fill="currentColor" stroke="none"/>',
+fs:'<path d="M4 9.5v-4A1.5 1.5 0 0 1 5.5 4h4M20 9.5v-4A1.5 1.5 0 0 0 18.5 4h-4M4 14.5v4A1.5 1.5 0 0 0 5.5 20h4M20 14.5v4A1.5 1.5 0 0 1 18.5 20h-4"/>',
 more:'<circle cx="12" cy="5" r="1.8" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.8" fill="currentColor" stroke="none"/><circle cx="12" cy="19" r="1.8" fill="currentColor" stroke="none"/>'};
 const ic=n=>`<svg viewBox="0 0 24 24">${ICON[n]}</svg>`;
 /* The card preview for Grain, as a CSS layer.
@@ -722,6 +780,25 @@ const PLAY='<svg viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="
 const AR={'16:9':[1280,720],'9:16':[720,1280],'1:1':[1080,1080],'4:5':[864,1080]},BG=[['Black','#000000'],['Charcoal','#1e1e1e'],['Grey','#808080'],['White','#ffffff']];
 let proj={ar:'16:9',bg:'#000000'};
 const applyProj=()=>{const d=AR[proj.ar];W=d[0];H=d[1];cv.width=W;cv.height=H},restoreProj=o=>{if(o.proj){proj=o.proj;applyProj()}};
+/* Export settings. They are a property of the *output*, not of the edit, so they
+   live beside the project rather than inside it: a clip's grade is part of the
+   document and Cancel undoes it, but "I want 60fps this time" is not an edit and
+   should not be undone into a previous value. `open` is which row's options are
+   showing — the one piece of sheet state — kept here so the rows themselves stay
+   a plain description and adding a fourth setting is one array entry, not a new
+   branch in panel(). */
+const EXPFMT=[['mp4','MP4'],['webm','WEBM']].filter(([k])=>k!='mp4'||(typeof MediaRecorder!=='undefined'&&MediaRecorder.isTypeSupported('video/mp4;codecs=avc1')));
+const EXPRES=[[480,'Low \u2014 480p'],[720,'Medium \u2014 720p'],[1080,'High \u2014 1080p']];
+const EXP={fps:30,fmt:EXPFMT[0][0],res:1080,open:null};
+const EXP_ROWS=[
+  {k:'fps',n:'Frame rate',val:()=>EXP.fps+' FPS',opts:[[24,'24 FPS'],[30,'30 FPS'],[60,'60 FPS']]},
+  {k:'fmt',n:'File format',val:()=>(EXPFMT.find(([v])=>v==EXP.fmt)||EXPFMT[0])[1],opts:EXPFMT},
+  {k:'res',n:'Resolution',val:()=>(EXPRES.find(([v])=>v==EXP.res)||EXPRES[2])[1],opts:EXPRES},
+];
+/* The capture canvas is the resolution setting. It is sized from the project's
+   own aspect at the chosen *height*, so 480p and 1080p are different pictures
+   rather than one picture with a different label on it. */
+const resDims=()=>{const th=EXP.res,tw=Math.max(2,Math.round(th*W/H/2)*2);return [tw,th]};
 
 /* The preview ceiling, in one place. The band wants the height its lanes need; the
    preview wants the height the canvas can actually use at full width. Deriving that
@@ -1715,6 +1792,7 @@ function loop(){
   draw();
   $('#rd').style.transform=`translateX(${-tl.scrollLeft}px)`;$('#tc').textContent=fmtT(t);$('#tt').textContent=fmtT(total);syncBtns();
   const ic=playing?'p':'s';if(ic!=lastIcon){lastIcon=ic;$('#play').innerHTML=playing?PAUSE:PLAY}
+  if(rec&&capCtx)capCtx.drawImage(cv,0,0,capCv.width,capCv.height);
   if(rec)$('#pb i').style.width=Math.min(100,t/total*100)+'%';
   requestAnimationFrame(loop);
 }
@@ -1731,15 +1809,17 @@ function del(){
   const c=curSel();snap();pause();clips=clips.filter(x=>x!=c);sel=null;refresh();
 }
 let esBase=null;
-/* Rail labels, in our own words. "Canvas" was the one that needed replacing:
-   the button opens a panel of aspect ratios and a background colour, so the
-   label named an art surface rather than the thing it changes, and the only
-   other word anyone reaches for — the reference's "Aspect ratio" — is both
-   longer than the rail can carry cleanly and borrowed. "Format" covers the
-   ratio and the backdrop in one word. The rest are already plain: what the
-   control does, in the fewest words that still say it. */
-const LBL={add:'Add video',text:'Text',edit:'Edit text',speed:'Speed',volume:'Volume',filter:'Filters',adjust:'Adjust',rotate:'Rotate',trans:'Transition',aspect:'Format',dup:'Duplicate',ts:'Trim start',te:'Trim end',reverse:'Reverse',replace:'Replace',rearrange:'Rearrange',del:'Delete'};
-const TOOLS=['speed','volume','filter','adjust','rotate','trans','aspect','text','rearrange'],TTL={speed:'Speed',volume:'Volume',filter:'Filters',adjust:'Adjust',rotate:'Rotation',trans:'Transition',aspect:'Format',text:'Text',rearrange:'Rearrange'};
+/* Rail labels, in our own words, and one sheet each. "Format" used to be a
+   single word covering two unrelated questions — the shape of the frame and the
+   colour behind it — so the sheet held a ratio row and a colour row and the
+   label had to be vague enough to mean both. They are two panels now, each
+   named for the one thing it changes: **Aspect ratio** (the frame's shape) and
+   **Canvas** (its backdrop). Export is not a rail button at all — it is the
+   header's own action, where the reference keeps it — but it is a sheet, so it
+   is registered here with the rest. The other labels are already plain: what
+   the control does, in the fewest words that still say it. */
+const LBL={add:'Add video',text:'Text',edit:'Edit text',speed:'Speed',volume:'Volume',filter:'Filters',adjust:'Adjust',rotate:'Rotate',trans:'Transition',aspect:'Aspect',canvas:'Canvas',dup:'Duplicate',ts:'Trim start',te:'Trim end',reverse:'Reverse',replace:'Replace',rearrange:'Rearrange',del:'Delete'};
+const TOOLS=['speed','volume','filter','adjust','rotate','trans','aspect','canvas','export','text','rearrange'],TTL={speed:'Speed',volume:'Volume',filter:'Filters',adjust:'Adjust',rotate:'Rotation',trans:'Transition',aspect:'Aspect ratio',canvas:'Canvas',export:'Export',text:'Text',rearrange:'Rearrange'};
 /* The volume a Mute tap will come back to. Module state and not a clip field,
    because it is a property of the *gesture* — how loud was this clip a moment
    ago — rather than of the project; two clips muted in a row each remember the
@@ -1778,18 +1858,27 @@ function rdmove(e){
   const nb=car.querySelector('[data-rc="'+to+'"]');if(nb)nb.classList.add('drag');
 }
 function rdend(){rdrag=null;removeEventListener('pointermove',rdmove);removeEventListener('pointerup',rdend);removeEventListener('pointercancel',rdend)}
-/* The rail. The property sheets keep the front of it — that is where muscle
-   memory lives — and the four actions that change the clip itself now sit
-   together after them, in the order the reference groups them: Reverse,
-   Replace, Rearrange, Duplicate, Delete. Trim stays last, because it is the
-   only pair there that is about *where* the clip starts and ends rather than
-   what it is. Reverse carries `.on` while it is set, so a state you cannot see
-   on the picture (it looks identical paused) is still visible on the rail. */
+/* The rail, as *scopes* rather than one run-on row. Each inner array is a group
+   and the groups are separated by a hairline, so "what changes this clip" and
+   "what changes the project" are separable at a glance — and adding a tool is
+   dropping a key into a group, not threading another `if` through a string. The
+   property sheets keep the front, where muscle memory lives; the four actions
+   that change the clip itself sit together next in the reference's order; and
+   the two project panels close the row. Aspect ratio and Canvas are project-
+   level and always applicable, so they ride the rail whether or not a clip is
+   selected — a format you cannot reach with a clip selected is a format most
+   people never find. Reverse carries `.on` while it is set, so a state you cannot
+   see on the picture (it looks identical paused) is still visible on the rail. */
 function strip(){
   const ci=sel&&sel.k=='c'?clips.findIndex(c=>c.id==sel.id):-1;
   const cs=ci>=0?clips[ci]:null;
-  const k=!clips.length?['add']:!sel?['add','text','aspect']:sel.k=='t'?['edit','dup','ts','te']:['speed','volume','filter','adjust','rotate',...(ci>0?['trans']:[]),'reverse','replace','rearrange','dup','del','ts','te'];
-  $('#tools').innerHTML=k.map(x=>(x=='aspect'?'<i class="vd"></i>':'')+`<button data-t="${x}"${x=='reverse'&&cs&&cs.rev?' class="on"':''}>${ic(x)}<span>${LBL[x]}</span></button>`).join('');
+  const groups=!clips.length?[['add']]
+    :!sel?[['add','text'],['aspect','canvas']]
+    :sel.k=='t'?[['edit','dup','ts','te']]
+    :[['speed','volume','filter','adjust','rotate',...(ci>0?['trans']:[])],
+      ['reverse','replace','rearrange','dup','del','ts','te'],
+      ['aspect','canvas']];
+  $('#tools').innerHTML=groups.map(g=>g.map(x=>`<button data-t="${x}"${x=='reverse'&&cs&&cs.rev?' class="on"':''}>${ic(x)}<span>${LBL[x]}</span></button>`).join('')).join('<i class="vd"></i>');
 }
 function addText(){
   if(!clips.length)return toast('Add a video first');
@@ -1883,7 +1972,7 @@ function panel(fromRowTap){
   /* Read before the rebuild, put back after it. Both shelves scroll, so this is
      a property of the sheet rather than of either tool. */
   const car0=p.querySelector('.car'),sl0=car0?car0.scrollLeft:0;
-  let h='';const c=tool=='aspect'||tool=='text'?null:curSel();
+  let h='';const c=['aspect','canvas','export','text'].includes(tool)?null:curSel();
   if(tool=='text'){
     const x=sel&&sel.k=='t'&&texts.find(y=>y.id==sel.id);if(!x){p.hidden=true;document.body.classList.remove('es');fitView();return}
     h=`<input type="text" id="ti" maxlength="60" placeholder="Type your title" value="${esc(x.t).replace(/"/g,'&quot;')}"><div class="tpl">`+[['rainbow','Rainbow'],['plain','Plain'],['neon','Neon'],['comic','Comic']].map(([k,l])=>`<button class="chip${(x.tp||'plain')==k?' on':''}" data-tp="${k}"><span class="tp-${k}">${l}</span></button>`).join('')+`</div><div class="sub" id="txinfo">${txInfo(x)}</div>`;
@@ -1960,7 +2049,29 @@ function panel(fromRowTap){
   else if(tool=='rearrange')h=`<div class="rcar" id="rcar">${rcards()}</div><div class="sub">Hold, drag and drop a clip to move it</div>`;
   else if(tool=='rotate')h=sl((c.rot||0)+'°',-180,180,c.rot||0,1)+`<button class="chip" id="r90">Rotate 90°</button>`;
   else if(tool=='trans'){const k=c.tr?c.tr.k:'none';h=`<span class="sub">Between the previous clip and this one</span>`+[['none','None'],['black','Fade black'],['white','Fade white']].map(([v,l])=>`<button class="chip${k==v?' on':''}" data-tk="${v}">${l}</button>`).join('')+(k!='none'?sl(c.tr.d.toFixed(1)+' s','.2','2',c.tr.d,'.1'):'')}
-  else if(tool=='aspect')h=`<span class="sub">Aspect ratio</span>`+Object.keys(AR).map(k=>`<button class="chip${proj.ar==k?' on':''}" data-ar="${k}">${k}</button>`).join('')+`<span class="sub">Background</span>`+BG.map(([n,v])=>`<button class="chip${proj.bg==v?' on':''}" data-bg="${v}">${n}</button>`).join('');
+  /* Aspect ratio is a shape, so it is chosen from shapes. The tile draws the
+     format at its own proportions inside a square — the thing a bare "4:5" makes
+     you imagine — and the glyph is sized from AR's own numbers rather than a
+     hand-tuned width per tile, so a fifth ratio comes out right unanswered. */
+  else if(tool=='aspect')h=`<div class="rts">`+Object.keys(AR).map(k=>{
+    /* Percentages, not pixels: the tile is fluid, so the glyph has to be too or a
+       narrow sheet would hang a 44px mark out of a 66px tile. */
+    const [aw,ah]=AR[k],m=Math.max(aw,ah),gw=Math.round(aw/m*50),gh=Math.round(ah/m*50),lb=k.split(':').join(' x ');
+    return `<button class="rt${proj.ar==k?' on':''}" data-ar="${k}" aria-label="${lb}"><i><b style="width:${gw}%;height:${gh}%"></b></i><span>${lb}</span></button>`}).join('')+`</div>`;
+  /* Canvas is the backdrop. The custom chip is the one control that is not a
+     preset: a rainbow disc over a real color input, so four named greys do not
+     have to stand in for the whole wheel. It is marked `.on` whenever the current
+     colour is not one of the presets, which is what stops a custom pick and a
+     preset from both claiming the selection. */
+  else if(tool=='canvas')h=`<div class="sws"><label class="swt custom${BG.some(([,v])=>v==proj.bg)?'':' on'}" id="bgcSw" title="Custom colour"><input type="color" id="bgc" value="${proj.bg}"></label><i class="vd2"></i>`+BG.map(([n,v])=>`<button class="swt${proj.bg==v?' on':''}" data-bg="${v}" title="${n}" aria-label="${n}" style="background:${v}"></button>`).join('')+`</div>`;
+  /* Export. Three settings rows out of one descriptor array, and the options for
+     only the row you opened — so the sheet is three lines tall however many
+     settings it grows to. */
+  else if(tool=='export')h=`<div class="xlist">`+EXP_ROWS.map(r=>{
+    const open=EXP.open===r.k;
+    return `<button class="xr${open?' open':''}" data-x="${r.k}"><span class="xl">${r.n}</span><span class="xv">${r.val()}${ic('tri')}</span></button>`+
+      (open?`<div class="xo">`+r.opts.map(([v,l])=>`<button class="chip${String(EXP[r.k])===String(v)?' on':''}" data-xv="${r.k}" data-xval="${esc(String(v))}">${l}</button>`).join('')+`</div>`:'');
+  }).join('')+`</div>`;
   /* Three anchored slots, not three flex children. With `space-between` the
      middle action drifted with whatever widths Cancel and Done happened to
      carry, so "Apply to all" sat left of centre next to a wide Cancel; the
@@ -1970,7 +2081,7 @@ function panel(fromRowTap){
   /* Rearrange has no middle action: Reset would restore the order the sheet
      opened with, which is exactly what Cancel already does, and "Apply to all"
      has no meaning for an order. Same shape as the caption sheet. */
-  p.innerHTML=`<div class="eh">${TTL[tool]}</div><div class="eb">${h}</div><div class="ef"><div class="l"><button class="pillb" id="ec">Cancel</button></div><div class="m">${['filter','adjust'].includes(tool)?`<button class="pillb ghost" id="ea">Apply to all</button>`:(!['text','rearrange'].includes(tool)?'<button class="pillb ghost" id="er">Reset</button>':'')}</div><div class="r"><button class="pillb pri" id="ed">Done</button></div></div>`;
+  p.innerHTML=`<div class="eh">${TTL[tool]}</div><div class="eb">${h}</div><div class="ef"><div class="l"><button class="pillb" id="ec">Cancel</button></div><div class="m">${['filter','adjust'].includes(tool)?`<button class="pillb ghost" id="ea">Apply to all</button>`:(!['text','rearrange','export'].includes(tool)?'<button class="pillb ghost" id="er">Reset</button>':'')}</div><div class="r">${tool=='export'?'<button class="pillb pri" id="exr">Export</button>':'<button class="pillb pri" id="ed">Done</button>'}</div></div>`;
   p.hidden=false;document.body.classList.add('es');
   /* Put the row back where the user left it. panel() throws the sheet's markup
      away and rebuilds it, and a new .car is scrolled to 0 — which is how the
@@ -2018,6 +2129,12 @@ P.addEventListener('input',e=>{
       const on=stackOn(c),sk=$('#sk');
       if(sk){sk.innerHTML=stackInfo(c);sk.hidden=on.length<2}}
     else if(tool=='adjust'){adjSet(c,adjKey,+el.value);$('#rv').textContent=adjTxt(adjKey,+el.value);adjMarks()}
+  }
+  if(el.id=='bgc'){proj.bg=el.value;
+    /* Repaint only the selection marks: rebuilding the sheet here would tear the
+       native colour picker out from under the pointer that is still holding it. */
+    const cs=$('#bgcSw');if(cs)cs.classList.add('on');
+    P.querySelectorAll('.swt[data-bg]').forEach(s=>s.classList.toggle('on',s.dataset.bg==proj.bg));
   }
   if(el.id=='ti'&&x){x.t=el.value||' ';renderTL()}
 });
@@ -2077,6 +2194,11 @@ P.addEventListener('click',e=>{
     clips.forEach(k=>{if(k!==c){k.ad={...(c.ad||{})};k.f=c.f;k.fs=c.fs;k.vig=c.vig||0;k.grain=c.grain||0;k.blue=c.blue||0;k.blur=c.blur||0;k.opacity=opac(c)}});toast('Applied to all clips');refresh()}
   if(d.ar){proj.ar=d.ar;applyProj();panel();fitView()}
   if(d.bg){proj.bg=d.bg;panel()}
+  /* The export rows. Tapping a row opens its options and tapping one closes the
+     row, so the sheet never grows past its three lines and the value you picked
+     is the only thing that stays on screen. */
+  if(d.x){EXP.open=EXP.open===d.x?null:d.x;panel()}
+  if(d.xv){EXP[d.xv]=d.xv=='fmt'?d.xval:+d.xval;EXP.open=null;panel()}
   if(d.tk){const c=curSel();c.tr={k:d.tk,d:c.tr?c.tr.d:1};panel()}
   if(b.id=='r90'){const c=curSel();let r=(c.rot||0)+90;if(r>180)r-=360;c.rot=r;panel()}
   /* Mute is a two-way toggle on the same number the slider edits, so it can
@@ -2089,8 +2211,12 @@ P.addEventListener('click',e=>{
     const mv=srcs[c.src].v;if(mv)mv.volume=c.vol;panel()}
   if(b.id=='ec')closeEdit(false);
   if(b.id=='ed')closeEdit(true);
+  /* Export commits nothing to the edit, so it closes the sheet and runs — the
+     `false` is not "discard", it is "there was nothing here to keep". */
+  if(b.id=='exr'){closeEdit(false);return runExport()}
   if(b.id=='er'){
-    if(tool=='aspect'){proj={ar:autoAr(),bg:'#000000'};applyProj()}
+    if(tool=='aspect'){proj.ar=autoAr();applyProj()}
+    else if(tool=='canvas')proj.bg='#000000'
     else{const c=curSel();if(tool=='speed')c.sp=1;if(tool=='volume'){c.vol=1;srcs[c.src].v.volume=1}if(tool=='filter'){c.f='none';c.fs=1;c.vig=0;c.grain=0}if(tool=='adjust'){c.ad={};c.vig=0;c.grain=0;c.blue=0;c.blur=0;c.opacity=1}if(tool=='rotate')c.rot=0;if(tool=='trans')c.tr=null}
     refresh();
   }
@@ -2184,18 +2310,34 @@ addEventListener('keydown',e=>{
   if(e.code=='Space'){e.preventDefault();playing?pause():play()}
   else if(e.key=='s')split();else if(e.key=='Delete'||e.key=='Backspace')del();
   else if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()=='z'){e.preventDefault();e.shiftKey?redo():undo()}else if((e.ctrlKey||e.metaKey)&&e.key=='y'){e.preventDefault();redo()}else if(e.key=='ArrowLeft'){e.preventDefault();nudge(e.shiftKey?-1:-1/30)}else if(e.key=='ArrowRight'){e.preventDefault();nudge(e.shiftKey?1:1/30)}else if(e.key=='d')dup();else if(e.key=='[')trimTo(0);else if(e.key==']')trimTo(1)
-});
-$('#export').onclick=()=>{
+});/* The capture canvas mirror. `loop()` already draws the editor's canvas every
+   frame, so while a recording is up it also copies that frame into this one at
+   the chosen resolution — the recorder watches *this* canvas, which is what makes
+   Resolution a real setting instead of a label over a single picture. */
+let capCv=null,capCtx=null;
+function runExport(){
   if(!clips.length||typeof MediaRecorder=='undefined')return toast('Export is not supported in this browser');
   pause();t=0;seekVid();cancelled=false;
-  const cs=cv.captureStream(30);dest&&dest.stream.getAudioTracks().forEach(a=>cs.addTrack(a));
-  mime=['video/mp4;codecs=avc1','video/webm;codecs=vp9,opus','video/webm'].find(m=>MediaRecorder.isTypeSupported(m))||'';
-  const chunks=[];rec=new MediaRecorder(cs,mime?{mimeType:mime,videoBitsPerSecond:8e6}:{});
+  const [rw,rh]=resDims();capCv=document.createElement('canvas');capCv.width=rw;capCv.height=rh;capCtx=capCv.getContext('2d');
+  const cs=capCv.captureStream(EXP.fps);
+  dest&&dest.stream.getAudioTracks().forEach(a=>cs.addTrack(a));
+  /* The chosen format first, then the fallbacks the browser actually supports —
+     MP4 is not guaranteed to be encodable, and a sheet that offered it anyway
+     would be a setting that silently did nothing. EXPFMT only lists MP4 when it
+     is encodable, so this list and that check can never disagree. */
+  const want=EXP.fmt=='mp4'?'video/mp4;codecs=avc1':'video/webm;codecs=vp9,opus';
+  mime=[want,'video/webm;codecs=vp9,opus','video/webm'].find(m=>MediaRecorder.isTypeSupported(m))||'';
+  const chunks=[];
+  rec=new MediaRecorder(cs,mime?{mimeType:mime,videoBitsPerSecond:8e6}:{});
   rec.ondataavailable=e=>e.data.size&&chunks.push(e.data);
-  rec.onstop=()=>{pause();rec=null;$('#ov').hidden=true;if(cancelled)return;
+  rec.onstop=()=>{pause();rec=null;capCv=null;capCtx=null;$('#ov').hidden=true;if(cancelled)return;
     const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(chunks,{type:mime||'video/webm'}));a.download='clip-lite.'+(mime.includes('mp4')?'mp4':'webm');a.click();toast('Exported')};
   $('#ov').hidden=false;rec.start();setTimeout(play,150);
-};
+}
+/* Export is the header's own action, the way the reference keeps it, and it opens
+   the sheet rather than starting immediately: the settings are the point, and a
+   button that exports on the first tap is a button you cannot configure. */
+$('#export').onclick=()=>{if(!clips.length)return;tool='export';panel()};
 $('#cx').onclick=()=>{cancelled=true;if(rec&&rec.state!='inactive')rec.stop()};
 $('#play').innerHTML=PLAY;refresh();loop();
 </script>
