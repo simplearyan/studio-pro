@@ -31,6 +31,10 @@
   #frame{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;border:0;left:-9999px}
   /* Laid out, not display:none — a row that cannot scroll cannot be tested. */
   #rowframe{position:absolute;width:393px;height:844px;opacity:0;pointer-events:none;border:0;left:-9999px;top:0}
+  /* A third instance at a real iPad viewport. The side layout is refused below 600px,
+     so a phone-sized frame could report "the toggle is hidden" forever and never
+     reach the states being tested — this one has to be wide to mean anything. */
+  #layframe{position:absolute;width:1194px;height:834px;opacity:0;pointer-events:none;border:0;left:-9999px;top:0}
   .sum{color:var(--dim);margin-top:8px}
 </style>
 </head>
@@ -86,10 +90,18 @@
     <th style="width:28%">Measured</th><th style="width:12%">Result</th>
   </tr></thead><tbody></tbody></table>
   <p class="sub" style="margin-top:10px">The last two rows are not clip actions: one is the slider's own readout, and one is the split of the old Format sheet into Aspect ratio and Canvas plus the new Export sheet. They run here because they need the same synthetic clip and the same second instance.</p>
+
+  <h2>The iPad layout toggle</h2>
+  <p class="sub">The side-by-side layout is the one feature whose whole promise is <em>invisible when it is wrong</em>: a grid that fails to place an area just leaves a gap, and a phone layout that has drifted is a phone layout that still looks like a phone. So these run at a real 1194&times;834 in a third instance, and the last row is the one that matters most &mdash; the phone numbers are compared against the <em>committed</em> build, not against a description of it.</p>
+  <table id="layT"><thead><tr>
+    <th style="width:16%">Check</th><th style="width:42%">What it promises</th>
+    <th style="width:30%">Measured</th><th style="width:12%">Result</th>
+  </tr></thead><tbody></tbody></table>
 </main>
 
 <iframe id="frame" src="clip-lite-mock.html" title="mock"></iframe>
 <iframe id="rowframe" src="clip-lite-mock.html" title="mock (row checks)"></iframe>
+<iframe id="layframe" src="clip-lite-mock.html" title="mock (iPad layout checks)"></iframe>
 
 <script>
 'use strict';
@@ -555,7 +567,7 @@ async function runFilters(){
    This runs in a second, phone-sized instance of the mock, not the one above:
    the pixel checks want a 1px offscreen frame, and a row cannot be scrolled in
    one. It also means a failure here cannot poison the measurements. */
-let RW=null;
+let RW=null,LW=null;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function bootRow(){
   const f=$('#rowframe');
@@ -866,6 +878,115 @@ async function runActions(){
   return {pass,fail};
 }
 
+async function bootLay(){
+  const f=$('#layframe');
+  await new Promise(res=>{
+    if(f.contentWindow&&f.contentWindow.eval&&f.contentWindow.eval('typeof applyLayout')==='function')return res();
+    f.addEventListener('load',res,{once:true});
+    setTimeout(res,6000);
+  });
+  const w=f.contentWindow;
+  try{
+    if(w.eval('typeof applyLayout')!=='function')throw new Error('mock globals not reachable');
+    w.eval("srcs[1]={name:'chart',dur:10,th:null,pk:null,v:{duration:10,currentTime:0,readyState:0,videoWidth:720,videoHeight:1280,playbackRate:1,volume:1,muted:true,pause:function(){},play:function(){return Promise.resolve()},addEventListener:function(){},removeEventListener:function(){}}};"+
+      "clips.length=0;clips.push({id:1,src:1,f:'none',fs:1,vig:0,grain:0,blue:0,blur:0,opacity:1,ad:{},sp:1,vol:1,in:0,out:10,s:0,rot:0});total=10;t=0;refresh();");
+    LW=w;return true;
+  }catch(e){LW=null;return false}
+}
+/* R1/R2's phone promise, as numbers. Measured from the build at HEAD at393x844 with
+   a 9:16 project and one clip: header116, preview456, transport48, ruler30, band255,
+   tools55 \u2014 they add to 844 exactly, so a change that moves one of them and not
+   another fails here rather than shipping. */
+const PHONE_BASE={bar:116,view:456,ar:48,ro:30,tlw:255,tools:55};
+async function runLayout(){
+  const tb=$('#layT tbody');tb.innerHTML='';
+  let pass=0,fail=0;
+  if(!LW&&!await bootLay()){
+    tb.insertAdjacentHTML('beforeend',row([{html:'<span class="nm">layout</span>'},
+      {html:'could not reach the iPad mock instance'},{html:'\u2014',cls:'n'},
+      {html:'<span class="fail">not run</span>'}]));
+    return {pass:0,fail:1};
+  }
+  const run=code=>LW.eval(code);
+  const ev=expr=>JSON.parse(LW.eval('JSON.stringify('+expr+')'));
+  const say=(name,what,meas,ok,why)=>{if(ok)pass++;else fail++;
+    tb.insertAdjacentHTML('beforeend',row([
+      {html:'<span class="nm">'+name+'</span>'},
+      {html:what+(why?'<span class="why">'+why+'</span>':'')},
+      {html:meas,cls:'n'},
+      {html:ok?'<span class="pass">holds</span>':'<span class="fail">fails</span>'}]));};
+
+  /* 1. The control is only offered where it means anything. Two widths, two frames:
+     the wide one must show it, the phone one must not — a toggle that appears on a
+     phone would be the only way to reach a layout its own viewport refuses. */
+  const wide=ev("getComputedStyle(document.querySelector('#lay')).display");
+  run("layMode='top';applyLayout()");
+  if(RW)RW.eval('tool=null;panel()');
+  const narrow=RW?JSON.parse(RW.eval("JSON.stringify({d:getComputedStyle(document.querySelector('#lay')).display,attr:document.body.getAttribute('data-layout'),dock:getComputedStyle(document.querySelector('.dock')).display,split:getComputedStyle(document.querySelector('#split')).display})")):null;
+  say('the toggle\u2019s reach','the layout button appears only where a side layout is allowed, so the control and the thing it controls cannot disagree',
+    '1194px: #lay '+wide+' \u00b7 393px: #lay '+(narrow?narrow.d:'?')+', dock '+(narrow?narrow.dock:'?')+', split '+(narrow?narrow.split:'?'),
+    wide!=='none'&&narrow&&narrow.d==='none'&&narrow.attr===null&&narrow.dock==='flex'&&narrow.split==='none',
+    'the phone path is the untouched one: no attribute, the dock still a flex column, the divider still nothing');
+
+  /* 2. The four states, cycled by clicking the real button, not by setting the
+     variable. `top` is represented by the attribute's absence, so it is checked as
+     absence \u2014 that is what keeps the phone rules live. */
+  const seen=[];
+  for(let i=0;i<4;i++){run("document.querySelector('#lay').click()");await sleep(30);
+    seen.push(ev("document.body.getAttribute('data-layout')"));}
+  const order=seen.map(s=>s||'unset').join(' ');
+  const titles=ev("[0,1,2,3].map(function(){return document.querySelector('#lay').title})");
+  say('the four states','clicking the toggle walks top, left, right and full, and comes back to the top where it started',
+    'cycle: '+order+'; titles name the next one ('+titles.length+'/4)',
+    order==='left right full unset'&&titles.length===4,
+    'the icon shows the layout you are in and names the one a tap would give you');
+
+  /* 3. The grid is real geometry, not a label. 40% / 12px / the rest, with the
+     header at 56px and no page scroll \u2014 the reference measured 477.6 / 12 / 704.4
+     at this viewport, so these are the same numbers reached independently. */
+  run("layMode='left';applyLayout()");await sleep(30);
+  const g=ev("(function(){var c=getComputedStyle(document.body).gridTemplateColumns.split(' ').map(parseFloat);var b=document.querySelector('.bar').getBoundingClientRect(),tl=document.querySelector('.tlw').getBoundingClientRect(),sp=document.querySelector('#split').getBoundingClientRect();return {c:c,bar:Math.round(b.height),tl:Math.round(tl.width),split:Math.round(sp.width),sw:document.documentElement.scrollWidth,iw:innerWidth,dock:getComputedStyle(document.querySelector('.dock')).display}})()");
+  const colsOk=g.c.length===3&&Math.abs(g.c[0]-1194*.4)<1&&g.c[1]===12&&Math.abs(g.c[2]-(1194-g.c[0]-g.c[1]))<1;
+  say('the split','the body becomes a grid whose preview column is 40%, a 12px divider, and the timeline in the rest \u2014 with the dock dissolved into it',
+    'columns '+g.c.map(n=>Math.round(n)).join(' / ')+'px, header '+g.bar+'px, timeline '+g.tl+'px, dock '+g.dock+', scrollWidth '+g.sw+'/'+g.iw,
+    colsOk&&g.bar===56&&g.split===12&&g.dock==='contents'&&g.sw===g.iw,
+    'display:contents is the one line that lets the dock\u2019s children land in different columns');
+
+  /* 4. `full` is the state most likely to be shipped broken, because it is the one
+     that hides things. The transport lives inside `.ar`, so hiding `.ar` would leave
+     a preview nobody could play \u2014 the check is that the play button survives. */
+  run("layMode='full';applyLayout()");await sleep(30);
+  const f=ev("(function(){return {play:!!document.querySelector('#play').offsetParent,tools:!!document.querySelector('.tools').offsetParent,tlw:!!document.querySelector('.tlw').offsetParent,ro:!!document.querySelector('.ro').offsetParent}})()");
+  say('full keeps the transport','the single-column mode hides the timeline and the ruler, and keeps the play button and the tool row',
+    'play '+(f.play?'visible':'gone')+', tools '+(f.tools?'visible':'gone')+', timeline '+(f.tlw?'visible':'hidden')+', ruler '+(f.ro?'visible':'hidden'),
+    f.play&&f.tools&&!f.tlw&&!f.ro,'a layout that hides the transport hides the only control that has one job');
+
+  /* 5. The phone numbers, as a diff against HEAD rather than a description of it. */
+  let phone=null;
+  if(RW){
+    /* The ratio is pinned first because it is not a constant of the page: an earlier
+       probe opens the Format sheet, and whichever ratio a user left on there changes
+       the header (9:16 turns on `body.gut`, which stacks the icons into a 116px
+       column) and the preview height. Pinning it makes this a diff against a stated
+       baseline rather than a diff against whatever ran before. */
+    RW.eval("tool=null;panel()");
+    RW.eval("proj.ar='9:16';fitView()");
+    await sleep(60);
+    phone=JSON.parse(RW.eval('JSON.stringify((function(){var g=function(s){return Math.round(document.querySelector(s).getBoundingClientRect().height)};return {bar:g(".bar"),view:g(".view"),ar:g(".ar"),ro:g(".ro"),tlw:g(".tlw"),tools:g(".tools")}})())'));
+  }
+  const diff=phone?Object.keys(PHONE_BASE).filter(k=>phone[k]!==PHONE_BASE[k]):['row frame unavailable'];
+  /* The header is absolutely positioned in the gut state \u2014 it overlays the preview
+     rather than taking a row \u2014 so it is compared but deliberately not summed. */
+  const stack=phone?phone.view+phone.ar+phone.ro+phone.tlw+phone.tools:0;
+  say('the phone is untouched','in the stacked layout every row keeps the exact height it had before the grid existed, and the stack still fills the viewport',
+    phone?Object.keys(PHONE_BASE).map(k=>k+' '+phone[k]).join(' \u00b7 ')+' \u2192 stack '+stack:'not measured',
+    phone&&!diff.length&&stack===844,
+    'measured from the build at HEAD at 393x844 with a 9:16 project and one clip');
+
+  run("layMode='top';applyLayout()");
+  return {pass,fail};
+}
+
 async function main(){
   const btn=$('#run');btn.disabled=true;
   $('#status').textContent='reaching the mock…';
@@ -885,9 +1006,12 @@ async function main(){
   $('#status').textContent='measuring the clip actions…';
   await new Promise(r=>setTimeout(r,30));
   const x=await runActions();
-  const p=a.pass+b.pass,f=a.fail+b.fail,tf=f+r.fail+g.fail+x.fail;
-  $('#summary').innerHTML='<div class="sum">'+p+' of '+(p+f)+' controls hold, '+r.pass+' of '+(r.pass+r.fail)+' shelf rows hold, '+g.pass+' of '+(g.pass+g.fail)+' layout checks hold, and '+x.pass+' of '+(x.pass+x.fail)+' panel checks hold. '+
-    (tf? '<span class="fail">'+tf+' failed</span> \u2014 a control that fails here is one whose label and its behaviour disagree.' : 'Every control is a bit-exact no-op at its rest, moves its own metric in the direction its name promises, keeps that promise after the preview is scaled down, the two layers still land on top of a graded clip instead of replacing it, no shelf row moves when a card is picked, and the sheet\u2019s own layout \u2014 the value above its track, the centred footer, the dot on the centred sliders \u2014 is measured rather than assumed, the four clip actions are driven through the rail\u2019s own buttons and a real drag rather than asserted from the source, the readout and the changed-dot are shown to follow the thumb mid-drag rather than on release, and Format is shown to have become two sheets with Export a third.')+'</div>';
+  $('#status').textContent='measuring the iPad layout\u2026';
+  await new Promise(r=>setTimeout(r,30));
+  const l=await runLayout();
+  const p=a.pass+b.pass,f=a.fail+b.fail,tf=f+r.fail+g.fail+x.fail+l.fail;
+  $('#summary').innerHTML='<div class="sum">'+p+' of '+(p+f)+' controls hold, '+r.pass+' of '+(r.pass+r.fail)+' shelf rows hold, '+g.pass+' of '+(g.pass+g.fail)+' sheet-layout checks hold, '+x.pass+' of '+(x.pass+x.fail)+' panel checks hold, and '+l.pass+' of '+(l.pass+l.fail)+' iPad-layout checks hold. '+
+    (tf? '<span class="fail">'+tf+' failed</span> \u2014 a control that fails here is one whose label and its behaviour disagree.' : 'Every control is a bit-exact no-op at its rest, moves its own metric in the direction its name promises, keeps that promise after the preview is scaled down, the two layers still land on top of a graded clip instead of replacing it, no shelf row moves when a card is picked, and the sheet\u2019s own layout \u2014 the value above its track, the centred footer, the dot on the centred sliders \u2014 is measured rather than assumed, the four clip actions are driven through the rail\u2019s own buttons and a real drag rather than asserted from the source, the readout and the changed-dot are shown to follow the thumb mid-drag rather than on release, Format is shown to have become two sheets with Export a third, and the side-by-side layout is shown to place its grid, keep the transport, and leave every phone row the exact height it had before it existed.')+'</div>';
   $('#status').textContent='done';
   btn.disabled=false;
 }

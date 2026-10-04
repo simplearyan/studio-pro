@@ -11,7 +11,9 @@ implements exactly this. It was measured, not guessed at — see §1 — and mos
 this plan is a port of its mechanism plus the four things it gets wrong or leaves
 out for our file.
 
-**This is a plan, not an implementation.** Nothing here is built. The mock is at
+**This is a plan.** Most of it is still unbuilt. **R1 and R2 in §3 are built and
+measured** — the grid, the four states and the header toggle; §3.2 records what
+shipped and what is deliberately not there yet. The mock is otherwise at
 `ecc11dd` plus the uncommitted Sharpen work.
 
 > Every "before" number in §2 and every "after" number in §1 was measured by
@@ -157,8 +159,8 @@ One attribute, four states, ported from the reference. Then the five places our
 file has to change shape, which is where all the risk is.
 
 - **R1** `body[data-layout]` ∈ {`top`, `left`, `right`, `full`}, with `.dock`
-  becoming `display:contents` in the side states only.
-- **R2** A header icon `#lay` cycling the four states, hidden below 600px.
+  becoming `display:contents` in the side states only. — **built**
+- **R2** A header icon `#lay` cycling the four states, hidden below 600px. — **built**
 - **R3** A Settings row so the state is discoverable and readable in words. The
   header icon alone is a mystery on first run; the reference has no Settings and
   we do, so we can do better than the reference here.
@@ -173,7 +175,8 @@ file has to change shape, which is where all the risk is.
 - **R10** `pointer:coarse` drops `#zo`/`#zi`.
 - **R11** `view-transition` on the two regions, guarded by
   `prefers-reduced-motion:reduce`.
-- **R12** Keyboard: `p` cycles, `shift+P` toggles full.
+- **R12** Keyboard: `p` cycles, `shift+P` toggles full. — **built** (it is the
+  same control as R2, so it arrived with it)
 
 ### 3.1 The one decision that is yours — the default
 
@@ -189,6 +192,45 @@ someone taps the icon. But "adaptive" implies it should just happen on an iPad.
 Recommendation: ship `top`, then flip the default to `auto` once the split has
 survived a few days of real use. The toggle is the feature; the default is a
 one-line change later.
+
+### 3.2 What actually shipped
+
+R1 and R2, and nothing else (R12's two keys came with R2, since they drive the same
+control). `body[data-layout]` is the whole mechanism and every rule that uses it
+is scoped to `body[data-layout]:not([data-layout=top])`, so the phone's flex-column
+layout is untouched **by construction** rather than by comparison — `top` is the
+*absence* of the attribute, and the grid only turns on for the other three.
+
+Measured at 1194×834, `left`: columns **478 / 12 / 704**, header **56**, timeline
+column **704**, and `scrollWidth` equal to `innerWidth` (the page never scrolls).
+§1 measured the reference at 477.6 / 12 / 704.4 by a different route, which is a
+useful thing to have landed on the same numbers.
+
+Three things the plan did not foresee:
+
+1. **`full` had to keep the transport.** The plan's `pb` area is our `.ar` row, so
+   following it literally means `display:none` on `.ar` — and the play button lives
+   inside `.ar`. That is a preview nobody can play or scrub. `full` now lays out
+   `"bar" / "view" / "ar tools"`: transport left, tools beside it.
+2. **The toggle could not go in `.br`.** `body.gut` — which a 9:16 project turns
+   on at every width — stacks `.br` into a **column** with a 14px gap, and `.bar`
+   is absolutely positioned in that state, so the stack grows *over* the canvas.
+   Adding the button there took the gut header from **116px to 174px**, pushing the
+   icon column 58px further down a face that was measured to clear it. `#lay` is a
+   direct child of `.bar` in a small left-hand group instead, so it adds no
+   vertical row at all.
+3. **`R4` turned out to be unnecessary for R1-R2 to be shippable.** The worry was
+   that `fitView()`'s viewport ladder would leave the preview wrong in a column.
+   It does not: `canvas{max-width:100%;max-height:100%}` already resolves against
+   the attribute ratio, so a 9:16 project in a 478-wide, 778-tall column measures
+   **429×762** with no dead stage. A side branch was written, measured against that,
+   and deleted — it produced identical numbers. That is the right outcome and also
+   the cheapest possible R4 if one is ever wanted.
+
+What is **not** here yet, in the order §12 puts it: the draggable `--pw` divider
+(R5), the sheet's popover form (R6), the Settings row (R3), tool labels from a
+measurement (R7), safe-area insets (R9), `pointer:coarse` (R10), view transitions
+(R11), and the flip to `auto` (R13, a separate decision).
 
 ---
 
