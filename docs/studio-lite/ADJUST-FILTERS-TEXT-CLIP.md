@@ -135,6 +135,40 @@ tapping Grain moved nothing.
 both deriving the answer. When each side decided for itself they disagreed: the
 sheet bound the thumb to the vignette while the handler wrote `c.fs`.
 
+### Three lit cards need a sentence
+
+Three effects can be on at once — a chain look and both layers — and to someone
+who tapped them by accident, three lit cards over a single slider read the same
+as one lit card until you parse it. So when more than one effect is up, the sheet
+says so in words and offers one tap out:
+
+```
+2 effects together — Vivid + Vignette          [ Clear all ]
+```
+
+The line is built from the same three fields the renderer reads (`c.f`, `c.vig`,
+`c.grain`), so it cannot claim a stack the picture does not have. It is rewritten
+by the input handler on every drag, not only when the sheet opens, because
+dragging a layer down to zero is the moment the count changes — a summary written
+once at open would still say "2 effects" after you had dialled one away. `Clear
+all` arrives with the second effect and not the first: one is a choice, two is the
+accident this exists for. It clears the look and both layers together, and Cancel
+still restores the pre-sheet state, so it is not a point of no return.
+
+`#sk` is always in the sheet's markup and hidden with the `hidden` attribute
+until the second effect, rather than injected on demand — inserting it mid-drag
+would move the slider under the thumb. Because `.stack` sets `display:flex`,
+which would beat the UA `[hidden]` rule, there is an explicit
+`.stack[hidden]{display:none}`.
+
+Measured through the UI: Vivid alone leaves the line hidden; Vivid + Vignette
+reads "2 effects together — Vivid + Vignette"; adding Grain gives "3 … Vivid +
+Vignette + Grain"; dragging Grain back to `0` rewrites it to 2 and drops `grain`
+from the clip; tapping `Clear all` empties the clip (`f:'none'`, `vig:0`,
+`grain:0`) and hides the line again. With no look at all, Vignette + Grain reads
+"2 effects together — Vignette + Grain". At 393 px the row is 336 px wide and the
+page still does not scroll sideways.
+
 ### A card's CSS and a card's layers cannot share one attribute
 
 A card shows the frame under the playhead with the effect drawn *on top of* it,
@@ -493,6 +527,7 @@ is wrong in the convenient direction is how a suite stops being trusted.
 | Layers stack | `f:'vivid'` with `vig:1` and `grain:1` keeps all three lit and paints all three; what the app's rAF loop painted is byte-identical to a manual `frameStage` render at the same settings (**0** differing pixels of 921,600), and removing the two layers changes **736,100** |
 | Layer independence | None → Grain → Vivid → Vignette → Grain off keeps `c.f` alive throughout; tapping a layer never reads or writes `c.f`; `Apply to all` copies `vig`/`grain` alongside `f`/`fs` |
 | Slider binds to one thing | tapping Grain arms the grain slider, Vignette arms the vignette, tapping a look leaves the slider on whichever layer is up, and tapping `None` with no layer up shows the prompt instead of a dead strength |
+| Stack is named | the sheet names what is on once two effects are up and hides the line below that: Vivid → hidden; +Vignette → "2 effects together — Vivid + Vignette"; +Grain → 3; dragging Grain to `0` rewrites it to 2 live; `Clear all` returns the clip to `f:'none'`/`vig:0`/`grain:0`; layer-only reads "Vignette + Grain"; no page horizontal scroll at 393 px |
 | Cards show both layers | with vignette and grain up, all 12 non-`None` cards carry **2** `<i>` layers (24 total), the grain one `mix-blend-mode: overlay` — the `style=`-attribute bug that showed grain alone is fixed |
 | Apply to all | 2 clips → both `{bright, warm}` + `moody@0.6`; objects cloned, not aliased |
 | Adjust is real | centre pixel `[255,209,167]` → `[255,255,217]` at `bright +0.6`, `[178,146,119]` at `−0.6` |

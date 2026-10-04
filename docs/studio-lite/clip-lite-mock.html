@@ -289,6 +289,15 @@ svg{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-l
 .car.fcards .kn{width:64px;height:82px;border-radius:10px}
 .car.fcards button{width:66px}
 .car.fcards .kn svg{width:26px;height:26px}
+/* The stacked-effects line. Three lit cards and one slider look much like one
+   lit card until you read them, so when more than one effect is on the sheet
+   says so in words and offers one tap out. display:flex would beat the [hidden]
+   UA rule, hence the explicit rule under it. */
+.stack{flex:1 1 100%;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:10px;padding:8px 12px;border-radius:12px;background:color-mix(in srgb,var(--on) 6%,transparent)}
+.stack[hidden]{display:none}
+.stack .stx{font-size:12px;line-height:1.35;color:var(--on2);text-align:center}
+.stack .stx b{color:var(--on);font-weight:500}
+.stack .chip{flex:none;height:30px;padding:0 12px;font-size:13px}
 /* The duration badge on a text clip. A caption's length is the one number you
    cannot see by looking at it — the block's width is the length, and width is
    exactly what you are dragging — so it is written on the block. */
@@ -901,6 +910,18 @@ const cardStyle=(c,k)=>{const P=F[k].post;
   const chain=P?(c.f&&c.f!=='none'?F[c.f].f(c.fs==null?1:c.fs):'none'):F[k].f(1);
   return {css:`background-image:url(${thumbAt(c)});filter:${chain}`,layers:postLayers(c,P)};};
 const pct=v=>(v>0?'+':'')+Math.round(v*100);
+/* What the Filters shelf has stacked right now, as a line of words. Three
+   controls can be on at once here — a chain look and both layers — and three
+   lit cards over one slider does not tell someone who tapped by accident that
+   they have piled three effects on one clip. This names them. It is read from
+   the same fields the renderer reads, so it cannot disagree with the picture,
+   and the sheet rewrites it on every drag (see the input handler), because
+   dragging a layer down to zero is the moment the count changes. `Clear all`
+   arrives with the second effect, not the first: one is a choice, two is the
+   accident this line exists for. */
+const stackOn=c=>{const on=[];if(c.f&&c.f!=='none')on.push(F[c.f].n);if((c.vig||0)>0)on.push(F.vig.n);if((c.grain||0)>0)on.push(F.grain.n);return on};
+const stackInfo=c=>{const on=stackOn(c);if(on.length<2)return '';
+  return `<span class="stx"><b>${on.length} effects together</b> — ${on.join(' + ')}</span><button class="chip" id="eca">Clear all</button>`};
 /* Which Adjust knob the slider belongs to. Module state rather than a second
    field on the clip, because it is a property of the sheet you are looking at,
    not of the clip — open Adjust on clip A, turn Highlights, Done, open it on
@@ -1472,6 +1493,7 @@ function panel(){
        thumb you were holding turned the look strength while the readout showed
        the vignette's. One decision, made once, read by both. */
     sliderKey=sliderOn;
+    const on=stackOn(c);
     h=`<div class="car fcards">`+Object.keys(F).map(k=>{
       /* cardStyle returns two things and they cannot share one attribute: the
          card's own CSS goes in style=, and the effect layers are child <i>
@@ -1484,7 +1506,8 @@ function panel(){
       const sel=F[k].post?(c[F[k].post]||0)>0:c.f==k;
       return `<button data-f="${k}"${sel?' class="on"':''}>${kn}<span class="lb">${F[k].n}</span></button>`}).join('')+`</div>`+
       (sliderOn?`<label><b id="rv">${Math.round(sv*100)}%</b></label><input type="range" id="r1" min="0" max="1" step=".02" value="${sv}">`
-        :`<span class="sub">Pick a look, then dial how far it goes</span>`);}
+        :`<span class="sub">Pick a look, then dial how far it goes</span>`)
+      +`<div class="stack" id="sk"${on.length>1?'':' hidden'}>${stackInfo(c)}</div>`;}
   else if(tool=='adjust'){const a=c.ad||(c.ad={});
     h=`<div class="car">`+Object.keys(ADJ).map(k=>`<button data-adj="${k}"${k==adjKey?' class="on"':''}><span class="kn">${ic(ADJ[k].i)}</span><span class="lb">${ADJ[k].n}</span></button>`).join('')+`</div><label><b id="rv">${pct(a[adjKey]||0)}</b></label><input type="range" id="r1" min="-1" max="1" step=".02" value="${a[adjKey]||0}">`;}
   else if(tool=='rotate')h=`<label><b id="rv">${c.rot||0}°</b></label><input type="range" id="r1" min="-180" max="180" step="1" value="${c.rot||0}"><button class="chip" id="r90">Rotate 90°</button>`;
@@ -1520,7 +1543,13 @@ P.addEventListener('input',e=>{
          which kind it is looking at, and without the two disagreeing. */
       const v=+el.value;
       if(sliderKey==='vig'||sliderKey==='grain')c[sliderKey]=v;else c.fs=v;
-      $('#rv').textContent=Math.round(v*100)+'%'}
+      $('#rv').textContent=Math.round(v*100)+'%';
+      /* The stack line can change while the thumb is down — a layer dragged to
+         zero leaves the pile — so it is rewritten here rather than only when the
+         sheet is built. Without this the sheet would still claim two effects
+         after you had already dialled one away. */
+      const on=stackOn(c),sk=$('#sk');
+      if(sk){sk.innerHTML=stackInfo(c);sk.hidden=on.length<2}}
     else if(tool=='adjust'){(c.ad||(c.ad={}))[adjKey]=+el.value;$('#rv').textContent=pct(+el.value)}
   }
   if(el.id=='ti'&&x){x.t=el.value||' ';renderTL()}
@@ -1549,6 +1578,10 @@ P.addEventListener('click',e=>{
      value — see adjSync. It deliberately does not rebuild the sheet: the row
      must stay exactly where the user scrolled it. */
   if(d.adj){adjKey=d.adj;adjSync();return}
+  /* The one-tap way out of a pile-up: clears the look and both layers together.
+     Cancel still restores the pre-sheet state, so this is not a point of no
+     return. */
+  if(b.id=='eca'){const c=curSel();c.f='none';c.fs=1;c.vig=0;c.grain=0;postKey='vig';refresh();toast('Cleared all effects');return}
   /* A filter pick does rebuild, because the strength slider only exists once a
      look is on. The scroll offset survives the rebuild via panel(). */
   if(d.f){
