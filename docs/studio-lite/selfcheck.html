@@ -37,7 +37,7 @@
 <body>
 <main>
   <h1>Clip Lite — self-check</h1>
-  <p class="sub">Every Adjust knob and every filter, measured against a synthetic frame that has a known flat field, known step edges and known colour patches. Each control has to prove three things: it is <em>exactly</em> a no-op at zero, it moves its own metric in the direction its name promises, and — for the spatial controls — it still does that after the picture is scaled down to the size the preview actually shows.</p>
+  <p class="sub">Every Adjust knob and every filter, measured against a synthetic frame that has a known flat field, known step edges and known colour patches. Each control has to prove three things: it is <em>exactly</em> a no-op at its rest (which is 1, not 0, for Opacity), it moves its own metric in the direction its name promises, and — for the spatial controls — it still does that after the picture is scaled down to the size the preview actually shows.</p>
 
   <div class="bar">
     <button id="run">Run checks</button>
@@ -52,9 +52,9 @@
     <p style="margin:0"><b>Measure what the user sees.</b> Sharpen shipped as <code>contrast() saturate()</code> and scored +9% acutance at full resolution while scoring <b>−5%</b> as displayed — 720px of canvas shown in 257px gets averaged by the browser, and averaging cancelled the boost. The control was making the picture softer and the readout said otherwise. So every control is measured twice: on the canvas, and again after a 2.8× downscale. A control whose two answers disagree in sign is flagged, because that is the failure mode that hides.</p>
   </div>
 
-  <h2>Adjust — eight knobs</h2>
+  <h2>Adjust — thirteen knobs</h2>
   <table id="adjT"><thead><tr>
-    <th style="width:12%">Knob</th><th style="width:15%">Metric</th><th style="width:9%">At zero</th>
+    <th style="width:12%">Knob</th><th style="width:15%">Metric</th><th style="width:9%">At rest</th>
     <th style="width:22%">As measured</th><th style="width:22%">As displayed</th><th style="width:9%">Result</th>
   </tr></thead><tbody></tbody></table>
 
@@ -70,6 +70,13 @@
   <table id="rowT"><thead><tr>
     <th style="width:14%">Shelf</th><th style="width:34%">Action</th>
     <th style="width:14%">Offset before</th><th style="width:14%">After</th><th style="width:10%">Result</th>
+  </tr></thead><tbody></tbody></table>
+
+  <h2>The sheet's geometry</h2>
+  <p class="sub">A layout cannot be read off a pixel or a filter string. The value could sit forty pixels above its slider and still be "the readout"; the footer's middle action could drift left and still be "three buttons"; a centre dot could appear on every slider and still be "a dot". Each of those is a promise the restyled sheet makes, and only geometry can see it — so these run as measurements, in the same phone-sized instance the row checks use, because a layout claim only means something at a laid-out width.</p>
+  <table id="geoT"><thead><tr>
+    <th style="width:16%">Check</th><th style="width:44%">What it promises</th>
+    <th style="width:28%">Measured</th><th style="width:12%">Result</th>
   </tr></thead><tbody></tbody></table>
 </main>
 
@@ -87,7 +94,7 @@
    as long as it did — a control cannot be reviewed by reading its name.
 
    So the rule this page enforces is not "does the filter string look right". It
-   is: every control must (1) be a bit-exact no-op at zero, so a clip nobody
+   is: every control must (1) be a bit-exact no-op at its rest, so a clip nobody
    touched is untouched, (2) move the one metric its name promises, in the
    direction the name promises, and (3) survive being scaled to preview size.
    A control that fails any of those has lied, whatever its source says.
@@ -163,8 +170,12 @@ function measure(img){
         const s=Math.sqrt(A*A+Bc*Bc); hueX+=A*s;hueY+=Bc*s;ws+=s;
       }}
     const m=L/n;
+    /* `by` is the mean of the blue↔yellow opponent axis (Bc = .866(G−B)). It is
+       the only number that can prove Blue tone does anything at all: a colour
+       cast barely moves mean luma and not at all on a grey, so the mean of that
+       axis is the reading, negative for blue and positive for amber. */
     return {mean:m, sd:Math.sqrt(Math.max(0,L2/n-m*m)),
-      chromaSd:Math.hypot(a1/n,a2/n),
+      chromaSd:Math.hypot(a1/n,a2/n),by:a2/n,
       hue:(ws>1e-6?Math.atan2(hueY/ws,hueX/ws)*180/Math.PI:0)};
   };
   const M={};
@@ -253,7 +264,7 @@ function render(clip){
      keys on the two strengths rather than on the look: a Vivid clip with no
      vignette must not be sent through the mask stage at all, and one with a
      vignette must be even when the look is None. */
-  const sv=(clip.ad&&clip.ad.sharp)||0, pf=(clip.vig||0)>0||(clip.grain||0)>0;
+  const sv=(clip.ad&&clip.ad.sharp)||0, pf=(clip.vig||0)!==0||(clip.grain||0)!==0||(clip.blue||0)!==0||(clip.blur||0)>0||(clip.opacity==null?1:clip.opacity)<1;
   if(sv||pf){
     /* Bust the mask's readback cache. It keys on frame time, grade, geometry —
        all constant here, because the chart never changes — so without this the
@@ -272,6 +283,14 @@ function render(clip){
    once. Every layer claim below therefore names which field it is asserting. */
 const mkClip=(ad,f,fs,vig,grain)=>({id:1,rot:0,f:f||'none',fs:fs==null?1:fs,
   vig:vig||0,grain:grain||0,ad:ad||{},sp:1,vol:1,in:0,out:1,s:0});
+/* Not every knob writes `ad[key]`. Vignette and Grain are the two layers, and
+   they live on the clip as their own strengths — so a claim declares the field it
+   writes (`post`) and this builds the clip the runner measures, instead of the
+   runner assuming every control is a member of the Adjust bag. */
+const clipFor=(cl,v)=>{
+  if(!cl.post)return mkClip({[cl.k]:v});
+  const c=mkClip({},'none',1);c[cl.post]=v;return c;
+};
 
 /* ── What each control promises, in one line each ───────────────────────────
    `want` is the assertion. `dir` is which end of the slider must show it. This
@@ -311,7 +330,57 @@ const CLAIMS=[
   {k:'sharp',n:'Sharpen',ends:[1],metric:'acutance, canvas and displayed',
    why:'the control that lied. It must raise acutance on the canvas AND after the browser averages the preview down; an unsigned mask scored +41% and −5%.',
    spatial:true,
-   check:(v,b,z)=>b.M.acutance>z.M.acutance*1.02}
+   check:(v,b,z)=>b.M.acutance>z.M.acutance*1.02},
+  /* The two layers are Adjust knobs as well as Filters cards, so they get a claim
+     on this shelf too. They are the only entries here with a `post` — everything
+     else writes the Adjust bag, and these write the clip itself. `ends:[1]` and
+     not `[1,-1]`: there is no negative vignette, and the shelf gives them a
+     0 to 1 slider rather than pretending otherwise. */
+  {k:'vig',n:'Vignette',post:'vig',ends:[1,-1],metric:'corner luma, centre held',
+   why:'bipolar, and both ends are checked because both ends are real: at +1 the edge darkens, at −1 it lightens, and the middle is left alone either way. It is a layer, not a filter string, so it writes clip.vig — the same field the Filters shelf shows, which is why both shelves agree by construction.',
+   check:(v,b,z)=>Math.abs(b.centre.mean-z.centre.mean)<1.5&&(v>0?b.corner.mean<z.corner.mean-8:b.corner.mean>z.corner.mean+8),
+   num:(v,b,z)=>({v:fmt(b.corner.mean-z.corner.mean,1)+' luma'})},
+  {k:'grain',n:'Grain',post:'grain',ends:[1,-1],metric:'texture at +1, softness at −1',
+   why:'bipolar now, and both ends are real. +1 adds texture without moving exposure; −1 is the opposite corner of the same axis — the frame is desaturated and smoothed — so the grey card must lose colour and the step edges must lose spread. A single-end check could not see the half that used to do nothing.',
+   check:(v,b,z)=>v>0
+     ? b.mid.sd>z.mid.sd+0.5&&Math.abs(b.all.mean-z.all.mean)<3
+     : b.red.chromaSd<z.red.chromaSd-4&&b.edges.sd<z.edges.sd-0.5,
+   num:(v,b,z)=>v>0?{v:fmt(b.mid.sd-z.mid.sd,2)+' sd'}
+     :{v:fmt(b.red.chromaSd-z.red.chromaSd,2)+' chroma, '+fmt(b.edges.sd-z.edges.sd,2)+' sd'}},
+  /* Blue tone is a white balance and is therefore a channel move, not a hue
+     rotation — it cannot live in a CSS filter string at all, which is exactly
+     the class of control most likely to ship as a knob that moves a readout and
+     nothing else. The witness is the mid-grey plate's blue↔yellow axis: the
+     reference's own grey card has no colour to argue about, so any offset there
+     came from the slider. +1 must push it blue (negative `by`), −1 amber
+     (positive), and 0 must be an exact no-op — all three asserted. */
+  {k:'blue',n:'Blue tone',post:'blue',ends:[1,-1],metric:'blue↔yellow on the mid plate',
+   why:'a colour cast is a channel move, so it is drawn over the picture box as a tint rather than expressed as a filter string; the grey plate must go blue at +1 and amber at −1, and stay neutral in between',
+   check:(v,b,z)=>v>0?b.mid.by<z.mid.by-6:b.mid.by>z.mid.by+6,
+   num:(v,b,z)=>({v:fmt(b.mid.by-z.mid.by,2)+' blue↔yellow'})},
+  /* Blur is the counterpart of Sharpen and the control the negative grain was
+     only ever a special case of, so it has to prove the same thing Sharpen does:
+     that it moves the *edge* measurement and not just a mean. Checked on
+     acutance and on the step-edge spread together — a mean-only test would pass
+     a control that merely dimmed the frame. Unipolar, so one end, and its
+     neutral is its floor, which is why it is the one Adjust slider with no
+     centre dot. */
+  {k:'blur',n:'Blur',post:'blur',ends:[1],metric:'acutance and step-edge spread',
+   why:'softening must show up on the edges, not as a change of exposure — both acutance and the edge spread have to fall, and the frame mean has to hold',
+   check:(v,b,z)=>b.acutance<z.acutance*.85&&b.edges.sd<z.edges.sd-0.5&&Math.abs(b.all.mean-z.all.mean)<2,
+   num:(v,b,z)=>({v:fmt((b.acutance/z.acutance-1)*100,1)+'% acutance, '+fmt(b.edges.sd-z.edges.sd,2)+' sd'})},
+  /* Opacity is the one control whose rest is not zero, so it is also the one
+     that proves the harness can be told where a neutral is. It is an alpha on
+     the picture, not a post effect over it, so the witness is the frame's own
+     mean against the project background: half must land the picture halfway to
+     the backdrop, and zero must leave nothing but the backdrop. A control that
+     merely dimmed the frame by some other amount would fail the halfway check. */
+  {k:'opacity',n:'Opacity',post:'opacity',neutral:1,ends:[.5,0],metric:'frame mean against the backdrop',
+   why:'the only knob that rests at 1 rather than 0, so it declares its neutral and the no-op is measured there. Half opacity must land the frame halfway to the project background, and zero must leave the background alone — a clip that is 20% there has to look 20% there.',
+   check:(v,b,z)=>v>0
+     ? b.all.mean<z.all.mean-20&&Math.abs(b.all.mean-z.all.mean*.5)<20
+     : b.all.mean<2,
+   num:(v,b,z)=>({v:fmt(b.all.mean-z.all.mean,2)+' luma'})}
 ];
 
 /* ── Run ────────────────────────────────────────────────────────────────────*/
@@ -348,8 +417,7 @@ async function runAdjust(){
     const ends=cl.ends;
     let dirOk=true,reported=null,zeroDiff=0,dispOkFinal=true;
     for(const v of ends){
-      const ad={};ad[cl.k]=v;
-      const m=measure(render(mkClip(ad)));
+      const m=measure(render(clipFor(cl,v)));
       const d=downscale(CTX.canvas,FRAME_W,FRAME_H);
       const dsp={acutance:acutanceScaled(d.img,R.edges)};
       dirOk=(cl.spatial?cl.check(v,m,base):cl.check(v,m.M,base.M))&&dirOk;
@@ -360,11 +428,19 @@ async function runAdjust(){
         const upCanvas=m.M.acutance>base.M.acutance, upShown=dsp.acutance>dspBase;
         dispOkFinal=(upCanvas===upShown)&&dispOkFinal;
       }
-      reported=reported||{m,v,dsp};
-      reported.v=v;
+      /* Keep the *first* end's numbers and its own value together. Overwriting
+         `v` here (as this used to) showed the first end's measurements under the
+         last end's label: Brightness read "+60 luma" either way, but a
+         directional `num` — Grain's +1/−1 branches, which report different
+         quantities — would print the wrong one. */
+      if(!reported)reported={m,v,dsp};
     }
-    const z={};z[cl.k]=0;
-    zeroDiff=diffCount(measure(render(mkClip(z))).raw,base.raw);
+    /* The no-op is asserted at the control's *neutral*, which is not always
+       zero. Opacity rests at 1 — a clip is opaque until you say otherwise — so
+       a claim declares where its rest is and the harness measures the frame
+       there rather than at 0. */
+    const nv=cl.neutral||0;
+    zeroDiff=diffCount(measure(render(clipFor(cl,nv))).raw,base.raw);
     const m=reported.m,dsp=reported.dsp;
     const allOk=zeroDiff===0&&dirOk&&dispOkFinal;
     if(allOk)pass++;else fail++;
@@ -519,7 +595,7 @@ async function runRows(){
     return {pass:0,fail:1};
   }
   const ev=code=>RW.eval(code);
-  const reset="clips[0].f='none';clips[0].fs=1;clips[0].vig=0;clips[0].grain=0;clips[0].ad={};";
+  const reset="clips[0].f='none';clips[0].fs=1;clips[0].vig=0;clips[0].grain=0;clips[0].blue=0;clips[0].blur=0;clips[0].opacity=1;clips[0].ad={};";
   for(const cs of ROWS){
     let before='\u2014',after='\u2014',moved=false,err='';
     try{
@@ -552,6 +628,111 @@ async function runRows(){
   return {pass,fail};
 }
 
+/* ── The sheet's geometry ──────────────────────────────────────────────────
+   A layout cannot be read off a pixel or a filter string. The value could sit
+   forty pixels above its slider and still be "the readout"; the footer's middle
+   action could drift left and still be "three buttons"; a centre dot could
+   appear on every slider and still be "a dot". Each of those is a promise the
+   restyled sheet makes, and only geometry can see it.
+
+   It runs in the phone-sized instance the row checks use, because a layout claim
+   only means something at a laid-out width — the 1px frame the pixel checks use
+   could not report a gap at all. Everything below is read from `getBoundingClientRect`
+   on the real nodes, driven through the sheet's own click handler, so a change to
+   `.sl`, `.ef` or the dot's CSS shows up here rather than being asserted about. */
+async function runGeometry(){
+  const tb=$('#geoT tbody');tb.innerHTML='';
+  let pass=0,fail=0;
+  if(!RW&&!await bootRow()){
+    tb.insertAdjacentHTML('beforeend',row([{html:'<span class="nm">geometry</span>'},
+      {html:'could not reach the mock instance'},{html:'\u2014',cls:'n'},
+      {html:'<span class="fail">not run</span>'}]));
+    return {pass:0,fail:1};
+  }
+  /* Two doors into the mock. `run` evaluates statements (the sheet's own
+     `panel()` and its click handler), and `ev` evaluates a single expression
+     and brings its value back across the frame boundary — an object from the
+     iframe realm is not reliably readable here, so it is serialised in there
+     and parsed out here. `ev` cannot take a statement list: wrapping one in
+     `JSON.stringify(...)` is a syntax error, which is exactly what the first
+     draft of this probe did. */
+  const run=code=>RW.eval(code);
+  const ev=expr=>JSON.parse(RW.eval('JSON.stringify('+expr+')'));
+  const say=(name,what,meas,ok,why)=>{if(ok)pass++;else fail++;
+    tb.insertAdjacentHTML('beforeend',row([
+      {html:'<span class="nm">'+name+'</span>'},
+      {html:what+(why?'<span class="why">'+why+'</span>':'')},
+      {html:meas,cls:'n'},
+      {html:ok?'<span class="pass">holds</span>':'<span class="fail">fails</span>'}]));};
+  try{
+    run("clips[0].f='none';clips[0].fs=1;clips[0].vig=0;clips[0].grain=0;clips[0].ad={};sel={k:'c',id:1}");
+
+    /* 1. The value sits on the track's own line, right-aligned, on every sheet
+       that has a slider. One measurement per sheet, because it is one shared
+       block — a second copy of the markup would be the only way these could
+       disagree, and this is what would catch one. */
+    const seen=[];
+    for(const t of ['speed','volume','adjust','rotate']){
+      run("tool="+JSON.stringify(t)+";panel()");
+      await sleep(40);
+      seen.push(ev("(function(){var rv=document.querySelector('#panel #rv').getBoundingClientRect(),r=document.querySelector('#panel #r1').getBoundingClientRect();return {t:"+JSON.stringify(t)+",gap:Math.round(r.top-rv.bottom),inset:Math.round(r.right-rv.right)}})()"));
+    }
+    const gapsOk=seen.every(s=>s.gap>0&&s.gap<=12&&s.inset>=0&&s.inset<=5);
+    say('value \u2194 track','the readout sits directly above its own track, right-aligned, on every sheet with a slider',
+      seen.length+' sheets, gap '+Math.min(...seen.map(s=>s.gap))+'\u2013'+Math.max(...seen.map(s=>s.gap))+'px, inset '
+        +Math.min(...seen.map(s=>s.inset))+'\u2013'+Math.max(...seen.map(s=>s.inset))+'px',
+      gapsOk,'a value on a line of its own is the layout the reference does not use');
+
+    /* 2. The centre dot is on exactly the sliders that have a centre. Selecting
+       every knob drives adjSync, which is the path that adds and removes the
+       dot — so this covers the switch as well as the first paint. */
+    run("tool='adjust';panel()");
+    await sleep(50);
+    const keys=ev('Object.keys(ADJ)'),bad=[];
+    let bi=0,flat=0;
+    for(const k of keys){
+      const r=ev("(function(){var b=document.querySelector('#panel [data-adj="+JSON.stringify(k)+"]');b.click();var sl=document.querySelector('#panel .sl');return {bi:sl.classList.contains('bi'),dot:getComputedStyle(document.querySelector('#panel .dot')).display==='block',want:knobRng("+JSON.stringify(k)+")[0]<0}})()");
+      if(r.want)bi++;else flat++;
+      if(r.bi!==r.want||r.dot!==r.want)bad.push(k);
+    }
+    say('centre dot','a dot on the sliders that have a centre \u2014 the bipolar ones \u2014 and on no others, checked by selecting every knob',
+      keys.length+' knobs: '+bi+' bipolar, '+flat+' floored at zero; off: '+(bad.length?bad.join(', '):'none'),
+      bad.length===0,'the dot marks the value a slider balances around');
+
+    /* 3. The same rule on the shelf that shares the slider: a look is flat at
+       its floor, a layer is centred. */
+    run("sel={k:'c',id:1};tool='filter';panel()");
+    await sleep(50);
+    run("document.querySelector('#panel [data-f=\"oldie\"]').click()");
+    await sleep(60);
+    /* Read the dot's rendered display too, not just the class that asks for it:
+       a rule that shows the dot on every slider would leave the class correct
+       and the picture wrong, and the Adjust loop above already checks both. */
+    const dotState=()=>ev("(function(){var sl=document.querySelector('#panel .sl');return {bi:sl.classList.contains('bi'),dot:getComputedStyle(document.querySelector('#panel .dot')).display==='block'}})()");
+    const lookD=dotState();
+    run("document.querySelector('#panel [data-f=\"vig\"]').click()");
+    await sleep(60);
+    const vigD=dotState();
+    say('centre dot, Filters','the strength slider is centred for a layer and flat for a look',
+      'look centred='+lookD.bi+'/dot='+lookD.dot+', vignette centred='+vigD.bi+'/dot='+vigD.dot,
+      lookD.bi===false&&lookD.dot===false&&vigD.bi===true&&vigD.dot===true,
+      'the two shelves share one slider, so the rule has to hold on both');
+
+    /* 4. The footer. The reference centres the middle action on the sheet, so
+       the grid is measured against the content box `.ef` itself — measured, not
+       derived from padding, because `scrollbar-gutter: stable` reserves space
+       inside that box and a padding sum would not know about it. */
+    run("sel={k:'c',id:1};tool='adjust';panel()");
+    await sleep(60);
+    const f=ev("(function(){var p=document.querySelector('#panel'),ef=p.querySelector('.ef'),e=ef.getBoundingClientRect(),m=p.querySelector('.ef>.m').getBoundingClientRect(),l=p.querySelector('.ef>.l'),r=p.querySelector('.ef>.r'),lb=l.getBoundingClientRect(),rb=r.getBoundingClientRect();return {left:Math.round(lb.left-e.left),right:Math.round(e.right-rb.right),off:Math.round((m.left+m.right)/2-(e.left+e.right)/2),lc:l.textContent.trim(),mc:m.width?p.querySelector('.ef>.m').textContent.trim():'',rc:r.textContent.trim()}})()");
+    say('footer','the middle action is centred on the sheet content, with Cancel and Done flush to its edges',
+      'centre off by '+f.off+'px, edges '+f.left+'/'+f.right+'px, '+f.lc+' \u00b7 '+f.mc+' \u00b7 '+f.rc,
+      Math.abs(f.off)<=2&&Math.abs(f.left)<=1&&Math.abs(f.right)<=1&&f.lc==='Cancel'&&f.mc==='Apply to all'&&f.rc==='Done',
+      'space-between left the middle action wherever the outer two happened to put it');
+  }catch(e){ say('geometry','the probe could not run',String((e&&e.message)||e),false); }
+  return {pass,fail};
+}
+
 async function main(){
   const btn=$('#run');btn.disabled=true;
   $('#status').textContent='reaching the mock…';
@@ -565,9 +746,12 @@ async function main(){
   $('#status').textContent='measuring shelves\u2026';
   await new Promise(r=>setTimeout(r,30));
   const r=await runRows();
-  const p=a.pass+b.pass,f=a.fail+b.fail,tf=f+r.fail;
-  $('#summary').innerHTML='<div class="sum">'+p+' of '+(p+f)+' controls hold, and '+r.pass+' of '+(r.pass+r.fail)+' shelf rows hold. '+
-    (tf? '<span class="fail">'+tf+' failed</span> \u2014 a control that fails here is one whose label and its behaviour disagree.' : 'Every control is a bit-exact no-op at zero, moves its own metric in the direction its name promises, keeps that promise after the preview is scaled down, the two layers still land on top of a graded clip instead of replacing it, and no shelf row moves when a card is picked.')+'</div>';
+  $('#status').textContent='measuring the sheet\u2019s geometry\u2026';
+  await new Promise(r=>setTimeout(r,30));
+  const g=await runGeometry();
+  const p=a.pass+b.pass,f=a.fail+b.fail,tf=f+r.fail+g.fail;
+  $('#summary').innerHTML='<div class="sum">'+p+' of '+(p+f)+' controls hold, '+r.pass+' of '+(r.pass+r.fail)+' shelf rows hold, and '+g.pass+' of '+(g.pass+g.fail)+' layout checks hold. '+
+    (tf? '<span class="fail">'+tf+' failed</span> \u2014 a control that fails here is one whose label and its behaviour disagree.' : 'Every control is a bit-exact no-op at its rest, moves its own metric in the direction its name promises, keeps that promise after the preview is scaled down, the two layers still land on top of a graded clip instead of replacing it, no shelf row moves when a card is picked, and the sheet\u2019s own layout \u2014 the value above its track, the centred footer, the dot on the centred sliders \u2014 is measured rather than assumed.')+'</div>';
   $('#status').textContent='done';
   btn.disabled=false;
 }

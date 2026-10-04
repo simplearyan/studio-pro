@@ -99,17 +99,46 @@ strength, and both sit on top of whichever chain is picked. So `post` is a
 *kind*, not an identity, and the clip needs two numbers that are not `f`/`fs`:
 
 ```js
-vig:{n:'Vignette',f:null,post:'vig'},      // a layer — clip.vig,  0…1
-grain:{n:'Grain',f:null,post:'grain'},    // a layer — clip.grain, 0…1
+vig:{n:'Vignette',f:null,post:'vig'},      // a layer — clip.vig,   −1…1
+grain:{n:'Grain',f:null,post:'grain'},    // a layer — clip.grain, −1…1
 ```
 
 Vignette and Grain used to be chains like the rest, competing for `c.f` — which
 meant tapping Grain deleted Vivid and then deleted itself, and there was no
-arrangement of the two you could want. The obvious alternative, making them
-Adjust knobs, was rejected: Adjust's slider is bipolar `−1…1`, and neither of
-these has an honest negative end. `−1` vignette is not a weaker vignette, it is
-an inverted one. They are looks, and a look's job is to be picked, so they stay
-on the Filters shelf.
+arrangement of the two you could want. They are now **layers**: independent
+per-clip strengths that `postFx()` draws once the frame is on the canvas, over
+whichever chain is picked, so all three can be on at once.
+
+They also appear on the **Adjust shelf**, and that reversal is worth recording
+because the first argument against it was wrong. The idea was rejected on the
+grounds that Adjust's slider is bipolar `−1…1` and neither effect has an honest
+negative end. That was **wrong about both**. `−1` vignette is not an inverted
+vignette, it is a *white* vignette — the edge lightened instead of darkened —
+which is a real look, and the one you reach for to lift a subject off a dark
+background. And grain's negative end is real too, once you stop reading it as
+"less noise": the slider runs genuine grain at `+1`, nothing at `0`, and a
+soft-focus look at `−1`, where the frame is desaturated and smoothed. "A
+negative amount of grain is not a thing that exists" was only ever true if the
+negative end had to mean *more* grain; the opposite corner of the same axis
+(smooth, not textured) is a thing that exists and that this shelf wanted.
+
+A mask has only one sign, so the negative half is spent on the opposite
+operation — the same move Sharpen's negative end makes. It is one native pass:
+the whole frame redrawn onto itself through `saturate() blur()`, with a few px of
+overscan so the blur's source rectangle extends past the viewport (a 1:1 redraw
+would sample transparency outside the canvas and ring the edge with a dark
+halo). Both layers are therefore genuine centred sliders like the nine tonal
+knobs. Both shelves read and write the same two fields (`clip.vig`,
+`clip.grain`), so they cannot disagree.
+
+**Softening that is not grain.** Reusing that path for a *separate* knob is what
+Blur is: the same `soften()` redraw, with the desaturation left out and the
+radius raised, so an out-of-focus frame no longer requires also adding film
+grain. It is unipolar `0…1` — there is no negative blur, because Sharpen already
+owns the other direction — which makes it the one Adjust knob whose floor is its
+neutral. It is applied before the vignette and grain rather than after: blur is a
+property of the picture, and softening the noise or the vignette's falloff would
+be softening the wrong layer.
 
 **One slider for three strengths** is the honest compromise, and it needs a
 rule about which strength the slider is editing. The rule is, in order: the layer
@@ -134,6 +163,36 @@ tapping Grain moved nothing.
 `sliderKey` is written by `panel()` and read by the input handler, rather than
 both deriving the answer. When each side decided for itself they disagreed: the
 sheet bound the thumb to the vignette while the handler wrote `c.fs`.
+
+### A bipolar vignette, and why it is not an inverted one
+
+The two ends of the vignette are both real, and the measurement says so. Mean
+corner luma on the self-check's flat chart, against an untouched frame:
+
+| `clip.vig` | corner luma | centre luma |
+|---|---|---|
+| `0` | **128.0** | 128.0 |
+| `+1` (black) | **53.5** — −74.5 | 127.6 — −0.4 |
+| `−1` (white) | **201.9** — +73.9 | 128.4 — +0.4 |
+
+Symmetric to within 0.6 luma, and the centre moves by less than half a luma
+either way: the falloff starts at 32% of the diagonal radius, so the middle of the
+frame is untouched whichever direction the slider goes. `0` is a bit-exact no-op
+(0 differing bytes), which is the property that lets the control sit on a shelf
+where every slider is centred without lying about its own range.
+
+That is the whole argument for the reversal. "A negative vignette is
+meaningless" was an assumption; the thing it named — a lightened edge — is a
+normal look with a normal name.
+
+One consequence is worth naming: because the value is signed, **every "is this
+layer on?" test had to change from `> 0` to `!= 0`** — the Filters shelf's lit
+card, which layer the single slider is bound to, the stack line's count, and the
+`draw()` gate that decides whether the frame takes the post pass at all. A
+negative vignette is an effect, not an absence, and every place that treated the
+sign as the switch was quietly dropping it. Tapping a lit Vignette card also had
+to test magnitude to clear it, so tapping a `−70%` vignette switches it off rather
+than flipping it to full black.
 
 ### Three lit cards need a sentence
 
@@ -492,7 +551,7 @@ deterministic, no media file, no decoder in the way.
 
 Every control must prove three things:
 
-1. **It is a bit-exact no-op at zero.** Not *nearly* — 0 differing bytes against
+1. **It is a bit-exact no-op at its rest.** Not *nearly* — 0 differing bytes against
    no knob at all. "Nearly" is where surprises live.
 2. **It moves its own metric, in the direction its name promises** — at *both*
    ends of its slider, because a control that honours only half its range is
@@ -546,8 +605,9 @@ to bring the selection into view, so a "fix" that merely switched centring off
 fails there instead of passing quietly. The assertion is proven able to fail —
 re-running the old behaviour in the same frame moves the row `187 → 347`.
 
-Current result: **21 of 21 controls and 4 of 4 rows hold** — 8 knobs, 13 looks,
-and neither shelf moving under the thumb.
+Current result: **26 of 26 controls, 4 of 4 shelf rows and 4 of 4 layout checks
+hold** — 13 knobs, 13 looks, neither shelf moving under the thumb, and the sheet's
+own geometry measured rather than assumed (see §"The sheet's geometry" below).
 
 Two of the three bugs it found were in the page's own claims, not the mock, and
 that is worth saying too: Contrast at −1 legitimately *reduces* spread,
@@ -558,11 +618,132 @@ is wrong in the convenient direction is how a suite stops being trusted.
 
 ---
 
+## The sheet, restyled to the reference (and Blue tone)
+
+The property sheet was rebuilt against the YouTube Create reference, and the
+whole change is one idea: **the value belongs to the slider.** It used to be a
+20px centred `<b>` on a line of its own with the track on the next line down —
+two objects the eye had to pair up, and the pairing was exactly what the
+reference makes free. Now there is one `.sl` block per slider: the number is
+15px, right-aligned, directly above the track, 6px away from it. Measured at
+393×844 on the Adjust sheet, the readout sits at `y690–706` and the track starts
+at `y712`.
+
+The track itself is styled rather than left native: a 4px fill-meets-thumb line
+with a 22px white thumb, and the fill is computed against the thumb's *travel*
+(the travel is inset by the thumb radius at each end, so a raw percentage stops
+~11px short of the thumb at the far right). At `blue 0.6` the fill reads
+`78.02%`, which is where the thumb is, not 80%.
+
+**A centre dot marks the neutral.** It is emitted only when the floor is
+negative — a slider floored at zero has a neutral that sits under the thumb's
+rest position, so a dot there would describe the thumb — and it is toggled live
+by `adjSync`, because the knob switches without rebuilding the sheet. Rotation
+(−180…180), the vignette, grain and every tonal knob get it; Blur, Opacity and
+Volume, the three sliders whose rest is an end rather than a centre, do not.
+
+**One knob does not rest at zero.** Opacity's neutral is 1 — a clip is opaque
+until you say otherwise — which is the one place on this shelf where the numbers
+are not all zero at rest, and it forced two things to be stated rather than
+assumed. The changed-dot compares against `adjNeutral(k)` instead of 0, so
+Opacity does not light its dot the moment the sheet opens; and the self-check
+asserts the bit-exact no-op at each claim's **declared rest** instead of at 0,
+so Opacity at 1 is 0 differing bytes while Opacity at 0 is 0 differing bytes from
+nothing at all. A harness that assumed every neutral was 0 would have reported
+Opacity as broken for being correct.
+
+**A gradient track is the scale the label cannot say.** Blue tone ships
+`linear-gradient(90deg,#d9a441,#f2f2f2 50%,#3f7fe0)`: amber → neutral → blue,
+read left to right. That is a property of *which* knob is picked rather than of
+its value, so `adjSync` re-writes `--gr` on every knob change — the first cut set
+it only in the build path, which meant the ramp appeared only when the sheet was
+built with Blue tone already selected, i.e. never.
+
+**A knob that holds a value carries a dot.** The ring answers "which knob is the
+slider on"; a small accent dot answers "which knobs hold a value". Without it,
+the fact that you changed Warmth evaporates the moment you tap Brightness — the
+ring moves and takes the evidence with it. Read from the clip via `adjMarks()`,
+not from `adjKey`, so it survives selection changes; three set knobs (Warmth,
+Vignette, Blue tone) reported correctly in the live check.
+
+**The footer is three anchored slots, not three flex children.** Under
+`space-between` the middle action drifted with whatever widths Cancel and Done
+happened to carry, so "Apply to all" sat left of centre beside a wide Cancel.
+`.ef` is now `grid-template-columns:1fr auto 1fr` with `l`/`m`/`r` slots, and the
+middle action is centred on the sheet content itself: at 390px the panel content
+spans `20…353`, its centre is `186.5`, and Apply to all centres at `186.5`, with
+Cancel flush left and Done flush right. The middle action wears an outline
+rather than a third fill — at reference distance a third solid pill competes with
+Done. An empty `.m` still holds the column, which is what keeps Done pinned right
+on the sheets with no middle action at all (Settings, Text).
+
+### Blue tone cannot be a filter string, so it is not one
+
+Blue tone is a white balance, and a white balance is a **channel move** —
+`ctx.filter` has no per-channel control, so every filter-chain version of this
+knob is a hue rotation wearing the name. It is therefore a third post field
+(`clip.blue`) drawn over the picture box in `frameStage()`, the same route the
+vignette and grain take and for the same reason: the thing cannot be said in the
+filter string, so it is said after the frame. A fixed blue at `+v` and its amber
+mirror at `−v`, alpha by magnitude, confined to the drawn picture's own
+`x0,y0,w,h` box so the letterbox stays black. Bipolar like its neighbours, and
+exactly neutral at 0.
+
+The witness is the mid-grey plate's blue↔yellow axis (the mean of
+`Bc = .866(G−B)`, negative for blue). The grey card has no colour to argue
+about, so any offset there came from the slider: full strength reads
+**−27.71 blue↔yellow**, `0` is **0 differing bytes**, and the amber end mirrors
+it. This is the class of control most likely to ship as a knob that moves a
+readout and nothing else, which is why it is asserted at both ends.
+
+---
+
+## The sheet's geometry
+
+Every check above is blind to layout. A value could sit forty pixels above its
+slider and still be "the readout"; the footer's middle action could drift left
+and still be "three buttons"; a centre dot could appear on every slider and
+still be "a dot". So the three promises the restyled sheet makes are asserted as
+geometry, in the same phone-sized instance the row checks use — the 1px frame the
+pixel checks run in could not report a gap at all.
+
+| check | measured at 393×844 |
+|---|---|
+| the value is on the track's line | `6px` gap, `2px` inside the track's right edge, on all four slider sheets |
+| the dot is on exactly the centred sliders | `11` bipolar, `2` floored at zero, `0` mismatches across 13 knobs |
+| the same rule on Filters | look flat (`centred=false, dot=false`), layer centred (`true, true`) |
+| the footer | middle action `0px` off the sheet's centre; Cancel and Done `0px` from its edges |
+
+It reads `getBoundingClientRect` on the real nodes and drives the sheet through
+its own click handler, so it tests the shipped markup rather than a description
+of it. Two details are load-bearing:
+
+- **The footer is measured against the `.ef` box, not against a padding sum.**
+  `#panel` carries `scrollbar-gutter: stable`, which reserves space inside the
+  content box; deriving the centre from `padding-left`/`padding-right` would land
+  ~17px wide of the truth and report a correct footer as off-centre.
+- **The dot is read from its computed `display`, not from the class that asks
+  for it.** A rule that showed the dot on every slider would leave the class
+  right and the picture wrong.
+
+The probe is proven able to fail. Injecting three regressions into the frame —
+`.sl{gap:40px}`, `display:flex` on `.ef`, and `display:block` on every dot —
+fails **all four** checks; removing the injection returns **4 of 4**. A geometry
+assertion that cannot fail is a description, not a test.
+
+---
+
 ## Verified
 
 | | |
 |---|---|
-| Adjust | 8 knobs, per-knob values retained, all compose; footer `Cancel / Apply to all / Done` |
+| Adjust | 13 knobs — the eight tonal ones, Vignette and Grain (which write `clip.vig`/`clip.grain` rather than the Adjust bag so the Filters shelf shows the same number), Blue tone (`clip.blue`), Blur (`clip.blur`) and Opacity (`clip.opacity`); per-knob values retained, all compose; footer `Cancel / Apply to all / Done` in three anchored slots |
+| Opacity | the one knob that rests at 1, so it declares its neutral and the no-op is asserted there: `0` differing bytes at full, half lands the frame exactly halfway to the project background (mean `127.35 → 63.71`), `0` leaves nothing but the backdrop (mean `<2`), monotone between; it is an alpha on the picture in `frameStage()` rather than a post effect, so the backdrop shows through instead of being replaced |
+| Blur | unipolar `clip.blur`, applied in `postFx()` before the vignette and grain as a redraw-through-`blur()`: acutance `0.581 → 0.044` and step-edge sd `6.45 → 1.53` at full, frame mean held `127.35 → 127.32`, corner probe `128.0 → 127.73` (no edge halo), `0` is 0 differing bytes; monotone at half strength (`0.124` acutance); stacks with a look, vignette, grain and Blue tone in one render |
+| Soften, shared | the negative-grain end and Blur call one `soften(a, desat, rad)` helper, so "soft" cannot mean two things; grain passes `desat .85 / rad 2.2`, Blur passes `desat 0 / rad 7` |
+| Sheet layout | value right-aligned 6px above a 4px track with a 22px white thumb; fill meets the thumb (`blue 0.6` → `--p 78.02%`, not 80%); centre dot on every negative-floor slider and none on Volume (the only slider still floored at zero); gradient track on Blue tone rewritten on knob change; a changed-value dot on 3 set knobs (Warmth, Vignette, Blue tone); Apply to all centred on the content (`186.5` of `20…353`), Cancel flush left, Done flush right |
+| Volume mute | a one-tap Mute chip beside the slider, the same chip as `Rotate 90°`: starts at `80%` showing `Mute`; one tap → `vol 0`, readout `0%`, video `volume 0`, slider `0`, chip `Unmute`; a second tap → back to exactly `0.8`; dragging the slider to `0` flips the chip to `Unmute` and dragging up flips it back, so the chip and the slider can never disagree |
+| Blue tone | bipolar white balance drawn over the picture box on `clip.blue`: +1 pushes the mid-grey plate blue (**−27.71 blue↔yellow**, negated axis), −1 amber, `0` is **0** differing bytes; survives the sharpen/grade path |
 | Filters | 13 cards, 12 carrying real frames, each pre-filtered with its own chain; strength `0%` is a no-op, `100%` is the full look |
 | Layers stack | `f:'vivid'` with `vig:1` and `grain:1` keeps all three lit and paints all three; what the app's rAF loop painted is byte-identical to a manual `frameStage` render at the same settings (**0** differing pixels of 921,600), and removing the two layers changes **736,100** |
 | Layer independence | None → Grain → Vivid → Vignette → Grain off keeps `c.f` alive throughout; tapping a layer never reads or writes `c.f`; `Apply to all` copies `vig`/`grain` alongside `f`/`fs` |
@@ -578,15 +759,16 @@ is wrong in the convenient direction is how a suite stops being trusted.
 | Filter row never jumps | scrolled to `178` and tapping a card at the row's edge leaves it at `178` (it used to centre to `338`); a layer tap leaves it at `107/187/267/427` across four offsets (each used to drift `+9`); the stack line appearing no longer shifts it; Adjust taps move `0px`; opening the sheet on an off-screen pick still centres (`0 → 667`) |
 | Row checks in the self-check | `selfcheck.html` carries the four probes as live assertions in a second phone-sized mock: Filters edge tap `187 → 187`, Filters layer tap `267 → 267`, Adjust tap `178 → 178`, and the positive control `0 → 667`; the old behaviour in the same frame moves `187 → 347`, so the assertion can fail |
 | Sharpen is a mask, not a curve | acutance +41% at full res, +14% as displayed, −27% at `−1`; flat field beside the edge is bit-identical at every amount; `sharp 0` is 0 differing bytes against no knob at all, including with a grade and a 90° rotation |
-| Vignette | radial-shell mean luma `0.000, 0.000, −1.0, −10.0, −22.2, −34.0, −16.0, −0.6` centre→edge at full strength, and `0, 0, −1.3, −11.5, −25.5, −40.2, −18.8, −0.5` on top of Vivid — the falloff survives the grade; `vig=0` is 0 differing bytes; centre probe moves −0.4 while corners move −74.5 |
-| Grain | mean luma drift +0.16/255 across six probes (mean-preserving); mid-plate sd +11.5; repeat draws of a paused frame differ in 0 of 921,600 pixels; `fs=0` is 0 differing bytes |
-| Grain card | shows the player's own exported tile; `background-image` parses to 2 layers with `background-blend-mode: normal, overlay` — the unquoted-`url()` drop is fixed |
+| Vignette | radial-shell mean luma `0.000, 0.000, −1.0, −10.0, −22.2, −34.0, −16.0, −0.6` centre→edge at full strength, and `0, 0, −1.3, −11.5, −25.5, −40.2, −18.8, −0.5` on top of Vivid — the falloff survives the grade; `vig=0` is 0 differing bytes; centre probe moves −0.4 while corners move −74.5; the negative end is a white vignette — corners **+73.9** at `−1`, symmetric with the black end, centre still ±0.4 |
+| Grain | bipolar. `+1`: mean luma drift +0.16/255 across six probes (mean-preserving), mid-plate sd **+11.5**; `−1`: red-patch chroma **142.5 → 20.9** (desaturated) and step-edge sd **6.45 → 3.05** (smoothed) with the frame mean held at 127.35 and the corner probe unmoved at 128.0, so the blur's overscan leaves no edge halo; repeat draws of a paused frame differ in 0 of 921,600 pixels; `0` is 0 differing bytes |
+| Grain card | shows the player's own exported tile; at `+1` `background-image` parses to 2 layers with `background-blend-mode: normal, overlay` (the unquoted-`url()` drop is fixed); at `−1` it carries no noise layer and the thumbnail takes `saturate(0.57) blur(0.80px)`, so the card shows the softening the clip will get |
 | Filter shelf at 357 and 393 | 13 cards, `scrollHeight === clientHeight`, no page-level horizontal scroll, shelf scrolls 677px (393) / 713px (357) |
 | Highlights / Shadows | corrected sign; at `+1` Highlights moves the highlight end +20 and the shadow end −16, Shadows moves the shadow end +30 and the highlight end −16, on all four exposure pairs |
-| Self-check | 21 of 21 controls hold; every knob is 0 differing bytes at zero and checked at both ends of its slider; Sharpen reads +98.7% canvas / +77.9% shown, same sign; both layers are additionally measured over a graded clip, for their own effect and for the grade surviving |
+| Sheet geometry | four DOM measurements, at 393×844, driven through the sheet's own click handler: the readout sits **6px** above its track and **2px** inside the track's right edge on all four slider sheets (Speed, Volume, Adjust, Rotation); the centre dot is on exactly the **11 bipolar** knobs and neither the **2** floored at zero; on Filters the strength slider is centred for a layer and flat for a look; and the footer's middle action is **0px** off the sheet's centre with Cancel and Done **0px** from its edges. Proven able to fail — injecting `.sl{gap:40px}`, `display:flex` on `.ef` and `display:block` on every dot fails **all four**, and removing the injection returns **4 of 4** |
+| Self-check | 26 of 26 controls hold; every knob is 0 differing bytes at rest (which is 1, not 0, for Opacity) and checked at both ends of its slider — including both ends of the bipolar vignette; Sharpen reads +98.7% canvas / +77.9% shown, same sign; both layers are additionally measured over a graded clip, for their own effect and for the grade surviving |
 | Determinism | all 13 looks at `fs=0` are 0 differing bytes against `f:'none'`; the same settings rendered twice differ in **0** of 921,600 pixels |
 | Sharpen leaves no outline | 9:16 clip in a 16:9 project: the backdrop outside the picture is unchanged and the edge pixels are the frame's own, not a bright rim |
-| Icons | Filters and Adjust are a funnel and a three-rail mixer, checked side by side in both themes at 393×844 and 357×836; the eight knob glyphs use eight different geometric families — sun, half disc, chevrons, crescent, drop, thermometer, sparkle, stacked lines |
+| Icons | Filters and Adjust are a funnel and a three-rail mixer, checked side by side in both themes at 393×844 and 357×836; the thirteen knob glyphs use thirteen different geometric families — sun, half disc, chevrons, crescent, drop, thermometer, sparkle, bokeh circles, stacked lines, frame-with-bright-centre, dot scatter, cloud, ghost |
 | Values still reach the pixels | centre 80×80 sample sums 931917 at Sharpen +0.24, 766885 at +0.90, 931917 on the way back |
 | Shell | no console errors; `scrollHeight === clientHeight` at 378×836; `npm run build` clean |
 

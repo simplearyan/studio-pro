@@ -84,7 +84,11 @@ canvas{max-width:100%;max-height:100%;width:auto;height:auto;border-radius:0;bac
 #panel{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:8px 16px 4px;padding:12px 16px;background:var(--sf2);border-radius:16px}
 #panel label{min-width:84px;color:var(--on2)}
 #panel label b{color:var(--on);font-weight:500}
-#panel input[type=range]{flex:1;min-width:140px;accent-color:var(--pri);height:32px}
+/* Base range reset only. The look of every slider on the property sheets is
+   owned by the `.sl` block further down; this keeps the settings sheet's native
+   widget usable and stops the old `flex:1;min-width:140px` from fighting the
+   block that actually sizes the track. */
+#panel input[type=range]{accent-color:var(--pri)}
 #panel input[type=text]{flex:1;min-width:160px;height:44px;border-radius:12px;border:1px solid var(--ol);background:var(--sf);color:var(--on);padding:0 16px;font:inherit;user-select:text;-webkit-user-select:text}
 #panel input[type=text]:focus{outline:2px solid var(--pri);outline-offset:-1px;border-color:transparent}
 .chip{height:32px;padding:0 16px;border-radius:8px;border:1px solid var(--ol);color:var(--on2);font-weight:500}
@@ -166,11 +170,46 @@ canvas{max-width:100%;max-height:100%;width:auto;height:auto;border-radius:0;bac
    and the sheet is its matching card, which is a different arrangement. */
 #panel{flex-direction:column;align-items:stretch;flex-wrap:nowrap;gap:16px;padding:20px 20px 16px;margin:0;flex:1 1 auto;min-height:0;overflow-y:auto;scrollbar-gutter:stable;overscroll-behavior:contain;background:var(--sf);border-radius:0}
 .eh{text-align:center;font-size:16px;font-weight:500;letter-spacing:.01em}
-.eb{flex:1;display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap}
-.eb label{flex:1 1 100%;text-align:center;font-size:20px;min-width:0}
-.eb input[type=range]{flex:1 1 100%;width:100%}.eb input[type=text]{font-size:16px}
-.ef{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.pillb{height:44px;padding:0 24px;border-radius:22px;background:var(--sf2);font-weight:500}.pillb.ghost{background:none}.pillb.pri{background:var(--on);color:var(--bg)}
+.eb{flex:1;display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap}
+.eb input[type=text]{font-size:16px}
+/* ── The value + slider block ──────────────────────────────────────────────
+   The readout used to be a 20px centred <b> on a line of its own, with the
+   slider on the next line down — two separate objects the eye had to pair up.
+   The reference ties them together by putting the number on the track's own
+   line, right-aligned, so it reads as "this slider, set to this" and costs the
+   sheet no width. `.sl` is that pairing: a column of value-over-track, full
+   width, so every sheet with a slider gets the same shape. */
+.sl{flex:1 1 100%;min-width:0;display:flex;flex-direction:column;gap:6px}
+.sv{display:flex;justify-content:flex-end;padding:0 2px;line-height:1;min-height:16px}
+.sv b{font-size:15px;font-weight:500;color:var(--on);font-variant-numeric:tabular-nums}
+/* The track wrapper exists only to hold the centre dot, which has to sit in the
+   track's vertical middle and at the slider's horizontal middle — the two
+   positions a native pseudo-element will not give you. */
+.slx{position:relative}
+.slx .dot{position:absolute;left:50%;top:50%;width:4px;height:4px;margin:-2px 0 0 -2px;border-radius:50%;background:var(--on2);opacity:.7;pointer-events:none;display:none}
+.sl.bi .slx .dot{display:block}
+.sl input[type=range]{-webkit-appearance:none;appearance:none;display:block;width:100%;height:26px;margin:0;padding:0;background:none;flex:none}
+.sl input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:linear-gradient(90deg,var(--on) 0,var(--on) var(--p,0%),var(--sf2) var(--p,0%),var(--sf2) 100%)}
+.sl input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;margin-top:-9px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.45)}
+.sl input[type=range]::-moz-range-track{height:4px;border-radius:2px;background:var(--sf2)}
+.sl input[type=range]::-moz-range-progress{height:4px;border-radius:2px;background:var(--on)}
+.sl input[type=range]::-moz-range-thumb{width:22px;height:22px;border:0;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.45)}
+/* A gradient knob paints its whole track, because the colour *is* the scale — a
+   white→blue ramp says "right is bluer" without a word. It has no filled half:
+   there is nothing to fill when the track is already the answer. */
+.sl.gr input[type=range]::-webkit-slider-runnable-track{background:var(--gr)}
+/* ── The footer ────────────────────────────────────────────────────────────
+   Three actions on three anchored slots, so the middle one is centred on the
+   sheet rather than on whatever gap is left between two buttons of different
+   widths. Cancel is the quiet fill on the left, Done the loud fill on the
+   right, and the middle action wears an outline instead of a fill — it is a
+   secondary move, and at reference distance an outline reads that way where a
+   third solid pill would compete with Done. */
+.ef{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px}
+.ef>.l{justify-self:start}.ef>.m{justify-self:center}.ef>.r{justify-self:end}
+.pillb{height:44px;padding:0 24px;border-radius:22px;background:var(--sf2);font-weight:500}
+.pillb.ghost{background:none;border:1px solid color-mix(in srgb,var(--on) 26%,transparent)}
+.pillb.pri{background:var(--on);color:var(--bg)}
 body.es .dock{display:none}
 .tools{justify-content:flex-start;overflow-x:auto;gap:2px;padding:2px 8px 6px;scrollbar-width:none;-webkit-mask-image:linear-gradient(90deg,#000 90%,transparent);mask-image:linear-gradient(90deg,#000 90%,transparent)}
 .tools::-webkit-scrollbar{display:none}
@@ -281,6 +320,12 @@ svg{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-l
 .car button.on .kn{border:2px solid var(--on);color:var(--on)}
 .car .lb{font-size:11px;line-height:1.25;color:var(--on2);text-align:center}
 .car button.on .lb{color:var(--on);font-weight:500}
+/* A knob that is off its default carries a small accent dot, so "I changed
+   this" outlives the moment you tap a different knob and the ring moves away.
+   The ring answers "which knob is the slider on"; the dot answers "which knobs
+   hold a value". Two questions, two marks — which is how the reference shows a
+   setting was made without stealing the selection cue. */
+.car button.chg .kn::after{content:"";position:absolute;top:2px;right:2px;width:9px;height:9px;border-radius:50%;background:var(--acc);border:1.5px solid var(--sf2)}
 /* A filter card is a real frame from the clip, carrying that filter's own CSS —
    so the eleven cards are eleven genuinely different pictures of the same
    moment, which is the only way to choose a look. "None" is the crossed disc
@@ -550,15 +595,15 @@ speed:'<path d="M4.6 18a8 8 0 1 1 14.8 0"/><path d="M12 18v-6l3.4-3.4"/>',volume
 /* Filters and Adjust stand side by side in the dock, two buttons apart, and
    they were both drawn as "two rails with a travelling dot" — two marks that
    differ only in where the dots sit. That is not a distinction anyone can make
-   at 22px, and it is the difference between picking the shelf of eleven looks
-   and the shelf of eight values. They are now different *shapes*: a filter is
+   at 22px, and it is the difference between picking the shelf of thirteen looks
+   and the shelf of thirteen values. They are now different *shapes*: a filter is
    the one control in the app that narrows a set down to one, so it is a funnel;
    an adjustment is a value you move, so it is a mixer. Neither metaphor is
    borrowed from the other, and neither appears anywhere else in the map. */
 filter:'<path d="M3.4 5.2h17.2l-6.7 7.9v6.2l-3.8 2.2v-8.4z"/>',
 dup:'<rect x="8" y="8" width="12" height="12" rx="2.4"/><path d="M16 8V6.4A2.4 2.4 0 0 0 13.6 4H6.4A2.4 2.4 0 0 0 4 6.4v7.2A2.4 2.4 0 0 0 6.4 16H8"/>',
 ts:'<path d="M5 5v14M9.5 12h9M15 8.6l3.4 3.4-3.4 3.4"/>',te:'<path d="M19 5v14M14.5 12h-9M9 8.6 5.6 12 9 15.4"/>',
-/* The Adjust shelf. Eight knobs, eight glyphs, all on the same 24px grid as the
+/* The Adjust shelf. Thirteen knobs, thirteen glyphs, all on the same 24px grid as the
    rest of the map so the rail reads as one set. Each is a *shape* rather than a
    metaphor: half a disc is contrast, a crescent is shadows, a drop is
    saturation, a thermometer is warmth. The reference names four of these and
@@ -580,6 +625,29 @@ sat:'<path d="M12 3.6s6.2 6.6 6.2 10.3a6.2 6.2 0 1 1-12.4 0C5.8 10.2 12 3.6 12 3
 warm:'<path d="M10 14.6V5.3a2 2 0 1 1 4 0v9.3a4 4 0 1 1-4 0z"/><path d="M12 9.4v6.1"/>',
 sharp:'<path d="m12 3.2 2.3 5.9 5.9 2.3-5.9 2.3-2.3 5.9-2.3-5.9L3.8 11.4l5.9-2.3z"/>',
 fade:'<path d="M4 16.6h16" stroke-opacity=".9"/><path d="M4 12.6h16" stroke-opacity=".55"/><path d="M4 8.6h16" stroke-opacity=".25"/>',
+/* Vignette and Grain now appear on two shelves, so they need glyphs that are
+   not already taken. Vignette is the frame with a bright middle — the one thing
+   a vignette does — and it is drawn as a rounded rect plus a filled centre, so
+   it does not collide with Contrast's half-filled disc or Saturation's droplet.
+   Grain is a scatter of dots: not a texture swatch, but the actual marks, which
+   is the only way this icon differs from Sharpen's four-point star at 22px. */
+vig:'<rect x="3" y="4.8" width="18" height="14.4" rx="3.6"/><circle cx="12" cy="12" r="3.1" fill="currentColor" stroke="none"/>',
+grain:'<circle cx="7" cy="7.6" r="1.15" fill="currentColor" stroke="none"/><circle cx="11.6" cy="6.2" r=".95" fill="currentColor" stroke="none"/><circle cx="16.8" cy="8.4" r="1.25" fill="currentColor" stroke="none"/><circle cx="9.4" cy="12.2" r="1.05" fill="currentColor" stroke="none"/><circle cx="14.6" cy="13.6" r="1.2" fill="currentColor" stroke="none"/><circle cx="6.4" cy="16.4" r="1" fill="currentColor" stroke="none"/><circle cx="11.4" cy="17.8" r="1.1" fill="currentColor" stroke="none"/><circle cx="17.6" cy="16.2" r=".9" fill="currentColor" stroke="none"/>',
+/* Blue tone is a white balance, so it takes the reference's own mark: a cloud,
+   the one shape in the row that is neither a curve nor an angle already spoken
+   for, and the thing a cool cast is named after on a camera. */
+blue:'<path d="M7 18h9.4a3.9 3.9 0 0 0 .6-7.75 5.3 5.3 0 0 0-10.1-1.2A3.85 3.85 0 0 0 7 18z"/>',
+/* Blur is bokeh: circles of different sizes and falling opacity, which is what
+   an out-of-focus highlight actually looks like and shares no family with the
+   row's other marks — not Grain's tight filled scatter, not Vignette's frame
+   with a bright centre. It is drawn outlined, so it reads as softness rather
+   than as texture. */
+blur:'<circle cx="9.3" cy="10.5" r="3.5" stroke-opacity=".95"/><circle cx="15.3" cy="14.5" r="2.3" stroke-opacity=".72"/><circle cx="15.9" cy="9.1" r="1.4" stroke-opacity=".55"/><circle cx="8.7" cy="15.9" r="1.2" stroke-opacity=".45"/>',
+/* Opacity takes the reference's own mark: a ghost. It is the one silhouette in
+   the row that is a *body* rather than a mark or a shape — dome, scalloped hem,
+   two eyes — so it cannot be confused with any of the other twelve at 22px, and
+   it is already the thing "fading out" looks like. */
+opacity:'<path d="M5.6 19.6V11a6.4 6.4 0 0 1 12.8 0v8.6l-2.13-1.5-2.14 1.5-2.13-1.5-2.14 1.5-2.13-1.5z"/><circle cx="9.8" cy="11.5" r=".95" fill="currentColor" stroke="none"/><circle cx="14.2" cy="11.5" r=".95" fill="currentColor" stroke="none"/>',
 non:'<circle cx="12" cy="12" r="8.2"/><path d="m6.2 6.2 11.6 11.6"/>',
 /* The rail's entry point for the Adjust shelf: three rails, three travelling
    knobs. Two rails would have done, but three is the mark people already
@@ -745,10 +813,9 @@ const F={
  grain:{n:'Grain',f:null,post:'grain'},
 };
 
-/* Adjust is the reference's Brightness/Contrast/Highlights/Shadows row, plus
-   four more, and it is a different idea from a filter: a filter is a look you
+/* Adjust is   the reference's Brightness/Contrast/Highlights/Shadows row, plus seven more, and it is a different idea from a filter: a filter is a look you
    pick, an adjustment is a value you set. So each knob is a function of v in
-   -1..1 and they compose — all eight at once, which is why the player needs
+   -1..1 and they compose — all thirteen at once, which is why the player needs
    to repaint on every drag and not on a commit.
 
    Highlights and Shadows are the two that cannot be done honestly in CSS
@@ -793,7 +860,63 @@ const ADJ={
     to an edge, and the only reason nobody noticed is that the readout moves.
     The real thing is frameStage() below, which also carries Vignette and Grain. */
  sharp:{n:'Sharpen',i:'sharp',f:null},
+ /* Blur sits beside Sharpen because they are the two spatial controls and they
+    point opposite ways, and it is the counterpart the negative grain could only
+    ever be a special case of: softening that does not also change the grain.
+
+    It is a `post` field and not a filter string for the same reason the
+    negative grain is not one. `ctx.filter` can say `blur()`, but it can only say
+    it to the *video draw*, which is where the look's chain runs — so a chain
+    `blur()` would be applied before the frame reached the canvas and before the
+    vignette, the blue tint and the sharpen stage, and it would have to fight the
+    chain for the one filter slot. postFx() already owns the finished frame, so
+    Blur lives there and stacks with all of them.
+
+    Unipolar 0…1: there is no negative blur. Sharpen is the other direction and
+    already has a home, so this slider's floor is its neutral rather than its
+    centre — the one Adjust knob that is a plain amount rather than a balance. */
+ blur:{n:'Blur',i:'blur',f:null,post:'blur'},
  fade:{n:'Fade',i:'fade',f:v=>`contrast(${1-v*.38}) brightness(${1+v*.2})`},
+ /* Vignette and Grain are on the Adjust shelf as well as the Filters one, and
+    both halves of that decision are worth recording, because the first version
+    of it was wrong twice over.
+
+    They were kept off this shelf at first on the grounds that the shelf's slider
+    is bipolar −1…1 and neither effect has an honest negative end. That was true
+    of *grain* and false of the vignette: the negative end of a vignette is a
+    white vignette — the edge lightened instead of darkened — which is a real
+    look and a real use (it lifts a subject off a dark background). So the
+    vignette is now a genuine centred slider like its neighbours, and **grain
+    follows it**: its negative end is not "less noise" (which bottomed out at 0
+    and made the whole lower half of a bipolar slider a dead zone) but the
+    opposite corner of the same axis — the frame desaturated and smoothed, a
+    soft-focus look. So both are −1…1 and sliderRng() declares it once.
+
+    `f:null` on both, because look() must not try to emit a filter string for
+    them — the same reason Sharpen is null. They are applied by postFx() after
+    the frame is drawn, keyed on `clip.vig` / `clip.grain`, and `post` here names
+    that field (see adjVal/adjSet). The result is one number per layer, shown on
+    two shelves, and the two can never disagree because neither owns it. */
+ vig:{n:'Vignette',i:'vig',f:null,post:'vig'},
+ grain:{n:'Grain',i:'grain',f:null,post:'grain'},
+ /* Blue tone is the white balance knob the reference ships between Skin tone
+    and Sharpen, and it is the one adjustment that genuinely has no filter-chain
+    expression: a colour cast is a *channel* move, and `ctx.filter` has no
+    per-channel control at all. It is therefore a third post field, drawn over
+    the picture box in frameStage() — the same route the vignette and grain take
+    and for the same reason: the thing cannot be said in the filter string, so
+    it is said after the frame. It is bipolar like its neighbours: + blue, −
+    its amber mirror, 0 an exact no-op. The gradient slider (see `grad`) is the
+    one place the shelf shows a scale the label cannot: red→blue, read left to
+    right, is the whole control. */
+ blue:{n:'Blue tone',i:'blue',f:null,post:'blue',grad:'linear-gradient(90deg,#d9a441,#f2f2f2 50%,#3f7fe0)'},
+ /* Opacity is the one knob that changes how much of the clip is *there* rather
+    than what it looks like, so it is not a filter string and not a post effect
+    either: it is an alpha on the picture itself, applied where the frame is
+    drawn (see `opac`). Default is 1, not 0 — a clip is opaque until you say
+    otherwise — which is the only place this shelf's numbers do not rest at
+    zero. Unipolar 0…1, because nothing is more opaque than opaque. */
+ opacity:{n:'Opacity',i:'opacity',f:null,post:'opacity'},
 };
 /* One composer for the whole grade, and it exists because of a bug this file
    shipped for an hour: the filter and the adjustments were two functions
@@ -900,16 +1023,91 @@ function thumbAt(c){const S=srcs[c.src];if(!S.th||!S.th.length)return'';const i=
    chain cards look alike while a vignette is up. That similarity is the truth. */
 const postLayers=(c,extra)=>{
   let h='';
-  if((c.vig||0)>0||extra=='vig')h+=`<i style="background-image:radial-gradient(ellipse at 50% 50%,rgba(0,0,0,0) 34%,rgba(0,0,0,.62) 100%)"></i>`;
-  if((c.grain||0)>0||extra=='grain')h+=`<i style="background-image:${noiseCSS()};background-size:cover,120px;mix-blend-mode:overlay"></i>`;
+  /* The card shows the same tone the clip will get: a light overlay for a
+     negative vignette, a dark one for a positive one. A card that always drew
+     black would promise the wrong half of the control. */
+  const kv=c.vig||0;
+  if(kv!==0||extra=='vig')h+=`<i style="background-image:radial-gradient(ellipse at 50% 50%,rgba(${kv<0?'255,255,255':'0,0,0'},0) 34%,rgba(${kv<0?'255,255,255':'0,0,0'},.62) 100%)"></i>`;
+  /* The noise layer only exists on the positive half. Below zero there is no
+     grain to draw — the tone is desaturated and smoothed instead, which is a
+     filter on the thumbnail (see cardStyle) and not a layer at all. */
+  if((c.grain||0)>0||(extra=='grain'&&(c.grain||0)>=0))h+=`<i style="background-image:${noiseCSS()};background-size:cover,120px;mix-blend-mode:overlay"></i>`;
   return h;
 };
 const cardStyle=(c,k)=>{const P=F[k].post;
   /* The chain this card is previewing: its own look, or the one already on the
      clip when the card is a layer that stacks on top. */
   const chain=P?(c.f&&c.f!=='none'?F[c.f].f(c.fs==null?1:c.fs):'none'):F[k].f(1);
-  return {css:`background-image:url(${thumbAt(c)});filter:${chain}`,layers:postLayers(c,P)};};
+  /* A negative grain softens, and the card has to show that or it is the only
+     place in the app where the two shelves disagree about what −50% looks like.
+     It rides on the thumbnail's own `filter` because it is a tone change to the
+     picture, not a layer composited over it. */
+  const g=c.grain||0,soft=g<0?` saturate(${(1-Math.abs(g)*.85).toFixed(2)}) blur(${(Math.abs(g)*1.6).toFixed(2)}px)`:'';
+  return {css:`background-image:url(${thumbAt(c)});filter:${chain}${soft}`,layers:postLayers(c,P)};};
 const pct=v=>(v>0?'+':'')+Math.round(v*100);
+/* Which field an Adjust knob writes. Nine of the eleven live in `clip.ad`, but
+   Vignette and Grain already exist on the clip as `clip.vig` and `clip.grain`,
+   because they are the two layers from the Filters shelf — drawn after the frame
+   rather than expressed as a filter string. The Adjust shelf shows the same two
+   numbers, so both shelves are looking at one field each and nothing is copied;
+   that is the whole reason `post` is a field-name and not a second value. */
+/* What "untouched" means for each post knob. Vignette, Grain, Blue tone and Blur
+   all rest at zero, but Opacity's rest is *full* — a clip is opaque until you say
+   otherwise — so the field cannot default to 0 for every knob. This is also the
+   value the changed-dot compares against, which is what stops Opacity lighting
+   its dot the instant the sheet opens. */
+const ADJDEF={opacity:1};
+const adjVal=(c,k)=>{const p=ADJ[k].post;return p?(c[p]==null?(ADJDEF[p]||0):c[p]):((c.ad||{})[k]||0)};
+const adjSet=(c,k,v)=>{const p=ADJ[k].post;if(p)c[p]=v;else (c.ad||(c.ad={}))[k]=v};
+const adjNeutral=k=>ADJ[k].post?(ADJDEF[ADJ[k].post]||0):0;
+/* Opacity is an alpha on the picture, not a post effect over it: the frame is
+   drawn at this alpha onto the project background, so the backdrop shows through
+   instead of being replaced. Default 1 — a clip is opaque until you say
+   otherwise — and it lives here rather than in the ADJ table because the
+   renderer needs a plain number, not a filter string. */
+const opac=c=>c.opacity==null?1:Math.max(0,Math.min(1,c.opacity));
+/* A readout is signed only when its knob has a negative end to sign. The
+   bipolar knobs keep the signed percentage — the sign is the point, and "−40%"
+   and "+40%" are different looks. Blur, Opacity and the two layer proportions
+   are amounts rather than balances, so they read unsigned, and Volume is a
+   proportion too. */
+/* Every range the two shelves can ask for, declared once so they cannot
+   disagree. Vignette, Grain and every tonal knob are −1…1, and both negative
+   ends of the layers are real looks: a negative vignette is a white vignette,
+   and a negative grain softens — desaturates and smooths — instead of doing
+   nothing. Blur and Opacity are 0…1, because there is no negative blur and
+   nothing is more opaque than opaque; both therefore rest at their floor (an
+   end, not a centre) and neither gets a centre dot. */
+const sliderRng=k=>(k==='blur'||k==='opacity')?[0,1]:[-1,1];
+const knobRng=k=>ADJ[k].post?sliderRng(ADJ[k].post):[-1,1];
+/* A layer reads as a percentage — the proportion of the effect — and takes a
+   sign only when it has a negative end to sign. */
+const layTxt=(k,v)=>{const lo=sliderRng(k)[0];return (lo<0&&v>0?'+':'')+Math.round(v*100)+'%'};
+const adjTxt=(k,v)=>ADJ[k].post?layTxt(ADJ[k].post,v):pct(v);
+/* The value-over-track block every slider in the sheets is built from. The
+   centre dot is emitted only when the floor is negative — a slider whose zero
+   is its floor (Grain) has nothing to mark, and a dot in the thumb's own rest
+   position describes the thumb. A gradient knob paints its whole track and
+   carries no dot; `--gr` is the ramp. */
+const sl=(rv,min,max,val,step,grad)=>`<div class="sl${grad?' gr':''}${min<0?' bi':''}"${grad?` style="--gr:${grad}"`:''}><div class="sv"><b id="rv">${rv}</b></div><div class="slx"><i class="dot"></i><input type="range" id="r1" min="${min}" max="${max}" step="${step}" value="${val}"></div></div>`;
+/* The filled half of the track has to meet the thumb, and the thumb's travel is
+   inset by its own radius at each end — so the fill is computed against the
+   travel and not the raw percentage, or the white stops ~11px short of the thumb
+   at the far right and runs past it at the far left. `--p` is what the track's
+   gradient reads. */
+function paintRange(el){
+  if(!el||el.type!=='range')return;
+  const mn=+el.min,mx=+el.max,fr=mx>mn?((+el.value)-mn)/(mx-mn):0,w=el.clientWidth||0,th=22;
+  const p=w>th?((th/2+fr*(w-th))/w*100):fr*100;
+  el.style.setProperty('--p',p.toFixed(2)+'%');
+}
+/* Which knobs hold a non-default value, as a class on the button. Read from the
+   clip, not from adjKey, so it survives tapping to another knob — that is the
+   whole point of the mark. */
+function adjMarks(){
+  const c=sel&&sel.k=='c'&&clips.find(x=>x.id==sel.id);if(!c)return;
+  $('#panel').querySelectorAll('[data-adj]').forEach(q=>q.classList.toggle('chg',Math.abs(adjVal(c,q.dataset.adj)-adjNeutral(q.dataset.adj))>0.005));
+}
 /* What the Filters shelf has stacked right now, as a line of words. Three
    controls can be on at once here — a chain look and both layers — and three
    lit cards over one slider does not tell someone who tapped by accident that
@@ -919,7 +1117,7 @@ const pct=v=>(v>0?'+':'')+Math.round(v*100);
    dragging a layer down to zero is the moment the count changes. `Clear all`
    arrives with the second effect, not the first: one is a choice, two is the
    accident this line exists for. */
-const stackOn=c=>{const on=[];if(c.f&&c.f!=='none')on.push(F[c.f].n);if((c.vig||0)>0)on.push(F.vig.n);if((c.grain||0)>0)on.push(F.grain.n);return on};
+const stackOn=c=>{const on=[];if(c.f&&c.f!=='none')on.push(F[c.f].n);if((c.vig||0)!==0)on.push(F.vig.n);if((c.grain||0)!==0)on.push(F.grain.n);return on};
 const stackInfo=c=>{const on=stackOn(c);if(on.length<2)return '';
   return `<span class="stx"><b>${on.length} effects together</b> — ${on.join(' + ')}</span><button class="chip" id="eca">Clear all</button>`};
 /* Which Adjust knob the slider belongs to. Module state rather than a second
@@ -1257,21 +1455,46 @@ function grain(){
   for(let i=0;i<d.length;i+=4){const v=128+Math.round((Math.random()-.5)*80);d[i]=d[i+1]=d[i+2]=v;d[i+3]=255}
   g.putImageData(im,0,0);return grainTile=c;
 }
-/* Vignette and Grain over a frame that is already on the canvas. One native
-   operation each — a gradient fill and a pattern fill — so neither costs a
-   per-pixel pass, and both are exact no-ops at 0.
+/* The blur-and-desaturate pass, shared by the Blur knob and by grain's negative
+   end — one implementation, so "soften" cannot mean two slightly different
+   things on the two knobs that offer it.
 
-   Both run, in that order, every frame: the vignette is a tone change and grain
-   is a texture change, so the noise sits on top of the darkened frame rather
-   than under it. Grain last also happens to be the only order that matches what
-   the cards show, since a card's layers composite with the noise on top. Each
-   strength is read from the clip independently, which is what lets a graded
-   clip carry a vignette and grain at the same time. */
-function postFx(c){
-  const kv=c.vig||0,kg=c.grain||0;
-  if(kv<=0&&kg<=0)return;
+   One native pass: the whole frame is redrawn onto itself through a filter. No
+   per-pixel loop. It is drawn with a few px of overscan so the blur's source
+   rectangle extends past the viewport — a 1:1 redraw samples transparent pixels
+   outside the canvas and rings the edge with a dark halo, which is the same trap
+   the sharpen stage documents. `desat` is what grain adds on top of the blur and
+   what a plain Blur does not: the frame is pulled toward grey as well as
+   smoothed, because that is what "soft" means for film grain and not for an
+   out-of-focus frame. Radius is passed in because the two knobs want different
+   amounts of it. */
+function soften(a,desat,rad){
+  const b=Math.min(a,1)*rad,ov=b+1.5;
   ctx.save();
-  if(kv>0){
+  ctx.globalCompositeOperation='source-over';
+  ctx.filter=(desat?`saturate(${(1-desat).toFixed(3)}) `:'')+`blur(${b.toFixed(2)}px)`;
+  ctx.drawImage(ctx.canvas,-ov,-ov,W+ov*2,H+ov*2);
+  ctx.filter='none';ctx.restore();
+}
+/* Blur, Vignette and Grain over a frame that is already on the canvas. One
+   native operation each — a redraw, a gradient fill and a pattern fill — so none
+   of them costs a per-pixel pass, and all three are exact no-ops at their
+   neutral.
+
+   Order is the whole argument. Blur runs first, because it is a property of the
+   picture: softening a vignette would just round its falloff, and softening the
+   noise would delete it. Then the vignette, then grain on top — the noise sits
+   on the darkened frame rather than under it, and that is also the only order
+   that matches what the cards show, since a card's layers composite with the
+   noise on top. Each strength is read from the clip independently, which is what
+   lets a graded clip carry all three at once. */
+const BLUR_R=7;
+function postFx(c){
+  const kv=c.vig||0,kg=c.grain||0,kb=c.blur||0;
+  if(kv===0&&kg===0&&kb<=0)return;
+  ctx.save();
+  if(kb>0)soften(kb,0,BLUR_R);
+  if(kv){
     /* Sized off the diagonal, so the corners darken on any ratio: a radius from
        the width alone leaves a 9:16 frame with dark top and bottom edges and
        bright sides, which is a different look and not the one named Vignette.
@@ -1281,8 +1504,14 @@ function postFx(c){
        vignette is. The last shell barely moves because that ring is already at
        luma 1.2 — it is the black surround, and black cannot get darker. A probe
        at the canvas corner would have reported "no effect" for the same reason. */
+    /* Bipolar, and both ends are real: positive darkens the edge, negative
+       lightens it. The magnitude is the falloff and the sign is the tone, so 0 is
+       the identical frame — which means the slider's centre is a true centre, and
+       that is what lets this control sit on the Adjust shelf, where every slider
+       is centred, without being a lie about its own range. */
+    const a=Math.abs(kv),tone=kv>0?'0,0,0':'255,255,255';
     const r0=Math.hypot(W,H)/2,g2=ctx.createRadialGradient(W/2,H/2,r0*.32,W/2,H/2,r0);
-    g2.addColorStop(0,'rgba(0,0,0,0)');g2.addColorStop(1,`rgba(0,0,0,${(kv*.62).toFixed(3)})`);
+    g2.addColorStop(0,`rgba(${tone},0)`);g2.addColorStop(1,`rgba(${tone},${(a*.62).toFixed(3)})`);
     ctx.fillStyle=g2;ctx.fillRect(0,0,W,H);
   }
   if(kg>0){
@@ -1290,6 +1519,20 @@ function postFx(c){
     ctx.globalAlpha=Math.min(.5,kg*.5);
     ctx.fillStyle=ctx.createPattern(grain(),'repeat');ctx.fillRect(0,0,W,H);
   }
+  /* The negative end of the same axis: not "less noise" but the opposite
+     corner — soft. It desaturates the frame and smooths it, so the slider runs
+     genuine grain at +1, nothing at 0, and a soft-focus look at −1. A mask
+     (which is what grain is) has only one sign, and the honest thing to spend
+     the other sign on is the operation that grain is the opposite of.
+
+     The whole frame is redrawn onto itself through a `saturate() blur()` filter
+     — one native pass, no per-pixel loop. It is drawn with a few px of overscan
+     so the blur's source rectangle extends past the viewport: with a 1:1 redraw
+     the blur would sample transparent pixels outside the canvas and ring the
+     edge with a dark halo, which is the same trap the sharpen stage documents.
+     0.85 and 2.2px are the ends of the range; like the sharpen radius they are
+     constants so the slider keeps meaning one thing as it moves. */
+  if(kg<0)soften(-kg,.85,2.2);
   ctx.restore();
 }
 function frameStage(c,v,a,cs,sn,vw,vh,r,sv){
@@ -1301,6 +1544,7 @@ function frameStage(c,v,a,cs,sn,vw,vh,r,sv){
   ag.fillStyle=proj.bg;ag.fillRect(0,0,W,H);
   ag.save();ag.translate(W/2,H/2);ag.rotate(a);
   ag.filter=sv<0?chain(c,`blur(${(-sv*SHARP_R).toFixed(2)}px)`):look(c);
+  ag.globalAlpha=opac(c);
   ag.drawImage(v,-vw*r/2,-vh*r/2,vw*r,vh*r);ag.restore();
   /* The picture's own bounding box, in whole pixels: the mask is zero out on the
      letterbox, so there is nothing to compute there. For a rotation this is the
@@ -1322,6 +1566,19 @@ function frameStage(c,v,a,cs,sn,vw,vh,r,sv){
     for(let i=0;i<p.length;i+=4){o[i]=p[i]+k*(p[i]-q[i]);o[i+1]=p[i+1]+k*(p[i+1]-q[i+1]);o[i+2]=p[i+2]+k*(p[i+2]-q[i+2]);o[i+3]=p[i+3]}
     ctx.putImageData(shOut,x0,y0);
   }
+  /* Blue tone, as a flat wash over the picture box. It cannot be a filter: a
+     white balance is a channel move and `ctx.filter` has no per-channel control,
+     so every chain that claimed to be one was a hue rotation wearing its name.
+     A fixed blue at +v and its amber mirror at −v, alpha by magnitude, is
+     continuous, is an exact no-op at 0, and is the thing the label promises.
+     Confined to x0,y0,w,h — the drawn picture's own box — so the letterbox stays
+     black; a full-frame fill would tint the surround. Drawn before postFx() so
+     the vignette and grain sit on the cast, which is the order the eye expects. */
+  const kb=c.blue||0;
+  if(kb){const a=Math.min(.28,Math.abs(kb)*.28);
+    ctx.save();ctx.globalCompositeOperation='source-over';
+    ctx.fillStyle=kb>0?`rgba(40,92,208,${a.toFixed(3)})`:`rgba(214,150,52,${a.toFixed(3)})`;
+    ctx.fillRect(x0,y0,w,h);ctx.restore()}
   postFx(c);
 }
 function draw(){
@@ -1330,7 +1587,7 @@ function draw(){
     const c=pv?pv.c:at(t),v=srcs[c.src].v;
     if(v.readyState>=2&&v.videoWidth){
       const a=(c.rot||0)*Math.PI/180,cs=Math.abs(Math.cos(a)),sn=Math.abs(Math.sin(a)),vw=v.videoWidth,vh=v.videoHeight,r=Math.min(W/(vw*cs+vh*sn),H/(vw*sn+vh*cs));
-      const sv=(c.ad&&c.ad.sharp)||0,pf=(c.vig||0)>0||(c.grain||0)>0;
+      const sv=(c.ad&&c.ad.sharp)||0,pf=(c.vig||0)!==0||(c.grain||0)!==0||(c.blue||0)!==0||(c.blur||0)>0||opac(c)<1;
       if(sv||pf)frameStage(c,v,a,cs,sn,vw,vh,r,sv);
       else{ctx.save();ctx.translate(W/2,H/2);ctx.rotate(a);ctx.filter=look(c);ctx.drawImage(v,-vw*r/2,-vh*r/2,vw*r,vh*r);ctx.restore();}
     }
@@ -1374,6 +1631,12 @@ let esBase=null;
    control does, in the fewest words that still say it. */
 const LBL={add:'Add video',text:'Text',edit:'Edit text',speed:'Speed',volume:'Volume',filter:'Filters',adjust:'Adjust',rotate:'Rotate',trans:'Transition',aspect:'Format',dup:'Duplicate',ts:'Trim start',te:'Trim end'};
 const TOOLS=['speed','volume','filter','adjust','rotate','trans','aspect','text'],TTL={speed:'Speed',volume:'Volume',filter:'Filters',adjust:'Adjust',rotate:'Rotation',trans:'Transition',aspect:'Format',text:'Text'};
+/* The volume a Mute tap will come back to. Module state and not a clip field,
+   because it is a property of the *gesture* — how loud was this clip a moment
+   ago — rather than of the project; two clips muted in a row each remember the
+   level they were muted from only if the sheet is rebuilt between them, which
+   it is, so the shared slot is honest here and does not clone into the file. */
+let muteVol=1;
 function strip(){
   const ci=sel&&sel.k=='c'?clips.findIndex(c=>c.id==sel.id):-1;
   const k=!clips.length?['add']:!sel?['add','text','aspect']:sel.k=='t'?['edit','dup','ts','te']:['speed','volume','filter','adjust','rotate',...(ci>0?['trans']:[]),'dup','ts','te'];
@@ -1413,7 +1676,7 @@ function settingsSheet(){
     <div class="sr"><span>Step one frame</span><span class="sg"><button class="ib" id="fb" aria-label="Previous frame">${ic('prev')}</button><button class="ib" id="ff" aria-label="Next frame">${ic('next')}</button></span></div>
     <div class="sr"><span>Ruler interval</span><button class="chip" id="rulercyc" aria-label="Ruler interval">${rulerLabel()}</button></div>
     <div class="sr"><span>Snap to edges</span><button class="sw${snapOn?' on':''}" id="swsnap" role="switch" aria-checked="${snapOn}" aria-label="Snap to edges"><i></i></button></div>
-  </div><div class="ef"><span></span><button class="pillb pri" id="ed">Done</button></div>`;
+  </div><div class="ef"><div class="l"></div><div class="m"></div><div class="r"><button class="pillb pri" id="ed">Done</button></div></div>`;
   p.classList.add('set');p.hidden=false;syncZoom();
 }
 /* Centre the selected target, but only when the row is not already showing it.
@@ -1440,8 +1703,27 @@ function adjSync(){
   const c=curSel(),car=$('#panel .car'),r=$('#panel #r1');
   if(!c||!car||!r){panel();return}
   car.querySelectorAll('[data-adj]').forEach(q=>q.classList.toggle('on',q.dataset.adj==adjKey));
-  const v=(c.ad||{})[adjKey]||0;
-  r.value=v;$('#rv').textContent=pct(v);
+  const v=adjVal(c,adjKey),rng=knobRng(adjKey);
+  /* Switching knobs can move the floor — grain starts at the left edge, the
+     vignette and the tonal knobs at the centre — so the widget is re-ranged with
+     the value rather than assumed to match the last knob looked at. */
+  r.min=rng[0];r.max=rng[1];
+  /* The centre dot belongs to the range, not to the knob list, so switching
+     from Grain (floor 0) to a bipolar knob has to add it back — the row is not
+     rebuilt here, which is the whole reason adjSync exists. */
+  const box=r.closest('.sl');
+  if(box){
+    box.classList.toggle('bi',rng[0]<0);
+    /* The gradient track moves with the knob too. It is the one thing about the
+       slider that is a property of *which* knob is selected rather than of its
+       value, and adjSync does not rebuild the sheet — so Blue tone's ramp has to
+       be written on here or it appears only when the sheet is built with Blue
+       tone already picked, which is never. */
+    const g=ADJ[adjKey].grad||'';
+    box.classList.toggle('gr',!!g);
+    if(g)box.style.setProperty('--gr',g);else box.style.removeProperty('--gr');
+  }
+  r.value=v;paintRange(r);adjMarks();$('#rv').textContent=adjTxt(adjKey,v);
 }
 function panel(fromRowTap){
   strip();const p=$('#panel');
@@ -1456,8 +1738,12 @@ function panel(fromRowTap){
   if(tool=='text'){
     const x=sel&&sel.k=='t'&&texts.find(y=>y.id==sel.id);if(!x){p.hidden=true;document.body.classList.remove('es');fitView();return}
     h=`<input type="text" id="ti" maxlength="60" placeholder="Type your title" value="${esc(x.t).replace(/"/g,'&quot;')}"><div class="tpl">`+[['rainbow','Rainbow'],['plain','Plain'],['neon','Neon'],['comic','Comic']].map(([k,l])=>`<button class="chip${(x.tp||'plain')==k?' on':''}" data-tp="${k}"><span class="tp-${k}">${l}</span></button>`).join('')+`</div><div class="sub" id="txinfo">${txInfo(x)}</div>`;
-  }else if(tool=='speed')h=`<label><b id="rv">${c.sp}×</b></label><input type="range" id="r1" min=".25" max="4" step=".25" value="${c.sp}">`;
-  else if(tool=='volume')h=`<label><b id="rv">${Math.round(c.vol*100)}%</b></label><input type="range" id="r1" min="0" max="1" step=".05" value="${c.vol}">`;
+  }else if(tool=='speed')h=sl(c.sp+'×','.25','4',c.sp,'.25');
+  /* Volume gets the one-tap action Rotation has, for the same reason: a slider
+     alone can only ever approach the value you want, and the two values anyone
+     actually wants at a glance are "as it is" and "silent". `id="mut"` mirrors
+     `id="r90"` — same chip, same slot on the sheet. */
+  else if(tool=='volume')h=sl(Math.round(c.vol*100)+'%',0,1,c.vol,'.05')+`<button class="chip" id="mut">${c.vol>0?'Mute':'Unmute'}</button>`;
   else if(tool=='filter'){
     /* One row of thirteen cards, but three different kinds of selection behind
        it, and conflating them is what used to make Grain delete Vivid. A chain
@@ -1483,7 +1769,9 @@ function panel(fromRowTap){
        both layers up, Vignette is first, so tapping Grain moved nothing. */
     const lays=Object.keys(F).filter(k=>F[k].post),
       lay= lays.includes(postKey)?postKey:null,
-      active=(lay&&(c[F[lay].post]||0)>0?lay:null)||lays.find(k=>(c[F[k].post]||0)>0),
+      /* `!==0` and not `>0`: a negative vignette is a white vignette, which is an
+         effect, so the layers that are "on" include the ones below zero. */
+      active=(lay&&(c[F[lay].post]||0)!==0?lay:null)||lays.find(k=>(c[F[k].post]||0)!==0),
       sliderOn=active||lay||(c.f!=='none'?c.f:null);
     const sv=sliderOn?(sliderOn==='vig'||sliderOn==='grain'?c[sliderOn]:c.fs):0;
     /* Record what the slider it just rendered is bound to. Deriving it again in
@@ -1493,6 +1781,7 @@ function panel(fromRowTap){
        thumb you were holding turned the look strength while the readout showed
        the vignette's. One decision, made once, read by both. */
     sliderKey=sliderOn;
+    const isLay=sliderKey==='vig'||sliderKey==='grain';
     const on=stackOn(c);
     h=`<div class="car fcards">`+Object.keys(F).map(k=>{
       /* cardStyle returns two things and they cannot share one attribute: the
@@ -1503,17 +1792,27 @@ function panel(fromRowTap){
          showed the grain alone. */
       const cs=cardStyle(c,k);
       const kn=k=='none'?`<span class="kn">${ic('non')}</span>`:`<span class="kn" style="${cs.css}">${cs.layers}</span>`;
-      const sel=F[k].post?(c[F[k].post]||0)>0:c.f==k;
+      const sel=F[k].post?(c[F[k].post]||0)!==0:c.f==k;
       return `<button data-f="${k}"${sel?' class="on"':''}>${kn}<span class="lb">${F[k].n}</span></button>`}).join('')+`</div>`+
-      (sliderOn?`<label><b id="rv">${Math.round(sv*100)}%</b></label><input type="range" id="r1" min="0" max="1" step=".02" value="${sv}">`
+      (sliderOn?sl(isLay?layTxt(sliderKey,sv):Math.round(sv*100)+'%',isLay?sliderRng(sliderKey)[0]:0,1,sv,'.02')
         :`<span class="sub">Pick a look, then dial how far it goes</span>`)
       +`<div class="stack" id="sk"${on.length>1?'':' hidden'}>${stackInfo(c)}</div>`;}
-  else if(tool=='adjust'){const a=c.ad||(c.ad={});
-    h=`<div class="car">`+Object.keys(ADJ).map(k=>`<button data-adj="${k}"${k==adjKey?' class="on"':''}><span class="kn">${ic(ADJ[k].i)}</span><span class="lb">${ADJ[k].n}</span></button>`).join('')+`</div><label><b id="rv">${pct(a[adjKey]||0)}</b></label><input type="range" id="r1" min="-1" max="1" step=".02" value="${a[adjKey]||0}">`;}
-  else if(tool=='rotate')h=`<label><b id="rv">${c.rot||0}°</b></label><input type="range" id="r1" min="-180" max="180" step="1" value="${c.rot||0}"><button class="chip" id="r90">Rotate 90°</button>`;
-  else if(tool=='trans'){const k=c.tr?c.tr.k:'none';h=`<span class="sub">Between the previous clip and this one</span>`+[['none','None'],['black','Fade black'],['white','Fade white']].map(([v,l])=>`<button class="chip${k==v?' on':''}" data-tk="${v}">${l}</button>`).join('')+(k!='none'?`<label><b id="rv">${c.tr.d.toFixed(1)} s</b></label><input type="range" id="r1" min=".2" max="2" step=".1" value="${c.tr.d}">`:'')}
+  else if(tool=='adjust'){const v=adjVal(c,adjKey),rng=knobRng(adjKey);
+    /* The dot on a knob is the "I changed this" mark, and it is written here as
+       well as in adjMarks so the very first paint matches: adjKey starts on
+       Brightness, but a clip can arrive with warmth and a vignette already set. */
+    h=`<div class="car">`+Object.keys(ADJ).map(k=>{const cl=[k==adjKey?'on':'',Math.abs(adjVal(c,k)-adjNeutral(k))>0.005?'chg':''].filter(Boolean).join(' ');
+      return `<button data-adj="${k}"${cl?` class="${cl}"`:''}><span class="kn">${ic(ADJ[k].i)}</span><span class="lb">${ADJ[k].n}</span></button>`}).join('')+`</div>`+sl(adjTxt(adjKey,v),rng[0],rng[1],v,'.02',ADJ[adjKey].grad);}
+  else if(tool=='rotate')h=sl((c.rot||0)+'°',-180,180,c.rot||0,1)+`<button class="chip" id="r90">Rotate 90°</button>`;
+  else if(tool=='trans'){const k=c.tr?c.tr.k:'none';h=`<span class="sub">Between the previous clip and this one</span>`+[['none','None'],['black','Fade black'],['white','Fade white']].map(([v,l])=>`<button class="chip${k==v?' on':''}" data-tk="${v}">${l}</button>`).join('')+(k!='none'?sl(c.tr.d.toFixed(1)+' s','.2','2',c.tr.d,'.1'):'')}
   else if(tool=='aspect')h=`<span class="sub">Aspect ratio</span>`+Object.keys(AR).map(k=>`<button class="chip${proj.ar==k?' on':''}" data-ar="${k}">${k}</button>`).join('')+`<span class="sub">Background</span>`+BG.map(([n,v])=>`<button class="chip${proj.bg==v?' on':''}" data-bg="${v}">${n}</button>`).join('');
-  p.innerHTML=`<div class="eh">${TTL[tool]}</div><div class="eb">${h}</div><div class="ef">${['filter','adjust'].includes(tool)?`<button class="pillb" id="ec">Cancel</button><button class="pillb ghost" id="ea">Apply to all</button>`:`<button class="pillb" id="ec">Cancel</button>${tool!='text'?'<button class="pillb ghost" id="er">Reset</button>':''}`}<button class="pillb pri" id="ed">Done</button></div>`;
+  /* Three anchored slots, not three flex children. With `space-between` the
+     middle action drifted with whatever widths Cancel and Done happened to
+     carry, so "Apply to all" sat left of centre next to a wide Cancel; the
+     reference centres it on the sheet. An empty .m still holds the column, which
+     is what keeps Done pinned to the right edge on the sheets that have no
+     middle action at all. */
+  p.innerHTML=`<div class="eh">${TTL[tool]}</div><div class="eb">${h}</div><div class="ef"><div class="l"><button class="pillb" id="ec">Cancel</button></div><div class="m">${['filter','adjust'].includes(tool)?`<button class="pillb ghost" id="ea">Apply to all</button>`:(tool!='text'?'<button class="pillb ghost" id="er">Reset</button>':'')}</div><div class="r"><button class="pillb pri" id="ed">Done</button></div></div>`;
   p.hidden=false;document.body.classList.add('es');
   /* Put the row back where the user left it. panel() throws the sheet's markup
      away and rebuilds it, and a new .car is scrolled to 0 — which is how the
@@ -1523,14 +1822,23 @@ function panel(fromRowTap){
      whole fix for the rebuild path; adjSync never rebuilds at all. */
   const car1=p.querySelector('.car');
   if(car1){car1.scrollLeft=sl0;if(!fromRowTap)centerOn(car1)}
+  /* The fill needs a laid-out width, and a sheet that was `hidden` a moment ago
+     can still measure 0 — so it is painted once now for the common case and
+     once on the next frame for the sheet that just came back. */
+  paintRange(p.querySelector('#r1'));
+  requestAnimationFrame(()=>paintRange(p.querySelector('#r1')));
   fitView();
 }
 const P=$('#panel');
 P.addEventListener('input',e=>{
   const c=sel&&sel.k=='c'&&clips.find(x=>x.id==sel.id),x=sel&&sel.k=='t'&&texts.find(y=>y.id==sel.id),el=e.target,v=c&&srcs[c.src].v;
   if(el.id=='r1'&&c){
+    paintRange(el);
     if(tool=='speed'){c.sp=+el.value;$('#rv').textContent=c.sp+'×';if(v&&active===c)v.playbackRate=c.sp;renderTL()}
-    else if(tool=='volume'){c.vol=+el.value;$('#rv').textContent=Math.round(c.vol*100)+'%';if(v)v.volume=c.vol}
+    else if(tool=='volume'){c.vol=+el.value;$('#rv').textContent=Math.round(c.vol*100)+'%';if(v)v.volume=c.vol;
+      /* Dragging the slider to 0 *is* muting, so the chip has to say so —
+         otherwise it would offer "Mute" on a clip that is already silent. */
+      const mb=$('#mut');if(mb)mb.textContent=c.vol>0?'Mute':'Unmute'}
     else if(tool=='rotate'){c.rot=+el.value;$('#rv').textContent=c.rot+'°'}
     else if(tool=='trans'){c.tr.d=+el.value;$('#rv').textContent=c.tr.d.toFixed(1)+' s'}
     /* Both shelves repaint through the rAF loop's own draw(), so there is
@@ -1542,15 +1850,16 @@ P.addEventListener('input',e=>{
          chain look's strength or a layer's without the handler needing to know
          which kind it is looking at, and without the two disagreeing. */
       const v=+el.value;
-      if(sliderKey==='vig'||sliderKey==='grain')c[sliderKey]=v;else c.fs=v;
-      $('#rv').textContent=Math.round(v*100)+'%';
+      const ly=sliderKey==='vig'||sliderKey==='grain';
+      if(ly)c[sliderKey]=v;else c.fs=v;
+      $('#rv').textContent=ly?layTxt(sliderKey,v):Math.round(v*100)+'%';
       /* The stack line can change while the thumb is down — a layer dragged to
          zero leaves the pile — so it is rewritten here rather than only when the
          sheet is built. Without this the sheet would still claim two effects
          after you had already dialled one away. */
       const on=stackOn(c),sk=$('#sk');
       if(sk){sk.innerHTML=stackInfo(c);sk.hidden=on.length<2}}
-    else if(tool=='adjust'){(c.ad||(c.ad={}))[adjKey]=+el.value;$('#rv').textContent=pct(+el.value)}
+    else if(tool=='adjust'){adjSet(c,adjKey,+el.value);$('#rv').textContent=adjTxt(adjKey,+el.value);adjMarks()}
   }
   if(el.id=='ti'&&x){x.t=el.value||' ';renderTL()}
 });
@@ -1581,7 +1890,7 @@ P.addEventListener('click',e=>{
   /* The one-tap way out of a pile-up: clears the look and both layers together.
      Cancel still restores the pre-sheet state, so this is not a point of no
      return. */
-  if(b.id=='eca'){const c=curSel();c.f='none';c.fs=1;c.vig=0;c.grain=0;postKey='vig';refresh();toast('Cleared all effects');return}
+  if(b.id=='eca'){const c=curSel();c.f='none';c.fs=1;c.vig=0;c.grain=0;c.blue=0;c.blur=0;c.opacity=1;postKey='vig';refresh();toast('Cleared all effects');return}
   /* A filter pick does rebuild, because the strength slider only exists once a
      look is on. The scroll offset survives the rebuild via panel(). */
   if(d.f){
@@ -1592,7 +1901,9 @@ P.addEventListener('click',e=>{
          never having touched it — no key is left behind on the clip. Crucially
          this does not read or write c.f, which is what used to make the two
          layers delete the chain look and each other. */
-      c[lay]=(c[lay]||0)>0?0:1;postKey=lay;
+      /* Toggling off has to work from either side of zero, so the test is
+         magnitude and not sign — tapping a −40% vignette clears it. */
+      c[lay]=Math.abs(c[lay]||0)>0?0:1;postKey=lay;
     }else{
       c.f=d.f;if(d.f!='none'&&c.fs==null)c.fs=1;postKey=d.f;
     }
@@ -1605,16 +1916,24 @@ P.addEventListener('click',e=>{
      its own values are not aliased — a shared object would make the next drag on
      one clip move all of them. */
   if(b.id=='ea'){const c=curSel();if(clips.length<2)return toast('Only one clip to apply to');
-    clips.forEach(k=>{if(k!==c){k.ad={...(c.ad||{})};k.f=c.f;k.fs=c.fs;k.vig=c.vig||0;k.grain=c.grain||0}});toast('Applied to all clips');refresh()}
+    clips.forEach(k=>{if(k!==c){k.ad={...(c.ad||{})};k.f=c.f;k.fs=c.fs;k.vig=c.vig||0;k.grain=c.grain||0;k.blue=c.blue||0;k.blur=c.blur||0;k.opacity=opac(c)}});toast('Applied to all clips');refresh()}
   if(d.ar){proj.ar=d.ar;applyProj();panel();fitView()}
   if(d.bg){proj.bg=d.bg;panel()}
   if(d.tk){const c=curSel();c.tr={k:d.tk,d:c.tr?c.tr.d:1};panel()}
   if(b.id=='r90'){const c=curSel();let r=(c.rot||0)+90;if(r>180)r-=360;c.rot=r;panel()}
+  /* Mute is a two-way toggle on the same number the slider edits, so it can
+     never disagree with it: muting sets `c.vol` to 0, which is what the slider
+     and the readout then show, and unmuting puts back the level it came from.
+     Tapping Mute twice returns the clip to exactly the value it started at,
+     which is the property that makes it safe as a one-tap action. */
+  if(b.id=='mut'){const c=curSel();
+    if(c.vol>0){muteVol=c.vol;c.vol=0}else c.vol=muteVol>0?muteVol:1;
+    const mv=srcs[c.src].v;if(mv)mv.volume=c.vol;panel()}
   if(b.id=='ec')closeEdit(false);
   if(b.id=='ed')closeEdit(true);
   if(b.id=='er'){
     if(tool=='aspect'){proj={ar:autoAr(),bg:'#000000'};applyProj()}
-    else{const c=curSel();if(tool=='speed')c.sp=1;if(tool=='volume'){c.vol=1;srcs[c.src].v.volume=1}if(tool=='filter'){c.f='none';c.fs=1;c.vig=0;c.grain=0}if(tool=='adjust')c.ad={};if(tool=='rotate')c.rot=0;if(tool=='trans')c.tr=null}
+    else{const c=curSel();if(tool=='speed')c.sp=1;if(tool=='volume'){c.vol=1;srcs[c.src].v.volume=1}if(tool=='filter'){c.f='none';c.fs=1;c.vig=0;c.grain=0}if(tool=='adjust'){c.ad={};c.vig=0;c.grain=0;c.blue=0;c.blur=0;c.opacity=1}if(tool=='rotate')c.rot=0;if(tool=='trans')c.tr=null}
     refresh();
   }
 });
@@ -1665,7 +1984,7 @@ $('#more').onclick=()=>{tool=tool=='settings'?null:'settings';panel()};
 /* Falls back to the OS only while the user has never chosen; after that the stored value is the
    source of truth and the media query in CSS no longer applies. */
 $('#theme').onclick=()=>{const d=document.documentElement,dark=d.dataset.theme?d.dataset.theme=='dark':matchMedia('(prefers-color-scheme:dark)').matches;setTheme(dark?'light':'dark')};
-addEventListener('resize',()=>{fitView();clips.length&&renderTL()});
+addEventListener('resize',()=>{fitView();paintRange($('#r1'));clips.length&&renderTL()});
 addEventListener('keydown',e=>{
   if(e.target.tagName=='INPUT'&&e.target.type=='text')return;
   if(e.code=='Space'){e.preventDefault();playing?pause():play()}
