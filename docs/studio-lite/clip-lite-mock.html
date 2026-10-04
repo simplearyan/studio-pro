@@ -92,6 +92,10 @@ canvas{max-width:100%;max-height:100%;width:auto;height:auto;border-radius:0;bac
 #panel input[type=text]{flex:1;min-width:160px;height:44px;border-radius:12px;border:1px solid var(--ol);background:var(--sf);color:var(--on);padding:0 16px;font:inherit;user-select:text;-webkit-user-select:text}
 #panel input[type=text]:focus{outline:2px solid var(--pri);outline-offset:-1px;border-color:transparent}
 .chip{height:32px;padding:0 16px;border-radius:8px;border:1px solid var(--ol);color:var(--on2);font-weight:500}
+/* The armed state of the one destructive control in the app. Destructive means
+   the same thing everywhere in this file: a colour the user is taught to read
+   before they tap, not a dialog. */
+.chip.warn{border-color:var(--acc);color:var(--acc)}
 .chip.on{background:var(--pc);color:var(--onpc);border-color:transparent}
 #time{font-variant-numeric:tabular-nums;color:var(--on2);min-width:120px;font-weight:500}
 .play{width:56px;height:56px;border-radius:50%;background:var(--pri);color:var(--onpri);display:grid;place-items:center}
@@ -179,7 +183,25 @@ canvas{max-width:100%;max-height:100%;width:auto;height:auto;border-radius:0;bac
    line, right-aligned, so it reads as "this slider, set to this" and costs the
    sheet no width. `.sl` is that pairing: a column of value-over-track, full
    width, so every sheet with a slider gets the same shape. */
-.sl{flex:1 1 100%;min-width:0;display:flex;flex-direction:column;gap:6px}
+.sl{flex:1 1 100%;min-width:0;display:flex;flex-direction:column;gap:6px;position:relative;transform-origin:50% 50%}
+.sl .sv{position:relative}
+/* Off its default and worth a gesture to put back: a bar under the readout.
+   Deliberately not the accent on the number itself — that colour already means
+   "your thumb is down", and a control that means two things at once means
+   neither. */
+.sl.nd .sv::after{content:"";position:absolute;left:0;right:0;bottom:-5px;height:2px;border-radius:2px;background:var(--acc)}
+/* The bump: one 220ms pulse when a value crosses into or out of changed. The
+   class is removed on animationend in slState(), because leaving it on makes
+   every second bump a silent no-op. */
+.sl.bump{animation:slbump .22s ease-out}
+@keyframes slbump{0%{transform:scale(1)}40%{transform:scale(1.035)}100%{transform:scale(1)}}
+.sl.bump .slx input[type=range]::-webkit-slider-thumb{box-shadow:0 1px 3px rgba(0,0,0,.45),0 0 0 6px color-mix(in srgb,var(--acc) 28%,transparent)}
+.sl.bump .slx input[type=range]::-moz-range-thumb{box-shadow:0 1px 3px rgba(0,0,0,.45),0 0 0 6px color-mix(in srgb,var(--acc) 28%,transparent)}
+@media (prefers-reduced-motion:reduce){.sl.bump{animation:none}}
+/* Selected-as-extra: the anchor wears the existing ring, and a clip that joined
+   the set is drawn with a second, dashed one so "which one am I editing" is
+   answerable without counting. */
+.clip.selx{outline:2px dashed var(--acc);outline-offset:-2px}
 .sv{display:flex;justify-content:flex-end;padding:0 2px;line-height:1;min-height:16px}
 .sv b{font-size:15px;font-weight:500;color:var(--on);font-variant-numeric:tabular-nums;transition:color .12s ease}
 /* While the thumb is held, the number is the value you are *setting* rather than
@@ -1143,7 +1165,7 @@ const at=x=>clips.find(c=>x>=c.s&&x<c.s+dur(c))||clips[clips.length-1];
 const redoS=[],snap=()=>{redoS.length=0;hist.push(JSON.stringify({clips,texts,proj}));if(hist.length>40)hist.shift()};
 function redo(){if(!redoS.length||rec)return;pause();hist.push(JSON.stringify({clips,texts,proj}));const o=JSON.parse(redoS.pop());clips=o.clips;texts=o.texts;restoreProj(o);sel=null;refresh()}
 function undo(){if(!hist.length||rec)return;pause();redoS.push(JSON.stringify({clips,texts,proj}));const o=JSON.parse(hist.pop());clips=o.clips;texts=o.texts;restoreProj(o);sel=null;refresh()}
-function refresh(){layout();t=Math.min(t,total);renderTL();panel();fitView();seekVid();$('#empty').hidden=clips.length>0;$('#export').disabled=!clips.length}
+function refresh(){layout();t=Math.min(t,total);renderTL();panel();fitView();seekVid();$('#empty').hidden=clips.length>0;$('#export').disabled=!clips.length;saveSoon()}
 function seekVid(){if(!clips.length||playing)return;const c=at(t),v=srcs[c.src].v,w=srcTime(c,t);if(Math.abs(v.currentTime-w)>.03)v.currentTime=w}
 /* One door to the file picker, so the picker always knows what it is picking
    *for*. Both "add" and "replace" open the same hidden input; a flag set at the
@@ -1155,11 +1177,28 @@ let replacing=null;
 function addFile(f){
   if(!ac){ac=new AudioContext();dest=ac.createMediaStreamDestination()}
   const v=document.createElement('video');v.src=URL.createObjectURL(f);v.playsInline=true;v.preload='auto';
-  v.onloadedmetadata=()=>{
-    const id=++uid;srcs[id]={v,name:f.name.replace(/\.[^.]+$/,''),dur:v.duration};
-    try{const n=ac.createMediaElementSource(v);n.connect(dest);n.connect(ac.destination)}catch(e){}
+  v.onloadedmetadata=async()=>{
+    const name=f.name.replace(/\.[^.]+$/,'');
+    /* Hash before the clip exists. The bytes are the identity, so the hash has
+       to be known before anything is written — and that is what makes the
+       second import of the same file free: the duplicate is a second *clip* on
+       one stored copy, not a second copy on disk. */
+    const mid=await contentId(f);
+    const twin=Object.keys(srcs).find(k=>srcs[k].mid==mid);
+    if(twin){
+      const S=srcs[twin];
+      URL.revokeObjectURL(v.src);v.removeAttribute('src');v.load();
+      snap();clips.push({id:++uid,src:+twin,in:0,out:S.dur,sp:1,vol:1,f:'none',fs:1,vig:0,grain:0,ad:{}});refresh();
+      toast('Already imported — added another clip of '+S.name);
+      return;
+    }
+    const id=++uid;srcs[id]={v,mid,name,dur:v.duration};
+    wireAudio(v);
     if(!clips.length){proj.ar=v.videoHeight>v.videoWidth?'9:16':'16:9';applyProj()}
-    snap();clips.push({id:++uid,src:id,in:0,out:v.duration,sp:1,vol:1,f:'none',fs:1,vig:0,grain:0,ad:{}});refresh();thumbs(id);peaks(id,f);
+    snap();clips.push({id:++uid,src:id,in:0,out:v.duration,sp:1,vol:1,f:'none',fs:1,vig:0,grain:0,ad:{}});refresh();
+    putMedia(mid,f,{name,dur:v.duration});
+    saveSoon();
+    thumbs(id);peaks(id,f);
   };
   v.onerror=()=>toast('Could not open '+f.name);
 }
@@ -1177,13 +1216,22 @@ function replaceWith(id,f){
   const c=clips.find(k=>k.id==id);if(!c)return;
   if(!ac){ac=new AudioContext();dest=ac.createMediaStreamDestination()}
   const v=document.createElement('video');v.src=URL.createObjectURL(f);v.playsInline=true;v.preload='auto';
-  v.onloadedmetadata=()=>{
-    const nid=++uid;srcs[nid]={v,name:f.name.replace(/\.[^.]+$/,''),dur:v.duration};
-    try{const n=ac.createMediaElementSource(v);n.connect(dest);n.connect(ac.destination)}catch(e){}
+  v.onloadedmetadata=async()=>{
+    const name=f.name.replace(/\.[^.]+$/,''),mid=await contentId(f);
+    const twin=Object.keys(srcs).find(k=>srcs[k].mid==mid);
+    if(twin){URL.revokeObjectURL(v.src);v.removeAttribute('src');v.load();
+      const T=srcs[twin],c0=clips.find(k=>k.id==id);if(!c0)return;
+      const keep0=dur(c0)*c0.sp;snap();c0.src=+twin;c0.in=0;c0.out=Math.min(keep0,T.dur);
+      refresh();gcMedia();
+      toast('Replaced with '+T.name+(keep0>T.dur?' — trimmed to the new length':'')+' (already imported)');
+      return;}
+    const nid=++uid;srcs[nid]={v,mid,name,dur:v.duration};
+    wireAudio(v);
     snap();
     const keep=dur(c)*c.sp;
     c.src=nid;c.in=0;c.out=Math.min(keep,v.duration);
-    refresh();thumbs(nid);peaks(nid,f);
+    refresh();putMedia(mid,f,{name,dur:v.duration});saveSoon();gcMedia();
+    thumbs(nid);peaks(nid,f);
     toast('Replaced with '+f.name+(keep>v.duration?' — trimmed to the new length':''));
   };
   v.onerror=()=>toast('Could not open '+f.name);
@@ -1198,9 +1246,14 @@ function wave(c){
 function paintWaves(){document.querySelectorAll('.aclip').forEach((el,i)=>{if(clips[i])el.innerHTML=wave(clips[i])})}
 async function peaks(id,f){
   try{
+    /* Already paid for on an earlier import. `pk` is a Float32Array, which the
+       structured clone carries as-is, so this is a straight read and it is the
+       single biggest saving in the whole store: decodeAudioData on a long clip
+       is seconds of CPU, and it does not depend on anything the user changed. */
+    if(!f&&srcs[id]&&srcs[id].pk)return;
     if(f.size>2e8)return;const buf=await ac.decodeAudioData(await f.arrayBuffer()),ch=buf.getChannelData(0),n=Math.ceil(buf.duration*25),sp=Math.floor(buf.sampleRate/25),pk=new Float32Array(n);let mx=.01;
     for(let i=0;i<n;i++){let m=0;const e=Math.min(ch.length,(i+1)*sp);for(let j=i*sp;j<e;j+=16){const v=Math.abs(ch[j]);if(v>m)m=v}pk[i]=m;if(m>mx)mx=m}
-    for(let i=0;i<n;i++)pk[i]/=mx;srcs[id].pk=pk;paintWaves();
+    for(let i=0;i<n;i++)pk[i]/=mx;srcs[id].pk=pk;paintWaves();saveDerived(id);
   }catch(e){}
 }
 /* Thumb width is the frame's own aspect times the lane it is standing in — the
@@ -1218,17 +1271,495 @@ function paintFilms(){document.querySelectorAll('.clip').forEach(el=>{const c=cl
 async function thumbs(id){
   const S=srcs[id],v=document.createElement('video');v.muted=true;v.preload='auto';v.src=S.v.src;
   try{
+    /* One seek per thumbnail is the second expensive thing an import does — a
+       two-minute clip is a hundred seeks. If the frames are already in the
+       derived store there is nothing to decode at all, so this returns before
+       the video has even loaded its first frame. */
+    const cached=await get1('derived',S.mid);
+    if(cached&&cached.th&&cached.th.length){
+      S.ar=cached.ar;S.st=cached.st;S.thb=cached.th;S.th=cached.th.map(blobURL);paintFilms();return;
+    }
     await new Promise((r,j)=>{v.onloadeddata=r;v.onerror=j});
     const n=Math.min(120,Math.max(4,Math.ceil(S.dur/2))),cn=document.createElement('canvas'),g=cn.getContext('2d');
     S.ar=v.videoWidth/v.videoHeight||1.78;cn.height=72;cn.width=Math.round(72*S.ar);S.st=S.dur/n;S.th=new Array(n);
+    S.thb=new Array(n);
     for(let i=0;i<n;i++){
       v.currentTime=Math.min(S.dur-.05,(i+.5)*S.st);await new Promise(r=>v.onseeked=r);
       g.drawImage(v,0,0,cn.width,cn.height);const b=await new Promise(r=>cn.toBlob(r,'image/jpeg',.6));
-      S.th[i]=URL.createObjectURL(b);if(i%10==9)paintFilms();
+      S.thb[i]=b;S.th[i]=URL.createObjectURL(b);if(i%10==9)paintFilms();
     }
-    paintFilms();
+    paintFilms();saveDerived(id);
   }catch(e){}
 }
+/* ── Project persistence ─────────────────────────────────────────────────────
+   Four stores, and the split between them is the whole design:
+
+     kv       one row: the schema version this database was opened at
+     media    the imported File itself, keyed by a hash of its bytes
+     derived  the thumbnails and the peaks, keyed by the same hash
+     proj     the edit: clips, captions, project settings, and the map from
+              each clip's `src` slot to a media hash
+
+   The edit is kilobytes and the media is gigabytes, so they cannot share a
+   store or a write path: every edit rewrites `proj`, and media is written once
+   on import and never again. A refresh therefore costs one small read, and the
+   timeline can be drawn from `derived` with no video decode at all. */
+/* The store name is overridable from the query string, and the only reason it
+   exists is that selfcheck.html drives this file inside iframes on this same
+   origin. Without it every check would open the user's real project, and a probe
+   that sweeps media would delete an afternoon's work. `?db=` gives each instance
+   its own store, which is also the seam a second project would hang off. */
+const DBN=new URLSearchParams(location.search).get('db')||'clip-lite', DBV=1, PROJID='current';
+let db=null, dbErr=null, restoring=false, docLocked=false;
+const STORES=[['kv','k'],['media','id'],['derived','id'],['proj','id']];
+
+function openDB(){
+  return new Promise(res=>{
+    let rq;
+    try{rq=indexedDB.open(DBN,DBV)}catch(e){dbErr=e;return res(null)}
+    rq.onupgradeneeded=e=>{
+      const d=rq.result;
+      for(const [n,k] of STORES)if(!d.objectStoreNames.contains(n))d.createObjectStore(n,{keyPath:k});
+      /* Version 1 is the first schema, so there is nothing to migrate yet. The
+         hook exists because the alternative is discovering during the second
+         schema that nothing ever called it. */
+      e.target.transaction.objectStore('kv').put({k:'schema',v:DBV,built:Date.now()});
+    };
+    rq.onsuccess=()=>{db=rq.result;db.onversionchange=()=>{db.close();db=null;dbErr=new Error('another tab upgraded the database')};res(db)};
+    rq.onerror=()=>{dbErr=rq.error;res(null)};
+    rq.onblocked=()=>{dbErr=new Error('another tab is holding an older version open');res(null)};
+  });
+}
+/* An IDBRequest as a promise. Awaiting one resolves in a microtask spawned from
+   the request's own success event, which runs before the transaction's implicit
+   commit — so a sequence of requests inside one transaction survives the await.
+   This is the one thing that makes the helpers below readable instead of a
+   pyramid of onsuccess callbacks. */
+const rq=r=>new Promise((ok,no)=>{r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)});
+const txDone=t=>new Promise((ok,no)=>{t.oncomplete=ok;t.onerror=()=>no(t.error);t.onabort=()=>no(t.error||new Error('aborted'))});
+const get1=(store,key)=>db?rq(db.transaction(store).objectStore(store).get(key)):Promise.resolve(undefined);
+const put1=(store,val)=>db?rq(db.transaction(store,'readwrite').objectStore(store).put(val)):Promise.reject(dbErr||new Error('no database'));
+
+/* A streaming digest, not SHA-256. `crypto.subtle.digest` needs the whole file
+   in memory at once, so hashing a 300MB clip the correct way costs 600MB of
+   heap and can throw the tab away. Four interleaved 32-bit passes over 4MB
+   chunks is constant memory, touches every byte, and is a content hash for this
+   purpose: two files collide only if they are the same bytes *and* the same
+   length, because the length is part of the key. */
+async function contentId(f){
+  const h=[0x811c9dc5,0x9e3779b9,0x85ebca6b,0x27d4eb2d],CH=4*1024*1024;
+  for(let o=0;o<f.size;o+=CH){
+    const b=new Uint8Array(await f.slice(o,o+CH).arrayBuffer());
+    for(let i=0;i<b.length;i++){
+      const v=b[i];
+      h[0]=Math.imul(h[0]^v,0x01000193)>>>0;
+      h[1]=Math.imul(h[1]+v,0x85ebca6b)>>>0;
+      h[2]=Math.imul(h[2]^((h[2]<<13)|(h[2]>>>19)),0x27d4eb2d)>>>0;
+      h[3]=Math.imul(h[3]+((h[3]<<7)|(h[3]>>>25))+i,0x165667b1)>>>0;
+    }
+  }
+  return 'c'+h.map(x=>x.toString(16).padStart(8,'0')).join('')+'-'+f.size.toString(36);
+}
+const blobURL=b=>URL.createObjectURL(b);
+/* Every key in a store. The self-check counts what survived a collection, and
+   asking the database is the only way that number means anything. */
+const getAllKeysOf=store=>db?new Promise((ok,no)=>{const r=db.transaction(store).objectStore(store).getAllKeys();r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)}):Promise.resolve([]);
+
+/* ── The document, and how an old one is read ─────────────────────────────────
+   Every field the editor has gained gets its default *here*, in one place,
+   rather than at each use site. That is the whole reason this is a migration
+   rather than a cast: a clip stored before Opacity existed has no `opacity`
+   key, and every `c.opacity==null?1:…` guard in the file would then be the only
+   thing standing between a restored project and a black canvas. Defaults first,
+   the stored values second, so a present value always wins. */
+const DOCV=1;
+const migrateDoc=d0=>{
+  const d=d0||{};
+  return {v:DOCV,
+    clips:(d.clips||[]).map(c=>({f:'none',fs:1,vig:0,grain:0,blue:0,blur:0,opacity:1,sp:1,vol:1,rev:false,in:0,out:0,s:0,rot:0,...c,ad:{...(c.ad||{})},tr:{...(c.tr||{})}})),
+    texts:(d.texts||[]).map(x=>({tp:'rainbow',...x})),
+    proj:{ar:'16:9',bg:'#000000',...(d.proj||{})},
+    srcs:(d.srcs||[]).filter(s=>s&&s.k!=null)};
+};
+function docNow(){
+  return {v:DOCV,clips,texts,proj:{...proj},
+    srcs:Object.keys(srcs).filter(k=>srcs[k]&&srcs[k].mid).map(k=>({k:+k,mid:srcs[k].mid,name:srcs[k].name,dur:srcs[k].dur}))};
+}
+
+/* ── Saving the edit ──────────────────────────────────────────────────────────
+   Throttled, because `refresh()` runs on every pointer move during a drag and
+   the document is the only thing in the hot path worth writing. Media never is:
+   it is written once, on import. */
+let saveT=null,saveDirty=false;
+function saveSoon(){
+  /* Nothing is written while a restore is in flight. An early `refresh()` from
+     any boot-time call would otherwise save the empty project straight over the
+     one we are reading. `docLocked` is the other half: a document written by a
+     newer build is not ours to overwrite, so this build simply stops saving
+     until the user does something that cannot lose it (Clear). */
+  if(!db||restoring||docLocked)return;
+  saveDirty=true;
+  if(saveT)return;
+  saveT=setTimeout(()=>{saveT=null;if(saveDirty)flushDoc()},700);
+}
+async function flushDoc(){
+  if(!db||!saveDirty)return;
+  saveDirty=false;
+  try{await put1('proj',{id:PROJID,updatedAt:Date.now(),doc:docNow()})}
+  catch(e){dbErr=e}
+}
+/* An IndexedDB write started during unload is not reliably finished, so this is
+   a best effort and not a promise. `visibilitychange` is the one that matters:
+   it fires when a tab is backgrounded or closed on a phone, minutes before the
+   document is actually gone, and the throttle window is 700ms. */
+addEventListener('pagehide',()=>flushDoc());
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState=='hidden')flushDoc()});
+
+/* ── Media: write once, deduped, and never silently lost ───────────────────── */
+async function putMedia(mid,f,info){
+  if(!db)return false;
+  const rec={id:mid,name:info.name,dur:info.dur,type:f.type,size:f.size,blob:f,added:Date.now()};
+  for(let a=0;a<2;a++){
+    try{await rq(db.transaction('media','readwrite').objectStore('media').put(rec));return true}
+    catch(e){
+      if(!/quota/i.test((e&&e.name)||'')+(e&&e.message||'')){dbErr=e;return false}
+      /* One honest retry. Unreferenced media is the only thing we may delete
+         without asking, so that is what goes; if the write still fails the
+         caller is told, because "saved" would be a lie. */
+      await gcMedia();
+    }
+  }
+  return false;
+}
+/* Serialises the two writers — the thumbnail pass and the peaks pass finish at
+   different times and both write the same record. Each writes the *current*
+   state of its source rather than a patch, so whichever goes last simply
+   includes the other's output and there is no lost update to protect against. */
+const dChain={};
+const saveDerived=id=>{const S=srcs[id];if(!S||!db||!S.mid)return;
+  dChain[S.mid]=Promise.resolve(dChain[S.mid]).then(async()=>{
+    if(!S.thb&&!S.pk)return;
+    try{await put1('derived',{id:S.mid,ar:S.ar,st:S.st,th:S.thb||null,pk:S.pk||null})}
+    catch(e){}
+  }).catch(()=>{})};
+
+/* ── Garbage collection ───────────────────────────────────────────────────────
+   Refcounts are derived from the document, never stored. A stored counter drifts
+   the moment an undo, a reload or a crash lands between the edit and the write —
+   and then it deletes media that is still in the timeline, or keeps media no
+   clip can reach. The chain clips -> src slot -> media hash is three lines, so
+   there is nothing to keep in sync.
+
+   Two steps, in this order: a src slot nothing points at is dropped first, then
+   a media hash no surviving slot names. Doing it in one pass would delete the
+   media of a slot that is about to become an orphan anyway, which is the same
+   outcome but with an extra write. */
+function liveMedia(){
+  const used=new Set(clips.map(c=>c.src)),slots=[],mids=new Set();
+  for(const k of Object.keys(srcs)){
+    if(!used.has(+k)){delete srcs[k];continue}
+    const S=srcs[k];
+    if(S&&S.mid){slots.push(+k);mids.add(S.mid)}
+  }
+  return {mids,slots};
+}
+async function gcMedia(){
+  if(!db)return 0;
+  const {mids}=liveMedia();
+  const t=db.transaction(['media','derived'],'readwrite');
+  const m=t.objectStore('media'),d=t.objectStore('derived');
+  const mk=await rq(m.getAllKeys());
+  let n=0;
+  for(const id of mk)if(!mids.has(id)){m.delete(id);d.delete(id);n++}
+  const dk=await rq(d.getAllKeys());
+  for(const id of dk)if(!mids.has(id))d.delete(id);
+  await txDone(t);
+  return n;
+}
+
+/* ── Restoring ────────────────────────────────────────────────────────────────
+   The order is the point: read the document (small), then the derived cache, so
+   the timeline is on screen with its filmstrips and waveforms before a single
+   video byte has been decoded. The `<video>` elements are created with
+   `preload='metadata'` rather than 'auto', so restoring eight two-minute clips
+   fetches eight headers rather than eight hundred megabytes. */
+function wireAudio(v){
+  try{if(!ac){ac=new AudioContext();dest=ac.createMediaStreamDestination()}
+    const n=ac.createMediaElementSource(v);n.connect(dest);n.connect(ac.destination)}catch(e){}
+}
+async function restore(){
+  const rec=await get1('proj',PROJID);
+  if(!rec||!rec.doc||!rec.doc.clips||!rec.doc.clips.length)return false;
+  /* Forward compatibility: read what we understand, refuse to write over what we
+     do not. `docLocked` is what stops the autosave above from converting a
+     refusal into data loss a second later. */
+  const from=rec.doc.v|0;
+  if(from>DOCV){docLocked=true;toast('Saved by a newer version — not opened, and not overwritten');return false}
+  const doc=migrateDoc(rec.doc);
+  let lost=0;
+  for(const s of doc.srcs){
+    const m=await get1('media',s.mid);
+    if(!m||!m.blob){lost++;continue}
+    const dv=await get1('derived',s.mid);
+    const v=document.createElement('video');
+    v.src=blobURL(m.blob);v.playsInline=true;v.muted=true;v.preload='metadata';
+    const S={v,mid:s.mid,name:s.name||m.name||'clip',dur:s.dur||m.dur||0};
+    if(dv){S.ar=dv.ar;S.st=dv.st;S.pk=dv.pk||null;if(dv.th&&dv.th.length)S.th=dv.th.map(blobURL)}
+    srcs[s.k]=S;wireAudio(v);
+    await new Promise(r=>{v.onloadedmetadata=r;v.onerror=r;setTimeout(r,4000)});
+    if(isFinite(v.duration)&&v.duration>0)S.dur=v.duration;
+  }
+  /* A clip whose bytes are gone is dropped rather than left pointing at an
+     empty slot: a clip that cannot play is not a clip. Saying so is the
+     difference between a restore and a silent data loss. */
+  const before=doc.clips.length;
+  clips=doc.clips.filter(c=>srcs[c.src]);
+  texts=doc.texts;
+  proj={ar:AR[doc.proj.ar]?doc.proj.ar:'16:9',bg:doc.proj.bg||'#000000'};
+  uid=Math.max(0,...clips.map(c=>c.id||0),...texts.map(x=>x.id||0),...doc.srcs.map(s=>s.k||0));
+  applyProj();
+  if(before!==clips.length)toast((before-clips.length)+' clip'+(before-clips.length>1?'s':'')+' could not be restored — the media is missing');
+  return clips.length>0;
+}
+async function forgetAll(){
+  if(!db)return;
+  restoring=true;docLocked=false;
+  try{
+    const t=db.transaction(['media','derived','proj'],'readwrite');
+    t.objectStore('media').clear();t.objectStore('derived').clear();t.objectStore('proj').clear();
+    await txDone(t);
+    clips=[];texts=[];sel=null;hist=[];refresh();
+    toast('Saved project and media cleared');
+  }catch(e){dbErr=e}
+  restoring=false;
+}
+async function storageLine(){
+  if(!navigator.storage||!navigator.storage.estimate)return db?'Saved locally':'Not saved — no storage';
+  try{const e=await navigator.storage.estimate();
+    return Math.round((e.usage||0)/1048576)+' MB of '+Math.round((e.quota||0)/1048576)+' MB used';
+  }catch(e){return 'Saved locally'}
+}
+
+/* ── More than one clip ────────────────────────────────────────────────────────
+   `sel` has always been one clip, and every sheet in the file reads it that way.
+   Rather than change that — `curSel()` is called from thirty places and the
+   anchor is the right answer for all of them — a selection is now the anchor plus
+   a set of extras, and `selMore` never contains the anchor. That invariant is the
+   whole trick: `selClips()` is `[anchor]` when the set is empty, which is every
+   interaction that has not opted in, so single-clip behaviour is unchanged by
+   construction rather than by a branch somebody has to remember.
+
+   `selMore` and not `multi`, because `tl` already carries a class called `multi`
+   meaning "this timeline has more than one clip" — an unrelated idea, and two
+   meanings for one word is how a later reader breaks a timeline. */
+let selMore=new Set();
+const isSel=c=>!!c&&!!(sel&&sel.k=='c')&&(sel.id===c.id||selMore.has(c.id));
+const selClips=()=>{
+  const a=sel&&sel.k=='c'?clips.find(c=>c.id===sel.id):null;
+  if(!a)return[];
+  const out=[a];
+  for(const id of selMore)if(id!==a.id){const c=clips.find(k=>k.id===id);if(c)out.push(c)}
+  return out;
+};
+/* Toggle a clip in or out. The three cases are: a clip already in the set goes
+   out; a new clip joins and becomes the anchor (the old anchor joins the set, so
+   nothing is lost); and the anchor alone is tapped off, which hands the anchor
+   to whatever is still selected or clears the selection. */
+function toggleSelAt(cl){
+  if(!cl)return;
+  if(!sel||sel.k!=='c'){sel={k:'c',id:cl.id};selMore.clear();return}
+  if(sel.id!==cl.id){
+    /* A member leaves, or a newcomer joins and takes the anchor — in which case
+       the old anchor goes into the set and the newcomer does NOT, because the
+       invariant above is what lets selClips() skip one comparison. Adding both
+       and letting selClips() filter is the same answer with a lie in the
+       comment, and the lie is what a later reader would trust. */
+    if(selMore.has(cl.id))selMore.delete(cl.id);
+    else{selMore.add(sel.id);sel={k:'c',id:cl.id}}
+    return;
+  }
+  if(!selMore.size){sel=null;return}
+  const rest=[...selMore];selMore.clear();sel={k:'c',id:rest[0]};
+}
+/* Drop the extras whenever the selection is replaced outright. Every path that
+   assigns `sel` for a single clip goes through here, which is why it lives in
+   `pick` and in the handful of places that select without a pointer. */
+const oneSel=(k,id)=>{sel={k,id};selMore.clear()};
+
+/* One clip's worth of a value drag, and nothing else — no readout, no repaint.
+   Split out from the input handler so a multi-selection can run it over every
+   selected clip and still pay for the readout once. Returns true when the change
+   is something the timeline has to redraw: a new speed, a trim window, a duration
+   or a look all change a clip's rendered width or label, while a volume and a
+   rotation change neither. */
+function writeSlider(c,v){
+  if(tool=='speed'){c.sp=v;return true}
+  if(tool=='volume'){c.vol=v;const m=srcs[c.src]&&srcs[c.src].v;if(m)m.volume=v;return false}
+  if(tool=='rotate'){c.rot=v;return false}
+  /* A clip with no transition yet has no `tr` to write to, and no transition is
+     the state a clip is in until one is tapped on — so the drag creates one
+     rather than throwing on a null. */
+  if(tool=='trans'){if(!c.tr)c.tr={k:'none',d:v};else c.tr.d=v;return true}
+  if(tool=='filter'){
+    /* The slider edits whichever control sliderKey names — a chain look's
+       strength or a layer's — so the same call drives both without this
+       function having to know which kind it is looking at. */
+    if(sliderKey==='vig'||sliderKey==='grain')c[sliderKey]=v;else c.fs=v;
+    return true;
+  }
+  if(tool=='adjust'){adjSet(c,adjKey,v);return true}
+  return false;
+}
+
+/* What a value slider's default is, and whether the current value is it. Every
+   tool answers for itself, because "default" is a property of the control and
+   not of the slider: Opacity rests at 1 and everything else rests at 0. */
+function sliderDefault(){
+  if(tool=='speed')return 1;
+  if(tool=='volume')return 1;
+  if(tool=='adjust')return adjNeutral(adjKey);
+  if(tool=='filter'){
+    const k=sliderKey;
+    if(k==='vig'||k==='grain')return 0;
+    return k==='fs'||k===null?1:1;
+  }
+  return 0;
+}
+const slIsDefault=()=>{
+  const c=curSel();if(!c)return true;
+  const r=$('#r1');if(!r)return true;
+  const d=sliderDefault();
+  return Math.abs(+r.value-d)<= (+r.step||0.01)*.5;
+};
+/* The bump. A control that has been moved shows a bar under its readout, so the
+   sheet says which of its numbers are not where you left them — that is the
+   "non-default" half. The bump is the other half: a 220ms scale pulse when a
+   value crosses into or out of changed, which is the part the eye actually
+   catches mid-drag. It fires from the class, and the class is taken off on
+   animationend so the next one can fire; leaving it on would make the second
+   bump a no-op, which is the whole failure mode of a class-based animation. */
+function slState(){
+  const box=$('#panel .sl');if(!box)return;
+  const nd=!slIsDefault();
+  if(nd===box.classList.contains('nd'))return;
+  box.classList.toggle('nd',nd);
+  bump(box);
+}
+function bump(box){
+  if(!box||matchMedia('(prefers-reduced-motion:reduce)').matches)return;
+  box.classList.remove('bump');void box.offsetWidth;box.classList.add('bump');
+}
+/* The half of the bump that makes it re-armable is attached below, beside the
+   other panel listeners. It cannot be attached here: \`P\` is declared some 900
+   lines further down, so a top-level \`P.addEventListener\` in this block is a
+   temporal-dead-zone ReferenceError that stops the whole script before it runs —
+   which is exactly what the first attempt did. */
+/* Revert the one control under the thumb. This is deliberately narrower than the
+   footer's Reset, which clears the whole sheet's worth of a tool: someone who
+   pushed Grain to −40 wants that one number back, not their look as well. */
+function resetControl(){
+  const c=curSel();if(!c)return;
+  const d=sliderDefault(),r=$('#r1');if(!r)return;
+  const was=slIsDefault();
+  for(const k of selClips()){
+    if(tool=='speed')k.sp=d;
+    else if(tool=='volume'){k.vol=d;const m=srcs[k.src]&&srcs[k.src].v;if(m)m.volume=d}
+    else if(tool=='rotate')k.rot=d;
+    else if(tool=='trans')k.tr=null;
+    else if(tool=='filter'){const ly=sliderKey==='vig'||sliderKey==='grain';if(ly)k[sliderKey]=d;else k.fs=d}
+    else if(tool=='adjust')adjSet(k,adjKey,d);
+  }
+  r.value=d;paintRange(r);
+  const txt=tool=='speed'?d+'×':tool=='volume'?Math.round(d*100)+'%':tool=='rotate'?d+'°':
+    tool=='trans'?d.toFixed(1)+' s':tool=='filter'?(sliderKey==='vig'||sliderKey==='grain'?layTxt(sliderKey,d):Math.round(d*100)+'%'):adjTxt(adjKey,d);
+  const rv=$('#rv');if(rv)rv.textContent=txt;
+  slState();adjMarks();refresh();
+  const n=selClips().length;
+  toast(was?'Already at its default':'Reset '+n+' clip'+(n>1?'s':''));
+}
+/* Double-tap, by hand rather than by `dblclick`. A dblclick listener is not
+   enough: it is synthesised by the browser, so it does not fire for a touch
+   double-tap on every engine, and it does not fire at all when the two taps land
+   a few pixels apart on a thumb. Two pointerups inside 320ms and 24px are the
+   gesture. The listener itself is attached below, beside the other panel
+   listeners, for the same reason as the bump's. */
+let slTap=null;
+
+
+/* ── Pointer-drag drivers, for the self-check ─────────────────────────────────
+   These exist only so the checks can drive the pointer path the way a hand does:
+   each dispatches the real event types the app has listeners for, in the order
+   the browser sends them — down, moves, up — rather than calling a function and
+   calling it a drag. */
+function pev(el,type,x,y){
+  el.dispatchEvent(new PointerEvent(type,{bubbles:true,cancelable:true,composed:true,
+    clientX:x,clientY:y,pointerId:1,pointerType:'touch',isPrimary:true,button:0,
+    buttons:type==='pointerup'?0:1}));
+}
+function pevProbe(){
+  const r=document.querySelector('#panel #r1');
+  const box=r?r.closest('.sl'):document.querySelector('#track');
+  const b=box.getBoundingClientRect(),x=b.left+b.width/2,y=b.top+6;
+  let allTrusted=false;
+  const send=(el,t,px)=>{
+    const e=new PointerEvent(t,{bubbles:true,cancelable:true,composed:true,clientX:px,clientY:y,
+      pointerId:1,pointerType:'touch',isPrimary:true,button:0,buttons:t==='pointerup'?0:1});
+    el.dispatchEvent(e);
+    /* Records whether ANY event came back trusted. Written the other way round
+       it reports "trusted" for a probe whose events are all forged, which is the
+       one answer this row exists to prevent. */
+    if(e.isTrusted)allTrusted=true;
+  };
+  const seq=['pointerdown','pointermove','pointermove','pointerup'];
+  send(box,'pointerdown',x);send(box,'pointermove',x+8);send(window,'pointermove',x+20);send(window,'pointerup',x+34);
+  return {isTrusted:allTrusted,seq:seq};
+}
+/* Drag a clip's right trim handle and let go. */
+function dragTrim(){
+  const c=document.querySelector('.clip[data-id="1"]'),h=c&&c.querySelector('.h[data-h="r"]');
+  if(!h)return null;
+  const r=h.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2;
+  pev(h,'pointerdown',x,y);pev(window,'pointermove',x+60,y);pev(window,'pointermove',x+96,y);pev(window,'pointerup',x+96,y);
+  return clips[0].out;
+}
+/* pointerdown, then a pointerup *outside* the slider — the case that left the
+   sheet stuck lit before the release handler went global. */
+function sliderHeld(){
+  const r=document.querySelector('#panel #r1');if(!r)return null;
+  const b=r.getBoundingClientRect();pev(r,'pointerdown',b.left+8,b.top+b.height/2);
+  return document.querySelector('#panel').classList.contains('held');
+}
+function sliderRelease(){pev(document.body,'pointerup',4,4);return document.querySelector('#panel').classList.contains('held')}
+/* Two taps on the slider, after a value has been set. */
+function doubleTapSlider(v){
+  const r=document.querySelector('#panel #r1'),box=r.closest('.sl');
+  r.value=v;r.dispatchEvent(new Event('input',{bubbles:true}));
+  const b=box.getBoundingClientRect(),x=b.left+20,y=b.top+4;
+  pev(box,'pointerup',x,y);pev(box,'pointerup',x+2,y);
+  return v;
+}
+/* The same gesture with a gap between the taps, which is what makes it two
+   gestures rather than one. `doubleTapSlider` taps twice at once, so it can only
+   ever test the detector firing \u2014 this is the only way to test it not firing. */
+function slowTapSlider(v,gap){
+  const r=document.querySelector('#panel #r1'),box=r.closest('.sl');
+  r.value=v;r.dispatchEvent(new Event('input',{bubbles:true}));
+  const b=box.getBoundingClientRect(),x=b.left+20,y=b.top+4;
+  pev(box,'pointerup',x,y);
+  return new Promise(function(res){setTimeout(function(){pev(box,'pointerup',x+2,y);res(v)},gap)});
+}
+/* A drag of the property slider. The browser moves the value and fires input;
+   here both are done by hand, because that default action belongs to the
+   browser and not to a script. */
+function dragSlider(v){
+  const r=document.querySelector('#panel #r1');if(!r)return null;
+  const b=r.getBoundingClientRect();pev(r,'pointerdown',b.left+4,b.top+b.height/2);
+  pev(r,'pointermove',b.left+r.clientWidth*0.75,b.top+b.height/2);
+  r.value=v;r.dispatchEvent(new Event('input',{bubbles:true}));
+  pev(window,'pointerup',b.left+r.clientWidth*0.75,b.top+b.height/2);
+  return selClips().map(function(c){return adjVal(c,adjKey)});
+}
+
 const TXC=['#5b8def','#f6a46e','#7ccf9a','#c58af9','#f28bb0'];
 /* Which frame a filter card shows: the one under the playhead, so the eleven
    cards are eleven looks at the moment you are actually on. Falls back to the
@@ -1482,7 +2013,7 @@ function renderTL(){
   layout();const pad=tl.clientWidth/2;$('#inn').style.padding='20px '+pad+'px 0';
   const w=Math.max(total*pps,1),n=lanes();
   $('#track').style.width=$('#atrack').style.width=$('#ttrack').style.width=w+'px';$('#ttrack').style.height=(n?n*16+20:0)+'px';
-  $('#track').innerHTML=clips.map(c=>`<div class="clip${sel&&sel.k=='c'&&sel.id==c.id?' sel':''}" data-id="${c.id}" style="width:${dur(c)*pps}px"><div class="film">${film(c)}</div><span>${esc(srcs[c.src].name)} · ${dur(c).toFixed(1)}s${c.sp!=1?' · '+c.sp+'×':''}</span><i class="h" data-h="l"></i><i class="h" data-h="r"></i></div>`).join('')+clips.slice(1).map(c=>`<button class="jn${c.tr&&c.tr.k!='none'?' has':''}" data-id="${c.id}" style="left:${c.s*pps}px" aria-label="Transition">${ic('trans')}</button>`).join('');
+  $('#track').innerHTML=clips.map(c=>`<div class="clip${isSel(c)?(sel&&sel.id==c.id?' sel':' sel selx'):''}" data-id="${c.id}" style="width:${dur(c)*pps}px"><div class="film">${film(c)}</div><span>${esc(srcs[c.src].name)} · ${dur(c).toFixed(1)}s${c.sp!=1?' · '+c.sp+'×':''}</span><i class="h" data-h="l"></i><i class="h" data-h="r"></i></div>`).join('')+clips.slice(1).map(c=>`<button class="jn${c.tr&&c.tr.k!='none'?' has':''}" data-id="${c.id}" style="left:${c.s*pps}px" aria-label="Transition">${ic('trans')}</button>`).join('');
   $('#atrack').innerHTML=clips.map(c=>`<div class="aclip" style="width:${dur(c)*pps}px">${wave(c)}</div>`).join('');
   $('#ttrack').innerHTML=texts.map(x=>`<div class="tx${sel&&sel.k=='t'&&sel.id==x.id?' sel':''}" data-id="${x.id}" style="left:${x.s*pps}px;width:${x.d*pps}px;bottom:${x.l*16}px;background:${TXC[x.id%5]}"><i class="h" data-h="l"></i><span>${esc(x.t)}</span><b class="td">${fmtT(x.d)}</b><i class="h" data-h="r"></i></div>`).join('');
   /* The caption sheet repeats the same two numbers, so the length of a caption
@@ -1540,7 +2071,7 @@ tl.addEventListener('contextmenu',e=>e.preventDefault());
 tl.addEventListener('click',e=>{
   if(Date.now()-noClick<300)return;
   if(e.target.closest('.addc'))return $('#file').click();
-  const jn=e.target.closest('.jn');if(jn){sel={k:'c',id:+jn.dataset.id};tool='trans';renderTL();panel();return}
+  const jn=e.target.closest('.jn');if(jn){oneSel('c',+jn.dataset.id);tool='trans';renderTL();panel();return}
   const c=e.target.closest('.clip'),x=e.target.closest('.tx');
   sel=c?{k:'c',id:+c.dataset.id}:x?{k:'t',id:+x.dataset.id}:null;
   tool=null;renderTL();panel();
@@ -1551,7 +2082,13 @@ function scrub(e){
   const u=()=>{removeEventListener('pointermove',m);removeEventListener('pointerup',u);removeEventListener('pointercancel',u);document.body.classList.remove('scrub');if(moved)noClick=Date.now()};
   addEventListener('pointermove',m);addEventListener('pointerup',u);addEventListener('pointercancel',u);
 }
-function pick(k,id,el){document.querySelectorAll('.clip.sel,.tx.sel').forEach(n=>n.classList.remove('sel'));el.classList.add('sel');sel={k,id};tool=null;panel()}
+function pick(k,id,el){
+  document.querySelectorAll('.clip.sel,.tx.sel').forEach(n=>n.classList.remove('sel','selx'));
+  el.classList.add('sel');oneSel(k,id);tool=null;panel();
+  /* A clip added to the set needs the sheet to say so, or a grade that suddenly
+     applies to five clips looks like a bug. */
+  const m=selClips().length;if(m>1)toast(m+' clips selected — one gesture edits all');
+}
 tl.addEventListener('pointerdown',e=>{
   const mouse=e.pointerType=='mouse';if(mouse&&e.button)return;
   const h=e.target.closest('.h'),tx=e.target.closest('.tx'),c=e.target.closest('.clip');
@@ -1561,6 +2098,18 @@ tl.addEventListener('pointerdown',e=>{
     return editText(e,x,tx,h?h.dataset.h:'m');
   }
   if(c){
+    /* Shift (or the platform's own multi-select modifier) extends rather than
+       replaces. It returns before the reorder arming below, because a modifier
+       is never going to turn into a drag and a 380ms wait to find that out is
+       the gesture feeling broken. */
+    if(e.shiftKey||e.metaKey||e.ctrlKey){
+      e.preventDefault();
+      toggleSelAt(clips.find(k=>k.id==c.dataset.id));
+      renderTL();panel();
+      const m=selClips().length;
+      if(m)toast(m+' clip'+(m>1?'s':'')+' selected');else toast('Selection cleared');
+      return;
+    }
     if(clips.length<2){if(mouse)scrub(e);return}
     const cl=clips.find(k=>k.id==c.dataset.id),y=e.clientY,imm=mouse||c.classList.contains('sel');let cx=e.clientX;if(mouse)pick('c',cl.id,c);
     const off=()=>{removeEventListener('pointermove',mv);removeEventListener('pointerup',cancel);removeEventListener('pointercancel',cancel)};
@@ -1875,7 +2424,16 @@ function split(){
 function del(){
   if(!clips.length)return;
   if(sel&&sel.k=='t'){snap();texts=texts.filter(x=>x.id!=sel.id);sel=null;return refresh()}
-  const c=curSel();snap();pause();clips=clips.filter(x=>x!=c);sel=null;refresh();
+  /* Every selected clip, because a grade that took one gesture across five clips
+     and a trash button that removed one of them is a trap. */
+  const many=selClips();if(!many.length)return;
+  snap();pause();const ids=new Set(many.map(c=>c.id));
+  clips=clips.filter(x=>!ids.has(x.id));sel=null;selMore.clear();refresh();
+  /* Deleting is the only edit that can orphan media, and it is the only place
+     that needs to say so. Duplicate and Split both leave a second clip pointing
+     at the same source, so neither may delete anything — which is exactly the
+     case a stored refcount gets wrong. */
+  gcMedia();
 }
 let esBase=null;
 /* Rail labels, in our own words, and one sheet each. "Format" used to be a
@@ -1983,8 +2541,20 @@ function settingsSheet(){
     <div class="sr"><span>Step one frame</span><span class="sg"><button class="ib" id="fb" aria-label="Previous frame">${ic('prev')}</button><button class="ib" id="ff" aria-label="Next frame">${ic('next')}</button></span></div>
     <div class="sr"><span>Ruler interval</span><button class="chip" id="rulercyc" aria-label="Ruler interval">${rulerLabel()}</button></div>
     <div class="sr"><span>Snap to edges</span><button class="sw${snapOn?' on':''}" id="swsnap" role="switch" aria-checked="${snapOn}" aria-label="Snap to edges"><i></i></button></div>
+    <div class="sr"><span>Saved project</span><span class="sg"><b class="val" id="sstor"></b><button class="chip" id="sforget">Clear</button></span></div>
   </div><div class="ef"><div class="l"></div><div class="m"></div><div class="r"><button class="pillb pri" id="ed">Done</button></div></div>`;
   p.classList.add('set');p.hidden=false;syncZoom();
+  /* Read after the row is on screen, because a promise that resolves before the
+     row exists has nowhere to write. */
+  storageLine().then(s=>{const e=$('#sstor');if(e)e.textContent=s});
+  /* Two taps, because this is the one destructive control in the app and a
+     single tap that erases an afternoon is not a feature. */
+  let armed=0;
+  const fc=$('#sforget');
+  if(fc)fc.onclick=()=>{
+    if(armed!==Date.now()-2500){armed=Date.now()-2500;fc.textContent='Tap again';fc.classList.add('warn');setTimeout(()=>{fc.textContent='Clear';fc.classList.remove('warn')},2500);return}
+    forgetAll();settingsSheet();
+  };
 }
 /* Centre the selected target, but only when the row is not already showing it.
    This runs for the sheet's own opening, never for a tap — see panel()'s
@@ -2150,7 +2720,14 @@ function panel(fromRowTap){
   /* Rearrange has no middle action: Reset would restore the order the sheet
      opened with, which is exactly what Cancel already does, and "Apply to all"
      has no meaning for an order. Same shape as the caption sheet. */
-  p.innerHTML=`<div class="eh">${TTL[tool]}</div><div class="eb">${h}</div><div class="ef"><div class="l"><button class="pillb" id="ec">Cancel</button></div><div class="m">${['filter','adjust'].includes(tool)?`<button class="pillb ghost" id="ea">Apply to all</button>`:(!['text','rearrange','export'].includes(tool)?'<button class="pillb ghost" id="er">Reset</button>':'')}</div><div class="r">${tool=='export'?'<button class="pillb pri" id="exr">Export</button>':'<button class="pillb pri" id="ed">Done</button>'}</div></div>`;
+  /* One line, naming how many clips the next gesture will touch. Without it a
+     grade that suddenly applies to five clips looks like a bug, and nothing else
+     in the sheet could say so. Prepended here because each tool branch rebuilds
+     `h` from scratch — in the branch it would be the sixth place to forget. */
+  const nm=selClips().length;
+  const manyNote=nm>1&&['speed','volume','filter','adjust','rotate','trans'].includes(tool)
+    ?'<div class="sub">'+nm+' clips · one gesture edits all</div>':'';
+  p.innerHTML=`<div class="eh">${TTL[tool]}</div><div class="eb">${manyNote}${h}</div><div class="ef"><div class="l"><button class="pillb" id="ec">Cancel</button></div><div class="m">${['filter','adjust'].includes(tool)?`<button class="pillb ghost" id="ea">Apply to all</button>`:(!['text','rearrange','export'].includes(tool)?'<button class="pillb ghost" id="er">Reset</button>':'')}</div><div class="r">${tool=='export'?'<button class="pillb pri" id="exr">Export</button>':'<button class="pillb pri" id="ed">Done</button>'}</div></div>`;
   p.hidden=false;document.body.classList.add('es');
   /* Put the row back where the user left it. panel() throws the sheet's markup
      away and rebuilds it, and a new .car is scrolled to 0 — which is how the
@@ -2172,38 +2749,37 @@ P.addEventListener('input',e=>{
   const c=sel&&sel.k=='c'&&clips.find(x=>x.id==sel.id),x=sel&&sel.k=='t'&&texts.find(y=>y.id==sel.id),el=e.target,v=c&&srcs[c.src].v;
   if(el.id=='r1'&&c){
     paintRange(el);
-    if(tool=='speed'){c.sp=+el.value;$('#rv').textContent=c.sp+'×';if(v&&active===c)v.playbackRate=c.sp;renderTL()}
-    else if(tool=='volume'){c.vol=+el.value;$('#rv').textContent=Math.round(c.vol*100)+'%';if(v)v.volume=c.vol;
+    /* Every selected clip, one gesture. `writeSlider` is one clip's worth of the
+       write and nothing else; the readouts and the repaint happen once, after,
+       so dragging across a five-clip selection costs the same as dragging across
+       one. With nothing extra selected selClips() is [c], which is why this
+       changes nothing for a single clip. */
+    const many=selClips();
+    let redraw=false;
+    for(const k of many)redraw=writeSlider(k,+el.value)||redraw;
+    if(tool=='speed'){$('#rv').textContent=(+el.value)+'×';if(v&&many.includes(active))v.playbackRate=+el.value;redraw=true}
+    else if(tool=='volume'){
       /* Dragging the slider to 0 *is* muting, so the chip has to say so —
          otherwise it would offer "Mute" on a clip that is already silent. */
-      const mb=$('#mut');if(mb)mb.textContent=c.vol>0?'Mute':'Unmute'}
-    else if(tool=='rotate'){c.rot=+el.value;$('#rv').textContent=c.rot+'°'}
-    else if(tool=='trans'){c.tr.d=+el.value;$('#rv').textContent=c.tr.d.toFixed(1)+' s'}
-    /* Both shelves repaint through the rAF loop's own draw(), so there is
-       nothing to call here — look() reads the value on the next frame, which is
-       why the player updates while the thumb is still down. */
+      $('#rv').textContent=Math.round(+el.value*100)+'%';
+      const mb=$('#mut');if(mb)mb.textContent=(+el.value)>0?'Mute':'Unmute'}
+    else if(tool=='rotate'){$('#rv').textContent=(+el.value)+'°'}
+    else if(tool=='trans'){$('#rv').textContent=(+el.value).toFixed(1)+' s';redraw=true}
     else if(tool=='filter'){
-      /* The slider edits whichever control sliderKey names — the one panel()
-         decided when it drew this slider — so the same input event drives a
-         chain look's strength or a layer's without the handler needing to know
-         which kind it is looking at, and without the two disagreeing. */
-      const v=+el.value;
       const ly=sliderKey==='vig'||sliderKey==='grain';
-      if(ly)c[sliderKey]=v;else c.fs=v;
-      $('#rv').textContent=ly?layTxt(sliderKey,v):Math.round(v*100)+'%';
+      $('#rv').textContent=ly?layTxt(sliderKey,+el.value):Math.round(+el.value*100)+'%';
       /* The stack line can change while the thumb is down — a layer dragged to
          zero leaves the pile — so it is rewritten here rather than only when the
          sheet is built. Without this the sheet would still claim two effects
          after you had already dialled one away. */
       const on=stackOn(c),sk=$('#sk');
       if(sk){sk.innerHTML=stackInfo(c);sk.hidden=on.length<2}}
-    else if(tool=='adjust'){adjSet(c,adjKey,+el.value);$('#rv').textContent=adjTxt(adjKey,+el.value);adjMarks()}
-  }
-  if(el.id=='bgc'){proj.bg=el.value;
-    /* Repaint only the selection marks: rebuilding the sheet here would tear the
-       native colour picker out from under the pointer that is still holding it. */
-    const cs=$('#bgcSw');if(cs)cs.classList.add('on');
-    P.querySelectorAll('.swt[data-bg]').forEach(s=>s.classList.toggle('on',s.dataset.bg==proj.bg));
+    else if(tool=='adjust'){$('#rv').textContent=adjTxt(adjKey,+el.value);adjMarks()}
+    /* Both shelves repaint through the rAF loop's own draw(), so the picture
+       follows the thumb with nothing called here — look() reads the value on
+       the next frame. */
+    slState();
+    if(redraw)renderTL();
   }
   if(el.id=='ti'&&x){x.t=el.value||' ';renderTL()}
 });
@@ -2290,6 +2866,18 @@ P.addEventListener('click',e=>{
     refresh();
   }
 });
+/* Re-arm the bump. A class-driven animation only plays on the transition *into*
+   it, so a `bump` left on the element makes the second value change silent — the
+   pulse that says a number moved, moving exactly once. */
+P.addEventListener('animationend',e=>{if(e.animationName==='slbump')e.target.classList.remove('bump')});
+/* Double-tap to reset, by hand rather than by `dblclick`. */
+P.addEventListener('pointerup',e=>{
+  if(tool=='settings')return;
+  const box=e.target.closest&&e.target.closest('.sl');if(!box)return;
+  const now=Date.now();
+  if(slTap&&now-slTap.t<320&&Math.abs(e.clientX-slTap.x)<24&&Math.abs(e.clientY-slTap.y)<24){slTap=null;resetControl();return}
+  slTap={t:now,x:e.clientX,y:e.clientY};
+});
 P.addEventListener('pointerdown',e=>{
   if(tool!='rearrange')return;
   const b=e.target.closest('[data-rc]');if(!b)return;
@@ -2321,7 +2909,12 @@ $('#tools').addEventListener('click',e=>{
      you are already looking. Reverse clears `active` so the player re-establishes
      the element in the new direction rather than carrying the old one over. */
   else if(k=='reverse'){const c=curSel();if(!c)return;snap();c.rev=!c.rev;active=null;refresh();toast(c.rev?'Reversed':'Back to forward')}
-  else if(k=='replace'){const c=curSel();if(!c)return;pickFile(c.id)}
+  else if(k=='replace'){const c=curSel();if(!c)return;
+    /* Replace swaps the media under *the* clip and keeps its cut. With five
+       selected there is no such thing as the clip, so it says so rather than
+       silently acting on whichever happened to be the anchor. */
+    if(selClips().length>1)return toast('Replace works on one clip — select just it');
+    pickFile(c.id)}
   else if(k=='del')del();
   else{if(k=='adjust')adjKey='bright';tool=k=='edit'?'text':k;panel();const i=$('#ti');if(i)i.focus()}
 });
@@ -2341,7 +2934,15 @@ $('#file').onchange=e=>{
 $('#undo').onclick=undo;$('#redo').onclick=redo;
 function dup(){
   if(sel&&sel.k=='t'){const x=texts.find(y=>y.id==sel.id);snap();const n={...x,id:++uid,s:Math.min(x.s+x.d,Math.max(0,total-x.d))};texts.push(n);sel={k:'t',id:n.id};return refresh()}
-  if(!clips.length)return;const c=curSel();snap();const n={...c,id:++uid};clips.splice(clips.indexOf(c)+1,0,n);sel={k:'c',id:n.id};refresh();
+  if(!clips.length)return;
+  /* Duplicating each selected clip once, immediately after itself, keeps the
+     originals in order — re-resolving the insertion point per copy against a
+     fixed index would reverse them. */
+  const many=selClips();if(!many.length)return;
+  snap();
+  many.forEach(c=>{const k={...c,id:++uid};clips.splice(clips.indexOf(c)+1,0,k);sel={k:'c',id:k.id}});
+  selMore.clear();refresh();
+  if(many.length>1)toast('Duplicated '+many.length+' clips');
 }
 function trimTo(end){
   if(!clips.length)return;
@@ -2442,6 +3043,19 @@ function runExport(){
 $('#export').onclick=()=>{if(!clips.length)return;tool='export';panel()};
 $('#cx').onclick=()=>{cancelled=true;if(rec&&rec.state!='inactive')rec.stop()};
 $('#play').innerHTML=PLAY;refresh();loop();
+/* The first paint is deliberately empty and the restore is a second paint. That
+   ordering is what makes the failure mode safe: an IndexedDB that will not open,
+   a blocked upgrade or a private-mode browser all resolve to "no project", which
+   is the app working — never a half-built timeline. `restoring` holds every
+   save off until the stored document has been read, so the empty first paint
+   cannot be written back over it. */
+restoring=true;
+openDB().then(()=>restore()).then(restored=>{
+  restoring=false;
+  if(restored){refresh();toast('Project restored')}
+  else{if(docLocked)toast('Saved by a newer version — this one will not overwrite it');refresh()}
+  return gcMedia();
+}).catch(()=>{restoring=false;refresh()});
 </script>
 </body>
 </html>

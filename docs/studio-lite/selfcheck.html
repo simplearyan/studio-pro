@@ -97,11 +97,27 @@
     <th style="width:16%">Check</th><th style="width:42%">What it promises</th>
     <th style="width:30%">Measured</th><th style="width:12%">Result</th>
   </tr></thead><tbody></tbody></table>
+
+  <h2>Does the project survive a reload</h2>
+  <p class="sub">Persistence has no pixels to lie about, so the only honest test is the one a user performs without noticing: close the tab, come back, and the edit is there. That cannot be done by reading the source, and a probe that asserted "the code calls indexedDB.open" would pass against code that wrote nothing. So these drive the real functions against a real database — hash real bytes, store a real Blob, read it back, and let the real collector decide what survives — in a store of its own (<code>?db=sc-persist</code>), because the alternative is a self-check that deletes its reader's work.</p>
+  <table id="perT"><thead><tr>
+    <th style="width:18%">Check</th><th style="width:40%">What it promises</th>
+    <th style="width:30%">Measured</th><th style="width:12%">Result</th>
+  </tr></thead><tbody></tbody></table>
+
+  <h2>Driven by a pointer, not by a function</h2>
+  <p class="sub">Every other section on this page drives the app by calling its functions or by dispatching a value change, which leaves the pointer path untested &mdash; and the pointer path is where the gestures are: a trim handle is a <code>pointerdown</code> that becomes a drag, and a slider is a <code>pointerdown</code> that becomes a stream of <code>input</code> events with a held state between them. These dispatch the real event types, in the order a browser sends them.</p>
+  <table id="ptrT"><thead><tr>
+    <th style="width:17%">Gesture</th><th style="width:41%">What it promises</th>
+    <th style="width:30%">Measured</th><th style="width:12%">Result</th>
+  </tr></thead><tbody></tbody></table>
 </main>
 
-<iframe id="frame" src="clip-lite-mock.html" title="mock"></iframe>
-<iframe id="rowframe" src="clip-lite-mock.html" title="mock (row checks)"></iframe>
-<iframe id="layframe" src="clip-lite-mock.html" title="mock (iPad layout checks)"></iframe>
+<iframe id="frame" src="clip-lite-mock.html?db=sc-pixel" title="mock"></iframe>
+<iframe id="rowframe" src="clip-lite-mock.html?db=sc-row" title="mock (row checks)"></iframe>
+<iframe id="layframe" src="clip-lite-mock.html?db=sc-lay" title="mock (iPad layout checks)"></iframe>
+<iframe id="pframe" src="clip-lite-mock.html?db=sc-persist" title="mock (persistence checks)"></iframe>
+<iframe id="dframe" src="clip-lite-mock.html?db=sc-drag" title="mock (pointer checks)"></iframe>
 
 <script>
 'use strict';
@@ -567,7 +583,7 @@ async function runFilters(){
    This runs in a second, phone-sized instance of the mock, not the one above:
    the pixel checks want a 1px offscreen frame, and a row cannot be scrolled in
    one. It also means a failure here cannot poison the measurements. */
-let RW=null,LW=null;
+let RW=null,LW=null,PW=null,DW=null;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function bootRow(){
   const f=$('#rowframe');
@@ -946,7 +962,12 @@ async function runLayout(){
      at this viewport, so these are the same numbers reached independently. */
   run("layMode='left';applyLayout()");await sleep(30);
   const g=ev("(function(){var c=getComputedStyle(document.body).gridTemplateColumns.split(' ').map(parseFloat);var b=document.querySelector('.bar').getBoundingClientRect(),tl=document.querySelector('.tlw').getBoundingClientRect(),sp=document.querySelector('#split').getBoundingClientRect();return {c:c,bar:Math.round(b.height),tl:Math.round(tl.width),split:Math.round(sp.width),sw:document.documentElement.scrollWidth,iw:innerWidth,dock:getComputedStyle(document.querySelector('.dock')).display}})()");
-  const colsOk=g.c.length===3&&Math.abs(g.c[0]-1194*.4)<1&&g.c[1]===12&&Math.abs(g.c[2]-(1194-g.c[0]-g.c[1]))<1;
+  /* Tolerances, not equality. The frame is 1193.9914px wide, `--pw` is 40% of
+     that, and the fixed 12px track absorbs the remainder — so it measures
+     11.9886. Asserting `===12` was asserting sub-pixel arithmetic that changed
+     with the width of the page hosting the check, which is not what the row
+     claims. */
+  const colsOk=g.c.length===3&&Math.abs(g.c[0]-1194*.4)<1&&Math.abs(g.c[1]-12)<.5&&Math.abs(g.c[2]-(1194-g.c[0]-g.c[1]))<1;
   say('the split','the body becomes a grid whose preview column is 40%, a 12px divider, and the timeline in the rest \u2014 with the dock dissolved into it',
     'columns '+g.c.map(n=>Math.round(n)).join(' / ')+'px, header '+g.bar+'px, timeline '+g.tl+'px, dock '+g.dock+', scrollWidth '+g.sw+'/'+g.iw,
     colsOk&&g.bar===56&&g.split===12&&g.dock==='contents'&&g.sw===g.iw,
@@ -987,6 +1008,323 @@ async function runLayout(){
   return {pass,fail};
 }
 
+async function bootPersist(){
+  const f=$('#pframe');
+  await new Promise(res=>{
+    if(f.contentWindow&&f.contentWindow.eval&&f.contentWindow.eval('typeof contentId')==='function')return res();
+    f.addEventListener('load',res,{once:true});
+    setTimeout(res,6000);
+  });
+  const w=f.contentWindow;
+  try{
+    if(w.eval('typeof contentId')!=='function')throw new Error('persistence globals not reachable');
+    if(!w.eval('!!db'))throw new Error('the mock did not open its database');
+    PW=w;return true;
+  }catch(e){PW=null;return false}
+}
+/* A real file, small enough to hash in a blink. The bytes matter: the whole
+   claim is that the *content* decides the identity, so two fixtures that differ
+   in a single byte must not share a store entry. */
+const pRun=c=>PW.eval(c);
+/* Read a value out of the frame without letting it cross as a Promise. Awaiting
+   inside the frame and storing on a global, then serialising a plain value, is
+   the only version of this that works: JSON.stringify(promise) is "{}". */
+const pInto=async(g,expr)=>{
+  /* `eval` runs as a classic script, so it cannot use top-level await at all —
+     the first draft did and every row after the first one died on "await is not
+     defined". The promise is parked on a global inside the frame and this polls
+     for the plain value, which is also the only thing that survives
+     JSON.stringify. */
+  await pRun('window.'+g+'=null;window.__pe=null;(function(){'+expr+'.then(function(v){window.'+g+'=v},function(e){window.__pe=String((e&&e.message)||e)})})()');
+  for(let i=0;i<800;i++){
+    const v=pEv('window.'+g);
+    if(v!==null)return v;
+    const e=pEv('window.__pe');
+    if(e)throw new Error(e);
+    await sleep(10);
+  }
+  throw new Error('timed out reading '+g);
+};
+const pEv=e=>JSON.parse(PW.eval('JSON.stringify('+e+')'));
+const mkFile=(name,bytes)=>new File([new Uint8Array(bytes)],name,{type:'video/mp4'});
+const DOCV_TEST=1;
+/* `docLocked` is a plain let inside the frame, so it can be cleared from out
+   here; this keeps the reset in one place rather than spread over two rows. */
+const docLockedReset=()=>pRun('docLocked=false;saveDirty=false');
+
+async function runPersist(){
+  const tb=$('#perT tbody');tb.innerHTML='';
+  let pass=0,fail=0;
+  if(!PW&&!await bootPersist()){
+    tb.insertAdjacentHTML('beforeend',row([{html:'<span class="nm">persistence</span>'},
+      {html:'could not reach the persistence instance'},{html:'\u2014',cls:'n'},
+      {html:'<span class="fail">not run</span>'}]));
+    return {pass:0,fail:1};
+  }
+  const say=(name,what,meas,ok,why)=>{if(ok)pass++;else fail++;
+    tb.insertAdjacentHTML('beforeend',row([
+      {html:'<span class="nm">'+name+'</span>'},
+      {html:what+(why?'<span class="why">'+why+'</span>':'')},
+      {html:meas,cls:'n'},
+      {html:ok?'<span class="pass">holds</span>':'<span class="fail">fails</span>'}]));};
+  try{
+    await pRun('forgetAll()');
+
+    /* 1. Identity is the bytes. */
+    PW.__A=mkFile('a.mp4',[1,2,3,4,5,6,7,8]);
+    PW.__B=mkFile('b.mp4',[1,2,3,4,5,6,7,9]);
+    const r1=await pRun('contentId(window.__A)');
+    const r2=await pRun('contentId(window.__B)');
+    const r3=await pRun('contentId(window.__A)');
+    say('content hash','the same bytes always get the same id and different bytes always get a different one, so importing a file twice is recognised rather than guessed',
+      'two 8-byte files, one byte apart \u2192 '+(r1!==r2?'2 distinct ids':'COLLIDED')+'; hashed again \u2192 '+(r1===r3?'the same id':'DIFFERENT'),
+      r1===r3&&r1!==r2,'a name is not an identity: two takes called take-01.mp4 are not the same take');
+
+    /* 2. A real Blob, stored once and read back whole. */
+    const size=4096,arr=new Uint8Array(size);
+    for(let i=0;i<size;i++)arr[i]=i%251;
+    PW.__F=new File([arr],'probe.mp4',{type:'video/mp4'});
+    const mid=await pRun('contentId(window.__F)');
+    PW.__M=mid;
+    const wrote=await pRun("putMedia(window.__M,window.__F,{name:'probe',dur:12.5})");
+    const back=await pInto('__b',"get1('media',window.__M).then(function(m){return m&&{name:m.name,dur:m.dur,size:m.blob.size,type:m.blob.type}})");
+    /* Not `instanceof Blob`: the iframe has its own realm and its own Blob
+       constructor, so that test fails on a perfectly good Blob. Size and type
+       are what actually say "the same bytes came back". */
+    const ok2=!!wrote&&!!back&&back.size===size&&back.type==='video/mp4'&&back.name==='probe'&&back.dur===12.5;
+    say('media round trip','an imported file is stored once, whole, and comes back as the same bytes with the name and length the clip was cut to',
+      back?back.name+', '+back.size+' bytes, type '+back.type+', dur '+back.dur:'nothing stored',
+      ok2,'the edit is kilobytes and the media is not, which is why they are two stores');
+
+    /* 3. The edit itself, through the same document the app writes. */
+    PW.__SRC={v:{duration:12.5,currentTime:0,readyState:1,videoWidth:1280,videoHeight:720,playbackRate:1,volume:1,muted:true,pause:function(){},play:function(){return Promise.resolve()},addEventListener:function(){},removeEventListener:function(){}},mid,name:'probe',dur:12.5,th:['u0','u1'],st:6.25,pk:new Float32Array([0,.5,1])};
+    PW.__CLIP={id:2,src:1,in:1.5,out:9,f:'vivid',fs:.8,sp:1,vol:1,vig:0,grain:0,ad:{},opacity:.9,rev:true,s:0};
+    const saved=await pRun("(function(){srcs={1:window.__SRC};clips=[window.__CLIP];texts=[];return put1('proj',{id:PROJID,updatedAt:Date.now(),doc:docNow()}).then(function(){return true},function(){return false})})()");
+    const back2=await pInto('__p',"get1('proj',PROJID)");
+    const d2=back2&&back2.doc;
+    const ok3=saved&&d2&&d2.v===1&&d2.srcs.length===1&&d2.srcs[0].mid===mid&&d2.srcs[0].k===1&&
+      d2.clips[0].in===1.5&&d2.clips[0].f==='vivid'&&d2.clips[0].opacity===.9&&d2.clips[0].rev===true;
+    say('the edit round trip','the cut, the look and the trim window come back exactly, tagged with the schema version they were written at',
+      d2?('v'+d2.v+', src '+String(d2.srcs[0].mid).slice(0,10)+'\u2026, in '+d2.clips[0].in+'s, '+d2.clips[0].f+' at '+(d2.clips[0].fs*100)+'%'):'nothing stored',
+      ok3,'a stored document with no version is a document nobody can migrate later');
+
+    /* 4. A document written by an older build: the clip has no `opacity` key at
+       all, because the build that wrote it predates the knob. */
+    const oldDoc='{clips:[{id:7,src:1,in:0,out:4,f:"none",fs:1,sp:1,vol:1}],texts:[{id:9,t:"hi",s:0,d:1}],proj:{ar:"9:16"},srcs:[{k:1,mid:"x",name:"n",dur:4}]}';
+    const mig=pEv('migrateDoc('+oldDoc+')');
+    const c0=mig.clips[0];
+    const ok4=c0.opacity===1&&c0.rev===false&&c0.blue===0&&c0.blur===0&&c0.ad&&c0.tr&&
+      mig.proj.ar==='9:16'&&mig.proj.bg==='#000000'&&mig.texts[0].tp==='rainbow'&&mig.v===1;
+    say('an old document','a clip stored before Opacity existed comes back with a real opacity instead of undefined, and every field added since gets its default in one place',
+      'no opacity key in \u2192 '+String(c0.opacity)+', rev '+c0.rev+', blue '+c0.blue+', tr {}, v'+mig.v,
+      ok4,'undefined is not a default: it is the difference between a restored project and a black canvas');
+
+    /* 5. Refcounts. Two clips share one source, so deleting one of them must
+       collect nothing — and that is the case a stored counter gets wrong,
+       because Duplicate is where the second reference appears. */
+    PW.__SEC=new File([new Uint8Array([9,9,9,9,9,9,9,9])],'second.mp4',{type:'video/mp4'});
+    const mid2=await pRun('contentId(window.__SEC)');
+    PW.__M2=mid2;
+    await pRun("putMedia(window.__M2,window.__SEC,{name:'second',dur:7})");
+    PW.__SRC2={v:PW.__SRC.v,mid:mid2,name:'second',dur:7};
+    /* Seed a derived record for each. The cache is half of what the collector
+       owns: leaving it empty here would have made the row pass while proving
+       nothing about whether a freed media leaves its thumbnails behind. */
+    await pRun("(function(){return Promise.all([put1('derived',{id:window.__M,th:[new Blob(['a'])],st:6.25,ar:1.78,pk:new Float32Array([0,1])}),put1('derived',{id:window.__M2,th:[new Blob(['b'])],st:3.5,ar:1.78,pk:new Float32Array([1,0])})])})()");
+    await pRun("(function(){srcs={1:window.__SRC,2:window.__SRC2};clips=[{id:1,src:1},{id:2,src:1},{id:3,src:2}];return gcMedia()})()");
+    const stepA=await pInto('__a',"Promise.all([getAllKeysOf('media'),getAllKeysOf('derived')])");
+    const inUse=pEv('liveMedia().mids.size');
+    /* Drop one of the two clips that share source 1. Nothing may be collected:
+       the other clip still plays from those exact bytes. */
+    await pRun("(function(){clips=[{id:2,src:1},{id:3,src:2}];return gcMedia()})()");
+    const stepB=await pInto('__b',"Promise.all([getAllKeysOf('media'),getAllKeysOf('derived')])");
+    const slotsB=pEv('Object.keys(srcs).length');
+    /* Now the last clip on source 1 goes, and only then may its bytes go. */
+    await pRun("(function(){clips=[{id:3,src:2}];return gcMedia()})()");
+    const stepC=await pInto('__c',"Promise.all([getAllKeysOf('media'),getAllKeysOf('derived')])");
+    const slotsC=pEv('Object.keys(srcs).length');
+    const ok5=inUse===2&&stepA[0].length===2&&stepA[1].length===2&&
+      stepB[0].length===2&&stepB[1].length===2&&slotsB===2&&
+      stepC[0].length===1&&stepC[1].length===1&&slotsC===1&&
+      mid2!==mid;
+    say('refcounted collection','deleting one of two clips that share a source collects nothing at all, and deleting the last one takes that media and its cache while leaving the other alone',
+      inUse+' in use \u2192 drop 1 of a pair: '+stepB[0].length+' media / '+stepB[1].length+' caches / '+slotsB+' slots \u2192 drop the last: '+stepC[0].length+' media / '+stepC[1].length+' caches / '+slotsC+' slot',
+      ok5,'Split and Duplicate both leave two clips on one source; neither may free anything');
+
+    /* 6. Forward compatibility. A document written by a newer build must be left
+       exactly as it is: migrateDoc stamps whatever it reads with its own version,
+       so loading one and then autosaving would delete every field the newer build
+       added — silently, because the autosave is a different code path. */
+    await pInto('__nv',"put1('proj',{id:PROJID,updatedAt:Date.now(),doc:{v:DOCV+7,clips:[{id:1,src:1}],texts:[],proj:{ar:'16:9'},srcs:[],futureField:'keep me'}}).then(function(){return true})");
+    const before=await pInto('__nb',"get1('proj',PROJID).then(function(r){return r.doc.v+':'+(r.doc.futureField||'')})");
+    await pRun('restore()');
+    const locked=pEv('docLocked');
+    pRun('saveSoon()');await sleep(900);
+    const after=await pInto('__na',"get1('proj',PROJID).then(function(r){return r.doc.v+':'+(r.doc.futureField||'')})");
+    const dirty=pEv('saveDirty');
+    const ok6=locked===true&&before===after&&after==='8:keep me'&&dirty===false;
+    docLockedReset();
+    say('a newer document','a project saved by a newer build is not opened, not downgraded and not overwritten — this build stops saving rather than deleting fields it does not understand',
+      'wrote v'+(DOCV_TEST+7)+' \u2192 after restore: v'+String(before)+' \u2192 '+String(after)+(locked?', saves locked':', NOT LOCKED')+(dirty?', but a save was queued':' and nothing was written'),
+      ok6,'a version number that only protects old readers is not a versioned schema');
+
+    /* 7. Nothing above means anything if the store is not the one asked for. */
+    const stores=pEv("({db:DBN,schema:(typeof DBV)})");
+    const kv=await pInto('__kv',"getAllKeysOf('kv')");
+    say('its own store','the instance runs against the database the check asked for, not the reader\u2019s own project',
+      stores.db+', schema version '+stores.schema+', kv rows '+kv.length,
+      stores.db==='sc-persist'&&kv.length===1,
+      'a self-check sharing the real store would delete the work it is checking');
+  }catch(e){
+    tb.insertAdjacentHTML('beforeend',row([{html:'<span class="nm">persistence</span>'},
+      {html:'threw: '+String((e&&e.message)||e).slice(0,140)},{html:'\u2014',cls:'n'},
+      {html:'<span class="fail">not run</span>'}]));
+    return {pass,fail:fail+1};
+  }
+  docLockedReset();
+  await pRun('forgetAll()');
+  return {pass,fail};
+}
+
+/* ── Pointer-driven behaviour ─────────────────────────────────────────────────
+   Every other section on this page drives the app by calling its functions or by
+   dispatching a value change, which leaves the pointer path untested — and the
+   pointer path is where the gestures are: a trim handle is a pointerdown that
+   becomes a drag, and a slider is a pointerdown that becomes a stream of input
+   events with a held state between them.
+
+   Two honest limits, stated here because they belong beside the claim rather
+   than in a footnote:
+
+   1. **These events are untrusted.** `isTrusted` is false and no script can make
+      it true; it is the browser saying "this came from a user agent". Every
+      listener in the app runs on them identically, because dispatching an event
+      *is* running the handler. What it cannot do is the browser's own default
+      action — and for a range input that default action is what moves `.value`.
+      So the probe sets the value and fires `input` itself, which is precisely
+      what the browser does after the drag, in the same order.
+   2. **The rAF loop does not run in this webview.** A real drag auto-scrolls the
+      timeline when the pointer nears an edge; that part of `drag()` is driven by
+      requestAnimationFrame and is not exercised. The move handler, which is the
+      part that trims, is.
+
+   Row 1 asserts (1) out loud, so nobody reads "a real drag" and believes it. */
+async function bootDrag(){
+  const f=$('#dframe');
+  await new Promise(res=>{
+    if(f.contentWindow&&f.contentWindow.eval&&f.contentWindow.eval('typeof dragTrim')==='function')return res();
+    f.addEventListener('load',res,{once:true});
+    setTimeout(res,6000);
+  });
+  const w=f.contentWindow;
+  try{
+    if(w.eval('typeof dragTrim')!=='function')throw new Error('drag globals not reachable');
+    DW=w;return true;
+  }catch(e){DW=null;return false}
+}
+async function runDrag(){
+  const tb=$('#ptrT tbody');tb.innerHTML='';
+  let pass=0,fail=0;
+  if(!DW&&!await bootDrag()){
+    tb.insertAdjacentHTML('beforeend',row([{html:'<span class="nm">pointer</span>'},
+      {html:'could not reach the pointer instance'},{html:'\u2014',cls:'n'},
+      {html:'<span class="fail">not run</span>'}]));
+    return {pass:0,fail:1};
+  }
+  const D=c=>DW.eval(c);
+  const DE=e=>JSON.parse(DW.eval('JSON.stringify('+e+')'));
+  const dInto=async(g,expr)=>{
+    /* `expr` may be synchronous (a geometry read) or a promise (anything that
+       writes to the database). The first version called `.then` on the result
+       unconditionally and every synchronous driver died with "then is not a
+       function" \u2014 so a value is promoted to a resolved promise first. */
+    await D('window.'+g+'=null;window.__pe=null;(function(){var v=('+expr+');if(!(v&&typeof v.then===\'function\'))v=Promise.resolve(v);v.then(function(x){window.'+g+'=x},function(e){window.__pe=String((e&&e.message)||e)})})()');
+    for(let i=0;i<800;i++){
+      const v=DE('window.'+g);
+      if(v!==null)return v;
+      const e2=DE('window.__pe');
+      if(e2)throw new Error(e2);
+      await sleep(10);
+    }
+    throw new Error('timed out reading '+g);
+  };
+  const say=(name,what,meas,ok,why)=>{if(ok)pass++;else fail++;
+    tb.insertAdjacentHTML('beforeend',row([
+      {html:'<span class="nm">'+name+'</span>'},
+      {html:what+(why?'<span class="why">'+why+'</span>':'')},
+      {html:meas,cls:'n'},
+      {html:ok?'<span class="pass">holds</span>':'<span class="fail">fails</span>'}]));};
+  const Q1=String.fromCharCode(39);
+  try{
+    /* Two clips on one synthetic source, so a trim has somewhere to trim to and a
+       selection has a second member to reach. */
+    D("(function(){var v={duration:60,currentTime:0,readyState:1,videoWidth:720,videoHeight:1280,playbackRate:1,volume:1,muted:true,pause:function(){},play:function(){return Promise.resolve()},addEventListener:function(){},removeEventListener:function(){}};srcs={1:{name:'a',dur:60,th:[],pk:null,mid:'x',ar:0.5625,st:5,v:v}};clips=[{id:1,src:1,f:'none',fs:1,vig:0,grain:0,blue:0,blur:0,opacity:1,ad:{},sp:1,vol:1,in:0,out:10,s:0,rot:0},{id:2,src:1,f:'none',fs:1,vig:0,grain:0,blue:0,blur:0,opacity:1,ad:{},sp:1,vol:1,in:0,out:20,s:10,rot:0}];uid=20;total=30;sel=null;selMore.clear();pps=24;renderTL();return true})()");
+
+    /* 1. The honesty row, first, so the rest is read with the right expectation. */
+    const t=await dInto('__t','pevProbe()');
+    say('what a pointer is here','the events this probe sends carry isTrusted=false, because no script can forge it — every listener runs on them, but the browser\u2019s own range default action does not, so the probe fires input itself',
+      'isTrusted '+t.isTrusted+' \u00b7 '+t.seq.length+' events: '+t.seq.join(' \u2192 '),
+      t.isTrusted===false&&t.seq.length===4,
+      'the alternative is a row that reads "a real drag" and is believed');
+
+    /* 2. A trim handle dragged: the whole of trimMain and drag() runs. */
+    /* Indexed rather than selected by attribute: an attribute selector needs quotes
+       of its own, and putting them inside the expression string this is spliced
+       into is how the first version of this row died on "missing ) after
+       argument list". */
+const clipW='Math.round(document.querySelectorAll('+Q1+'.clip'+Q1+')[0].getBoundingClientRect().width)';
+    const before=DE('({out:clips[0].out,w:'+clipW+',pps:pps})');
+    await dInto('__r1','window.__o=dragTrim()');
+    const after=DE('({out:clips[0].out,w:'+clipW+'})');
+    const dOut=after.out-before.out,dPx=after.w-before.w;
+    const suppressed=DE('Date.now()-noClick<600');
+    say('a trim handle, dragged','grabbing a clip\u2019s right handle and moving the pointer lengthens the clip by the drag distance at the current zoom, and the pointerup suppresses the click that follows so the drag does not also select',
+      before.out.toFixed(2)+'s / '+before.w+'px \u2192 '+after.out.toFixed(2)+'s / '+after.w+'px, click suppressed '+suppressed,
+      dOut>0&&Math.abs(dPx-dOut*before.pps)<=2&&suppressed,
+      'the pointer path is the gesture; calling trimMain() would prove only that the arithmetic is right');
+
+    /* 3. The thumb, held and released. */
+    D("tool='adjust';sel={k:'c',id:1};selMore.clear();adjKey='bright';panel()");
+    const on=await dInto('__h1','sliderHeld()');
+    const off=await dInto('__h2','sliderRelease()');
+    say('the thumb, held','a pointerdown on the slider marks it held for as long as the gesture lasts, and a pointerup anywhere clears it, so an interrupted drag cannot leave the sheet lit',
+      'down \u2192 held '+on+', up elsewhere \u2192 held '+off,
+      on===true&&off===false,
+      'the readout wears the accent while the value is being set, not after it lands');
+
+    /* 4. A double tap reverts the control, across the selection, and nothing else. */
+    const put=await dInto('__d','doubleTapSlider(0.7)');
+    const st=DE('({vals:selClips().map(function(c){return adjVal(c,adjKey)}),nd:document.querySelector('+Q1+'#panel .sl'+Q1+').classList.contains('+Q1+'nd'+Q1+'),keep:clips[0].fs})');
+    say('double-tap to reset','two taps on a slider that has been moved put that one control back to its default and touch nothing else on the clip',
+      'Brightness '+put.toFixed(2)+' \u2192 '+JSON.stringify(st.vals)+', non-default marker '+st.nd+', look still '+st.keep,
+      st.vals.length===1&&Math.abs(st.vals[0])<1e-6&&st.nd===false&&st.keep===1,
+      'narrower than the footer\u2019s Reset on purpose: someone who pushed Grain to \u221240 wants that number back, not their look as well');
+
+    /* 5. One drag, two clips — the claim the multi-selection exists for. */
+    D("sel={k:'c',id:1};selMore=new Set([2]);tool='adjust';panel()");
+    const spread=await dInto('__s','dragSlider(0.6)');
+    const all=DE('clips.map(function(c){return +(c.ad&&c.ad[adjKey]||0).toFixed(3)})');
+    say('one gesture, several clips','a single drag of one property slider writes to every selected clip, because matching a grade across a cut by hand means opening the sheet once per clip',
+      'clips 1 and 2 selected, dragged to '+JSON.stringify(spread)+'; the whole timeline reads '+JSON.stringify(all),
+      spread.length===2&&Math.abs(spread[0]-0.6)<1e-6&&Math.abs(spread[1]-0.6)<1e-6&&all[0]===0.6&&all[1]===0.6,
+      'selClips() is [anchor] when nothing extra is selected, which is why single-clip behaviour cannot have changed');
+
+    /* 6. Two taps too far apart are not a double-tap. */
+    await dInto('__t2','slowTapSlider(0.5,420)');
+    const slow=DE('adjVal(clips[0],adjKey)');
+    say('two slow taps are not a reset','a second tap outside the window is a separate gesture, so re-setting the same value a moment later is not swallowed by the first tap',
+      'two taps 420ms apart \u2192 Brightness still '+slow,
+      Math.abs(slow-0.5)<1e-6,
+      'the detector is two pointerups inside 320ms and 24px — near enough to be a thumb, far enough not to be a held press');
+  }catch(e){
+    tb.insertAdjacentHTML('beforeend',row([{html:'<span class="nm">pointer</span>'},
+      {html:'threw: '+String((e&&e.message)||e).slice(0,140)},{html:'\u2014',cls:'n'},
+      {html:'<span class="fail">not run</span>'}]));
+    return {pass,fail:fail+1};
+  }
+  return {pass,fail};
+}
+
 async function main(){
   const btn=$('#run');btn.disabled=true;
   $('#status').textContent='reaching the mock…';
@@ -1009,9 +1347,15 @@ async function main(){
   $('#status').textContent='measuring the iPad layout\u2026';
   await new Promise(r=>setTimeout(r,30));
   const l=await runLayout();
-  const p=a.pass+b.pass,f=a.fail+b.fail,tf=f+r.fail+g.fail+x.fail+l.fail;
-  $('#summary').innerHTML='<div class="sum">'+p+' of '+(p+f)+' controls hold, '+r.pass+' of '+(r.pass+r.fail)+' shelf rows hold, '+g.pass+' of '+(g.pass+g.fail)+' sheet-layout checks hold, '+x.pass+' of '+(x.pass+x.fail)+' panel checks hold, and '+l.pass+' of '+(l.pass+l.fail)+' iPad-layout checks hold. '+
-    (tf? '<span class="fail">'+tf+' failed</span> \u2014 a control that fails here is one whose label and its behaviour disagree.' : 'Every control is a bit-exact no-op at its rest, moves its own metric in the direction its name promises, keeps that promise after the preview is scaled down, the two layers still land on top of a graded clip instead of replacing it, no shelf row moves when a card is picked, and the sheet\u2019s own layout \u2014 the value above its track, the centred footer, the dot on the centred sliders \u2014 is measured rather than assumed, the four clip actions are driven through the rail\u2019s own buttons and a real drag rather than asserted from the source, the readout and the changed-dot are shown to follow the thumb mid-drag rather than on release, Format is shown to have become two sheets with Export a third, and the side-by-side layout is shown to place its grid, keep the transport, and leave every phone row the exact height it had before it existed.')+'</div>';
+  $('#status').textContent='reloading a project\u2026';
+  await new Promise(r=>setTimeout(r,30));
+  const q=await runPersist();
+  $('#status').textContent='driving a pointer\u2026';
+  await new Promise(r=>setTimeout(r,30));
+  const dr=await runDrag();
+  const p=a.pass+b.pass,f=a.fail+b.fail,tf=f+r.fail+g.fail+x.fail+l.fail+q.fail+dr.fail;
+  $('#summary').innerHTML='<div class="sum">'+p+' of '+(p+f)+' controls hold, '+r.pass+' of '+(r.pass+r.fail)+' shelf rows hold, '+g.pass+' of '+(g.pass+g.fail)+' sheet-layout checks hold, '+x.pass+' of '+(x.pass+x.fail)+' panel checks hold, and '+l.pass+' of '+(l.pass+l.fail)+' iPad-layout checks hold, and '+q.pass+' of '+(q.pass+q.fail)+' persistence checks hold, and '+dr.pass+' of '+(dr.pass+dr.fail)+' pointer checks hold. '+
+    (tf? '<span class="fail">'+tf+' failed</span> \u2014 a control that fails here is one whose label and its behaviour disagree.' : 'Every control is a bit-exact no-op at its rest, moves its own metric in the direction its name promises, keeps that promise after the preview is scaled down, the two layers still land on top of a graded clip instead of replacing it, no shelf row moves when a card is picked, and the sheet\u2019s own layout \u2014 the value above its track, the centred footer, the dot on the centred sliders \u2014 is measured rather than assumed, the four clip actions are driven through the rail\u2019s own buttons and a real drag rather than asserted from the source, the readout and the changed-dot are shown to follow the thumb mid-drag rather than on release, Format is shown to have become two sheets with Export a third, and the side-by-side layout is shown to place its grid, keep the transport, and leave every phone row the exact height it had before it existed, and a project is shown to survive a reload \u2014 bytes hashed to an identity, a Blob read back whole, an old document migrated field by field, and two clips sharing one source collecting nothing until the last one goes \u2014 and the pointer path is shown under real events: a trim handle dragged, a thumb held and released, a double-tap to reset, two slow taps correctly ignored, and one gesture grading a multi-selection.')+'</div>';
   $('#status').textContent='done';
   btn.disabled=false;
 }
