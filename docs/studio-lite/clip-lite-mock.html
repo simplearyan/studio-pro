@@ -164,7 +164,7 @@ canvas{max-width:100%;max-height:100%;width:auto;height:auto;border-radius:0;bac
    rounded top edge only announced a boundary that is not there. The >=900px
    layout is untouched — there the dock is a centred card with a bottom margin
    and the sheet is its matching card, which is a different arrangement. */
-#panel{flex-direction:column;align-items:stretch;flex-wrap:nowrap;gap:16px;padding:20px 20px 16px;margin:0;flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;background:var(--sf);border-radius:0}
+#panel{flex-direction:column;align-items:stretch;flex-wrap:nowrap;gap:16px;padding:20px 20px 16px;margin:0;flex:1 1 auto;min-height:0;overflow-y:auto;scrollbar-gutter:stable;overscroll-behavior:contain;background:var(--sf);border-radius:0}
 .eh{text-align:center;font-size:16px;font-weight:500;letter-spacing:.01em}
 .eb{flex:1;display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap}
 .eb label{flex:1 1 100%;text-align:center;font-size:20px;min-width:0}
@@ -1417,10 +1417,11 @@ function settingsSheet(){
   p.classList.add('set');p.hidden=false;syncZoom();
 }
 /* Centre the selected target, but only when the row is not already showing it.
-   Called after a scroll offset has been restored and after a selection, so
-   without the guard it would be the same jump in the other direction: every tap
-   on an already-visible knob yanks the row. block:'nearest' keeps it from
-   scrolling the sheet, since the knob is vertically on screen. */
+   This runs for the sheet's own opening, never for a tap — see panel()'s
+   fromRowTap. Called after a scroll offset has been restored, it is the one
+   thing that moves a scrolled row on its own, so it must not fire when the user
+   chose the card themselves. block:'nearest' keeps it from scrolling the sheet,
+   since the knob is vertically on screen. */
 function centerOn(car){
   const on=car.querySelector('.on');if(!on)return;
   const a=on.getBoundingClientRect(),b=car.getBoundingClientRect();
@@ -1441,9 +1442,8 @@ function adjSync(){
   car.querySelectorAll('[data-adj]').forEach(q=>q.classList.toggle('on',q.dataset.adj==adjKey));
   const v=(c.ad||{})[adjKey]||0;
   r.value=v;$('#rv').textContent=pct(v);
-  centerOn(car);
 }
-function panel(){
+function panel(fromRowTap){
   strip();const p=$('#panel');
   if(tool=='settings'){if(!p.classList.contains('set')||p.hidden)settingsSheet();return}
   p.classList.remove('set');
@@ -1522,7 +1522,7 @@ function panel(){
      different name than the one you were holding. Restoring the offset is the
      whole fix for the rebuild path; adjSync never rebuilds at all. */
   const car1=p.querySelector('.car');
-  if(car1){car1.scrollLeft=sl0;centerOn(car1)}
+  if(car1){car1.scrollLeft=sl0;if(!fromRowTap)centerOn(car1)}
   fitView();
 }
 const P=$('#panel');
@@ -1596,7 +1596,9 @@ P.addEventListener('click',e=>{
     }else{
       c.f=d.f;if(d.f!='none'&&c.fs==null)c.fs=1;postKey=d.f;
     }
-    panel()}
+    /* fromRowTap: the card is already where the user put it, so the rebuild
+       restores the offset and leaves the row alone. */
+    panel(true)}
   /* "Apply to all" copies the look and the numbers to every other clip, which is
      the whole reason it exists: matching a grade across a multi-clip timeline by
      hand means opening this sheet once per clip. The source clip is skipped so

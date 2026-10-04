@@ -410,6 +410,26 @@ now carries the scroll offset across the rebuild, and re-centres the selection
 only when it is not already visible. Re-centring unconditionally would be the
 same jump in the other direction: every tap on a visible knob would yank the row.
 
+**And the Filters row still lurched the moment you picked a card.** `panel()`
+carried the offset across the rebuild and then called `centerOn`, whose guard
+skipped only when the selected card was *fully* inside the row. A card you had
+scrolled out to almost always sits at an edge, so it failed the guard and got
+centred: scrolled to `178` and tapping a card at the row's edge moved the row to
+`338`. Centring is now for the sheet's **opening** only. `panel()` takes a
+`fromRowTap` flag that the filter pick sets, and `adjSync` no longer centres at
+all — both are only ever reached by a tap, and a tap defines a card the user can
+already see, so there is nothing to bring into view. Only a rebuild nobody tapped
+for (opening the sheet on a clip whose look is scrolled off) moves the row, and
+it still does: picking `noir` with the row at 0 centres it to `667`.
+
+A second, quieter shift came from the sheet's own height. Adding the "2 effects
+together" line makes the panel overflow by 2px, a desktop scrollbar appears, the
+row narrows ~17px and the scroll re-snaps — a `+9px` nudge on every layer tap,
+and a `+9` the moment the line appears. `#panel` now reserves its gutter with
+`scrollbar-gutter:stable`, so no content toggle can resize the row under it. Both
+are properties of the panel rather than of Filters, which is why the fix lives in
+`panel()` and the `#panel` rule rather than in the filter branch.
+
 **Filters and Adjust had the same icon.** Both were two rails with a travelling
 dot, differing only in where the dots sat. That is not a distinction anyone can
 make at 22px, two buttons apart in the dock — and it is the difference between
@@ -535,6 +555,7 @@ is wrong in the convenient direction is how a suite stops being trusted.
 | Caption trim | left and right handles move start and duration; badge live at every step |
 | Cancel / Done / undo | Cancel reverts the sheet; Done commits; undo restores; redo repopulates |
 | Row keeps its place | at 393×844 the row sits at `scrollLeft 261` with Warmth selected, taps Sharpen at the same 261, re-taps the visible knob without moving it, and re-centres only an off-screen pick (Fade picked at 0 → 261) |
+| Filter row never jumps | scrolled to `178` and tapping a card at the row's edge leaves it at `178` (it used to centre to `338`); a layer tap leaves it at `107/187/267/427` across four offsets (each used to drift `+9`); the stack line appearing no longer shifts it; Adjust taps move `0px`; opening the sheet on an off-screen pick still centres (`0 → 667`) |
 | Sharpen is a mask, not a curve | acutance +41% at full res, +14% as displayed, −27% at `−1`; flat field beside the edge is bit-identical at every amount; `sharp 0` is 0 differing bytes against no knob at all, including with a grade and a 90° rotation |
 | Vignette | radial-shell mean luma `0.000, 0.000, −1.0, −10.0, −22.2, −34.0, −16.0, −0.6` centre→edge at full strength, and `0, 0, −1.3, −11.5, −25.5, −40.2, −18.8, −0.5` on top of Vivid — the falloff survives the grade; `vig=0` is 0 differing bytes; centre probe moves −0.4 while corners move −74.5 |
 | Grain | mean luma drift +0.16/255 across six probes (mean-preserving); mid-plate sd +11.5; repeat draws of a paused frame differ in 0 of 921,600 pixels; `fs=0` is 0 differing bytes |
