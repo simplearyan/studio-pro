@@ -527,7 +527,27 @@ Before the layers were split out, a per-layer test would have passed while the
 shelf was still broken, because each layer was individually fine and only the
 *pair* was broken.
 
-Current result: **21 of 21 controls hold** — 8 knobs and 13 looks.
+**And the rows get their own check, because a scroll offset is not a pixel.** The
+row-keeping bugs above are invisible to a filter string and to a pixel test: the
+sheet rebuilt the row from a string (so it went back to `scrollLeft 0`) and then
+re-centred the card you had just tapped. So the page carries four more assertions
+in a **second, phone-sized instance** of the mock — the pixel checks want a 1px
+offstage frame, and a row cannot be scrolled in one:
+
+| shelf | what it does | before → after |
+|---|---|---|
+| Filters | tap a chain card at the row's edge | `187 → 187` |
+| Filters | tap a layer card at the far end | `267 → 267` |
+| Adjust | tap a knob at the row's edge | `178 → 178` |
+| Filters | open the sheet on a look scrolled out of view | `0 → 667` |
+
+The last row is the **positive control**: a rebuild nobody tapped for still has
+to bring the selection into view, so a "fix" that merely switched centring off
+fails there instead of passing quietly. The assertion is proven able to fail —
+re-running the old behaviour in the same frame moves the row `187 → 347`.
+
+Current result: **21 of 21 controls and 4 of 4 rows hold** — 8 knobs, 13 looks,
+and neither shelf moving under the thumb.
 
 Two of the three bugs it found were in the page's own claims, not the mock, and
 that is worth saying too: Contrast at −1 legitimately *reduces* spread,
@@ -556,6 +576,7 @@ is wrong in the convenient direction is how a suite stops being trusted.
 | Cancel / Done / undo | Cancel reverts the sheet; Done commits; undo restores; redo repopulates |
 | Row keeps its place | at 393×844 the row sits at `scrollLeft 261` with Warmth selected, taps Sharpen at the same 261, re-taps the visible knob without moving it, and re-centres only an off-screen pick (Fade picked at 0 → 261) |
 | Filter row never jumps | scrolled to `178` and tapping a card at the row's edge leaves it at `178` (it used to centre to `338`); a layer tap leaves it at `107/187/267/427` across four offsets (each used to drift `+9`); the stack line appearing no longer shifts it; Adjust taps move `0px`; opening the sheet on an off-screen pick still centres (`0 → 667`) |
+| Row checks in the self-check | `selfcheck.html` carries the four probes as live assertions in a second phone-sized mock: Filters edge tap `187 → 187`, Filters layer tap `267 → 267`, Adjust tap `178 → 178`, and the positive control `0 → 667`; the old behaviour in the same frame moves `187 → 347`, so the assertion can fail |
 | Sharpen is a mask, not a curve | acutance +41% at full res, +14% as displayed, −27% at `−1`; flat field beside the edge is bit-identical at every amount; `sharp 0` is 0 differing bytes against no knob at all, including with a grade and a 90° rotation |
 | Vignette | radial-shell mean luma `0.000, 0.000, −1.0, −10.0, −22.2, −34.0, −16.0, −0.6` centre→edge at full strength, and `0, 0, −1.3, −11.5, −25.5, −40.2, −18.8, −0.5` on top of Vivid — the falloff survives the grade; `vig=0` is 0 differing bytes; centre probe moves −0.4 while corners move −74.5 |
 | Grain | mean luma drift +0.16/255 across six probes (mean-preserving); mid-plate sd +11.5; repeat draws of a paused frame differ in 0 of 921,600 pixels; `fs=0` is 0 differing bytes |

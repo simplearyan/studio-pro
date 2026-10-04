@@ -29,6 +29,8 @@
   .note{background:var(--pnl);border:1px solid var(--ln);border-left:3px solid var(--acc);border-radius:8px;padding:12px 14px;margin:14px 0;color:#c9c9c9;max-width:80ch}
   .note b{color:var(--fg)}
   #frame{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;border:0;left:-9999px}
+  /* Laid out, not display:none — a row that cannot scroll cannot be tested. */
+  #rowframe{position:absolute;width:393px;height:844px;opacity:0;pointer-events:none;border:0;left:-9999px;top:0}
   .sum{color:var(--dim);margin-top:8px}
 </style>
 </head>
@@ -62,9 +64,17 @@
     <th style="width:12%">Look or layer</th><th style="width:22%">What it applies</th><th style="width:9%">At zero</th>
     <th style="width:26%">Signature change</th><th style="width:9%">Result</th>
   </tr></thead><tbody></tbody></table>
+
+  <h2>Shelf rows hold their place</h2>
+  <p class="sub">A tap must not move the row it was on. Picking a look rebuilds the row — the strength slider appears with it — so the scroll offset has to survive that rebuild, and the sheet may re-centre only a selection it did <em>not</em> get from a tap. Each row below is scrolled to an offset, a card is tapped, and the offset is read back. The last row is the opposite assertion on purpose: a rebuild nobody tapped for still has to bring an off-screen selection into view, so a "fix" that simply switched centring off fails here rather than passing quietly.</p>
+  <table id="rowT"><thead><tr>
+    <th style="width:14%">Shelf</th><th style="width:34%">Action</th>
+    <th style="width:14%">Offset before</th><th style="width:14%">After</th><th style="width:10%">Result</th>
+  </tr></thead><tbody></tbody></table>
 </main>
 
 <iframe id="frame" src="clip-lite-mock.html" title="mock"></iframe>
+<iframe id="rowframe" src="clip-lite-mock.html" title="mock (row checks)"></iframe>
 
 <script>
 'use strict';
@@ -448,6 +458,100 @@ async function runFilters(){
   return {pass,fail};
 }
 
+/* ── Shelf rows ──────────────────────────────────────────────────────────────
+   The shelves are two horizontal rows with one slider under them, and picking a
+   card rebuilds the row from a string. A rebuilt row starts at scrollLeft 0, so
+   the offset is captured before the rebuild and put back after — and for a while
+   the sheet then also re-centred the card you had just tapped, which lurched a
+   row you had deliberately scrolled sideways the moment you picked a card at its
+   edge. Neither is visible in a filter string or a pixel, which is why it needs
+   its own probe: scroll the row, tap, and read the offset back. A row that moved
+   is a row that moved under the user's thumb.
+
+   This runs in a second, phone-sized instance of the mock, not the one above:
+   the pixel checks want a 1px offscreen frame, and a row cannot be scrolled in
+   one. It also means a failure here cannot poison the measurements. */
+let RW=null;
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+async function bootRow(){
+  const f=$('#rowframe');
+  await new Promise(res=>{
+    if(f.contentWindow&&f.contentWindow.eval&&f.contentWindow.eval('typeof panel')==='function')return res();
+    f.addEventListener('load',res,{once:true});
+    setTimeout(res,6000);
+  });
+  const w=f.contentWindow;
+  try{
+    if(w.eval('typeof panel')!=='function')throw new Error('mock globals not reachable');
+    /* One synthetic clip so a shelf will render. No media file is needed — the
+       row is DOM, and the tap path reads only the clip's look, its two layer
+       strengths and its Adjust bag. Everything the timeline would want (a
+       length, a filmstrip, a waveform) is stubbed empty, which keeps this page
+       free of a media file and a decoder exactly as the pixel checks are. */
+    w.eval("srcs[1]={name:'chart',dur:10,th:null,pk:null,v:{duration:10,currentTime:0,readyState:0,videoWidth:720,videoHeight:1280,playbackRate:1,volume:1,muted:true,pause:function(){},play:function(){return Promise.resolve()},addEventListener:function(){},removeEventListener:function(){}}};"+
+      "clips.length=0;clips.push({id:1,src:1,f:'none',fs:1,vig:0,grain:0,ad:{},sp:1,vol:1,in:0,out:10,s:0,rot:0});total=10;t=0;");
+    RW=w;return true;
+  }catch(e){RW=null;return false}
+}
+const ROWS=[
+  {n:'Filters',a:'tap a chain card at the row\u2019s edge',
+   prep:"sel={k:'c',id:1};tool='filter';panel()",tap:'#panel button[data-f="oldie"]',off:178,move:false,
+   why:'the row is rebuilt when a look is picked \u2014 the strength slider only exists once one is on \u2014 so the offset has to cross the rebuild'},
+  {n:'Filters',a:'tap a layer card at the far end',
+   prep:"sel={k:'c',id:1};tool='filter';panel()",tap:'#panel button[data-f="grain"]',off:300,move:false,
+   why:'Grain is the last of thirteen cards, the one a user scrolls furthest to reach'},
+  {n:'Adjust',a:'tap a knob at the row\u2019s edge',
+   prep:"sel={k:'c',id:1};tool='adjust';panel()",tap:'#panel button[data-adj="shad"]',off:200,move:false,
+   why:'the same rule on the other shelf: selecting a knob writes in place and never touches the row'},
+  {n:'Filters',a:'open the sheet on a look scrolled out of view',
+   prep:"clips[0].f='noir';sel={k:'c',id:1};tool='filter';panel()",move:true,
+   why:'the positive control: a rebuild nobody tapped for still has to bring the selection into view'}
+];
+async function runRows(){
+  const tb=$('#rowT tbody');tb.innerHTML='';
+  let pass=0,fail=0;
+  if(!RW&&!await bootRow()){
+    tb.insertAdjacentHTML('beforeend',row([
+      {html:'<span class="nm">shelf rows</span>'},
+      {html:'could not reach the row-check mock instance'},
+      {html:'\u2014',cls:'n'},{html:'\u2014',cls:'n'},
+      {html:'<span class="fail">not run</span>'}]));
+    return {pass:0,fail:1};
+  }
+  const ev=code=>RW.eval(code);
+  const reset="clips[0].f='none';clips[0].fs=1;clips[0].vig=0;clips[0].grain=0;clips[0].ad={};";
+  for(const cs of ROWS){
+    let before='\u2014',after='\u2014',moved=false,err='';
+    try{
+      ev(reset+cs.prep);
+      await sleep(70);
+      before=ev('(function(){var c=document.querySelector("#panel .car");c.scrollLeft='+(cs.off||0)+';return c.scrollLeft})()');
+      await sleep(50);
+      /* The tap path is exercised exactly as a finger would drive it: a real
+         click on the real button, so the sheet's own handler decides what to do. */
+      if(cs.move)ev('panel()');
+      else ev('document.querySelector('+JSON.stringify(cs.tap)+').click()');
+      await sleep(70);
+      after=ev('document.querySelector("#panel .car").scrollLeft');
+      moved=after!==before;
+    }catch(e){err=String((e&&e.message)||e)}
+    const didMove=cs.move?moved:!moved;
+    const okRow=!err&&didMove;
+    if(okRow)pass++;else fail++;
+    const v=err?verdict(false,'','could not run')
+      :cs.move?verdict(moved,'moved into view','<span class="fail">did not move</span>')
+               :verdict(!moved,'held','<span class="fail">moved '+(after-before>0?'+':'')+(after-before)+'px</span>');
+    tb.insertAdjacentHTML('beforeend',row([
+      {html:'<span class="nm">'+cs.n+'</span>'},
+      {html:cs.a+'<span class="why">'+cs.why+'</span>'+(err?'<span class="why">'+err+'</span>':'')},
+      {html:String(before)+'px',cls:'n'},
+      {html:String(after)+'px',cls:'n'},
+      {html:v.html}
+    ]));
+  }
+  return {pass,fail};
+}
+
 async function main(){
   const btn=$('#run');btn.disabled=true;
   $('#status').textContent='reaching the mock…';
@@ -458,9 +562,12 @@ async function main(){
   $('#status').textContent='measuring Filters…';
   await new Promise(r=>setTimeout(r,30));
   const b=await runFilters();
-  const p=a.pass+b.pass,f=a.fail+b.fail;
-  $('#summary').innerHTML='<div class="sum">'+p+' of '+(p+f)+' controls hold. '+
-    (f? '<span class="fail">'+f+' failed</span> — a control that fails here is one whose label and its behaviour disagree.' : 'Every control is a bit-exact no-op at zero, moves its own metric in the direction its name promises, keeps that promise after the preview is scaled down, and the two layers still land on top of a graded clip instead of replacing it.')+'</div>';
+  $('#status').textContent='measuring shelves\u2026';
+  await new Promise(r=>setTimeout(r,30));
+  const r=await runRows();
+  const p=a.pass+b.pass,f=a.fail+b.fail,tf=f+r.fail;
+  $('#summary').innerHTML='<div class="sum">'+p+' of '+(p+f)+' controls hold, and '+r.pass+' of '+(r.pass+r.fail)+' shelf rows hold. '+
+    (tf? '<span class="fail">'+tf+' failed</span> \u2014 a control that fails here is one whose label and its behaviour disagree.' : 'Every control is a bit-exact no-op at zero, moves its own metric in the direction its name promises, keeps that promise after the preview is scaled down, the two layers still land on top of a graded clip instead of replacing it, and no shelf row moves when a card is picked.')+'</div>';
   $('#status').textContent='done';
   btn.disabled=false;
 }
