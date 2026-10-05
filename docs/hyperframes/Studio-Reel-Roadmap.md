@@ -1,7 +1,8 @@
 # Studio Reel — Feature Roadmap
 
-> **Status:** roadmap, nothing implemented. This is the **tracker**: one place that holds every Studio
-> Reel feature, its phase, its dependencies, and the release it ships in.
+> **Status:** R0 shipped 2026-10-05; everything after it is unimplemented. This is the **tracker**:
+> one place that holds every Studio Reel feature, its phase, its dependencies, and the release it
+> ships in.
 > **Date:** October 2026
 > **Design reference:** [Studio-Reel-Plan.md](./Studio-Reel-Plan.md) — the four artifacts, the compiler
 > stages, the lint gates, and the folder structure. This document does not restate those; it schedules
@@ -157,16 +158,28 @@ Re-express the existing pollution showcase (`automation/html-in-canvas/examples/
 4 scenes, 26 s) as `Design.md` + `Frame.md` + `Storyboard.md`, then **hand-compile** it into the
 `Storyboard.html` that today is that `.js`, and render both.
 
-- [ ] `Design.md` — the Aurora-style token set already sketched in the plan §3.1.
-- [ ] `Frame.md` — stage, safe areas, type ramp, motion language, beat grid.
-- [ ] `Storyboard.md` — 4 scenes as beats, with `frame:`, `tone:`, copy, stats.
-- [ ] Hand-written `storyboard.json` in the plan §3.5 shape.
-- [ ] Hand-compiled `Storyboard.html` that renders frame-identically.
-- [ ] Render both via `-m cdp`; diff frame counts and luma per scene.
-- [ ] Record what the artifacts **could not** express (prose, in the film folder).
+**Done (2026-10-05).** The film is authored in
+[`automation/studio-reel/films/breath-of-air/`](../../automation/studio-reel/films/breath-of-air/)
+— `Design.md`, `Frame.md`, `Storyboard.md`, `storyboard.json`, `Storyboard.html`, and
+[`NOTES.md`](../../automation/studio-reel/films/breath-of-air/NOTES.md), which records what the
+artifacts could not say. Gate: **780/780 frames byte-identical**, max luma delta 0.
 
-**Gate:** frame-identical. **Deliverable:** the golden reference every later phase is tested against.
-**Risk if skipped:** the whole format is designed against an imagined film.
+- [x] `Design.md` — the token set, measured out of the film (three tones: normal / alarm / positive).
+- [x] `Frame.md` — stage, safe areas, type ramp, motion language, beat grid. Design space is
+      **1920×1080, not the plan's 800×450** — the film is authored in output pixels.
+- [x] `Storyboard.md` — 4 scenes as beats, with `frame:`, `tone:`, copy, stats. **No HTML.**
+- [x] Hand-written `storyboard.json` in the plan §3.5 shape.
+- [x] Hand-compiled `Storyboard.html` that renders frame-identically.
+- [x] Render both and diff frame counts and luma per scene — **780 = 780, delta 0**.
+- [x] Record what the artifacts **could not** express (NOTES.md §1–§9).
+
+**Gate:** frame-identical — **passed**. **Deliverable:** the golden reference every later phase is
+tested against. **Risk if skipped:** the whole format is designed against an imagined film.
+
+> **What R0 handed R1.** Nine expressions the IR cannot yet carry (per-scene background being the
+> big one), a §3.5 shape that **does not match** the emitter it claims to feed, and two bugs in the
+> existing pipeline — `animation-direction: reverse` silently dropped, and a stagger declared on a
+> sibling selector never arriving. Details and numbers in NOTES.md.
 
 ### R1 — The IR, the schema, and the emitter *(plan P1)*
 

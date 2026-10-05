@@ -1,0 +1,216 @@
+{
+  "meta": {
+    "title": "A Breath of Air",
+    "id": "breath-of-air",
+    "aspect": "16:9",
+    "fps": 30,
+    "duration": 26,
+    "design": "breath-of-air",
+    "x_note": "`meta` is the plan §3.5 shape. compileStoryboard() actually reads `title`/`aspect`/`total_duration_ms` at the TOP level and `start_ms`/`end_ms` per scene. The two shapes do not agree; reconciling them is R1's first job. See NOTES.md §4."
+  },
+
+  "tokens": {
+    "ink": "#05070d",
+    "night": "#0a1220",
+    "dusk": "#123a52",
+    "paper": "#f8fafc",
+    "slate": "#a9b6c9",
+    "signal": "#38bdf8",
+    "iris": "#a78bfa",
+    "alarm": "#fb7185",
+    "amber": "#f59e0b",
+    "moss": "#34d399",
+    "sun": "#ffd9a0",
+    "dawn": "#ffb266",
+    "x_note": "Resolved from Design.md. The current emitter ignores this section entirely (the plan says so); it is carried so R1 can wire it."
+  },
+
+  "frame": {
+    "design_space": { "w": 1920, "h": 1080 },
+    "safe": { "title": 0.05, "action": 0.03, "max_text_width": 860, "max_lines": 3 },
+    "ramp": {
+      "kicker": { "size": 16, "weight": 600, "tracking": "6px" },
+      "title": { "size": 104, "weight": 700, "tracking": "-3px" },
+      "lead": { "size": 26, "weight": 400 },
+      "stat": { "size": 74, "weight": 700 },
+      "body": { "size": 18, "weight": 400 },
+      "caption": { "size": 14, "weight": 400, "tracking": "2px" }
+    },
+    "beat": { "hold": 6.0, "long": 7.0 },
+    "x_note": "Resolved from Frame.md. Also ignored by the current emitter. The ramp is a single size per role; the film's titles actually take four (104/96/82/78), which the RAMP SHAPE ITSELF cannot express — see NOTES.md §6."
+  },
+
+  "scenes": [
+    {
+      "id": "s1",
+      "frame": "title-stats",
+      "tone": "normal",
+      "start": 0,
+      "dur": 6,
+      "exit": "cut",
+      "background": {
+        "type": "radial-gradient",
+        "value": "1200px 700px at 50% -10%, #16324f 0%, #0a1220 45%, #05070d 100%",
+        "x_note": "The emitter has ONE flat `sb.background` for the whole reel. Every scene here has its own gradient; four backgrounds cannot be expressed at all. See NOTES.md §1."
+      },
+      "ambient": [
+        { "id": "s1-orb-a", "kind": "orb", "tone": "signal", "size": 620, "blur": 60, "opacity": 0.55,
+          "place": { "left": -160, "top": -120 },
+          "loop": { "name": "drift", "dur_ms": 9000, "ease": "ease-in-out", "iterations": "infinite", "y": -26 },
+          "x_note": "Decorative, infinite, easing ease-in-out. The emitter has no ambient concept and no `ease-in-out`. See NOTES.md §1 and §7." },
+        { "id": "s1-orb-b", "kind": "orb", "tone": "amber", "size": 560, "blur": 60, "opacity": 0.55,
+          "place": { "right": -140, "bottom": -180 },
+          "loop": { "name": "drift", "dur_ms": 11000, "ease": "ease-in-out", "iterations": "infinite", "y": -26, "direction": "reverse" },
+          "x_note": "`direction: reverse` is authored here. The WAAPI adapter parses it into the spec and then never reads it, so the rendered film does NOT reverse. See NOTES.md §7." }
+      ],
+      "elements": [
+        { "id": "s1-kicker", "type": "text", "role": "kicker", "text": "GLOBAL AIR QUALITY",
+          "at_ms": 300,
+          "in": { "type": "slide", "from_y": 28, "dur_ms": 700, "ease": "ease-out" } },
+        { "id": "s1-title", "type": "text", "role": "title", "text": "The air we share",
+          "at_ms": 500,
+          "in": { "type": "slide", "from_y": 28, "dur_ms": 800, "ease": "ease-out" } },
+        { "id": "s1-sub", "type": "text", "role": "lead", "text": "Air pollution is the world's largest environmental health risk.",
+          "at_ms": 800,
+          "in": { "type": "slide", "from_y": 28, "dur_ms": 700, "ease": "ease-out" } },
+        { "id": "s1-stat-1", "type": "stat", "value": "7M", "label": "premature deaths a year",
+          "at_ms": 0,
+          "in": { "type": "pop", "overshoot": 1.2, "dur_ms": 700, "ease": "cubic-bezier(.2,.9,.3,1.2)" },
+          "x_note": "`type: stat` does not exist. The emitter has `text` with a size and a colour; this needs a 74px numeral with a gradient FILL (background-clip: text) over an 18px caption, stacked. See NOTES.md §1." },
+        { "id": "s1-stat-2", "type": "stat", "value": "99%", "label": "of people breathe air over WHO limits",
+          "at_ms": 0,
+          "in": { "type": "pop", "overshoot": 1.2, "dur_ms": 700, "ease": "cubic-bezier(.2,.9,.3,1.2)" },
+          "x_note": "`at_ms: 0` is measured, not authored. The source asks for 1500ms via .stat:nth-child(2); the WAAPI adapter drops it (no `animation:` on that rule), so both stats enter together. See NOTES.md §8." },
+        { "id": "s1-source", "type": "credit", "text": "WHO · State of Global Air",
+          "at_ms": 2200,
+          "in": { "type": "fade", "dur_ms": 1000 },
+          "place": { "bottom": 46, "align": "center" },
+          "x_note": "`type: credit` does not exist — the emitter has no absolutely-positioned footer concept." }
+      ]
+    },
+
+    {
+      "id": "s2",
+      "frame": "cards-3",
+      "tone": "alarm",
+      "start": 6,
+      "dur": 7,
+      "exit": "cut",
+      "background": { "type": "linear-gradient", "value": "160deg, #1a0f14 0%, #2a1420 55%, #120a12 100%" },
+      "elements": [
+        { "id": "s2-kicker", "type": "text", "role": "kicker", "text": "INDIA",
+          "at_ms": 300,
+          "in": { "type": "slide", "from_y": 26, "dur_ms": 600, "ease": "ease-out" } },
+        { "id": "s2-title", "type": "text", "role": "title", "text": "An invisible crisis",
+          "at_ms": 500,
+          "in": { "type": "slide", "from_y": 26, "dur_ms": 800, "ease": "ease-out" } },
+        { "id": "s2-sub", "type": "text", "role": "lead", "text": "Air pollution is among India's biggest health threats — and it is measurable.",
+          "at_ms": 800,
+          "in": { "type": "slide", "from_y": 26, "dur_ms": 700, "ease": "ease-out" } },
+        { "id": "s2-card-1", "type": "card", "big": "400+", "small": "Delhi NCR AQI on a severe winter day",
+          "meter": { "pct": 92, "dur_ms": 900, "ease": "ease-out" },
+          "at_ms": 0,
+          "in": { "type": "slide", "from_y": 26, "dur_ms": 700, "ease": "ease-out" },
+          "x_note": "`type: card` does not exist. The emitter's `cards` is a row of 56x78 tiles with one glyph each; this is a 330px panel carrying a 60px numeral, a caption, AND an independently-animated meter bar. See NOTES.md §1." },
+        { "id": "s2-card-2", "type": "card", "big": "1.67M", "small": "deaths a year linked to air pollution",
+          "meter": { "pct": 74, "dur_ms": 900, "ease": "ease-out" },
+          "at_ms": 0,
+          "in": { "type": "slide", "from_y": 26, "dur_ms": 700, "ease": "ease-out" } },
+        { "id": "s2-card-3", "type": "card", "big": "21 / 30", "small": "of the world's most polluted cities are in India",
+          "meter": { "pct": 64, "dur_ms": 900, "ease": "ease-out" },
+          "at_ms": 0,
+          "in": { "type": "slide", "from_y": 26, "dur_ms": 700, "ease": "ease-out" } },
+        { "id": "s2-source", "type": "credit", "text": "Lancet Planetary Health · IQAir World Air Quality Report",
+          "at_ms": 2600,
+          "in": { "type": "fade", "dur_ms": 1000 },
+          "place": { "bottom": 44, "align": "center" } }
+      ]
+    },
+
+    {
+      "id": "s3",
+      "frame": "split-icons",
+      "tone": "positive",
+      "start": 13,
+      "dur": 7,
+      "exit": "cut",
+      "background": { "type": "radial-gradient", "value": "1100px 620px at 50% 115%, #064e3b 0%, #071a18 55%, #05070d 100%" },
+      "elements": [
+        { "id": "s3-kicker", "type": "text", "role": "kicker", "text": "THE WAY FORWARD",
+          "at_ms": 300,
+          "in": { "type": "slide", "from_y": 24, "dur_ms": 600, "ease": "ease-out" } },
+        { "id": "s3-title", "type": "text", "role": "title", "text": "What actually works",
+          "at_ms": 500,
+          "in": { "type": "slide", "from_y": 24, "dur_ms": 800, "ease": "ease-out" } },
+        { "id": "s3-tiles", "type": "tiles", "columns": 2, "width": 1180, "gap": 26,
+          "items": [
+            { "icon": "☀️", "head": "Clean power", "body": "Scale solar and wind — India's 500 GW non-fossil target." },
+            { "icon": "🚌", "head": "Clean mobility", "body": "Electric buses, metro rail, and tighter fuel standards." },
+            { "icon": "🌾", "head": "End stubble burning", "body": "Crop-residue management and alternatives for farmers." },
+            { "icon": "🍳", "head": "Clean cooking", "body": "LPG and electric cooking instead of solid fuels indoors." }
+          ],
+          "at_ms": 0,
+          "in": { "type": "slot", "from_y": 40, "from_scale": 0.96, "dur_ms": 700, "ease": "cubic-bezier(.2,.9,.3,1.1)" },
+          "x_note": "`type: tiles` does not exist: a 2x2 GRID (not a row), each cell an emoji glyph + 28px head + 18px body. The emitter has no grid and no emoji. See NOTES.md §1." },
+        { "id": "s3-source", "type": "credit", "text": "Proven, affordable, and already scaling.",
+          "at_ms": 2500,
+          "in": { "type": "slide", "from_y": 24, "dur_ms": 700, "ease": "ease-out" },
+          "place": { "bottom": 46, "align": "center" } }
+      ]
+    },
+
+    {
+      "id": "s4",
+      "frame": "statement",
+      "tone": "normal",
+      "start": 20,
+      "dur": 6,
+      "exit": "cut",
+      "background": { "type": "linear-gradient", "value": "180deg, #0b1a2b 0%, #123a52 55%, #2a6f86 100%" },
+      "ambient": [
+        { "id": "s4-sun", "kind": "sun", "tone": "sun", "size": 520, "blur": 2, "opacity": 0.9,
+          "place": { "top_pct": 40, "center_x": true },
+          "loop": { "name": "rise", "dur_ms": 2200, "ease": "cubic-bezier(.2,.8,.3,1)", "iterations": 1, "y": 120, "from_scale": 0.85 },
+          "x_note": "A one-shot ambient entrance on a decorative layer, 2200ms — longer than any content animation in the film. See NOTES.md §1." }
+      ],
+      "elements": [
+        { "id": "s4-kicker", "type": "text", "role": "kicker", "text": "A BREATH OF AIR",
+          "at_ms": 500,
+          "in": { "type": "slide", "from_y": 26, "dur_ms": 700, "ease": "ease-out" } },
+        { "id": "s4-title", "type": "text", "role": "title", "text": "Clean air is possible",
+          "at_ms": 800,
+          "in": { "type": "slide", "from_y": 26, "dur_ms": 800, "ease": "ease-out" } },
+        { "id": "s4-sub", "type": "text", "role": "lead", "text": "It is not a mystery and it is not out of reach. It is a set of decisions.",
+          "at_ms": 1100,
+          "max_width": 860,
+          "in": { "type": "slide", "from_y": 26, "dur_ms": 700, "ease": "ease-out" } },
+        { "id": "s4-asks", "type": "pills", "items": ["Cut emissions", "Invest in clean energy", "Protect the vulnerable"],
+          "at_ms": 0,
+          "in": { "type": "slide", "from_y": 26, "dur_ms": 600, "ease": "cubic-bezier(.2,.9,.3,1.1)" },
+          "x_note": "`type: pills` does not exist — a row of 100px-radius chips with their own border and background." },
+        { "id": "s4-source", "type": "credit", "text": "Built with HTML-in-Canvas · Studio Pro",
+          "at_ms": 2600,
+          "in": { "type": "fade", "dur_ms": 1000 },
+          "place": { "bottom": 44, "align": "center" } }
+      ]
+    }
+  ],
+
+  "x_summary": {
+    "scenes": 4,
+    "total_ms": 26000,
+    "elements": 22,
+    "ambient_layers": 3,
+    "expressions_the_emitter_cannot_represent": [
+      "per-scene background (one flat background for the whole reel)",
+      "stat: gradient-filled numeral + caption, stacked",
+      "card: panel + numeral + caption + independently animated meter",
+      "tiles: a 2x2 grid of emoji glyph + head + body",
+      "pills: a row of bordered chips",
+      "credit: an absolutely positioned footer",
+      "ambient: infinite decorative loops with ease-in-out",
+      "ease: any curve beyond the emitter's three hardcoded ones",
+      "a title size that varies per scene"
+    ]
+  }
+}
