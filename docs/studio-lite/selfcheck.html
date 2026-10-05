@@ -1013,10 +1013,17 @@ async function runLayout(){
      width \u2014 because it is the same sheet, in the same place. */
   run("layMode='left';applyLayout()");await sleep(30);
   run("tool='layout';panel()");await sleep(30);
-  const ls=ev("(function(){var P=document.getElementById('panel');return {eh:P.querySelector('.eh').textContent,tiles:[].map.call(P.querySelectorAll('[data-lay]'),function(t){return t.dataset.lay+(t.classList.contains('on')?'*':'')}).join(' '),foot:[].map.call(P.querySelectorAll('.ef button'),function(b){return b.textContent}),w:Math.round(P.getBoundingClientRect().width),col:Math.round(document.querySelector('.ro').getBoundingClientRect().width)}})()");
-  say('the layout sheet','the four states are offered as tiles in the aspect-ratio row\u2019s own tiles, with the state you are in lit and one Done to leave',
-    'title '+ls.eh+' \u00b7 tiles '+ls.tiles+' \u00b7 footer '+ls.foot.join('/')+' \u00b7 '+ls.w+'px in a '+ls.col+'px column',
-    ls.eh==='Layout'&&ls.tiles==='top left* right full'&&ls.foot.length===1&&ls.foot[0]==='Done'&&ls.w===ls.col,
+  const ls=ev("(function(){var P=document.getElementById('panel');return {eh:P.querySelector('.eh').textContent,tiles:[].map.call(P.querySelectorAll('[data-lay]'),function(t){return t.dataset.lay+(t.classList.contains('on')?'*':'')}).join(' '),foot:[].map.call(P.querySelectorAll('.ef button'),function(b){return b.textContent}),w:Math.round(P.getBoundingClientRect().width),col:Math.round(document.querySelector('.ro').getBoundingClientRect().width),sw:document.documentElement.scrollWidth,iw:innerWidth}})()");
+  /* The width assertion is `col - 20` and not `col`, which is the 10px-a-side
+     margin, and the difference is a bug this row used to hide. The sheet is inset
+     10px from each side of the column, so `w === col` was only ever true while the
+     `@media(min-width:900px)` rule's `width:min(960px,100%)` was winning and
+     letting the margins overflow the page \u2014 `scrollWidth` 1204 on a 1194 screen.
+     `width:auto` fixed the overflow and this row went red, which is the row doing
+     its job: it now asserts the inset sheet *and* that the page does not scroll. */
+  say('the layout sheet','the four states are offered as tiles in the aspect-ratio row\u2019s own tiles, with the state you are in lit and one Done to leave, inset in the column rather than overflowing it',
+    'title '+ls.eh+' \u00b7 tiles '+ls.tiles+' \u00b7 footer '+ls.foot.join('/')+' \u00b7 '+ls.w+'px in a '+ls.col+'px column (\u2212'+((ls.col-ls.w)/2)+'px each side) \u00b7 scrollWidth '+ls.sw+'/'+ls.iw,
+    ls.eh==='Layout'&&ls.tiles==='top left* right full'&&ls.foot.length===1&&ls.foot[0]==='Done'&&Math.abs((ls.col-ls.w)-20)<=1&&ls.sw===ls.iw,
     'a tile row is the one shape that makes four options read as four options');
 
   /* 7. A tile goes through `applyLayout`, not around it, so the header icon, the
@@ -1064,6 +1071,7 @@ async function runLayout(){
      would have been red before the bound landed. */
   const sbOld=trial("body[data-layout=left] #panel{align-self:stretch !important;height:auto !important}",sheetGeom);
   const sbBig=trial("body[data-layout=left] #panel{height:140% !important}",sheetGeom);
+  const sbStart=trial("body[data-layout=left] #panel{align-self:start !important}",sheetGeom);
   const halves=Math.min(sb.vh46,sb.row*.5),larger=Math.max(sb.vh46,sb.row*.5);
 
   say('the sheet is bounded','in the split layout the sheet is capped at the smaller of half the timeline row and the phone\u2019s own sheet height, so it stops filling the column and stops covering the chrome',
@@ -1081,10 +1089,24 @@ async function runLayout(){
     sb.align!=='stretch'&&sbOld.align==='stretch'&&sbOld.h>sb.h+4,
     'align-self:start is what makes the height mean anything, so it is asserted rather than assumed');
 
-  say('the chrome survives','a sheet taller than its row would cover the transport or the ruler; at the bound the ruler is above it and the transport below it',
-    'at the bound bottom '+sb.bottom+' \u2264 transport '+sb.arT+'; injected height:140% \u21d2 bottom '+sbBig.bottom+' vs '+sbBig.arT,
-    sb.bottom<=sb.arT&&sb.roB<=sb.top&&sbBig.bottom>sbBig.arT,
-    'the injection has to actually reach the transport, which is why this one is 140% and not 100%');
+  /* Both edges, because which one a too-tall sheet eats depends on where it is
+     anchored: at `end` it grows *upward* over the ruler, at `start` it grows down
+     over the transport. Asserting the pair is what makes this row anchor-agnostic,
+     and it is why the failure above is "the top crossed the ruler" rather than
+     "the bottom crossed the transport" \u2014 an injection that only watched the
+     transport would pass a sheet that had covered the whole timeline strip. */
+  say('the chrome survives','a sheet taller than its row would cover the ruler or the transport; at the bound the ruler is above it and the transport below it',
+    'ruler '+sb.roB+' \u2264 top '+sb.top+', bottom '+sb.bottom+' \u2264 transport '+sb.arT+'; injected height:140% \u21d2 top '+sbBig.top+' against ruler '+sbBig.roB,
+    sb.roB<=sb.top&&sb.bottom<=sb.arT&&sbBig.top<sbBig.roB,
+    'with a bottom anchor a too-tall sheet overflows upward, so the row is caught by its ruler edge');
+
+  /* And the anchor itself, which is the difference between a bottom sheet and one
+     hanging off the ruler \u2014 the two are the same height, so nothing above this
+     line would notice the change. The 8px is the panel's own bottom margin. */
+  say('it docks at the bottom','the sheet sits directly above the transport, with the space the bound gave back collected above it rather than between it and the buttons',
+    'align-self '+sb.align+' \u00b7 bottom '+sb.bottom+' is '+(sb.arT-sb.bottom)+'px above the transport, with '+(sb.top-sb.roB)+'px of column free above the sheet',
+    sb.align==='end'&&Math.abs((sb.arT-sb.bottom)-8)<=1&&sb.top>sb.roB&&sbStart.bottom<sb.bottom-4,
+    'injecting align-self:start \u21d2 bottom '+sbStart.bottom+', the sheet hanging from the ruler: it moves the gap, which is the whole point of the row');
 
   /* The phone is the other half of the promise: 46% is *its* number, and a rule
      that leaked out of the split states would move it. All eleven tools and all

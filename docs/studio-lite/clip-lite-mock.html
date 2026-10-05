@@ -708,25 +708,79 @@ body[data-layout]:not([data-layout=top]) .tools{grid-area:tools;justify-content:
 /* R6b: the sheet is *bounded*. `grid-area:tlw` alone put it in the column's
    `minmax(0,1fr)` row, where the row's default `align-self:stretch` made it fill
    whatever the column had left — measured 629px of a 834-tall screen, against
-   the 388 the same sheet gets on a phone. `align-self:start` is what makes the
-   `height` mean anything at all: a stretched grid item ignores its own height, so
-   the two declarations are one change, not two.
+   the 388 the same sheet gets on a phone. An explicit `align-self` is what makes
+   the `height` mean anything at all: a stretched grid item ignores its own height,
+   so the alignment and the height are one change, not two.
 
    `min(46dvh, 50%)`: 50% is the row the timeline lives in, 46% is the phone's own
    sheet (there `#panel` shares the body with a `.view` capped at 54%, so the sheet
    is always the 46% left over — the same 388px for every tool and every project
    ratio). The smaller of the two is the honest bound: never taller than half the
-   timeline, never taller than the sheet a phone would get. Measured 322 / 323 /
-   502 at 1194x834, 768x836 and 834x1194.
+   timeline, never taller than the sheet a phone would get. Measured 323 / 322 /
+   502 at 768x836, 1194x834 and 834x1194.
+
+   `align-self:end`, not `start`: the sheet docks to the **bottom of the column**,
+   which is where a sheet belongs under a thumb and where the phone already puts
+   it. `start` had it hanging from the ruler with the whole freed half underneath,
+   so the gap sat between the sheet and the transport — the one edge the sheet has
+   to feel attached to, since Done and Cancel live on it. Anchored at the end, the
+   slack collects *above* the sheet instead, between it and the timeline, which is
+   the same space the bound gave back. `end` and not `stretch`: both of the
+   properties matter and only the pair together is the fix.
 
    The doubled declaration is the file's own `100dvh` fallback pattern: a browser
    without `dvh` drops the second line and falls back to `vh`, and one without
    either drops the whole declaration back to stretching — today's behaviour,
    which is a safe place to land. */
 body[data-layout=left] #panel,body[data-layout=right] #panel{grid-area:tlw;margin:8px 10px;min-height:0;
-  align-self:start;
+  align-self:end;
   height:min(46vh,50%);height:min(46dvh,50%)}
-body[data-layout]:not([data-layout=top]).es .tlw{display:none}
+/* R6c: with a sheet open, the timeline stays on screen. `body.es .tlw{display:none}`
+   was right on a phone, where the sheet *is* the bottom half of the screen and
+   there is nowhere else for the timeline to go — and wrong in a split layout,
+   where it left the whole right column to a sheet that only ever wanted half of
+   it. So the column's one tall row becomes two, and the two regions take one each.
+
+   The sheet keeps its bound expressed exactly as it was. `grid-row:3/5` makes it
+   span *both* tall rows, so `height:50%` still resolves against the whole free
+   space (322px at 1194x834) rather than against half of it, and `align-self:end`
+   then places that half in the lower row — which is why the sheet lands precisely
+   in row 4, above the transport and below the timeline, without a second height
+   rule and without the two overlapping. If the bound ever binds smaller than half
+   (`46dvh` above ~2400px tall) the sheet simply sits shorter than its row and the
+   gap opens between it and the timeline, which is the right place for it. */
+body[data-layout=left].es,body[data-layout=right].es{grid-template-rows:auto auto minmax(0,1fr) minmax(0,1fr) auto auto}
+body[data-layout=left].es{grid-template-areas:"bar bar bar" "view split ro" "view split tlw" "view split panel" "view split ar" "view split tools"}
+body[data-layout=right].es{grid-template-areas:"bar bar bar" "ro split view" "tlw split view" "panel split view" "ar split view" "tools split view"}
+/* The bound makes the *body* the scrollable thing, not the sheet. A five-row
+   Settings sheet needs 357px — title 23, body 222, footer 44, two 16px gaps and
+   36px of padding — and the bound gives it 323 at 1194x834, so scrolling the whole
+   panel would scroll Done and Cancel off the bottom edge, which is the one thing a
+   footer exists to prevent. `overflow:hidden` on the panel plus `min-height:0` and
+   `overflow-y:auto` on the body pins the title and the footer and scrolls only the
+   rows between them. The phone keeps `overflow-y:auto` on the panel itself, where
+   the sheet is the whole bottom half and there is no bound to overflow. */
+body[data-layout=left] #panel,body[data-layout=right] #panel{overflow:hidden}
+body[data-layout=left] #panel>.eb,body[data-layout=right] #panel>.eb{min-height:0;overflow-y:auto;overscroll-behavior:contain}
+/* And the body must start at its top when it overflows. `.eb.st` is a column with
+   `justify-content:center`, which is right while the rows fit and wrong the moment
+   they do not: centring with overflow spills *both* ends, so the first row sat 35px
+   above the body's top edge with `scrollTop` already 0 — "Timeline zoom" was
+   unreachable by any amount of scrolling, because there was nothing above it to
+   scroll to. Anchoring the main axis is what makes the scroll honest. */
+body[data-layout=left] #panel>.eb.st,body[data-layout=right] #panel>.eb.st{justify-content:flex-start}
+body[data-layout=left] #panel>.eh,body[data-layout=right] #panel>.eh,
+body[data-layout=left] #panel>.ef,body[data-layout=right] #panel>.ef{flex:none}
+/* `width:auto` is load-bearing, and its absence was a real 10px bug: the
+   `@media(min-width:900px)` rule sets `#panel{width:min(960px,100%)}`, and 100%
+   is the *body*, not the column — so in a 704px column the sheet was 704 wide
+   inside 10px margins and pushed `scrollWidth` to 1204 on a 1194 screen. Every
+   other #panel rule sets `margin` and lets the grid size the box; this one has to
+   say `auto` because a width was already set by a rule it cannot outrank. */
+body[data-layout=left].es #panel,body[data-layout=right].es #panel{grid-area:panel;grid-row:3/5;width:auto;margin:0 10px 8px}
+/* The sheet's own bottom margin, not a gap under it: the transport row starts
+   where the sheet's row ends. */
+body[data-layout=left] #panel,body[data-layout=right] #panel{align-self:end}
 body[data-layout=left] #split,body[data-layout=right] #split{display:block;grid-area:split}
 body[data-layout=full] .ro,body[data-layout=full] .tlw,body[data-layout=full] #split{display:none}
 /* `full` has no column to host a sheet — but it has three ways *in*: the header's
