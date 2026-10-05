@@ -1,0 +1,1610 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Clip Lite — self-check</title>
+<style>
+  :root{--bg:#0f0f0f;--pnl:#1a1a1a;--pnl2:#232323;--ln:#2e2e2e;--fg:#e8e8e8;--dim:#8a8a8a;--ok:#4ec9a0;--bad:#e2606a;--warn:#d9a441;--acc:#5b8def}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.55 ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;padding:22px 20px 60px}
+  main{max-width:1080px;margin:0 auto}
+  h1{font-size:20px;margin:0 0 4px}
+  .sub{color:var(--dim);margin:0 0 18px;max-width:74ch}
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:.09em;color:var(--dim);margin:30px 0 10px;font-weight:600}
+  button{font:inherit;background:var(--pnl2);color:var(--fg);border:1px solid var(--ln);border-radius:8px;padding:8px 15px;cursor:pointer}
+  button:hover{border-color:#4a4a4a}
+  button[disabled]{opacity:.5;cursor:default}
+  .bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+  #status{color:var(--dim)}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin-top:4px}
+  th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--ln);vertical-align:top}
+  th{color:var(--dim);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.07em}
+  td.n{font-variant-numeric:tabular-nums;white-space:nowrap}
+  .pass{color:var(--ok);font-weight:600}
+  .fail{color:var(--bad);font-weight:600}
+  .nm{font-weight:600}
+  .why{color:var(--dim);display:block;font-size:12px;margin-top:2px;max-width:56ch}
+  code{font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:#c8d4e8}
+  .note{background:var(--pnl);border:1px solid var(--ln);border-left:3px solid var(--acc);border-radius:8px;padding:12px 14px;margin:14px 0;color:#c9c9c9;max-width:80ch}
+  .note b{color:var(--fg)}
+  #frame{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;border:0;left:-9999px}
+  /* Laid out, not display:none — a row that cannot scroll cannot be tested. */
+  #rowframe{position:absolute;width:393px;height:844px;opacity:0;pointer-events:none;border:0;left:-9999px;top:0}
+  /* A third instance at a real iPad viewport. The side layout is refused below 600px,
+     so a phone-sized frame could report "the toggle is hidden" forever and never
+     reach the states being tested — this one has to be wide to mean anything. */
+  #layframe{position:absolute;width:1194px;height:834px;opacity:0;pointer-events:none;border:0;left:-9999px;top:0}
+  .sum{color:var(--dim);margin-top:8px}
+</style>
+</head>
+<body>
+<main>
+  <h1>Clip Lite — self-check</h1>
+  <p class="sub">Every Adjust knob and every filter, measured against a synthetic frame that has a known flat field, known step edges and known colour patches. Each control has to prove three things: it is <em>exactly</em> a no-op at its rest (which is 1, not 0, for Opacity), it moves its own metric in the direction its name promises, and — for the spatial controls — it still does that after the picture is scaled down to the size the preview actually shows.</p>
+
+  <div class="bar">
+    <button id="run">Run checks</button>
+    <span id="status">idle</span>
+  </div>
+  <div id="summary"></div>
+
+  <h2>How this measures</h2>
+  <div class="note">
+    <p style="margin:0 0 8px"><b>The frame.</b> A 720×1280 synthetic chart at the mock's real backing size: a flat <code>#808080</code> field, step edges of 1px, 2px and 3px, six flat colour patches, a highlight patch, a shadow patch and a mid-grey plate in the centre. Synthetic because it is deterministic — the same chart every run, on any machine, with no media file and no decoder in the way.</p>
+    <p style="margin:0 0 8px"><b>The pipeline is not reimplemented.</b> The mock is loaded in an iframe and this page calls the real <code>look()</code> and the real <code>frameStage()</code> inside it. A copy of the filter strings would only prove the copy works; these numbers come from the code that ships.</p>
+    <p style="margin:0"><b>Measure what the user sees.</b> Sharpen shipped as <code>contrast() saturate()</code> and scored +9% acutance at full resolution while scoring <b>−5%</b> as displayed — 720px of canvas shown in 257px gets averaged by the browser, and averaging cancelled the boost. The control was making the picture softer and the readout said otherwise. So every control is measured twice: on the canvas, and again after a 2.8× downscale. A control whose two answers disagree in sign is flagged, because that is the failure mode that hides.</p>
+  </div>
+
+  <h2>Adjust — thirteen knobs</h2>
+  <table id="adjT"><thead><tr>
+    <th style="width:12%">Knob</th><th style="width:15%">Metric</th><th style="width:9%">At rest</th>
+    <th style="width:22%">As measured</th><th style="width:22%">As displayed</th><th style="width:9%">Result</th>
+  </tr></thead><tbody></tbody></table>
+
+  <h2>Filters — eleven chains and two layers</h2>
+  <p class="sub">The eleven looks are chains: one of them can be on, at its own strength. Vignette and Grain are not chains — they are layers drawn <em>after</em> the frame, over whichever chain is picked, each with its own strength. So each layer is measured twice: once on a bare clip for its own signature, and again on top of a graded clip, because a layer that quietly replaced the grade would still pass the first test.</p>
+  <table id="filtT"><thead><tr>
+    <th style="width:12%">Look or layer</th><th style="width:22%">What it applies</th><th style="width:9%">At zero</th>
+    <th style="width:26%">Signature change</th><th style="width:9%">Result</th>
+  </tr></thead><tbody></tbody></table>
+
+  <h2>Shelf rows hold their place</h2>
+  <p class="sub">A tap must not move the row it was on. Picking a look rebuilds the row — the strength slider appears with it — so the scroll offset has to survive that rebuild, and the sheet may re-centre only a selection it did <em>not</em> get from a tap. Each row below is scrolled to an offset, a card is tapped, and the offset is read back. The last row is the opposite assertion on purpose: a rebuild nobody tapped for still has to bring an off-screen selection into view, so a "fix" that simply switched centring off fails here rather than passing quietly.</p>
+  <table id="rowT"><thead><tr>
+    <th style="width:14%">Shelf</th><th style="width:34%">Action</th>
+    <th style="width:14%">Offset before</th><th style="width:14%">After</th><th style="width:10%">Result</th>
+  </tr></thead><tbody></tbody></table>
+
+  <h2>The sheet's geometry</h2>
+  <p class="sub">A layout cannot be read off a pixel or a filter string. The value could sit forty pixels above its slider and still be "the readout"; the footer's middle action could drift left and still be "three buttons"; a centre dot could appear on every slider and still be "a dot". Each of those is a promise the restyled sheet makes, and only geometry can see it — so these run as measurements, in the same phone-sized instance the row checks use, because a layout claim only means something at a laid-out width.</p>
+  <table id="geoT"><thead><tr>
+    <th style="width:16%">Check</th><th style="width:44%">What it promises</th>
+    <th style="width:28%">Measured</th><th style="width:12%">Result</th>
+  </tr></thead><tbody></tbody></table>
+
+  <h2>The clip actions, the live readout, and the Format split</h2>
+  <p class="sub">Reverse, Replace, Rearrange and Delete act on the clip that is selected, not on its look — so no filter string and no pixel can see them, and a rule that moves the wrong clip or loses the edit would look exactly like a rule that works. Each is driven the way a finger drives it: a real tap on the real rail button, a real pointer drag over the real card. The order test is the one that catches a rename: the four actions have to sit together on the rail and in the reference's own order. The last row is the one value claim no pixel can see either — that the readout and the knob's changed-dot follow the thumb on every input, mid-drag, rather than settling when it comes up.</p>
+  <table id="actT"><thead><tr>
+    <th style="width:16%">Action</th><th style="width:44%">What it promises</th>
+    <th style="width:28%">Measured</th><th style="width:12%">Result</th>
+  </tr></thead><tbody></tbody></table>
+  <p class="sub" style="margin-top:10px">The last two rows are not clip actions: one is the slider's own readout, and one is the split of the old Format sheet into Aspect ratio and Canvas plus the new Export sheet. They run here because they need the same synthetic clip and the same second instance.</p>
+
+  <h2>The iPad layout toggle</h2>
+  <p class="sub">The side-by-side layout is the one feature whose whole promise is <em>invisible when it is wrong</em>: a grid that fails to place an area just leaves a gap, and a phone layout that has drifted is a phone layout that still looks like a phone. So these run at a real 1194&times;834 in a third instance, and the phone numbers are compared against the <em>committed</em> build rather than against a description of it. The five rows on the sheet's height are the other half of that idea: each one measures, then injects the exact failure it is meant to catch <em>in the same frame</em>, measures again, and requires the number to move &mdash; a check that cannot go red is not a check. The bound's own rows inject the pre-R6b stylesheet, so what they catch is the specific bug they were written for: a sheet that stretched to fill the column.</p>
+  <table id="layT"><thead><tr>
+    <th style="width:16%">Check</th><th style="width:42%">What it promises</th>
+    <th style="width:30%">Measured</th><th style="width:12%">Result</th>
+  </tr></thead><tbody></tbody></table>
+
+  <h2>Does the project survive a reload</h2>
+  <p class="sub">Persistence has no pixels to lie about, so the only honest test is the one a user performs without noticing: close the tab, come back, and the edit is there. That cannot be done by reading the source, and a probe that asserted "the code calls indexedDB.open" would pass against code that wrote nothing. So these drive the real functions against a real database — hash real bytes, store a real Blob, read it back, and let the real collector decide what survives — in a store of its own (<code>?db=sc-persist</code>), because the alternative is a self-check that deletes its reader's work.</p>
+  <table id="perT"><thead><tr>
+    <th style="width:18%">Check</th><th style="width:40%">What it promises</th>
+    <th style="width:30%">Measured</th><th style="width:12%">Result</th>
+  </tr></thead><tbody></tbody></table>
+
+  <h2>Driven by a pointer, not by a function</h2>
+  <p class="sub">Every other section on this page drives the app by calling its functions or by dispatching a value change, which leaves the pointer path untested &mdash; and the pointer path is where the gestures are: a trim handle is a <code>pointerdown</code> that becomes a drag, and a slider is a <code>pointerdown</code> that becomes a stream of <code>input</code> events with a held state between them. These dispatch the real event types, in the order a browser sends them.</p>
+  <table id="ptrT"><thead><tr>
+    <th style="width:17%">Gesture</th><th style="width:41%">What it promises</th>
+    <th style="width:30%">Measured</th><th style="width:12%">Result</th>
+  </tr></thead><tbody></tbody></table>
+</main>
+
+<iframe id="frame" src="index.html?db=sc-pixel" title="mock"></iframe>
+<iframe id="rowframe" src="index.html?db=sc-row" title="mock (row checks)"></iframe>
+<iframe id="layframe" src="index.html?db=sc-lay" title="mock (iPad layout checks)"></iframe>
+<iframe id="pframe" src="index.html?db=sc-persist" title="mock (persistence checks)"></iframe>
+<iframe id="dframe" src="index.html?db=sc-drag" title="mock (pointer checks)"></iframe>
+
+<script>
+'use strict';
+/* ── Why this page exists ──────────────────────────────────────────────────
+   Sharpen was the control that lied. It shipped as `contrast() saturate()`,
+   which is a tonal curve wearing the name of a spatial effect: it measurably
+   raised acutance by 9% on the canvas and measurably LOWERED it by 5% as
+   displayed, so the slider moved and the picture got softer. Nothing about the
+   readout was wrong and nothing looked broken, which is precisely why it survived
+   as long as it did — a control cannot be reviewed by reading its name.
+
+   So the rule this page enforces is not "does the filter string look right". It
+   is: every control must (1) be a bit-exact no-op at its rest, so a clip nobody
+   touched is untouched, (2) move the one metric its name promises, in the
+   direction the name promises, and (3) survive being scaled to preview size.
+   A control that fails any of those has lied, whatever its source says.
+
+   The pipeline is the shipping one — this page calls into the mock's own
+   look() and frameStage() through an iframe rather than restating their filter
+   strings, because a restatement only proves the restatement is self-consistent. */
+
+const FRAME_W=720, FRAME_H=1280, DOWN=2.8;
+const $=(s,r=document)=>r.querySelector(s);
+const fmt=(v,d=3)=>(v>=0?'+':'')+v.toFixed(d);
+const pct=v=>(v>=0?'+':'')+(v*100).toFixed(1)+'%';
+
+/* ── The chart ───────────────────────────────────────────────────────────────
+   Named regions, because "the frame got darker" is not a measurement. Every
+   probe below is a rectangle with a known answer before any filter runs. */
+function makeFrame(){
+  const c=document.createElement('canvas');c.width=FRAME_W;c.height=FRAME_H;
+  const g=c.getContext('2d');
+  g.fillStyle='#808080';g.fillRect(0,0,FRAME_W,FRAME_H);   // flat mid-grey field
+  g.fillStyle='#787878';g.fillRect(40,40,240,240);          // flat probe
+  // step edges of 1, 2 and 3 px, mid-grey to light and mid-grey to dark
+  const bandY=320,bandH=120;
+  let x=20;
+  for(const [w,hi] of [[1,'#c8c8c8'],[2,'#c8c8c8'],[3,'#c8c8c8'],[1,'#484848'],[2,'#484848'],[3,'#484848']]){
+    for(let i=0;i<8;i++){
+      g.fillStyle=(i%2)?'#808080':hi;
+      g.fillRect(x,bandY+i*(bandH/8),w,bandH/8);
+    }
+    x+=8+w*8;
+  }
+  // colour patches
+  const cols=['#c0392b','#27ae60','#2c6fbb','#e0a45e','#8e44ad','#7f8c8d'];
+  cols.forEach((col,i)=>{g.fillStyle=col;g.fillRect(40+i*110,470,100,140)});
+  // highlight / mid plate / shadow, one row, so tone knobs have a split to pull
+  g.fillStyle='#ebebeb';g.fillRect(40,700,200,200);
+  g.fillStyle='#808080';g.fillRect(260,700,200,200);
+  g.fillStyle='#1e1e1e';g.fillRect(480,700,200,200);
+  // fine vertical detail, the thing an edge filter should bite on
+  for(let i=0;i<FRAME_W;i+=4){g.fillStyle=(i/4)%2?'#9a9a9a':'#6a6a6a';g.fillRect(i,1000,2,100)}
+  return c;
+}
+const R={
+  flat:[40,40,240,240],
+  edges:[20,320,600,120],
+  detail:[0,1000,FRAME_W,100],
+  hi:[40,700,200,200],
+  mid:[260,700,200,200],
+  shadow:[480,700,200,200],
+  centre:[260,700,200,200],
+  corner:[8,8,28,28],
+  red:[40,470,100,140],
+  green:[150,470,100,140],
+  blue:[260,470,100,140],
+  skin:[370,470,100,140],
+  purple:[480,470,100,140],
+  all:[0,0,FRAME_W,FRAME_H]
+};
+
+/* ── Measurement ────────────────────────────────────────────────────────────
+   One pass per image produces every metric, because getImageData over a
+   megapixel is the expensive part and there is no reason to pay it twice. */
+function measure(img){
+  const {width:w,height:h,data:d}=img;
+  const box=(a)=>{let n=0,L=0,L2=0,a1=0,a2=0,hueX=0,hueY=0,ws=0;
+    for(let y=a[1];y<a[1]+a[3];y++){const o=y*w*4;
+      for(let xx=a[0];xx<a[0]+a[2];xx++){const i=o+xx*4;
+        const l=.2126*d[i]+.7152*d[i+1]+.0722*d[i+2];
+        L+=l;L2+=l*l;n++;
+        // chroma as opponent axes; sd of these is what "saturation" moves
+        const A=d[i]-(d[i+1]+d[i+2])/2, Bc=.866*(d[i+1]-d[i+2]);
+        a1+=A;a2+=Bc;
+        const s=Math.sqrt(A*A+Bc*Bc); hueX+=A*s;hueY+=Bc*s;ws+=s;
+      }}
+    const m=L/n;
+    /* `by` is the mean of the blue↔yellow opponent axis (Bc = .866(G−B)). It is
+       the only number that can prove Blue tone does anything at all: a colour
+       cast barely moves mean luma and not at all on a grey, so the mean of that
+       axis is the reading, negative for blue and positive for amber. */
+    return {mean:m, sd:Math.sqrt(Math.max(0,L2/n-m*m)),
+      chromaSd:Math.hypot(a1/n,a2/n),by:a2/n,
+      hue:(ws>1e-6?Math.atan2(hueY/ws,hueX/ws)*180/Math.PI:0)};
+  };
+  const M={};
+  for(const k in R)M[k]=box(R[k]);
+  // acutance: mean |Δluma| between horizontally adjacent pixels, over the
+  // step-edge band. This is the number Sharpen lied about.
+  let ac=0,n=0;
+  for(let y=R.edges[1];y<R.edges[1]+R.edges[3];y++){const o=y*w*4;
+    for(let xx=R.edges[0]+1;xx<R.edges[0]+R.edges[2];xx++){const i=o+xx*4,j=i-4;
+      const l1=.2126*d[i]+.7152*d[i+1]+.0722*d[i+2];
+      const l0=.2126*d[j]+.7152*d[j+1]+.0722*d[j+2];
+      ac+=Math.abs(l1-l0);n++}}
+  M.acutance=ac/n;
+  // how much the frame as a whole changed, for the identity check
+  M.r=0;M.g=0;M.b=0;
+  return {M,raw:{w,h,d}};
+}
+/* Bytes differing between two images — the identity test. A knob at zero that
+   changes even one byte is not neutral, it is nearly neutral, and "nearly" is
+   where surprises live. */
+function diffCount(a,b){
+  if(!a||!b)return Infinity;
+  const px=x=>(x.raw||x).d;
+  const A=px(a),B=px(b);let n=0;
+  for(let i=0;i<A.length;i+=4){if(A[i]!==B[i]||A[i+1]!==B[i+1]||A[i+2]!==B[i+2])n++}
+  return n;
+}
+/* "As displayed": the preview is 720px of canvas in 257px, so the browser
+   averages on the way to the screen. Anything spatial has to be re-measured
+   through that average or the number is not the number anyone is looking at. */
+function downscale(src,w,h){
+  const c=document.createElement('canvas');
+  c.width=Math.round(w/DOWN);c.height=Math.round(h/DOWN);
+  const g=c.getContext('2d',{willReadFrequently:true});
+  g.imageSmoothingEnabled=true;g.imageSmoothingQuality='high';
+  g.drawImage(src,0,0,c.width,c.height);
+  return {canvas:c,img:g.getImageData(0,0,c.width,c.height),w:c.width,h:c.height};
+}
+/* Acutance on a scaled image, over the same edges region mapped through the
+   same factor. Kept separate from measure() because the region rectangles are
+   in chart pixels and no longer line up after a downscale. */
+function acutanceScaled(img,box){
+  const {width:w,data:d}=img;
+  const s=w/FRAME_W;
+  const x0=Math.round(box[0]*s),x1=Math.round((box[0]+box[2])*s);
+  const y0=Math.round(box[1]*s),y1=Math.round((box[1]+box[3])*s);
+  let ac=0,n=0;
+  for(let y=y0;y<y1;y++){const o=y*w*4;
+    for(let x=x0+1;x<x1;x++){const i=o+x*4,j=i-4;
+      ac+=Math.abs((.2126*d[i]+.7152*d[i+1]+.0722*d[i+2])-(.2126*d[j]+.7152*d[j+1]+.0722*d[j+2]));n++}}
+  return n?ac/n:0;
+}
+
+/* ── Driving the real pipeline ──────────────────────────────────────────────*/
+let W=null,ok=false,ADJ=null,FILTERS=null,CTX=null,CW=0,CH=0;
+async function boot(){
+  const f=$('#frame');
+  await new Promise(res=>{
+    if(f.contentWindow&&f.contentWindow.ADJ)return res();
+    f.addEventListener('load',res,{once:true});
+    setTimeout(res,6000);
+  });
+  const w=f.contentWindow;
+  /* The mock declares its internals with top-level `const`/`function`, which are
+     script-scoped, not properties of `window` — so `iframe.contentWindow.ADJ` is
+     undefined even same-origin. Evaluating a getter inside the frame is the way
+     in, and it still hands back the live bindings rather than a copy. */
+  try{
+    if(w.eval('typeof ADJ')!=='object')throw new Error('mock globals not reachable');
+    w.eval('proj.ar="9:16";applyProj();pause();');
+    W=w;
+    ADJ=w.eval('ADJ');FILTERS=w.eval('F');CTX=w.eval('ctx');
+    CW=CTX.canvas.width;CH=CTX.canvas.height;
+    if(CW!==FRAME_W||CH!==FRAME_H)throw new Error('mock canvas is '+CW+'x'+CH+', expected '+FRAME_W+'x'+FRAME_H);
+    ok=true;
+  }catch(e){$('#status').textContent='could not reach the mock: '+e.message}
+}
+const SRC=()=>W.__src||(W.__src=makeFrame());
+function render(clip){
+  const ctx=CTX;
+  ctx.setTransform(1,0,0,1,0,0);ctx.globalAlpha=1;
+  ctx.globalCompositeOperation='source-over';ctx.filter='none';
+  ctx.fillStyle='#000';ctx.fillRect(0,0,CW,CH);
+  const src=SRC();
+  /* The route the mock itself takes. Since the layers became independent this
+     keys on the two strengths rather than on the look: a Vivid clip with no
+     vignette must not be sent through the mask stage at all, and one with a
+     vignette must be even when the look is None. */
+  const sv=(clip.ad&&clip.ad.sharp)||0, pf=(clip.vig||0)!==0||(clip.grain||0)!==0||(clip.blue||0)!==0||(clip.blur||0)>0||(clip.opacity==null?1:clip.opacity)<1;
+  if(sv||pf){
+    /* Bust the mask's readback cache. It keys on frame time, grade, geometry —
+       all constant here, because the chart never changes — so without this the
+       second and later renders would be served a stale sharpen and every
+       measurement after the first would be measuring the first one again. */
+    W.eval('shKey=""');
+    W.eval('frameStage')(clip,src,0,1,0,FRAME_W,FRAME_H,1,sv);
+  }else{
+    ctx.save();ctx.filter=W.eval('look')(clip);
+    ctx.drawImage(src,0,0,CW,CH);ctx.restore();
+  }
+  return ctx.getImageData(0,0,CW,CH);
+}
+/* `post` is a kind, not an identity. A chain look rides in f/fs; the two layers
+   are their own per-clip strengths, because that is what lets all three be on at
+   once. Every layer claim below therefore names which field it is asserting. */
+const mkClip=(ad,f,fs,vig,grain)=>({id:1,rot:0,f:f||'none',fs:fs==null?1:fs,
+  vig:vig||0,grain:grain||0,ad:ad||{},sp:1,vol:1,in:0,out:1,s:0});
+/* Not every knob writes `ad[key]`. Vignette and Grain are the two layers, and
+   they live on the clip as their own strengths — so a claim declares the field it
+   writes (`post`) and this builds the clip the runner measures, instead of the
+   runner assuming every control is a member of the Adjust bag. */
+const clipFor=(cl,v)=>{
+  if(!cl.post)return mkClip({[cl.k]:v});
+  const c=mkClip({},'none',1);c[cl.post]=v;return c;
+};
+
+/* ── What each control promises, in one line each ───────────────────────────
+   `want` is the assertion. `dir` is which end of the slider must show it. This
+   is the part that cannot be generated from the source: it is the claim the
+   label makes, written down so it can fail. */
+const CLAIMS=[
+  {k:'bright',n:'Brightness',ends:[1,-1],metric:'flat mean luma',
+   why:'a lighter picture is a higher mean luma on a flat field, and a darker one lower',
+   check:(v,b,z)=>v>0?b.flat.mean>z.flat.mean+1:b.flat.mean<z.flat.mean-1,
+   num:(v,b,z)=>({v:fmt(b.flat.mean-z.flat.mean,2)+' luma'})},
+  {k:'ctr',n:'Contrast',ends:[1,-1],metric:'luma spread on the edges',
+   why:'widens the tones at +1 and closes them at −1 — measured ±4.48 sd, symmetric',
+   check:(v,b,z)=>v>0?b.edges.sd>z.edges.sd+0.5:b.edges.sd<z.edges.sd-0.5,
+   num:(v,b,z)=>({v:pct(b.edges.sd/z.edges.sd-1)+' sd'})},
+  {k:'high',n:'Highlights',ends:[1,-1],metric:'highlight minus shadow luma',
+   why:'highlights lift the bright end while dragging the shadow end down',
+   check:(v,b,z)=>{const s=x=>(x.hi.mean-x.shadow.mean);
+     return v>0?s(b)>s(z)+2:s(b)<s(z)-2},
+   num:(v,b,z)=>{const s=x=>(x.hi.mean-x.shadow.mean);return {v:fmt(s(b)-s(z),2)+' luma'}}},
+  {k:'shad',n:'Shadows',ends:[1,-1],metric:'highlight minus shadow luma',
+   why:'the mirror of Highlights: opens the dark end, closes the bright one',
+   check:(v,b,z)=>{const s=x=>(x.hi.mean-x.shadow.mean);
+     return v>0?s(b)<s(z)-2:s(b)>s(z)+2},
+   num:(v,b,z)=>{const s=x=>(x.hi.mean-x.shadow.mean);return {v:fmt(s(b)-s(z),2)+' luma'}}},
+  {k:'sat',n:'Saturation',ends:[1,-1],metric:'chroma spread',
+   why:'pushes the colour patches off the grey axis at +1 and pulls them back at −1',
+   check:(v,b,z)=>v>0?b.red.chromaSd>z.red.chromaSd+4:b.red.chromaSd<z.red.chromaSd-4,
+   num:(v,b,z)=>({v:pct(b.red.chromaSd/z.red.chromaSd-1)+' chroma'})},
+  {k:'warm',n:'Warmth',ends:[1,-1],metric:'hue of the red patch',
+   why:'hue-rotate() turns the hue; the patch must actually turn with the slider',
+   check:(v,b,z)=>Math.abs(b.red.hue-z.red.hue)>3,
+   num:(v,b,z)=>({v:fmt(b.red.hue-z.red.hue,1)+'° hue'})},
+  {k:'fade',n:'Fade',ends:[1,-1],metric:'luma spread on the edges',
+   why:'flattens at +1 and gains contrast back at −1 — the inverse move, so both ends must be checked',
+   check:(v,b,z)=>v>0?b.edges.sd<z.edges.sd-0.5:b.edges.sd>z.edges.sd+0.4,
+   num:(v,b,z)=>({v:pct(b.edges.sd/z.edges.sd-1)+' sd'})},
+  {k:'sharp',n:'Sharpen',ends:[1],metric:'acutance, canvas and displayed',
+   why:'the control that lied. It must raise acutance on the canvas AND after the browser averages the preview down; an unsigned mask scored +41% and −5%.',
+   spatial:true,
+   check:(v,b,z)=>b.M.acutance>z.M.acutance*1.02},
+  /* The two layers are Adjust knobs as well as Filters cards, so they get a claim
+     on this shelf too. They are the only entries here with a `post` — everything
+     else writes the Adjust bag, and these write the clip itself. `ends:[1]` and
+     not `[1,-1]`: there is no negative vignette, and the shelf gives them a
+     0 to 1 slider rather than pretending otherwise. */
+  {k:'vig',n:'Vignette',post:'vig',ends:[1,-1],metric:'corner luma, centre held',
+   why:'bipolar, and both ends are checked because both ends are real: at +1 the edge darkens, at −1 it lightens, and the middle is left alone either way. It is a layer, not a filter string, so it writes clip.vig — the same field the Filters shelf shows, which is why both shelves agree by construction.',
+   check:(v,b,z)=>Math.abs(b.centre.mean-z.centre.mean)<1.5&&(v>0?b.corner.mean<z.corner.mean-8:b.corner.mean>z.corner.mean+8),
+   num:(v,b,z)=>({v:fmt(b.corner.mean-z.corner.mean,1)+' luma'})},
+  {k:'grain',n:'Grain',post:'grain',ends:[1,-1],metric:'texture at +1, softness at −1',
+   why:'bipolar now, and both ends are real. +1 adds texture without moving exposure; −1 is the opposite corner of the same axis — the frame is desaturated and smoothed — so the grey card must lose colour and the step edges must lose spread. A single-end check could not see the half that used to do nothing.',
+   check:(v,b,z)=>v>0
+     ? b.mid.sd>z.mid.sd+0.5&&Math.abs(b.all.mean-z.all.mean)<3
+     : b.red.chromaSd<z.red.chromaSd-4&&b.edges.sd<z.edges.sd-0.5,
+   num:(v,b,z)=>v>0?{v:fmt(b.mid.sd-z.mid.sd,2)+' sd'}
+     :{v:fmt(b.red.chromaSd-z.red.chromaSd,2)+' chroma, '+fmt(b.edges.sd-z.edges.sd,2)+' sd'}},
+  /* Blue tone is a white balance and is therefore a channel move, not a hue
+     rotation — it cannot live in a CSS filter string at all, which is exactly
+     the class of control most likely to ship as a knob that moves a readout and
+     nothing else. The witness is the mid-grey plate's blue↔yellow axis: the
+     reference's own grey card has no colour to argue about, so any offset there
+     came from the slider. +1 must push it blue (negative `by`), −1 amber
+     (positive), and 0 must be an exact no-op — all three asserted. */
+  {k:'blue',n:'Blue tone',post:'blue',ends:[1,-1],metric:'blue↔yellow on the mid plate',
+   why:'a colour cast is a channel move, so it is drawn over the picture box as a tint rather than expressed as a filter string; the grey plate must go blue at +1 and amber at −1, and stay neutral in between',
+   check:(v,b,z)=>v>0?b.mid.by<z.mid.by-6:b.mid.by>z.mid.by+6,
+   num:(v,b,z)=>({v:fmt(b.mid.by-z.mid.by,2)+' blue↔yellow'})},
+  /* Blur is the counterpart of Sharpen and the control the negative grain was
+     only ever a special case of, so it has to prove the same thing Sharpen does:
+     that it moves the *edge* measurement and not just a mean. Checked on
+     acutance and on the step-edge spread together — a mean-only test would pass
+     a control that merely dimmed the frame. Unipolar, so one end, and its
+     neutral is its floor, which is why it is the one Adjust slider with no
+     centre dot. */
+  {k:'blur',n:'Blur',post:'blur',ends:[1],metric:'acutance and step-edge spread',
+   why:'softening must show up on the edges, not as a change of exposure — both acutance and the edge spread have to fall, and the frame mean has to hold',
+   check:(v,b,z)=>b.acutance<z.acutance*.85&&b.edges.sd<z.edges.sd-0.5&&Math.abs(b.all.mean-z.all.mean)<2,
+   num:(v,b,z)=>({v:fmt((b.acutance/z.acutance-1)*100,1)+'% acutance, '+fmt(b.edges.sd-z.edges.sd,2)+' sd'})},
+  /* Opacity is the one control whose rest is not zero, so it is also the one
+     that proves the harness can be told where a neutral is. It is an alpha on
+     the picture, not a post effect over it, so the witness is the frame's own
+     mean against the project background: half must land the picture halfway to
+     the backdrop, and zero must leave nothing but the backdrop. A control that
+     merely dimmed the frame by some other amount would fail the halfway check. */
+  {k:'opacity',n:'Opacity',post:'opacity',neutral:1,ends:[.5,0],metric:'frame mean against the backdrop',
+   why:'the only knob that rests at 1 rather than 0, so it declares its neutral and the no-op is measured there. Half opacity must land the frame halfway to the project background, and zero must leave the background alone — a clip that is 20% there has to look 20% there.',
+   check:(v,b,z)=>v>0
+     ? b.all.mean<z.all.mean-20&&Math.abs(b.all.mean-z.all.mean*.5)<20
+     : b.all.mean<2,
+   num:(v,b,z)=>({v:fmt(b.all.mean-z.all.mean,2)+' luma'})}
+];
+
+/* ── Run ────────────────────────────────────────────────────────────────────*/
+function row(cells){return '<tr>'+cells.map(c=>'<td'+(c.cls?' class="'+c.cls+'"':'')+'>'+c.html+'</td>').join('')+'</tr>'}
+function verdict(pass,good,bad){return {html:(pass?'<span class="pass">'+good+'</span>':'<span class="fail">'+bad+'</span>'),pass}}
+
+async function runAdjust(){
+  const tb=$('#adjT tbody');tb.innerHTML='';
+  const base=measure(render(mkClip({})));
+  // The displayed reference is the untouched chart at preview scale, computed
+  // once — the downscale of the *rendered* canvas would already carry whichever
+  // knob was set, which is the comparison this page exists to avoid making.
+  const dspBase=acutanceScaled(downscale(SRC(),FRAME_W,FRAME_H).img,R.edges);
+  let pass=0,fail=0;
+  /* Iterate the live ADJ keys, not the claim list. A knob added to the mock with
+     no claim written for it shows up here as an explicit failure instead of
+     quietly going unchecked — which is the whole reason this page exists. */
+  for(const key of Object.keys(ADJ)){
+    const cl=CLAIMS.find(x=>x.k===key);
+    if(!cl){
+      fail++;
+      tb.insertAdjacentHTML('beforeend',row([
+        {html:'<span class="nm">'+ADJ[key].n+'</span>'},
+        {html:'no claim written<span class="why">a control nobody promised anything for is exactly the kind that lies</span>'},
+        {html:'—',cls:'n'},{html:'—',cls:'n'},{html:'—',cls:'n'},
+        {html:'<span class="fail">unclaimed</span>'}
+      ]));
+      continue;
+    }
+    /* Every knob is checked at the ends of its own slider, not just the
+       positive one. A control that honours only half its range is half broken,
+       and a single-end check cannot see that. `check` receives the value so it
+       can assert the right direction for that end. */
+    const ends=cl.ends;
+    let dirOk=true,reported=null,zeroDiff=0,dispOkFinal=true;
+    for(const v of ends){
+      const m=measure(render(clipFor(cl,v)));
+      const d=downscale(CTX.canvas,FRAME_W,FRAME_H);
+      const dsp={acutance:acutanceScaled(d.img,R.edges)};
+      dirOk=(cl.spatial?cl.check(v,m,base):cl.check(v,m.M,base.M))&&dirOk;
+      if(cl.spatial){
+        /* Both numbers must point the same way. This is the Sharpen assertion:
+           an unsigned mask reads +41% here and −5% as displayed, and both halves
+           of that compare "greater than", so only the disagreement is the tell. */
+        const upCanvas=m.M.acutance>base.M.acutance, upShown=dsp.acutance>dspBase;
+        dispOkFinal=(upCanvas===upShown)&&dispOkFinal;
+      }
+      /* Keep the *first* end's numbers and its own value together. Overwriting
+         `v` here (as this used to) showed the first end's measurements under the
+         last end's label: Brightness read "+60 luma" either way, but a
+         directional `num` — Grain's +1/−1 branches, which report different
+         quantities — would print the wrong one. */
+      if(!reported)reported={m,v,dsp};
+    }
+    /* The no-op is asserted at the control's *neutral*, which is not always
+       zero. Opacity rests at 1 — a clip is opaque until you say otherwise — so
+       a claim declares where its rest is and the harness measures the frame
+       there rather than at 0. */
+    const nv=cl.neutral||0;
+    zeroDiff=diffCount(measure(render(clipFor(cl,nv))).raw,base.raw);
+    const m=reported.m,dsp=reported.dsp;
+    const allOk=zeroDiff===0&&dirOk&&dispOkFinal;
+    if(allOk)pass++;else fail++;
+
+    const v1=verdict(zeroDiff===0,'0 bytes','<span class="fail">'+zeroDiff+'</span>');
+    const v2=cl.spatial
+      ?verdict(dirOk,fmt((m.M.acutance/base.M.acutance-1)*100,1)+'% canvas','no move')
+      :verdict(dirOk,cl.num(reported.v,m.M,base.M).v,'no move');
+    const v3=cl.spatial?verdict(dispOkFinal,
+        fmt((dsp.acutance/dspBase-1)*100,1)+'% shown vs '+fmt((m.M.acutance/base.M.acutance-1)*100,1)+'% canvas',
+        '<span class="fail">signs disagree</span>'):{html:'—',pass:true};
+
+    tb.insertAdjacentHTML('beforeend',row([
+      {html:'<span class="nm">'+cl.n+'</span>'+(cl.spatial?' <span class="why">the one that lied</span>':'')},
+      {html:cl.metric+'<span class="why">'+cl.why+'</span>'},
+      {html:v1.html,cls:'n'},
+      {html:v2.html,cls:'n'},
+      {html:v3.html,cls:'n'},
+      {html:(allOk?'<span class="pass">holds</span>':'<span class="fail">fails</span>')}
+    ]));
+  }
+  return {pass,fail};
+}
+async function runFilters(){
+  const tb=$('#filtT tbody');tb.innerHTML='';
+  const base=measure(render(mkClip({},'none',1)));
+  let pass=0,fail=0;
+  for(const key of Object.keys(FILTERS)){
+    const F=FILTERS[key];
+    const chain=F.f?F.f(1):(F.post?'clip.'+F.post+' — drawn after the frame, over any look':'');
+    let zeroDiff=0,sig='',okRow=true,note='';
+    if(key!=='none'){
+      zeroDiff=diffCount(measure(render(mkClip({},key,0))).raw,base.raw);
+      const full=measure(render(F.post?mkClip({},'none',1,key==='vig'?1:0,key==='grain'?1:0):mkClip({},key,1)));
+      const dMean=full.M.all.mean-base.M.all.mean;
+      const dEdge=full.M.edges.sd-base.M.edges.sd;
+      const dChroma=full.M.red.chromaSd-base.M.red.chromaSd;
+      const dHue=full.M.red.hue-base.M.red.hue;
+      const dCorner=full.M.corner.mean-base.M.corner.mean;
+      const dCentre=full.M.centre.mean-base.M.centre.mean;
+      if(F.post=='vig'||F.post=='grain'){
+        /* A layer is only honest if it stacks. Setting it on a graded clip must
+           add its own effect *on top of* that grade rather than replace it, so
+           the same assertion is re-run with a look underneath and compared
+           against that look on its own. Before this the two layers were c.f
+           values competing with the looks, so turning one on deleted the
+           other — a claim no per-layer test could have caught, because each
+           layer was individually fine. */
+        const laid=measure(render(mkClip({},'vivid',1,key==='vig'?1:0,key==='grain'?1:0))).M;
+        const under=measure(render(mkClip({},'vivid',1))).M;
+        const onTop=key==='vig'
+          ? laid.corner.mean-under.corner.mean
+          : laid.mid.sd-under.mid.sd;
+        const alone=key==='vig'?dCorner:(full.M.mid.sd-base.M.mid.sd);
+        sig=(key==='vig'?'corners ':'mid-plate sd ')+fmt(alone,key==='vig'?1:2)
+          +' alone, '+fmt(onTop,key==='vig'?1:2)+' over a look';
+        const stacks=(key==='vig'?onTop<-8&&Math.abs(laid.centre.mean-under.centre.mean)<1.5:onTop>0.5);
+        /* The other half of "stacks": the grade has to still be there with a
+           layer up. `onTop` alone cannot see a replacement — a vignette that
+           wiped the look and redrew the edges would still measure about the
+           same corner delta — so the look's own loudest signature is checked
+           against the bare clip directly. Vivid moves chroma by an order of
+           magnitude, which makes it the cheapest honest witness. */
+        const gradeKept=laid.red.chromaSd>base.M.red.chromaSd+20;
+        sig+=' · grade still under it ('+fmt(laid.red.chromaSd-base.M.red.chromaSd,0)+' chroma vs '
+          +fmt(under.red.chromaSd-base.M.red.chromaSd,0)+' without)';
+        if(key=='vig')okRow=dCorner<-8&&Math.abs(dCentre)<1.5&&zeroDiff===0&&stacks&&gradeKept;
+        else okRow=(full.M.mid.sd-base.M.mid.sd)>0.5&&Math.abs(dMean)<3&&zeroDiff===0&&stacks&&gradeKept;
+        note='a vignette must darken the edge, leave the middle alone, be an exact no-op at zero, and survive a look being picked; grain must add texture, not move exposure, do both of those, and survive one too';
+      }else{
+        okRow=zeroDiff===0;
+        const parts=[];
+        if(Math.abs(dEdge)>0.4)parts.push('edges '+fmt(dEdge,2)+' sd');
+        if(Math.abs(dChroma)>4)parts.push('chroma '+fmt(dChroma,1));
+        if(Math.abs(dHue)>2)parts.push('hue '+fmt(dHue,1)+'°');
+        if(Math.abs(dMean)>0.4)parts.push('mean '+fmt(dMean,2));
+        sig=parts.length?parts.join(' · '):'nothing measurable';
+        okRow=parts.length>0;
+        note='a look that changes nothing measurable is not a look';
+      }
+    }
+    if(okRow)pass++;else fail++;
+    tb.insertAdjacentHTML('beforeend',row([
+      {html:'<span class="nm">'+(F.n||key)+'</span>'+(F.post?'<span class="why">layer — clip.'+F.post+'</span>':'')},
+      {html:'<code>'+String(chain).replace(/</g,'&lt;')+'</code>'},
+      {html:key==='none'?'—':(zeroDiff===0?'<span class="pass">0 bytes</span>':'<span class="fail">'+zeroDiff+'</span>'),cls:'n'},
+      {html:(sig||'—')+'<span class="why">'+note+'</span>'},
+      {html:(okRow?'<span class="pass">holds</span>':'<span class="fail">fails</span>')}
+    ]));
+  }
+  return {pass,fail};
+}
+
+/* ── Shelf rows ──────────────────────────────────────────────────────────────
+   The shelves are two horizontal rows with one slider under them, and picking a
+   card rebuilds the row from a string. A rebuilt row starts at scrollLeft 0, so
+   the offset is captured before the rebuild and put back after — and for a while
+   the sheet then also re-centred the card you had just tapped, which lurched a
+   row you had deliberately scrolled sideways the moment you picked a card at its
+   edge. Neither is visible in a filter string or a pixel, which is why it needs
+   its own probe: scroll the row, tap, and read the offset back. A row that moved
+   is a row that moved under the user's thumb.
+
+   This runs in a second, phone-sized instance of the mock, not the one above:
+   the pixel checks want a 1px offscreen frame, and a row cannot be scrolled in
+   one. It also means a failure here cannot poison the measurements. */
+let RW=null,LW=null,PW=null,DW=null;
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+async function bootRow(){
+  const f=$('#rowframe');
+  await new Promise(res=>{
+    if(f.contentWindow&&f.contentWindow.eval&&f.contentWindow.eval('typeof panel')==='function')return res();
+    f.addEventListener('load',res,{once:true});
+    setTimeout(res,6000);
+  });
+  const w=f.contentWindow;
+  try{
+    if(w.eval('typeof panel')!=='function')throw new Error('mock globals not reachable');
+    /* One synthetic clip so a shelf will render. No media file is needed — the
+       row is DOM, and the tap path reads only the clip's look, its two layer
+       strengths and its Adjust bag. Everything the timeline would want (a
+       length, a filmstrip, a waveform) is stubbed empty, which keeps this page
+       free of a media file and a decoder exactly as the pixel checks are. */
+    w.eval("srcs[1]={name:'chart',dur:10,th:null,pk:null,v:{duration:10,currentTime:0,readyState:0,videoWidth:720,videoHeight:1280,playbackRate:1,volume:1,muted:true,pause:function(){},play:function(){return Promise.resolve()},addEventListener:function(){},removeEventListener:function(){}}};"+
+      "clips.length=0;clips.push({id:1,src:1,f:'none',fs:1,vig:0,grain:0,ad:{},sp:1,vol:1,in:0,out:10,s:0,rot:0});total=10;t=0;");
+    RW=w;return true;
+  }catch(e){RW=null;return false}
+}
+const ROWS=[
+  {n:'Filters',a:'tap a chain card at the row\u2019s edge',
+   prep:"sel={k:'c',id:1};tool='filter';panel()",tap:'#panel button[data-f="oldie"]',off:178,move:false,
+   why:'the row is rebuilt when a look is picked \u2014 the strength slider only exists once one is on \u2014 so the offset has to cross the rebuild'},
+  {n:'Filters',a:'tap a layer card at the far end',
+   prep:"sel={k:'c',id:1};tool='filter';panel()",tap:'#panel button[data-f="grain"]',off:300,move:false,
+   why:'Grain is the last of thirteen cards, the one a user scrolls furthest to reach'},
+  {n:'Adjust',a:'tap a knob at the row\u2019s edge',
+   prep:"sel={k:'c',id:1};tool='adjust';panel()",tap:'#panel button[data-adj="shad"]',off:200,move:false,
+   why:'the same rule on the other shelf: selecting a knob writes in place and never touches the row'},
+  {n:'Filters',a:'open the sheet on a look scrolled out of view',
+   prep:"clips[0].f='noir';sel={k:'c',id:1};tool='filter';panel()",move:true,
+   why:'the positive control: a rebuild nobody tapped for still has to bring the selection into view'}
+];
+async function runRows(){
+  const tb=$('#rowT tbody');tb.innerHTML='';
+  let pass=0,fail=0;
+  if(!RW&&!await bootRow()){
+    tb.insertAdjacentHTML('beforeend',row([
+      {html:'<span class="nm">shelf rows</span>'},
+      {html:'could not reach the row-check mock instance'},
+      {html:'\u2014',cls:'n'},{html:'\u2014',cls:'n'},
+      {html:'<span class="fail">not run</span>'}]));
+    return {pass:0,fail:1};
+  }
+  const ev=code=>RW.eval(code);
+  const reset="clips[0].f='none';clips[0].fs=1;clips[0].vig=0;clips[0].grain=0;clips[0].blue=0;clips[0].blur=0;clips[0].opacity=1;clips[0].ad={};";
+  for(const cs of ROWS){
+    let before='\u2014',after='\u2014',moved=false,err='';
+    try{
+      ev(reset+cs.prep);
+      await sleep(70);
+      before=ev('(function(){var c=document.querySelector("#panel .car");c.scrollLeft='+(cs.off||0)+';return c.scrollLeft})()');
+      await sleep(50);
+      /* The tap path is exercised exactly as a finger would drive it: a real
+         click on the real button, so the sheet's own handler decides what to do. */
+      if(cs.move)ev('panel()');
+      else ev('document.querySelector('+JSON.stringify(cs.tap)+').click()');
+      await sleep(70);
+      after=ev('document.querySelector("#panel .car").scrollLeft');
+      moved=after!==before;
+    }catch(e){err=String((e&&e.message)||e)}
+    const didMove=cs.move?moved:!moved;
+    const okRow=!err&&didMove;
+    if(okRow)pass++;else fail++;
+    const v=err?verdict(false,'','could not run')
+      :cs.move?verdict(moved,'moved into view','<span class="fail">did not move</span>')
+               :verdict(!moved,'held','<span class="fail">moved '+(after-before>0?'+':'')+(after-before)+'px</span>');
+    tb.insertAdjacentHTML('beforeend',row([
+      {html:'<span class="nm">'+cs.n+'</span>'},
+      {html:cs.a+'<span class="why">'+cs.why+'</span>'+(err?'<span class="why">'+err+'</span>':'')},
+      {html:String(before)+'px',cls:'n'},
+      {html:String(after)+'px',cls:'n'},
+      {html:v.html}
+    ]));
+  }
+  return {pass,fail};
+}
+
+/* ── The sheet's geometry ──────────────────────────────────────────────────
+   A layout cannot be read off a pixel or a filter string. The value could sit
+   forty pixels above its slider and still be "the readout"; the footer's middle
+   action could drift left and still be "three buttons"; a centre dot could
+   appear on every slider and still be "a dot". Each of those is a promise the
+   restyled sheet makes, and only geometry can see it.
+
+   It runs in the phone-sized instance the row checks use, because a layout claim
+   only means something at a laid-out width — the 1px frame the pixel checks use
+   could not report a gap at all. Everything below is read from `getBoundingClientRect`
+   on the real nodes, driven through the sheet's own click handler, so a change to
+   `.sl`, `.ef` or the dot's CSS shows up here rather than being asserted about. */
+async function runGeometry(){
+  const tb=$('#geoT tbody');tb.innerHTML='';
+  let pass=0,fail=0;
+  if(!RW&&!await bootRow()){
+    tb.insertAdjacentHTML('beforeend',row([{html:'<span class="nm">geometry</span>'},
+      {html:'could not reach the mock instance'},{html:'\u2014',cls:'n'},
+      {html:'<span class="fail">not run</span>'}]));
+    return {pass:0,fail:1};
+  }
+  /* Two doors into the mock. `run` evaluates statements (the sheet's own
+     `panel()` and its click handler), and `ev` evaluates a single expression
+     and brings its value back across the frame boundary — an object from the
+     iframe realm is not reliably readable here, so it is serialised in there
+     and parsed out here. `ev` cannot take a statement list: wrapping one in
+     `JSON.stringify(...)` is a syntax error, which is exactly what the first
+     draft of this probe did. */
+  const run=code=>RW.eval(code);
+  const ev=expr=>JSON.parse(RW.eval('JSON.stringify('+expr+')'));
+  const say=(name,what,meas,ok,why)=>{if(ok)pass++;else fail++;
+    tb.insertAdjacentHTML('beforeend',row([
+      {html:'<span class="nm">'+name+'</span>'},
+      {html:what+(why?'<span class="why">'+why+'</span>':'')},
+      {html:meas,cls:'n'},
+      {html:ok?'<span class="pass">holds</span>':'<span class="fail">fails</span>'}]));};
+  try{
+    run("clips[0].f='none';clips[0].fs=1;clips[0].vig=0;clips[0].grain=0;clips[0].ad={};sel={k:'c',id:1}");
+
+    /* 1. The value sits on the track's own line, right-aligned, on every sheet
+       that has a slider. One measurement per sheet, because it is one shared
+       block — a second copy of the markup would be the only way these could
+       disagree, and this is what would catch one. */
+    const seen=[];
+    for(const t of ['speed','volume','adjust','rotate']){
+      run("tool="+JSON.stringify(t)+";panel()");
+      await sleep(40);
+      seen.push(ev("(function(){var rv=document.querySelector('#panel #rv').getBoundingClientRect(),r=document.querySelector('#panel #r1').getBoundingClientRect();return {t:"+JSON.stringify(t)+",gap:Math.round(r.top-rv.bottom),inset:Math.round(r.right-rv.right)}})()"));
+    }
+    const gapsOk=seen.every(s=>s.gap>0&&s.gap<=12&&s.inset>=0&&s.inset<=5);
+    say('value \u2194 track','the readout sits directly above its own track, right-aligned, on every sheet with a slider',
+      seen.length+' sheets, gap '+Math.min(...seen.map(s=>s.gap))+'\u2013'+Math.max(...seen.map(s=>s.gap))+'px, inset '
+        +Math.min(...seen.map(s=>s.inset))+'\u2013'+Math.max(...seen.map(s=>s.inset))+'px',
+      gapsOk,'a value on a line of its own is the layout the reference does not use');
+
+    /* 2. The centre dot is on exactly the sliders that have a centre. Selecting
+       every knob drives adjSync, which is the path that adds and removes the
+       dot — so this covers the switch as well as the first paint. */
+    run("tool='adjust';panel()");
+    await sleep(50);
+    const keys=ev('Object.keys(ADJ)'),bad=[];
+    let bi=0,flat=0;
+    for(const k of keys){
+      const r=ev("(function(){var b=document.querySelector('#panel [data-adj="+JSON.stringify(k)+"]');b.click();var sl=document.querySelector('#panel .sl');return {bi:sl.classList.contains('bi'),dot:getComputedStyle(document.querySelector('#panel .dot')).display==='block',want:knobRng("+JSON.stringify(k)+")[0]<0}})()");
+      if(r.want)bi++;else flat++;
+      if(r.bi!==r.want||r.dot!==r.want)bad.push(k);
+    }
+    say('centre dot','a dot on the sliders that have a centre \u2014 the bipolar ones \u2014 and on no others, checked by selecting every knob',
+      keys.length+' knobs: '+bi+' bipolar, '+flat+' floored at zero; off: '+(bad.length?bad.join(', '):'none'),
+      bad.length===0,'the dot marks the value a slider balances around');
+
+    /* 3. The same rule on the shelf that shares the slider: a look is flat at
+       its floor, a layer is centred. */
+    run("sel={k:'c',id:1};tool='filter';panel()");
+    await sleep(50);
+    run("document.querySelector('#panel [data-f=\"oldie\"]').click()");
+    await sleep(60);
+    /* Read the dot's rendered display too, not just the class that asks for it:
+       a rule that shows the dot on every slider would leave the class correct
+       and the picture wrong, and the Adjust loop above already checks both. */
+    const dotState=()=>ev("(function(){var sl=document.querySelector('#panel .sl');return {bi:sl.classList.contains('bi'),dot:getComputedStyle(document.querySelector('#panel .dot')).display==='block'}})()");
+    const lookD=dotState();
+    run("document.querySelector('#panel [data-f=\"vig\"]').click()");
+    await sleep(60);
+    const vigD=dotState();
+    say('centre dot, Filters','the strength slider is centred for a layer and flat for a look',
+      'look centred='+lookD.bi+'/dot='+lookD.dot+', vignette centred='+vigD.bi+'/dot='+vigD.dot,
+      lookD.bi===false&&lookD.dot===false&&vigD.bi===true&&vigD.dot===true,
+      'the two shelves share one slider, so the rule has to hold on both');
+
+    /* 4. The footer. The reference centres the middle action on the sheet, so
+       the grid is measured against the content box `.ef` itself — measured, not
+       derived from padding, because `scrollbar-gutter: stable` reserves space
+       inside that box and a padding sum would not know about it. */
+    run("sel={k:'c',id:1};tool='adjust';panel()");
+    await sleep(60);
+    const f=ev("(function(){var p=document.querySelector('#panel'),ef=p.querySelector('.ef'),e=ef.getBoundingClientRect(),m=p.querySelector('.ef>.m').getBoundingClientRect(),l=p.querySelector('.ef>.l'),r=p.querySelector('.ef>.r'),lb=l.getBoundingClientRect(),rb=r.getBoundingClientRect();return {left:Math.round(lb.left-e.left),right:Math.round(e.right-rb.right),off:Math.round((m.left+m.right)/2-(e.left+e.right)/2),lc:l.textContent.trim(),mc:m.width?p.querySelector('.ef>.m').textContent.trim():'',rc:r.textContent.trim()}})()");
+    say('footer','the middle action is centred on the sheet content, with Cancel and Done flush to its edges',
+      'centre off by '+f.off+'px, edges '+f.left+'/'+f.right+'px, '+f.lc+' \u00b7 '+f.mc+' \u00b7 '+f.rc,
+      Math.abs(f.off)<=2&&Math.abs(f.left)<=1&&Math.abs(f.right)<=1&&f.lc==='Cancel'&&f.mc==='Apply to all'&&f.rc==='Done',
+      'space-between left the middle action wherever the outer two happened to put it');
+  }catch(e){ say('geometry','the probe could not run',String((e&&e.message)||e),false); }
+  return {pass,fail};
+}
+
+/* ── The clip actions on the rail ────────────────────────────────────────
+   Reverse, Replace, Rearrange and Delete change the *clip*, not its look — so
+   they are invisible to a pixel and to a filter string, and a rule that moved
+   the wrong clip or dropped the edit would look exactly like one that worked.
+   Each is therefore driven the way a finger drives it: a real tap on the real
+   rail button and a real pointer drag over the real card, then the order and the
+   window are read straight out of the mock's own `clips`. Two clips, no media,
+   in the same instance the row checks use. */
+async function runActions(){
+  const tb=$('#actT tbody');tb.innerHTML='';
+  let pass=0,fail=0;
+  if(!RW&&!await bootRow()){
+    tb.insertAdjacentHTML('beforeend',row([{html:'<span class="nm">clip actions</span>'},
+      {html:'could not reach the mock instance'},{html:'\u2014',cls:'n'},
+      {html:'<span class="fail">not run</span>'}]));
+    return {pass:0,fail:1};
+  }
+  const run=code=>RW.eval(code);
+  const ev=expr=>JSON.parse(RW.eval('JSON.stringify('+expr+')'));
+  const say=(name,what,meas,ok,why)=>{if(ok)pass++;else fail++;
+    tb.insertAdjacentHTML('beforeend',row([
+      {html:'<span class="nm">'+name+'</span>'},
+      {html:what+(why?'<span class="why">'+why+'</span>':'')},
+      {html:meas,cls:'n'},
+      {html:ok?'<span class="pass">holds</span>':'<span class="fail">fails</span>'}]));};
+  /* Two clips of different lengths, so a reorder and a delete are both visible
+     in the order and not just in a count. `v` is the same media stub the row
+     checks use: the actions touch `clips`, never the element. */
+  const V="v:{duration:10,currentTime:0,readyState:0,videoWidth:720,videoHeight:1280,playbackRate:1,volume:1,muted:true,pause:function(){},play:function(){return Promise.resolve()},addEventListener:function(){},removeEventListener:function(){}}";
+  const seed="srcs[1]={name:'a',dur:10,th:null,pk:null,"+V+"};srcs[2]={name:'b',dur:6,th:null,pk:null,"+V+"};"+
+    "clips.length=0;"+
+    "clips.push({id:1,src:1,f:'none',fs:1,vig:0,grain:0,blue:0,blur:0,opacity:1,ad:{},sp:1,vol:1,in:0,out:10,s:0,rot:0});"+
+    "clips.push({id:2,src:2,f:'none',fs:1,vig:0,grain:0,blue:0,blur:0,opacity:1,ad:{},sp:1,vol:1,in:0,out:6,s:0,rot:0});"+
+    "total=16;t=0;sel={k:'c',id:2};tool=null;refresh();";
+  try{
+    /* 1. The rail. The four actions have to sit together, in the reference's own
+       order, on the clip that is selected \u2014 and the transition only shows once
+       the clip has a predecessor, because there is nothing to transition from on
+       the first. */
+    run(seed);
+    const order=ev("[...document.querySelectorAll('#tools button')].map(b=>b.dataset.t)");
+    /* `layout` closes the project group for the same reason the group exists:
+       where the timeline goes is a property of the frame, like the ratio and the
+       backdrop, and not of the clip the other eleven act on. */
+    const want=['speed','volume','filter','adjust','rotate','trans','reverse','replace','rearrange','dup','del','ts','te','aspect','canvas','layout'];
+    say('rail order','the four clip actions sit together on a selected clip, in the reference\u2019s order',
+      order.join(' \u00b7 '), JSON.stringify(order)===JSON.stringify(want),
+      'a rail whose actions drift apart is one you have to re-learn');
+
+    /* 2. Reverse. It flips `rev`, lights its own button (the state is invisible on
+       a paused frame, so the rail is the only place it shows), and \u2014 the part
+       that makes it Reverse rather than a flag \u2014 walks the *source* backwards
+       while the timeline still walks forwards. */
+    run(seed);
+    const rev=ev(`(function(){var b=document.querySelector('#tools button[data-t="reverse"]');b.click();var c=clips[1];var on=document.querySelector('#tools button[data-t="reverse"]').classList.contains('on');var k={in:0,out:6,s:0,sp:1,rev:true};return {rev:!!c.rev,on:on,st:[srcTime(k,0),srcTime(k,3),srcTime(k,6)]}})()`);
+    say('Reverse','flips the clip, lights its button, and reads the source backwards while the timeline runs forward',
+      'rev='+rev.rev+', lit='+rev.on+', source at t=0/3/6 \u2192 '+rev.st.join('/'),
+      rev.rev===true&&rev.on===true&&rev.st[0]===6&&rev.st[1]===3&&rev.st[2]===0,
+      'negative playbackRate is not a thing a media element can do, so the reversed clip is seek-stepped');
+
+    /* 3. Rearrange. A live splice: the drag has to move the clip in `clips`, the
+       selection has to follow it, and Cancel \u2014 which exists precisely because
+       the splice is live \u2014 has to put the order back. */
+    run(seed+"sel={k:'c',id:1};tool='rearrange';panel();");
+    const rc=ev(`(function(){var car=document.querySelector('#rcar');var el1=car.querySelector('[data-rc="1"]');var r=el1.getBoundingClientRect();return {cards:document.querySelectorAll('#rcar .rc').length,sel:document.querySelectorAll('#rcar .rc.sel').length,reset:!!document.querySelector('#er'),done:!!document.querySelector('#ed')}})()`);
+    const drag=ev(`(function(){var before=clips.map(c=>c.id);var car=document.querySelector('#rcar');var r=car.querySelector('[data-rc="1"]').getBoundingClientRect();rdrag={id:clips[0].id,x0:0,y0:0,armed:true};rdmove({clientX:r.left+2,clientY:r.top+2});rdend();return {before:before,after:clips.map(c=>c.id),drag:!!document.querySelector('#rcar .rc.drag')}})()`);
+    const canc=ev("(function(){document.querySelector('#ec').click();return clips.map(c=>c.id)})()");
+    say('Rearrange','a drag over a card moves the clip, the selection follows, and Cancel restores the order',
+      rc.cards+' cards, sel='+rc.sel+', reset='+rc.reset+', drag '+drag.before.join(',')+' \u2192 '+drag.after.join(',')+', cancel \u2192 '+canc.join(','),
+      rc.cards===2&&rc.sel===1&&rc.reset===false&&drag.after.join(',')==='2,1'&&canc.join(',')==='1,2',
+      'the splice is live, which is exactly why Cancel has to exist');
+
+    /* 4. Delete. The rail's trash removes the selected clip \u2014 the header's own
+       action, repeated where the reference puts it. */
+    run(seed+"sel={k:'c',id:1};refresh();");
+    const del=ev(`(function(){var n0=clips.length;document.querySelector('#tools button[data-t="del"]').click();return {before:n0,after:clips.length,left:clips.map(c=>c.id).join(',')}})()`);
+    say('Delete','removes the selected clip, not the last one',
+      del.before+' \u2192 '+del.after+' clips, left '+del.left,
+      del.before===2&&del.after===1&&del.left==='2',
+      'a delete that took the wrong clip looks identical to one that took the right one');
+
+    /* 5. Replace. The one action that opens the picker: the flag it sets decides
+       that the *next* file lands on the clip you picked rather than being added,
+       which is the difference between Replace and Add. */
+    run(seed+"sel={k:'c',id:1};refresh();");
+    const rep=ev(`(function(){var fi=document.querySelector('#file');var oc=fi.click;var opened=0;fi.click=function(){opened++};document.querySelector('#tools button[data-t="replace"]').click();var flag=replacing;fi.click=oc;return {opened:opened,flag:flag}})()`);
+    say('Replace','opens the picker for the selected clip and arms the next file to replace, not add',
+      'picker opened '+rep.opened+'\u00d7, armed clip='+rep.flag,
+      rep.opened===1&&rep.flag===1,
+      'Replace keeps the cut and swaps the media under it \u2014 that is why it is not Delete then Add');
+
+    /* 6. The value is live while the thumb is held. A drag fires `input` on every
+       move, and both the readout and the knob's changed-dot have to follow it
+       without waiting for the pointer to come up \u2014 a readout that only settles on
+       release reads as a label, not as the value you are setting. Driven through
+       the same `input` events a held thumb produces, with no pointerup between. */
+    run(seed+"sel={k:'c',id:1};adjKey='bright';tool='adjust';panel();");
+    const live=ev(`(function(){var r=document.querySelector('#panel #r1'),rv=document.querySelector('#rv'),b=document.querySelector('#panel [data-adj="bright"]');
+      var snap=function(){return {rv:rv.textContent,chg:b.classList.contains('chg')}};
+      var rest=snap();r.value='0.42';r.dispatchEvent(new Event('input',{bubbles:true}));var mid=snap();
+      r.value='0';r.dispatchEvent(new Event('input',{bubbles:true}));return {rest:rest,mid:mid,back:snap()}})()`);
+    say('live while held','the readout and the changed-dot follow the thumb on every input, mid-drag, not on release',
+      'rest '+live.rest.rv+' (dot '+live.rest.chg+') \u2192 mid-drag '+live.mid.rv+' (dot '+live.mid.chg+') \u2192 back '+live.back.rv+' (dot '+live.back.chg+')',
+      live.rest.rv==='0'&&live.rest.chg===false&&live.mid.rv!=='0'&&live.mid.chg===true&&live.back.rv==='0'&&live.back.chg===false,
+      'a readout that settles only when the thumb comes up is a label, not a live value');
+
+    /* 7. "Format" was one sheet answering two questions — the shape of the frame
+       and the colour behind it — so the split is only real if each panel now
+       carries one of them and neither carries both. Export is the third sheet the
+       split made room for, and its three rows have to come from one descriptor
+       with the options opened on demand rather than nine buttons drawn at once. */
+    run("tool='aspect';panel()");
+    await sleep(40);
+    const asp=ev(`(function(){return {title:document.querySelector('#panel .eh').textContent,tiles:document.querySelectorAll('#panel .rt').length,sw:document.querySelectorAll('#panel .swt').length}})()`);
+    run("tool='canvas';panel()");
+    await sleep(40);
+    const can=ev(`(function(){return {title:document.querySelector('#panel .eh').textContent,sw:document.querySelectorAll('#panel .swt').length,tiles:document.querySelectorAll('#panel .rt').length}})()`);
+    run("tool='export';EXP.open=null;panel()");
+    await sleep(40);
+    const xp=ev(`(function(){var rows=[...document.querySelectorAll('#panel .xr')].map(r=>r.dataset.x);document.querySelector('#panel .xr[data-x=\"res\"]').click();return {title:document.querySelector('#panel .eh').textContent,rows:rows,opts:document.querySelectorAll('#panel .xo .chip').length,pri:document.querySelector('#panel .r button').id}})()`);
+    say('Format is two sheets, Export a third','Aspect ratio and Canvas each answer one question, and Export draws its rows from one descriptor with the options opened on demand',
+      asp.title+' ('+asp.tiles+' tiles, '+asp.sw+' swatches) \u00b7 '+can.title+' ('+can.sw+' swatches, '+can.tiles+' tiles) \u00b7 '+xp.title+' rows '+xp.rows.join('/')+' \u2192 '+xp.opts+' options, primary #'+xp.pri,
+      asp.title==='Aspect ratio'&&asp.tiles===4&&asp.sw===0&&can.title==='Canvas'&&can.sw===5&&can.tiles===0&&xp.title==='Export'&&xp.rows.join(',')==='fps,fmt,res'&&xp.opts===3&&xp.pri==='exr',
+      'one label standing in for two questions is one label too few');
+  }catch(e){ say('clip actions','the probe could not run',String((e&&e.message)||e),false); }
+  return {pass,fail};
+}
+
+async function bootLay(){
+  const f=$('#layframe');
+  await new Promise(res=>{
+    if(f.contentWindow&&f.contentWindow.eval&&f.contentWindow.eval('typeof applyLayout')==='function')return res();
+    f.addEventListener('load',res,{once:true});
+    setTimeout(res,6000);
+  });
+  const w=f.contentWindow;
+  try{
+    if(w.eval('typeof applyLayout')!=='function')throw new Error('mock globals not reachable');
+    w.eval("srcs[1]={name:'chart',dur:10,th:null,pk:null,v:{duration:10,currentTime:0,readyState:0,videoWidth:720,videoHeight:1280,playbackRate:1,volume:1,muted:true,pause:function(){},play:function(){return Promise.resolve()},addEventListener:function(){},removeEventListener:function(){}}};"+
+      "clips.length=0;clips.push({id:1,src:1,f:'none',fs:1,vig:0,grain:0,blue:0,blur:0,opacity:1,ad:{},sp:1,vol:1,in:0,out:10,s:0,rot:0});total=10;t=0;refresh();");
+    LW=w;return true;
+  }catch(e){LW=null;return false}
+}
+/* R1/R2's phone promise, as numbers. Measured from the build at HEAD at393x844 with
+   a 9:16 project and one clip: header116, preview456, transport48, ruler30, band255,
+   tools55 \u2014 they add to 844 exactly, so a change that moves one of them and not
+   another fails here rather than shipping. */
+const PHONE_BASE={bar:116,view:456,ar:48,ro:30,tlw:255,tools:55};
+async function runLayout(){
+  const tb=$('#layT tbody');tb.innerHTML='';
+  let pass=0,fail=0;
+  if(!LW&&!await bootLay()){
+    tb.insertAdjacentHTML('beforeend',row([{html:'<span class="nm">layout</span>'},
+      {html:'could not reach the iPad mock instance'},{html:'\u2014',cls:'n'},
+      {html:'<span class="fail">not run</span>'}]));
+    return {pass:0,fail:1};
+  }
+  const run=code=>LW.eval(code);
+  const ev=expr=>JSON.parse(LW.eval('JSON.stringify('+expr+')'));
+  const say=(name,what,meas,ok,why)=>{if(ok)pass++;else fail++;
+    tb.insertAdjacentHTML('beforeend',row([
+      {html:'<span class="nm">'+name+'</span>'},
+      {html:what+(why?'<span class="why">'+why+'</span>':'')},
+      {html:meas,cls:'n'},
+      {html:ok?'<span class="pass">holds</span>':'<span class="fail">fails</span>'}]));};
+
+  /* Injection helpers, shared by every measurement below. `trial` injects a rule,
+     measures in the same frame, and removes it: a row that cannot go red is not a
+     check, so each one names the rule that must move its own number. `atSize` moves
+     the frame, which carries `innerWidth` and the media queries together rather
+     than lying about one of them. `lie` is the one thing `atSize` cannot do \u2014 it
+     makes the *gate* believe a width the frame is not laid out at, which is the
+     only way to ask "what if half of this condition were dropped" from a frame
+     that is already past it. */
+  const trial=(css,expr)=>{
+    const d=LW.document,s=d.createElement('style');s.textContent=css;d.head.appendChild(s);
+    const v=ev(expr);s.remove();return v;
+  };
+  const atSize=async(w,h,fn)=>{const f=$('#layframe');f.style.width=w+'px';f.style.height=h+'px';
+    await sleep(90);try{return await fn()}finally{f.style.width='';f.style.height='';await sleep(90)}};
+  const lie=async(w,fn)=>{const was=ev('innerWidth');
+    run("Object.defineProperty(this,'innerWidth',{value:"+w+",configurable:true})");
+    /* Restored as a *getter* over `documentElement.clientWidth`, not as the number
+       that was true when the lie went up. Putting the old number back leaves an own
+       property shadowing the real one, and because the frame is resized again
+       straight afterwards, that shadow then reports a width the frame no longer is
+       \u2014 which is how one row's lie silently disarmed every row after it. */
+    try{return await fn()}finally{run("Object.defineProperty(this,'innerWidth',{configurable:true,get:function(){return this.document.documentElement.clientWidth}})")}};
+
+  /* 1. The control is only offered where it means anything. Two widths, two frames:
+     the wide one must show it, the phone one must not — a toggle that appears on a
+     phone would be the only way to reach a layout its own viewport refuses. */
+  const wide=ev("getComputedStyle(document.querySelector('#lay')).display");
+  run("layMode='top';applyLayout()");
+  if(RW)RW.eval('tool=null;panel()');
+  const narrow=RW?JSON.parse(RW.eval("JSON.stringify({d:getComputedStyle(document.querySelector('#lay')).display,attr:document.body.getAttribute('data-layout'),dock:getComputedStyle(document.querySelector('.dock')).display,split:getComputedStyle(document.querySelector('#split')).display})")):null;
+  say('the toggle\u2019s reach','the layout button appears only where a side layout is allowed, so the control and the thing it controls cannot disagree',
+    '1194px: #lay '+wide+' \u00b7 393px: #lay '+(narrow?narrow.d:'?')+', dock '+(narrow?narrow.dock:'?')+', split '+(narrow?narrow.split:'?'),
+    wide!=='none'&&narrow&&narrow.d==='none'&&narrow.attr===null&&narrow.dock==='flex'&&narrow.split==='none',
+    'the phone path is the untouched one: no attribute, the dock still a flex column, the divider still nothing');
+
+  /* 2. The six states, cycled by clicking the real button, not by setting the
+     variable. `top` is represented by the attribute's absence, so it is checked as
+     absence \u2014 that is what keeps the phone rules live. Two states arrived with
+     the rail, and the row grew with them rather than dropping them: the cycle is
+     asserted whole, and the title each click reads is required to name the state the
+     *next* click lands on, which is the one thing that would catch a header whose
+     vocabulary had drifted from its behaviour. */
+  const seen=[],titled=[];
+  for(let i=0;i<6;i++){titled.push(ev("document.querySelector('#lay').title"));
+    run("document.querySelector('#lay').click()");await sleep(30);
+    seen.push(ev("document.body.getAttribute('data-layout')"));}
+  const order=seen.map(s=>s||'unset').join(' ');
+  const named=titled.map(t=>(t.split('tap for ')[1]||'').trim());
+  const landed=seen.map(s=>s||'top');
+  const titleOk=named.length===6&&named.every((n,i)=>n===landed[i]);
+  say('the six states','clicking the toggle walks top, rail, rail-l, left, right and full, and comes back to the top where it started \u2014 and each title names the state the next tap lands on',
+    'cycle: '+order+'; titles '+named.join(' / ')+' name the next one ('+(titleOk?'all 6':'MISMATCH')+')',
+    order==='rail rail-l left right full unset'&&titleOk,
+    'the icon shows the layout you are in and names the one a tap would give you');
+
+  /* 3. The grid is real geometry, not a label. 40% / 12px / the rest, with the
+     header at 56px and no page scroll \u2014 the reference measured 477.6 / 12 / 704.4
+     at this viewport, so these are the same numbers reached independently. */
+  run("layMode='left';applyLayout()");await sleep(30);
+  const g=ev("(function(){var c=getComputedStyle(document.body).gridTemplateColumns.split(' ').map(parseFloat);var b=document.querySelector('.bar').getBoundingClientRect(),tl=document.querySelector('.tlw').getBoundingClientRect(),sp=document.querySelector('#split').getBoundingClientRect();return {c:c,bar:Math.round(b.height),tl:Math.round(tl.width),split:Math.round(sp.width),sw:document.documentElement.scrollWidth,iw:innerWidth,dock:getComputedStyle(document.querySelector('.dock')).display}})()");
+  /* Tolerances, not equality. The frame is 1193.9914px wide, `--pw` is 40% of
+     that, and the fixed 12px track absorbs the remainder — so it measures
+     11.9886. Asserting `===12` was asserting sub-pixel arithmetic that changed
+     with the width of the page hosting the check, which is not what the row
+     claims. */
+  const colsOk=g.c.length===3&&Math.abs(g.c[0]-1194*.4)<1&&Math.abs(g.c[1]-12)<.5&&Math.abs(g.c[2]-(1194-g.c[0]-g.c[1]))<1;
+  say('the split','the body becomes a grid whose preview column is 40%, a 12px divider, and the timeline in the rest \u2014 with the dock dissolved into it',
+    'columns '+g.c.map(n=>Math.round(n)).join(' / ')+'px, header '+g.bar+'px, timeline '+g.tl+'px, dock '+g.dock+', scrollWidth '+g.sw+'/'+g.iw,
+    colsOk&&g.bar===56&&g.split===12&&g.dock==='contents'&&g.sw===g.iw,
+    'display:contents is the one line that lets the dock\u2019s children land in different columns');
+
+  /* 4. `full` is the state most likely to be shipped broken, because it is the one
+     that hides things. The transport lives inside `.ar`, so hiding `.ar` would leave
+     a preview nobody could play \u2014 the check is that the play button survives. */
+  run("layMode='full';applyLayout()");await sleep(30);
+  const f=ev("(function(){return {play:!!document.querySelector('#play').offsetParent,tools:!!document.querySelector('.tools').offsetParent,tlw:!!document.querySelector('.tlw').offsetParent,ro:!!document.querySelector('.ro').offsetParent}})()");
+  say('full keeps the transport','the single-column mode hides the timeline and the ruler, and keeps the play button and the tool row',
+    'play '+(f.play?'visible':'gone')+', tools '+(f.tools?'visible':'gone')+', timeline '+(f.tlw?'visible':'hidden')+', ruler '+(f.ro?'visible':'hidden'),
+    f.play&&f.tools&&!f.tlw&&!f.ro,'a layout that hides the transport hides the only control that has one job');
+
+  /* 5. The phone numbers, as a diff against HEAD rather than a description of it. */
+  let phone=null;
+  if(RW){
+    /* The ratio is pinned first because it is not a constant of the page: an earlier
+       probe opens the Format sheet, and whichever ratio a user left on there changes
+       the header (9:16 turns on `body.gut`, which stacks the icons into a 116px
+       column) and the preview height. Pinning it makes this a diff against a stated
+       baseline rather than a diff against whatever ran before. */
+    RW.eval("tool=null;panel()");
+    RW.eval("proj.ar='9:16';fitView()");
+    await sleep(60);
+    phone=JSON.parse(RW.eval('JSON.stringify((function(){var g=function(s){return Math.round(document.querySelector(s).getBoundingClientRect().height)};return {bar:g(".bar"),view:g(".view"),ar:g(".ar"),ro:g(".ro"),tlw:g(".tlw"),tools:g(".tools")}})())'));
+  }
+  const diff=phone?Object.keys(PHONE_BASE).filter(k=>phone[k]!==PHONE_BASE[k]):['row frame unavailable'];
+  /* The header is absolutely positioned in the gut state \u2014 it overlays the preview
+     rather than taking a row \u2014 so it is compared but deliberately not summed. */
+  const stack=phone?phone.view+phone.ar+phone.ro+phone.tlw+phone.tools:0;
+  say('the phone is untouched','in the stacked layout every row keeps the exact height it had before the grid existed, and the stack still fills the viewport',
+    phone?Object.keys(PHONE_BASE).map(k=>k+' '+phone[k]).join(' \u00b7 ')+' \u2192 stack '+stack:'not measured',
+    phone&&!diff.length&&stack===844,
+    'measured from the build at HEAD at 393x844 with a 9:16 project and one clip');
+
+  /* 6. The layout sheet. It is the fourth way into the four states and the first
+     one that shows them: the claim is that it carries the same four in the same
+     vocabulary, in the aspect-ratio row's own tiles, and that it is the column's
+     width \u2014 because it is the same sheet, in the same place. */
+  run("layMode='left';applyLayout()");await sleep(30);
+  run("tool='layout';panel()");await sleep(30);
+  const ls=ev("(function(){var P=document.getElementById('panel');return {eh:P.querySelector('.eh').textContent,tiles:[].map.call(P.querySelectorAll('[data-lay]'),function(t){return t.dataset.lay+(t.classList.contains('on')?'*':'')}).join(' '),n:P.querySelectorAll('[data-lay]').length,foot:[].map.call(P.querySelectorAll('.ef button'),function(b){return b.textContent}),w:Math.round(P.getBoundingClientRect().width),col:Math.round(document.querySelector('.ro').getBoundingClientRect().width),sw:document.documentElement.scrollWidth,iw:innerWidth}})()");
+  /* The width assertion is `col - 20` and not `col`, which is the 10px-a-side
+     margin, and the difference is a bug this row used to hide. The sheet is inset
+     10px from each side of the column, so `w === col` was only ever true while the
+     `@media(min-width:900px)` rule's `width:min(960px,100%)` was winning and
+     letting the margins overflow the page \u2014 `scrollWidth` 1204 on a 1194 screen.
+     `width:auto` fixed the overflow and this row went red, which is the row doing
+     its job: it now asserts the inset sheet *and* that the page does not scroll. */
+  say('the layout sheet','the six states are offered as tiles in the aspect-ratio row\u2019s own tiles, with the state you are in lit and one Done to leave, inset in the column rather than overflowing it',
+    'title '+ls.eh+' \u00b7 tiles '+ls.tiles+' \u00b7 footer '+ls.foot.join('/')+' \u00b7 '+ls.w+'px in a '+ls.col+'px column (\u2212'+((ls.col-ls.w)/2)+'px each side) \u00b7 scrollWidth '+ls.sw+'/'+ls.iw,
+    ls.eh==='Layout'&&ls.tiles==='top rail rail-l left* right full'&&ls.n===6&&ls.foot.length===1&&ls.foot[0]==='Done'&&Math.abs((ls.col-ls.w)-20)<=1&&ls.sw===ls.iw,
+    'a tile row is the one shape that makes six options read as six options');
+
+  /* 7. A tile goes through `applyLayout`, not around it, so the header icon, the
+     rail glyph and the grid cannot end up disagreeing \u2014 and `full`, which has no
+     column for a sheet to live in, closes it without taking the transport with
+     it. That last part is the bug the popover in `full` exists to prevent. */
+  const tw=ev("(function(){var P=document.getElementById('panel');P.querySelector('[data-lay=right]').click();return {attr:document.body.getAttribute('data-layout'),lit:!!P.querySelector('[data-lay=right].on'),title:document.querySelector('#lay').title}})()");
+  run("document.querySelector('#panel [data-lay=full]').click()");await sleep(30);
+  const tf=ev("{attr:document.body.getAttribute('data-layout'),es:document.body.classList.contains('es'),play:!!document.querySelector('#play').offsetParent}");
+  say('a tile applies the layout','tapping a tile moves the real layout and the header icon together; tapping Preview only closes the sheet and leaves the transport',
+    'right: '+tw.attr+', tile lit '+tw.lit+', header \u201c'+tw.title+'\u201d \u2192 full: '+tf.attr+', sheet '+(tf.es?'open':'closed')+', play '+(tf.play?'visible':'gone'),
+    tw.attr==='right'&&tw.lit&&/right/.test(tw.title)&&tf.attr==='full'&&!tf.es&&tf.play,
+    'two controls for one decision are safe only when they call the same function');
+
+  /* 8. The rail entry is offered exactly where the header icon is. Two gates for
+     one decision is how a phone ends up able to open a chooser for a layout its
+     own viewport refuses. */
+  const railWide=ev("getComputedStyle(document.querySelector('.tools button[data-t=layout]')).display");
+  const railPhone=RW?JSON.parse(RW.eval("JSON.stringify({rail:getComputedStyle(document.querySelector('.tools button[data-t=layout]')).display,head:getComputedStyle(document.querySelector('#lay')).display})")):null;
+  say('the rail entry is for iPads','the Layout button appears in the tool row at the same breakpoint as the header\u2019s cycle icon, and appears in neither place on a phone',
+    '1194px: rail '+railWide+' \u00b7 393px: rail '+(railPhone?railPhone.rail:'?')+', header '+(railPhone?railPhone.head:'?'),
+    railWide!=='none'&&railPhone&&railPhone.rail==='none'&&railPhone.head==='none',
+    'offering a chooser for a layout the viewport refuses is a control that does nothing');
+
+  /* 9-14. RAIL-LAYOUT-PLAN.md 13.1: the rail. Four rows measure the state at the
+     iPad's own size and two measure its two gates at sizes the frame has to be
+     moved to, because a `clamp()` or a condition that only holds at one viewport
+     is exactly what these exist to catch. Each injects the failure it is meant to
+     catch and requires its own number to move. */
+  const railGeom="(function(){var R=function(s){var e=document.querySelector(s);if(!e)return {w:0,h:0};var r=e.getBoundingClientRect();return {w:Math.round(r.width),h:Math.round(r.height)}};var P=document.getElementById('panel'),eb=P.querySelector('.eb'),rows=getComputedStyle(document.body).gridTemplateRows.split(' '),cs=getComputedStyle(document.body).gridTemplateColumns.split(' ');return {cv:R('#cv'),view:R('.view'),tlw:R('.tlw'),panel:R('#panel'),film:R('#track').h,audio:R('#atrack').h,band:Math.round(parseFloat(rows[3])),track:Math.round(parseFloat(cs[2])),eb:eb?{s:eb.scrollHeight,c:eb.clientHeight,ov:getComputedStyle(eb).overflowY}:null,pov:getComputedStyle(P).overflow,vw:innerWidth,vh:innerHeight,sw:document.documentElement.scrollWidth,sh:document.documentElement.scrollHeight}})()";
+
+  /* (a) The column is free. The claim is not "the sheet is small" but "the sheet is
+     paid for out of space the picture was not using": with a 16:9 project at
+     1194x834 the picture is height-limited, so it costs nothing to widen the band
+     beside it until the column takes more than the spare space. The row asserts the
+     pixels *and* the track, and the injection reserves the column past the width the
+     spare space can absorb \u2014 the reason the plan's own 320px injection would have
+     been a no-op dressed as a check at this viewport. */
+  run("layMode='rail';applyLayout();tool=null;panel()");await sleep(50);
+  const rc=ev(railGeom);
+  run("tool='adjust';panel()");await sleep(50);
+  const rOpen=ev(railGeom);
+  const freeInj=trial("body[data-layout=rail]{grid-template-columns:minmax(0,1fr) 12px 520px var(--rw)}",
+    "(function(){var keep=tool;tool=null;panel();var c=document.getElementById('cv').getBoundingClientRect(),t=getComputedStyle(document.body).gridTemplateColumns.split(' ');tool=keep;panel();return {w:Math.round(c.width),h:Math.round(c.height),track:Math.round(parseFloat(t[2]))}})()");
+  say('the column is free','the sheet is paid for out of the band beside the picture rather than out of the picture: with it open the preview is the same size it is with it closed, and a closed sheet reserves no column at all',
+    'canvas '+rc.cv.w+'\u00d7'+rc.cv.h+' closed \u2192 '+rOpen.cv.w+'\u00d7'+rOpen.cv.h+' open (sheet '+rOpen.panel.w+'\u00d7'+rOpen.panel.h+'), panel track '+rc.track+'\u2192'+rOpen.track+'px, page '+rOpen.sw+'\u00d7'+rOpen.sh+' in '+rOpen.vw+'\u00d7'+rOpen.vh,
+    rc.cv.w===rOpen.cv.w&&rc.cv.h===rOpen.cv.h&&rc.track===0&&rOpen.track>=280&&rOpen.panel.h>0&&rOpen.sw===rOpen.vw&&rOpen.sh===rOpen.vh,
+    'reserving the column at 520px \u21d2 the closed picture measures '+freeInj.w+'\u00d7'+freeInj.h+' on a '+freeInj.track+'px track, against '+rc.cv.w+'\u00d7'+rc.cv.h+' with no track at all');
+
+  /* (b) The timeline survives. The state exists to give the sheet a column, not to
+     cost the timeline its row \u2014 which is the one thing a side-by-side layout is
+     most likely to spend. */
+  run("layMode='rail';applyLayout();sel={k:'c',id:1};selMore.clear();tool='adjust';panel()");await sleep(50);
+  const twin=ev(railGeom);
+  const tlInj=trial("body[data-layout=rail].es .dock{display:none}", railGeom);
+  say('the timeline survives','with the sheet open the timeline is still at least the lane floor and both lanes are drawn, at the iPad\u2019s own size',
+    'timeline '+twin.tlw.w+'\u00d7'+twin.tlw.h+', film lane '+twin.film+'px, audio lane '+twin.audio+'px, sheet '+twin.panel.w+'px',
+    twin.tlw.h>=164&&twin.film>0&&twin.audio>0&&twin.panel.w>0&&tlInj.tlw.h===0,
+    'hiding the dock (the `top` rule) \u21d2 the timeline measures '+tlInj.tlw.w+'\u00d7'+tlInj.tlw.h+', so this row is measuring the band rather than describing it');
+
+  /* (c) The band is bounded. A row of `auto` would let the timeline grow with the
+     window and squeeze the preview, which is the failure the clamp prevents. */
+  const wantBand=Math.round(Math.min(300,Math.max(240,twin.vh*.3)));
+  const bandInj=trial("body[data-layout=rail]{grid-template-rows:auto minmax(0,1fr) auto min(38vh,340px) auto}", railGeom);
+  say('the band is bounded','the rail gives the timeline the same clamped band every other layout gives it, so it cannot become the state where the timeline grows with the window',
+    'row 4 = '+twin.band+'px, clamp(240, 30vh, 300) at '+twin.vh+' tall = '+wantBand+'px',
+    Math.abs(twin.band-wantBand)<=2,
+    'injecting min(38vh,340px) \u21d2 '+bandInj.band+'px, which is what a row that trusted `auto` would report');
+
+  /* (d) The rail is reachable. The fifteen-button rail is its worst case and needs
+     a clip selected to exist, so the row selects one: measured with nothing selected
+     it would be five buttons and would pass a rail that failed on the real thing. */
+  const railFit=await atSize(1024,768,async()=>{
+    run("layMode='rail';applyLayout();sel={k:'c',id:1};selMore.clear();tool=null;panel()");await sleep(70);
+    return ev("(function(){var T=document.getElementById('tools'),bs=[].slice.call(document.querySelectorAll('.tools button')),hs=bs.map(function(b){return Math.round(b.getBoundingClientRect().height)});return {n:bs.length,min:Math.min.apply(null,hs),scroll:T.scrollHeight,client:T.clientHeight,w:Math.round(T.getBoundingClientRect().width),vw:innerWidth,vh:innerHeight}})()");
+  });
+  const railInj=await atSize(1024,768,()=>trial("body[data-layout=rail] .tools button{height:26px}",
+    "(function(){var b=document.querySelectorAll('.tools button');return Math.min.apply(null,[].map.call(b,function(x){return Math.round(x.getBoundingClientRect().height)}))})()"));
+  say('the rail is reachable','with a clip selected every tool is at least a thumb tall and the whole rail fits a 768-tall iPad without scrolling, so the tools are reachable rather than merely present',
+    railFit.n+' buttons, shortest '+railFit.min+'px, rail '+railFit.w+'px wide, '+railFit.scroll+' of '+railFit.client+'px tall at '+railFit.vw+'\u00d7'+railFit.vh,
+    railFit.n>=15&&railFit.min>=44&&railFit.scroll<=railFit.client&&railFit.w<80,
+    'the row-shaped rail\u2019s own 26px buttons \u21d2 shortest '+railInj+'px, under the 44px floor the rest of the app holds to');
+
+  /* (e) The gate is two conditions, and each is checked by making a refused frame
+     believe the one thing that would let it through: the width is lied up to 1194 at
+     899x700, and past the height at 834x1194. Asserting the four outcomes alone could
+     not tell a working gate from one that had quietly lost half of itself. */
+  const gateAt=async(w,h)=>atSize(w,h,async()=>{
+    run("tool='layout';panel()");await sleep(70);
+    const n=ev("document.querySelectorAll('#panel [data-lay]').length");
+    run("layMode='rail';applyLayout()");await sleep(70);
+    return {attr:ev("document.body.getAttribute('data-layout')"),n:n,w:ev('innerWidth'),h:ev('innerHeight')};
+  });
+  const askRail=async(w,h,lied)=>atSize(w,h,()=>lied?lie(lied,()=>{run("layMode='rail';applyLayout()");return ev("document.body.getAttribute('data-layout')")}):(()=>{run("layMode='rail';applyLayout()");return ev("document.body.getAttribute('data-layout')")})());
+  const gSmall=await gateAt(899,700),gEdge=await gateAt(900,700),gTall=await gateAt(834,1194),gPad=await gateAt(1194,834);
+  const lieSmall=await askRail(899,700,1194),lieTall=await askRail(834,1194,1200);
+  say('the gate is two','the rail is offered only on a landscape screen at least 900px wide; at 899, and in portrait, the state falls back to the top and the Layout sheet stops offering it in the same breath',
+    (gSmall.attr||'top')+' at '+gSmall.w+'\u00d7'+gSmall.h+' ('+gSmall.n+' tiles) \u00b7 '+(gEdge.attr||'top')+' at '+gEdge.w+'\u00d7'+gEdge.h+' ('+gEdge.n+') \u00b7 '+(gTall.attr||'top')+' at '+gTall.w+'\u00d7'+gTall.h+' ('+gTall.n+') \u00b7 '+(gPad.attr||'top')+' at '+gPad.w+'\u00d7'+gPad.h+' ('+gPad.n+')',
+    !gSmall.attr&&gSmall.n===4&&gEdge.attr==='rail'&&gEdge.n===6&&!gTall.attr&&gTall.n===4&&gPad.attr==='rail'&&gPad.n===6&&lieSmall==='rail'&&lieTall==='rail',
+    'lying the width to 1194 at 899\u00d7700 \u21d2 '+lieSmall+', and past the height at 834\u00d71194 \u21d2 '+lieTall+': each half of the condition moves the answer on its own');
+
+  /* (f) Six states, six tiles. The count is taken from the DOM, not from the array,
+     so a map that silently truncated would show up here rather than in the header. */
+  run("layMode='rail';applyLayout();tool='layout';panel()");await sleep(60);
+  const six=ev("(function(){var t=[].slice.call(document.getElementById('panel').querySelectorAll('[data-lay]'));return {n:t.length,drawn:t.filter(function(x){return x.offsetParent!==null}).length,order:t.map(function(x){return x.dataset.lay}).join(' '),lit:t.filter(function(x){return x.classList.contains('on')}).length,states:LAYOUTS.length,head:LAYOUTS.join(' ')}})()");
+  const sixInj=trial("#panel [data-lay]:nth-child(6){display:none}",
+    "(function(){return [].filter.call(document.getElementById('panel').querySelectorAll('[data-lay]'),function(x){return x.offsetParent!==null}).length})()");
+  say('six states, six tiles','the Layout sheet draws one tile per state, in the header cycle\u2019s own order and vocabulary, with exactly one lit \u2014 the two surfaces a user can set a layout from cannot drift apart',
+    six.drawn+' of '+six.n+' tiles drawn in \u201c'+six.order+'\u201d, '+six.states+' states in \u201c'+six.head+'\u201d, '+six.lit+' lit',
+    six.states===6&&six.n===6&&six.drawn===6&&six.order===six.head&&six.lit===1&&sixInj===5,
+    'hiding the sixth tile \u21d2 '+sixInj+' drawn: the count is the DOM\u2019s, not a constant\u2019s');
+
+  /* 15-19. IPAD-LAYOUT-PLAN.md 13.1: the sheet is *bounded* in the split layout.
+     R6b is one rule — `align-self:start;height:min(46dvh,50%)` — and it exists
+     because `grid-area:tlw` alone put the sheet in the column's 1fr row, where the
+     row's own default `align-self:stretch` made it fill whatever the column had
+     left (measured 629px of an 834-tall screen at 1194x834). These five rows each
+     measure, then inject the exact failure they are meant to catch *in the same
+     frame*, measure again, and require the number to have moved. A row that cannot
+     go red is not a check, and the     style is removed immediately so an injection cannot leak into the next row.
+     Both helpers are defined once, at the top of this section. */
+
+  const sheetGeom="(function(){var P=document.getElementById('panel'),r=P.getBoundingClientRect(),ro=document.querySelector('.ro').getBoundingClientRect(),ar=document.querySelector('.ar').getBoundingClientRect(),row=ar.top-ro.bottom;return {h:Math.round(r.height),top:Math.round(r.top),bottom:Math.round(r.bottom),row:Math.round(row),roB:Math.round(ro.bottom),arT:Math.round(ar.top),ih:innerHeight,align:getComputedStyle(P).alignSelf,want:Math.round(Math.min(innerHeight*.46,row*.5)),vh46:Math.round(innerHeight*.46)}})()";
+  run("layMode='left';applyLayout();tool='adjust';panel()");await sleep(40);
+  const sb=ev(sheetGeom);
+  const sb100=trial("body[data-layout=left] #panel{height:100% !important}",sheetGeom);
+  const sb46=trial("body[data-layout=left] #panel{height:46vh !important}",sheetGeom);
+  /* The pre-R6b sheet, exactly: stretch with no height is what `grid-area:tlw`
+     alone produced, margins included. Injecting it is what proves these rows
+     would have been red before the bound landed. */
+  const sbOld=trial("body[data-layout=left] #panel{align-self:stretch !important;height:auto !important}",sheetGeom);
+  const sbBig=trial("body[data-layout=left] #panel{height:140% !important}",sheetGeom);
+  const sbStart=trial("body[data-layout=left] #panel{align-self:start !important}",sheetGeom);
+  const halves=Math.min(sb.vh46,sb.row*.5),larger=Math.max(sb.vh46,sb.row*.5);
+
+  say('the sheet is bounded','in the split layout the sheet is capped at the smaller of half the timeline row and the phone\u2019s own sheet height, so it stops filling the column and stops covering the chrome',
+    'panel '+sb.h+'px \u00b7 candidates: 46% of '+sb.ih+' = '+sb.vh46+', half of the '+sb.row+'px row = '+Math.round(sb.row*.5)+' \u00b7 ruler '+sb.roB+' \u2264 '+sb.top+' \u2264 '+sb.bottom+' \u2264 '+sb.arT+' transport',
+    Math.abs(sb.h-halves)<=2&&sb.roB<=sb.top&&sb.bottom<=sb.arT,
+    'the same frame measured '+sbOld.h+'px before the bound \u2014 that is the column-filling sheet this rule removes');
+
+  say('the bound takes the smaller','where the two candidates differ the sheet takes the lower one \u2014 never taller than half the timeline, never taller than the sheet a phone gets',
+    'reported '+sb.h+'px, not '+Math.round(larger)+'px (the larger candidate)',
+    larger>halves+4&&Math.abs(sb.h-halves)<=2&&Math.abs(sb46.h-sb.h)>4,
+    'injecting height:46vh \u21d2 '+sb46.h+'px, so "is it the min or the max" is a question this row can answer');
+
+  say('it does not stretch','the sheet keeps its own height; a grid item that stretches ignores the height it was given, which is the whole bug',
+    'computed align-self '+sb.align+'; injected stretch reports '+sbOld.align+' and '+sbOld.h+'px',
+    sb.align!=='stretch'&&sbOld.align==='stretch'&&sbOld.h>sb.h+4,
+    'align-self:start is what makes the height mean anything, so it is asserted rather than assumed');
+
+  /* Both edges, because which one a too-tall sheet eats depends on where it is
+     anchored: at `end` it grows *upward* over the ruler, at `start` it grows down
+     over the transport. Asserting the pair is what makes this row anchor-agnostic,
+     and it is why the failure above is "the top crossed the ruler" rather than
+     "the bottom crossed the transport" \u2014 an injection that only watched the
+     transport would pass a sheet that had covered the whole timeline strip. */
+  say('the chrome survives','a sheet taller than its row would cover the ruler or the transport; at the bound the ruler is above it and the transport below it',
+    'ruler '+sb.roB+' \u2264 top '+sb.top+', bottom '+sb.bottom+' \u2264 transport '+sb.arT+'; injected height:140% \u21d2 top '+sbBig.top+' against ruler '+sbBig.roB,
+    sb.roB<=sb.top&&sb.bottom<=sb.arT&&sbBig.top<sbBig.roB,
+    'with a bottom anchor a too-tall sheet overflows upward, so the row is caught by its ruler edge');
+
+  /* And the anchor itself, which is the difference between a bottom sheet and one
+     hanging off the ruler \u2014 the two are the same height, so nothing above this
+     line would notice the change. The 8px is the panel's own bottom margin. */
+  say('it docks at the bottom','the sheet sits directly above the transport, with the space the bound gave back collected above it rather than between it and the buttons',
+    'align-self '+sb.align+' \u00b7 bottom '+sb.bottom+' is '+(sb.arT-sb.bottom)+'px above the transport, with '+(sb.top-sb.roB)+'px of column free above the sheet',
+    sb.align==='end'&&Math.abs((sb.arT-sb.bottom)-8)<=1&&sb.top>sb.roB&&sbStart.bottom<sb.bottom-4,
+    'injecting align-self:start \u21d2 bottom '+sbStart.bottom+', the sheet hanging from the ruler: it moves the gap, which is the whole point of the row');
+
+  /* The phone is the other half of the promise: 46% is *its* number, and a rule
+     that leaked out of the split states would move it. All eleven tools and all
+     four project ratios, because the phone's sheet is a constant rather than a
+     content measurement \u2014 `fitView()`\u2019s VIEW_FLOOR is what makes it one. */
+  const evRW=expr=>JSON.parse(RW.eval('JSON.stringify('+expr+')'));
+  const phoneSheet="(function(){var g=function(s){return Math.round(document.querySelector(s).getBoundingClientRect().height)},P=document.getElementById('panel'),h=[],tools=['speed','volume','filter','adjust','rotate','trans','aspect','canvas','layout','export','rearrange'],ars=['9:16','16:9','1:1','4:5'];ars.forEach(function(a){proj.ar=a;if(typeof applyProj==='function')applyProj();tools.forEach(function(t){tool=t;panel();h.push(Math.round(P.getBoundingClientRect().height))})});proj.ar='9:16';if(typeof applyProj==='function')applyProj();tool='adjust';panel();var r={min:Math.min.apply(null,h),max:Math.max.apply(null,h),n:h.length,sheet:Math.round(P.getBoundingClientRect().height),view:g('.view'),bodyH:Math.round(document.body.clientHeight)};tool=null;panel();return r})()";
+  const ph=RW?evRW(phoneSheet):null;
+  /* The injection has to be one that *can* move this number. `height:50%` looks
+     like it should and does not: the phone's `#panel` is a `flex:1 1 auto` item in
+     the body's column next to a `.view` pinned at `flex:0 0 Npx`, so the panel just
+     absorbs the negative free space and lands back on 388 \u2014 a no-op dressed as a
+     failure. `flex:0 0 300px` is the honest one: it is a rule that moves the phone
+     sheet, which is exactly what this row claims it would catch. */
+  let phInj=null;
+  if(RW){
+    const d=RW.document,s=d.createElement('style');
+    s.textContent='#panel{flex:0 0 300px !important}';
+    d.head.appendChild(s);phInj=evRW("(function(){tool='adjust';panel();var P=document.getElementById('panel'),r=Math.round(P.getBoundingClientRect().height);tool=null;panel();return {sheet:r}})()");
+    s.remove();
+  }
+  say('the bound is not on the phone','the bound is scoped to the two split states, so a phone\u2019s sheet is the same 388px it always was, for every tool and every project ratio',
+    ph?(ph.n+' measurements, sheet '+ph.min+'\u2013'+ph.max+', view '+ph.view+', view+sheet '+ph.view+'+'+ph.sheet+'='+(ph.view+ph.sheet)+' vs body '+ph.bodyH+' \u00b7 injected unscoped flex:0 0 300px \u21d2 '+phInj.sheet):'not measured',
+    !!ph&&ph.n===44&&ph.min===388&&ph.max===388&&ph.view===456&&ph.view+ph.sheet===ph.bodyH&&phInj&&phInj.sheet!==388,
+    'an unscoped height moves it, so this row is a real diff against the phone baseline and not a description of it');
+
+  run("tool=null;layMode='top';applyLayout()");
+  return {pass,fail};
+}
+
+async function bootPersist(){
+  const f=$('#pframe');
+  await new Promise(res=>{
+    if(f.contentWindow&&f.contentWindow.eval&&f.contentWindow.eval('typeof contentId')==='function')return res();
+    f.addEventListener('load',res,{once:true});
+    setTimeout(res,6000);
+  });
+  const w=f.contentWindow;
+  try{
+    if(w.eval('typeof contentId')!=='function')throw new Error('persistence globals not reachable');
+    if(!w.eval('!!db'))throw new Error('the mock did not open its database');
+    PW=w;return true;
+  }catch(e){PW=null;return false}
+}
+/* A real file, small enough to hash in a blink. The bytes matter: the whole
+   claim is that the *content* decides the identity, so two fixtures that differ
+   in a single byte must not share a store entry. */
+const pRun=c=>PW.eval(c);
+/* Read a value out of the frame without letting it cross as a Promise. Awaiting
+   inside the frame and storing on a global, then serialising a plain value, is
+   the only version of this that works: JSON.stringify(promise) is "{}". */
+const pInto=async(g,expr)=>{
+  /* `eval` runs as a classic script, so it cannot use top-level await at all —
+     the first draft did and every row after the first one died on "await is not
+     defined". The promise is parked on a global inside the frame and this polls
+     for the plain value, which is also the only thing that survives
+     JSON.stringify. */
+  await pRun('window.'+g+'=null;window.__pe=null;(function(){'+expr+'.then(function(v){window.'+g+'=v},function(e){window.__pe=String((e&&e.message)||e)})})()');
+  for(let i=0;i<800;i++){
+    const v=pEv('window.'+g);
+    if(v!==null)return v;
+    const e=pEv('window.__pe');
+    if(e)throw new Error(e);
+    await sleep(10);
+  }
+  throw new Error('timed out reading '+g);
+};
+const pEv=e=>JSON.parse(PW.eval('JSON.stringify('+e+')'));
+const mkFile=(name,bytes)=>new File([new Uint8Array(bytes)],name,{type:'video/mp4'});
+const DOCV_TEST=1;
+/* `docLocked` is a plain let inside the frame, so it can be cleared from out
+   here; this keeps the reset in one place rather than spread over two rows. */
+const docLockedReset=()=>pRun('docLocked=false;saveDirty=false');
+
+async function runPersist(){
+  const tb=$('#perT tbody');tb.innerHTML='';
+  let pass=0,fail=0;
+  if(!PW&&!await bootPersist()){
+    tb.insertAdjacentHTML('beforeend',row([{html:'<span class="nm">persistence</span>'},
+      {html:'could not reach the persistence instance'},{html:'\u2014',cls:'n'},
+      {html:'<span class="fail">not run</span>'}]));
+    return {pass:0,fail:1};
+  }
+  const say=(name,what,meas,ok,why)=>{if(ok)pass++;else fail++;
+    tb.insertAdjacentHTML('beforeend',row([
+      {html:'<span class="nm">'+name+'</span>'},
+      {html:what+(why?'<span class="why">'+why+'</span>':'')},
+      {html:meas,cls:'n'},
+      {html:ok?'<span class="pass">holds</span>':'<span class="fail">fails</span>'}]));};
+  try{
+    await pRun('forgetAll()');
+
+    /* 1. Identity is the bytes. */
+    PW.__A=mkFile('a.mp4',[1,2,3,4,5,6,7,8]);
+    PW.__B=mkFile('b.mp4',[1,2,3,4,5,6,7,9]);
+    const r1=await pRun('contentId(window.__A)');
+    const r2=await pRun('contentId(window.__B)');
+    const r3=await pRun('contentId(window.__A)');
+    say('content hash','the same bytes always get the same id and different bytes always get a different one, so importing a file twice is recognised rather than guessed',
+      'two 8-byte files, one byte apart \u2192 '+(r1!==r2?'2 distinct ids':'COLLIDED')+'; hashed again \u2192 '+(r1===r3?'the same id':'DIFFERENT'),
+      r1===r3&&r1!==r2,'a name is not an identity: two takes called take-01.mp4 are not the same take');
+
+    /* 2. A real Blob, stored once and read back whole. */
+    const size=4096,arr=new Uint8Array(size);
+    for(let i=0;i<size;i++)arr[i]=i%251;
+    PW.__F=new File([arr],'probe.mp4',{type:'video/mp4'});
+    const mid=await pRun('contentId(window.__F)');
+    PW.__M=mid;
+    const wrote=await pRun("putMedia(window.__M,window.__F,{name:'probe',dur:12.5})");
+    const back=await pInto('__b',"get1('media',window.__M).then(function(m){return m&&{name:m.name,dur:m.dur,size:m.blob.size,type:m.blob.type}})");
+    /* Not `instanceof Blob`: the iframe has its own realm and its own Blob
+       constructor, so that test fails on a perfectly good Blob. Size and type
+       are what actually say "the same bytes came back". */
+    const ok2=!!wrote&&!!back&&back.size===size&&back.type==='video/mp4'&&back.name==='probe'&&back.dur===12.5;
+    say('media round trip','an imported file is stored once, whole, and comes back as the same bytes with the name and length the clip was cut to',
+      back?back.name+', '+back.size+' bytes, type '+back.type+', dur '+back.dur:'nothing stored',
+      ok2,'the edit is kilobytes and the media is not, which is why they are two stores');
+
+    /* 3. The edit itself, through the same document the app writes. */
+    PW.__SRC={v:{duration:12.5,currentTime:0,readyState:1,videoWidth:1280,videoHeight:720,playbackRate:1,volume:1,muted:true,pause:function(){},play:function(){return Promise.resolve()},addEventListener:function(){},removeEventListener:function(){}},mid,name:'probe',dur:12.5,th:['u0','u1'],st:6.25,pk:new Float32Array([0,.5,1])};
+    PW.__CLIP={id:2,src:1,in:1.5,out:9,f:'vivid',fs:.8,sp:1,vol:1,vig:0,grain:0,ad:{},opacity:.9,rev:true,s:0};
+    const saved=await pRun("(function(){srcs={1:window.__SRC};clips=[window.__CLIP];texts=[];return put1('proj',{id:PROJID,updatedAt:Date.now(),doc:docNow()}).then(function(){return true},function(){return false})})()");
+    const back2=await pInto('__p',"get1('proj',PROJID)");
+    const d2=back2&&back2.doc;
+    const ok3=saved&&d2&&d2.v===1&&d2.srcs.length===1&&d2.srcs[0].mid===mid&&d2.srcs[0].k===1&&
+      d2.clips[0].in===1.5&&d2.clips[0].f==='vivid'&&d2.clips[0].opacity===.9&&d2.clips[0].rev===true;
+    say('the edit round trip','the cut, the look and the trim window come back exactly, tagged with the schema version they were written at',
+      d2?('v'+d2.v+', src '+String(d2.srcs[0].mid).slice(0,10)+'\u2026, in '+d2.clips[0].in+'s, '+d2.clips[0].f+' at '+(d2.clips[0].fs*100)+'%'):'nothing stored',
+      ok3,'a stored document with no version is a document nobody can migrate later');
+
+    /* 4. A document written by an older build: the clip has no `opacity` key at
+       all, because the build that wrote it predates the knob. */
+    const oldDoc='{clips:[{id:7,src:1,in:0,out:4,f:"none",fs:1,sp:1,vol:1}],texts:[{id:9,t:"hi",s:0,d:1}],proj:{ar:"9:16"},srcs:[{k:1,mid:"x",name:"n",dur:4}]}';
+    const mig=pEv('migrateDoc('+oldDoc+')');
+    const c0=mig.clips[0];
+    const ok4=c0.opacity===1&&c0.rev===false&&c0.blue===0&&c0.blur===0&&c0.ad&&c0.tr&&
+      mig.proj.ar==='9:16'&&mig.proj.bg==='#000000'&&mig.texts[0].tp==='rainbow'&&mig.v===1;
+    say('an old document','a clip stored before Opacity existed comes back with a real opacity instead of undefined, and every field added since gets its default in one place',
+      'no opacity key in \u2192 '+String(c0.opacity)+', rev '+c0.rev+', blue '+c0.blue+', tr {}, v'+mig.v,
+      ok4,'undefined is not a default: it is the difference between a restored project and a black canvas');
+
+    /* 5. Refcounts. Two clips share one source, so deleting one of them must
+       collect nothing — and that is the case a stored counter gets wrong,
+       because Duplicate is where the second reference appears. */
+    PW.__SEC=new File([new Uint8Array([9,9,9,9,9,9,9,9])],'second.mp4',{type:'video/mp4'});
+    const mid2=await pRun('contentId(window.__SEC)');
+    PW.__M2=mid2;
+    await pRun("putMedia(window.__M2,window.__SEC,{name:'second',dur:7})");
+    PW.__SRC2={v:PW.__SRC.v,mid:mid2,name:'second',dur:7};
+    /* Seed a derived record for each. The cache is half of what the collector
+       owns: leaving it empty here would have made the row pass while proving
+       nothing about whether a freed media leaves its thumbnails behind. */
+    await pRun("(function(){return Promise.all([put1('derived',{id:window.__M,th:[new Blob(['a'])],st:6.25,ar:1.78,pk:new Float32Array([0,1])}),put1('derived',{id:window.__M2,th:[new Blob(['b'])],st:3.5,ar:1.78,pk:new Float32Array([1,0])})])})()");
+    await pRun("(function(){srcs={1:window.__SRC,2:window.__SRC2};clips=[{id:1,src:1},{id:2,src:1},{id:3,src:2}];return gcMedia()})()");
+    const stepA=await pInto('__a',"Promise.all([getAllKeysOf('media'),getAllKeysOf('derived')])");
+    const inUse=pEv('liveMedia().mids.size');
+    /* Drop one of the two clips that share source 1. Nothing may be collected:
+       the other clip still plays from those exact bytes. */
+    await pRun("(function(){clips=[{id:2,src:1},{id:3,src:2}];return gcMedia()})()");
+    const stepB=await pInto('__b',"Promise.all([getAllKeysOf('media'),getAllKeysOf('derived')])");
+    const slotsB=pEv('Object.keys(srcs).length');
+    /* Now the last clip on source 1 goes, and only then may its bytes go. */
+    await pRun("(function(){clips=[{id:3,src:2}];return gcMedia()})()");
+    const stepC=await pInto('__c',"Promise.all([getAllKeysOf('media'),getAllKeysOf('derived')])");
+    const slotsC=pEv('Object.keys(srcs).length');
+    const ok5=inUse===2&&stepA[0].length===2&&stepA[1].length===2&&
+      stepB[0].length===2&&stepB[1].length===2&&slotsB===2&&
+      stepC[0].length===1&&stepC[1].length===1&&slotsC===1&&
+      mid2!==mid;
+    say('refcounted collection','deleting one of two clips that share a source collects nothing at all, and deleting the last one takes that media and its cache while leaving the other alone',
+      inUse+' in use \u2192 drop 1 of a pair: '+stepB[0].length+' media / '+stepB[1].length+' caches / '+slotsB+' slots \u2192 drop the last: '+stepC[0].length+' media / '+stepC[1].length+' caches / '+slotsC+' slot',
+      ok5,'Split and Duplicate both leave two clips on one source; neither may free anything');
+
+    /* 6. Forward compatibility. A document written by a newer build must be left
+       exactly as it is: migrateDoc stamps whatever it reads with its own version,
+       so loading one and then autosaving would delete every field the newer build
+       added — silently, because the autosave is a different code path. */
+    await pInto('__nv',"put1('proj',{id:PROJID,updatedAt:Date.now(),doc:{v:DOCV+7,clips:[{id:1,src:1}],texts:[],proj:{ar:'16:9'},srcs:[],futureField:'keep me'}}).then(function(){return true})");
+    const before=await pInto('__nb',"get1('proj',PROJID).then(function(r){return r.doc.v+':'+(r.doc.futureField||'')})");
+    await pRun('restore()');
+    const locked=pEv('docLocked');
+    pRun('saveSoon()');await sleep(900);
+    const after=await pInto('__na',"get1('proj',PROJID).then(function(r){return r.doc.v+':'+(r.doc.futureField||'')})");
+    const dirty=pEv('saveDirty');
+    const ok6=locked===true&&before===after&&after==='8:keep me'&&dirty===false;
+    docLockedReset();
+    say('a newer document','a project saved by a newer build is not opened, not downgraded and not overwritten — this build stops saving rather than deleting fields it does not understand',
+      'wrote v'+(DOCV_TEST+7)+' \u2192 after restore: v'+String(before)+' \u2192 '+String(after)+(locked?', saves locked':', NOT LOCKED')+(dirty?', but a save was queued':' and nothing was written'),
+      ok6,'a version number that only protects old readers is not a versioned schema');
+
+    /* 7. Nothing above means anything if the store is not the one asked for. */
+    const stores=pEv("({db:DBN,schema:(typeof DBV)})");
+    const kv=await pInto('__kv',"getAllKeysOf('kv')");
+    say('its own store','the instance runs against the database the check asked for, not the reader\u2019s own project',
+      stores.db+', schema version '+stores.schema+', kv rows '+kv.length,
+      stores.db==='sc-persist'&&kv.length===1,
+      'a self-check sharing the real store would delete the work it is checking');
+  }catch(e){
+    tb.insertAdjacentHTML('beforeend',row([{html:'<span class="nm">persistence</span>'},
+      {html:'threw: '+String((e&&e.message)||e).slice(0,140)},{html:'\u2014',cls:'n'},
+      {html:'<span class="fail">not run</span>'}]));
+    return {pass,fail:fail+1};
+  }
+  docLockedReset();
+  await pRun('forgetAll()');
+  return {pass,fail};
+}
+
+/* ── Pointer-driven behaviour ─────────────────────────────────────────────────
+   Every other section on this page drives the app by calling its functions or by
+   dispatching a value change, which leaves the pointer path untested — and the
+   pointer path is where the gestures are: a trim handle is a pointerdown that
+   becomes a drag, and a slider is a pointerdown that becomes a stream of input
+   events with a held state between them.
+
+   Two honest limits, stated here because they belong beside the claim rather
+   than in a footnote:
+
+   1. **These events are untrusted.** `isTrusted` is false and no script can make
+      it true; it is the browser saying "this came from a user agent". Every
+      listener in the app runs on them identically, because dispatching an event
+      *is* running the handler. What it cannot do is the browser's own default
+      action — and for a range input that default action is what moves `.value`.
+      So the probe sets the value and fires `input` itself, which is precisely
+      what the browser does after the drag, in the same order.
+   2. **The rAF loop does not run in this webview.** A real drag auto-scrolls the
+      timeline when the pointer nears an edge; that part of `drag()` is driven by
+      requestAnimationFrame and is not exercised. The move handler, which is the
+      part that trims, is.
+
+   Row 1 asserts (1) out loud, so nobody reads "a real drag" and believes it. */
+async function bootDrag(){
+  const f=$('#dframe');
+  await new Promise(res=>{
+    if(f.contentWindow&&f.contentWindow.eval&&f.contentWindow.eval('typeof dragTrim')==='function')return res();
+    f.addEventListener('load',res,{once:true});
+    setTimeout(res,6000);
+  });
+  const w=f.contentWindow;
+  try{
+    if(w.eval('typeof dragTrim')!=='function')throw new Error('drag globals not reachable');
+    DW=w;return true;
+  }catch(e){DW=null;return false}
+}
+async function runDrag(){
+  const tb=$('#ptrT tbody');tb.innerHTML='';
+  let pass=0,fail=0;
+  if(!DW&&!await bootDrag()){
+    tb.insertAdjacentHTML('beforeend',row([{html:'<span class="nm">pointer</span>'},
+      {html:'could not reach the pointer instance'},{html:'\u2014',cls:'n'},
+      {html:'<span class="fail">not run</span>'}]));
+    return {pass:0,fail:1};
+  }
+  const D=c=>DW.eval(c);
+  const DE=e=>JSON.parse(DW.eval('JSON.stringify('+e+')'));
+  const dInto=async(g,expr)=>{
+    /* `expr` may be synchronous (a geometry read) or a promise (anything that
+       writes to the database). The first version called `.then` on the result
+       unconditionally and every synchronous driver died with "then is not a
+       function" \u2014 so a value is promoted to a resolved promise first. */
+    await D('window.'+g+'=null;window.__pe=null;(function(){var v=('+expr+');if(!(v&&typeof v.then===\'function\'))v=Promise.resolve(v);v.then(function(x){window.'+g+'=x},function(e){window.__pe=String((e&&e.message)||e)})})()');
+    for(let i=0;i<800;i++){
+      const v=DE('window.'+g);
+      if(v!==null)return v;
+      const e2=DE('window.__pe');
+      if(e2)throw new Error(e2);
+      await sleep(10);
+    }
+    throw new Error('timed out reading '+g);
+  };
+  const say=(name,what,meas,ok,why)=>{if(ok)pass++;else fail++;
+    tb.insertAdjacentHTML('beforeend',row([
+      {html:'<span class="nm">'+name+'</span>'},
+      {html:what+(why?'<span class="why">'+why+'</span>':'')},
+      {html:meas,cls:'n'},
+      {html:ok?'<span class="pass">holds</span>':'<span class="fail">fails</span>'}]));};
+  const Q1=String.fromCharCode(39);
+  try{
+    /* Two clips on one synthetic source, so a trim has somewhere to trim to and a
+       selection has a second member to reach. */
+    D("(function(){var v={duration:60,currentTime:0,readyState:1,videoWidth:720,videoHeight:1280,playbackRate:1,volume:1,muted:true,pause:function(){},play:function(){return Promise.resolve()},addEventListener:function(){},removeEventListener:function(){}};srcs={1:{name:'a',dur:60,th:[],pk:null,mid:'x',ar:0.5625,st:5,v:v}};clips=[{id:1,src:1,f:'none',fs:1,vig:0,grain:0,blue:0,blur:0,opacity:1,ad:{},sp:1,vol:1,in:0,out:10,s:0,rot:0},{id:2,src:1,f:'none',fs:1,vig:0,grain:0,blue:0,blur:0,opacity:1,ad:{},sp:1,vol:1,in:0,out:20,s:10,rot:0}];uid=20;total=30;sel=null;selMore.clear();pps=24;renderTL();return true})()");
+
+    /* 1. The honesty row, first, so the rest is read with the right expectation. */
+    const t=await dInto('__t','pevProbe()');
+    say('what a pointer is here','the events this probe sends carry isTrusted=false, because no script can forge it — every listener runs on them, but the browser\u2019s own range default action does not, so the probe fires input itself',
+      'isTrusted '+t.isTrusted+' \u00b7 '+t.seq.length+' events: '+t.seq.join(' \u2192 '),
+      t.isTrusted===false&&t.seq.length===4,
+      'the alternative is a row that reads "a real drag" and is believed');
+
+    /* 2. A trim handle dragged: the whole of trimMain and drag() runs. */
+    /* Indexed rather than selected by attribute: an attribute selector needs quotes
+       of its own, and putting them inside the expression string this is spliced
+       into is how the first version of this row died on "missing ) after
+       argument list". */
+const clipW='Math.round(document.querySelectorAll('+Q1+'.clip'+Q1+')[0].getBoundingClientRect().width)';
+    const before=DE('({out:clips[0].out,w:'+clipW+',pps:pps})');
+    await dInto('__r1','window.__o=dragTrim()');
+    const after=DE('({out:clips[0].out,w:'+clipW+'})');
+    const dOut=after.out-before.out,dPx=after.w-before.w;
+    const suppressed=DE('Date.now()-noClick<600');
+    say('a trim handle, dragged','grabbing a clip\u2019s right handle and moving the pointer lengthens the clip by the drag distance at the current zoom, and the pointerup suppresses the click that follows so the drag does not also select',
+      before.out.toFixed(2)+'s / '+before.w+'px \u2192 '+after.out.toFixed(2)+'s / '+after.w+'px, click suppressed '+suppressed,
+      dOut>0&&Math.abs(dPx-dOut*before.pps)<=2&&suppressed,
+      'the pointer path is the gesture; calling trimMain() would prove only that the arithmetic is right');
+
+    /* 3. The thumb, held and released. */
+    D("tool='adjust';sel={k:'c',id:1};selMore.clear();adjKey='bright';panel()");
+    const on=await dInto('__h1','sliderHeld()');
+    const off=await dInto('__h2','sliderRelease()');
+    say('the thumb, held','a pointerdown on the slider marks it held for as long as the gesture lasts, and a pointerup anywhere clears it, so an interrupted drag cannot leave the sheet lit',
+      'down \u2192 held '+on+', up elsewhere \u2192 held '+off,
+      on===true&&off===false,
+      'the readout wears the accent while the value is being set, not after it lands');
+
+    /* 4. A double tap reverts the control, across the selection, and nothing else. */
+    const put=await dInto('__d','doubleTapSlider(0.7)');
+    const st=DE('({vals:selClips().map(function(c){return adjVal(c,adjKey)}),nd:document.querySelector('+Q1+'#panel .sl'+Q1+').classList.contains('+Q1+'nd'+Q1+'),keep:clips[0].fs})');
+    say('double-tap to reset','two taps on a slider that has been moved put that one control back to its default and touch nothing else on the clip',
+      'Brightness '+put.toFixed(2)+' \u2192 '+JSON.stringify(st.vals)+', non-default marker '+st.nd+', look still '+st.keep,
+      st.vals.length===1&&Math.abs(st.vals[0])<1e-6&&st.nd===false&&st.keep===1,
+      'narrower than the footer\u2019s Reset on purpose: someone who pushed Grain to \u221240 wants that number back, not their look as well');
+
+    /* 5. One drag, two clips — the claim the multi-selection exists for. */
+    D("sel={k:'c',id:1};selMore=new Set([2]);tool='adjust';panel()");
+    const spread=await dInto('__s','dragSlider(0.6)');
+    const all=DE('clips.map(function(c){return +(c.ad&&c.ad[adjKey]||0).toFixed(3)})');
+    say('one gesture, several clips','a single drag of one property slider writes to every selected clip, because matching a grade across a cut by hand means opening the sheet once per clip',
+      'clips 1 and 2 selected, dragged to '+JSON.stringify(spread)+'; the whole timeline reads '+JSON.stringify(all),
+      spread.length===2&&Math.abs(spread[0]-0.6)<1e-6&&Math.abs(spread[1]-0.6)<1e-6&&all[0]===0.6&&all[1]===0.6,
+      'selClips() is [anchor] when nothing extra is selected, which is why single-clip behaviour cannot have changed');
+
+    /* 6. Two taps too far apart are not a double-tap. */
+    await dInto('__t2','slowTapSlider(0.5,420)');
+    const slow=DE('adjVal(clips[0],adjKey)');
+    say('two slow taps are not a reset','a second tap outside the window is a separate gesture, so re-setting the same value a moment later is not swallowed by the first tap',
+      'two taps 420ms apart \u2192 Brightness still '+slow,
+      Math.abs(slow-0.5)<1e-6,
+      'the detector is two pointerups inside 320ms and 24px — near enough to be a thumb, far enough not to be a held press');
+  }catch(e){
+    tb.insertAdjacentHTML('beforeend',row([{html:'<span class="nm">pointer</span>'},
+      {html:'threw: '+String((e&&e.message)||e).slice(0,140)},{html:'\u2014',cls:'n'},
+      {html:'<span class="fail">not run</span>'}]));
+    return {pass,fail:fail+1};
+  }
+  return {pass,fail};
+}
+
+async function main(){
+  const btn=$('#run');btn.disabled=true;
+  $('#status').textContent='reaching the mock…';
+  if(!ok&&!await boot()){$('#status').textContent='failed';btn.disabled=false;return}
+  $('#status').textContent='measuring Adjust…';
+  await new Promise(r=>setTimeout(r,30));
+  const a=await runAdjust();
+  $('#status').textContent='measuring Filters…';
+  await new Promise(r=>setTimeout(r,30));
+  const b=await runFilters();
+  $('#status').textContent='measuring shelves\u2026';
+  await new Promise(r=>setTimeout(r,30));
+  const r=await runRows();
+  $('#status').textContent='measuring the sheet\u2019s geometry\u2026';
+  await new Promise(r=>setTimeout(r,30));
+  const g=await runGeometry();
+  $('#status').textContent='measuring the clip actions…';
+  await new Promise(r=>setTimeout(r,30));
+  const x=await runActions();
+  $('#status').textContent='measuring the iPad layout\u2026';
+  await new Promise(r=>setTimeout(r,30));
+  const l=await runLayout();
+  $('#status').textContent='reloading a project\u2026';
+  await new Promise(r=>setTimeout(r,30));
+  const q=await runPersist();
+  $('#status').textContent='driving a pointer\u2026';
+  await new Promise(r=>setTimeout(r,30));
+  const dr=await runDrag();
+  const p=a.pass+b.pass,f=a.fail+b.fail,tf=f+r.fail+g.fail+x.fail+l.fail+q.fail+dr.fail;
+  $('#summary').innerHTML='<div class="sum">'+p+' of '+(p+f)+' controls hold, '+r.pass+' of '+(r.pass+r.fail)+' shelf rows hold, '+g.pass+' of '+(g.pass+g.fail)+' sheet-layout checks hold, '+x.pass+' of '+(x.pass+x.fail)+' panel checks hold, and '+l.pass+' of '+(l.pass+l.fail)+' iPad-layout checks hold, and '+q.pass+' of '+(q.pass+q.fail)+' persistence checks hold, and '+dr.pass+' of '+(dr.pass+dr.fail)+' pointer checks hold. '+
+    (tf? '<span class="fail">'+tf+' failed</span> \u2014 a control that fails here is one whose label and its behaviour disagree.' : 'Every control is a bit-exact no-op at its rest, moves its own metric in the direction its name promises, keeps that promise after the preview is scaled down, the two layers still land on top of a graded clip instead of replacing it, no shelf row moves when a card is picked, and the sheet\u2019s own layout \u2014 the value above its track, the centred footer, the dot on the centred sliders \u2014 is measured rather than assumed, the four clip actions are driven through the rail\u2019s own buttons and a real drag rather than asserted from the source, the readout and the changed-dot are shown to follow the thumb mid-drag rather than on release, Format is shown to have become two sheets with Export a third, and the side-by-side layout is shown to place its grid, keep the transport, and leave every phone row the exact height it had before it existed, and a project is shown to survive a reload \u2014 bytes hashed to an identity, a Blob read back whole, an old document migrated field by field, and two clips sharing one source collecting nothing until the last one goes \u2014 and the pointer path is shown under real events: a trim handle dragged, a thumb held and released, a double-tap to reset, two slow taps correctly ignored, and one gesture grading a multi-selection.')+'</div>';
+  $('#status').textContent='done';
+  btn.disabled=false;
+}
+$('#run').addEventListener('click',main);
+boot().then(()=>{if(ok){$('#status').textContent='ready';main()}});
+</script>
+</body>
+</html>

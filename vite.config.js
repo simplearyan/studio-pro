@@ -37,6 +37,28 @@ export default defineConfig({
            that 404s in production, so it cannot be installed from the deployed
            site — the html glob above does not match it. */
         { src: 'docs/studio-lite/*.webmanifest', dest: 'docs/studio-lite', rename: { stripBase: true } },
+        /* The live Clip Lite app in clip-lite/ — its page, its own web app
+           manifest (without this the page links a manifest that 404s on Pages
+           and cannot be installed), and the self-check suite that drives it.
+           All three are listed individually rather than globbed because this
+           folder is a real app, not a folder of prototypes, and the split
+           matters on purpose:
+
+           Clip Lite is copied rather than added to build.rollupOptions.input.
+           As a rollup entry Vite treats the page as an app shell and VitePWA
+           then injects STUDIO PRO's <link rel="manifest"> and a root-scoped
+           register('/sw.js', {scope:'/'}) into it — verified in the build
+           output before this was changed. That silently overwrites the
+           app-specific manifest this folder ships and puts the page under
+           Studio Pro's service worker, which is the opposite of what the app
+           wants (CLIP-LITE-HOME-PLAN.md §8 risk 6). Static copy keeps
+           dist/clip-lite/index.html byte-identical to the source file.
+
+           The frozen docs/studio-lite/ copies above keep shipping unchanged,
+           so the old URL keeps working. See clip-lite/docs/CLIP-LITE-HOME-PLAN.md. */
+        { src: 'clip-lite/index.html', dest: 'clip-lite', rename: { stripBase: true } },
+        { src: 'clip-lite/selfcheck.html', dest: 'clip-lite', rename: { stripBase: true } },
+        { src: 'clip-lite/manifest.webmanifest', dest: 'clip-lite', rename: { stripBase: true } },
         /* /designs gallery page + its synced data file (Phase A/B of
            docs/html-in-canvas/DESIGNS-GALLERY-PLAN.md) */
         { src: 'docs/html-in-canvas/designs.html', dest: 'docs/html-in-canvas', rename: { stripBase: true } },
@@ -92,7 +114,7 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,woff2,woff,ttf,png,svg,ico,webp,jpg,jpeg}'],
-        // Nothing under docs/ is precached, and that is the point of the line.
+        // Nothing under docs/ or clip-lite/ is precached, and that is the point of the line.
         // A workbox precache is served cache-first and only revalidated when its
         // manifest changes, so a phone that installed the app once keeps the HTML
         // it first downloaded — indefinitely — while a desktop on the same build
@@ -103,8 +125,11 @@ export default defineConfig({
         // app features, so paying a network round trip for them is the right
         // trade. Nothing in src/ or index.html fetches a docs/ path at runtime —
         // the references there are comments — so the app shell is unaffected.
-        // Verified against a built sw.js: 14 docs paths before, 0 after.
-        globIgnores: ['docs/**'],
+        // Verified against a built sw.js: 14 docs paths before, 0 after. clip-lite/ is
+        // excluded for the same reason and measured the same way — see the
+        // navigateFallbackDenylist note below, which explains why both halves
+        // are needed together.
+        globIgnores: ['docs/**', 'clip-lite/**'],
         // MathJax's combined bundle (tex-svg.js) is ~2.1 MB — above workbox's
         // 2 MB default precache limit, so raise it.
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
@@ -116,7 +141,27 @@ export default defineConfig({
         // mock all live there, and each new one used to reintroduce the bug.
         // The second pattern catches the bare folder URL (/docs/studio-lite/), which
         // carries no .html suffix and would otherwise be handed the app shell.
-        navigateFallbackDenylist: [/docs\/.*\.html$/, /docs\/[^?#]*\/$/],
+        //
+        // Both .html patterns are anchored on the PATH, not with a trailing `$`,
+        // and that is load-bearing. Workbox tests the denylist against the whole
+        // URL, so a page loaded with a query string — and the self-check loads
+        // every one of its five frames as `<page>.html?db=<name>` so each gets
+        // its own IndexedDB — ends in `?db=sc-pixel`, not `.html`, and a `$`
+        // anchor lets it straight through to the SPA fallback. Measured: with
+        // `/clip-lite\/.*\.html$/` in place, a request for
+        // /clip-lite/selfcheck.html?r=1 returned the Studio Pro app shell —
+        // correct URL, wrong document. The bare-folder patterns already used
+        // `[^?#]*` for this reason; the .html ones did not.
+        //
+        // clip-lite/ needs the same treatment. It is a root-level app folder,
+        // so without a denylist entry a visitor who already has Studio Pro
+        // installed is served the app shell at /clip-lite/. The denylist exempts
+        // a URL from the fallback; globIgnores above keeps the HTML out of the
+        // cache-first precache, which would otherwise pin a stale copy of an app
+        // that is still being iterated. Both are needed — either one alone still
+        // breaks the page for a returning visitor. Measured: precache is
+        // 88 entries / 7256.84 KiB with Clip Lite included, 86 / 6889.11 KiB with it excluded.
+        navigateFallbackDenylist: [/docs\/[^?#]*\.html/, /docs\/[^?#]*\/$/, /clip-lite\/[^?#]*\.html/, /clip-lite\/[^?#]*\/$/],
         cleanupOutdatedCaches: true,
         // Runtime caching for the few remaining cross-origin calls:
         //   - unpkg / jsDelivr (CDN-first Lucide, any stray CDN scripts):
