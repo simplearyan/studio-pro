@@ -935,6 +935,29 @@ async function runLayout(){
       {html:meas,cls:'n'},
       {html:ok?'<span class="pass">holds</span>':'<span class="fail">fails</span>'}]));};
 
+  /* Injection helpers, shared by every measurement below. `trial` injects a rule,
+     measures in the same frame, and removes it: a row that cannot go red is not a
+     check, so each one names the rule that must move its own number. `atSize` moves
+     the frame, which carries `innerWidth` and the media queries together rather
+     than lying about one of them. `lie` is the one thing `atSize` cannot do \u2014 it
+     makes the *gate* believe a width the frame is not laid out at, which is the
+     only way to ask "what if half of this condition were dropped" from a frame
+     that is already past it. */
+  const trial=(css,expr)=>{
+    const d=LW.document,s=d.createElement('style');s.textContent=css;d.head.appendChild(s);
+    const v=ev(expr);s.remove();return v;
+  };
+  const atSize=async(w,h,fn)=>{const f=$('#layframe');f.style.width=w+'px';f.style.height=h+'px';
+    await sleep(90);try{return await fn()}finally{f.style.width='';f.style.height='';await sleep(90)}};
+  const lie=async(w,fn)=>{const was=ev('innerWidth');
+    run("Object.defineProperty(this,'innerWidth',{value:"+w+",configurable:true})");
+    /* Restored as a *getter* over `documentElement.clientWidth`, not as the number
+       that was true when the lie went up. Putting the old number back leaves an own
+       property shadowing the real one, and because the frame is resized again
+       straight afterwards, that shadow then reports a width the frame no longer is
+       \u2014 which is how one row's lie silently disarmed every row after it. */
+    try{return await fn()}finally{run("Object.defineProperty(this,'innerWidth',{configurable:true,get:function(){return this.document.documentElement.clientWidth}})")}};
+
   /* 1. The control is only offered where it means anything. Two widths, two frames:
      the wide one must show it, the phone one must not — a toggle that appears on a
      phone would be the only way to reach a layout its own viewport refuses. */
@@ -947,17 +970,24 @@ async function runLayout(){
     wide!=='none'&&narrow&&narrow.d==='none'&&narrow.attr===null&&narrow.dock==='flex'&&narrow.split==='none',
     'the phone path is the untouched one: no attribute, the dock still a flex column, the divider still nothing');
 
-  /* 2. The four states, cycled by clicking the real button, not by setting the
+  /* 2. The six states, cycled by clicking the real button, not by setting the
      variable. `top` is represented by the attribute's absence, so it is checked as
-     absence \u2014 that is what keeps the phone rules live. */
-  const seen=[];
-  for(let i=0;i<4;i++){run("document.querySelector('#lay').click()");await sleep(30);
+     absence \u2014 that is what keeps the phone rules live. Two states arrived with
+     the rail, and the row grew with them rather than dropping them: the cycle is
+     asserted whole, and the title each click reads is required to name the state the
+     *next* click lands on, which is the one thing that would catch a header whose
+     vocabulary had drifted from its behaviour. */
+  const seen=[],titled=[];
+  for(let i=0;i<6;i++){titled.push(ev("document.querySelector('#lay').title"));
+    run("document.querySelector('#lay').click()");await sleep(30);
     seen.push(ev("document.body.getAttribute('data-layout')"));}
   const order=seen.map(s=>s||'unset').join(' ');
-  const titles=ev("[0,1,2,3].map(function(){return document.querySelector('#lay').title})");
-  say('the four states','clicking the toggle walks top, left, right and full, and comes back to the top where it started',
-    'cycle: '+order+'; titles name the next one ('+titles.length+'/4)',
-    order==='left right full unset'&&titles.length===4,
+  const named=titled.map(t=>(t.split('tap for ')[1]||'').trim());
+  const landed=seen.map(s=>s||'top');
+  const titleOk=named.length===6&&named.every((n,i)=>n===landed[i]);
+  say('the six states','clicking the toggle walks top, rail, rail-l, left, right and full, and comes back to the top where it started \u2014 and each title names the state the next tap lands on',
+    'cycle: '+order+'; titles '+named.join(' / ')+' name the next one ('+(titleOk?'all 6':'MISMATCH')+')',
+    order==='rail rail-l left right full unset'&&titleOk,
     'the icon shows the layout you are in and names the one a tap would give you');
 
   /* 3. The grid is real geometry, not a label. 40% / 12px / the rest, with the
@@ -1013,7 +1043,7 @@ async function runLayout(){
      width \u2014 because it is the same sheet, in the same place. */
   run("layMode='left';applyLayout()");await sleep(30);
   run("tool='layout';panel()");await sleep(30);
-  const ls=ev("(function(){var P=document.getElementById('panel');return {eh:P.querySelector('.eh').textContent,tiles:[].map.call(P.querySelectorAll('[data-lay]'),function(t){return t.dataset.lay+(t.classList.contains('on')?'*':'')}).join(' '),foot:[].map.call(P.querySelectorAll('.ef button'),function(b){return b.textContent}),w:Math.round(P.getBoundingClientRect().width),col:Math.round(document.querySelector('.ro').getBoundingClientRect().width),sw:document.documentElement.scrollWidth,iw:innerWidth}})()");
+  const ls=ev("(function(){var P=document.getElementById('panel');return {eh:P.querySelector('.eh').textContent,tiles:[].map.call(P.querySelectorAll('[data-lay]'),function(t){return t.dataset.lay+(t.classList.contains('on')?'*':'')}).join(' '),n:P.querySelectorAll('[data-lay]').length,foot:[].map.call(P.querySelectorAll('.ef button'),function(b){return b.textContent}),w:Math.round(P.getBoundingClientRect().width),col:Math.round(document.querySelector('.ro').getBoundingClientRect().width),sw:document.documentElement.scrollWidth,iw:innerWidth}})()");
   /* The width assertion is `col - 20` and not `col`, which is the 10px-a-side
      margin, and the difference is a bug this row used to hide. The sheet is inset
      10px from each side of the column, so `w === col` was only ever true while the
@@ -1021,10 +1051,10 @@ async function runLayout(){
      letting the margins overflow the page \u2014 `scrollWidth` 1204 on a 1194 screen.
      `width:auto` fixed the overflow and this row went red, which is the row doing
      its job: it now asserts the inset sheet *and* that the page does not scroll. */
-  say('the layout sheet','the four states are offered as tiles in the aspect-ratio row\u2019s own tiles, with the state you are in lit and one Done to leave, inset in the column rather than overflowing it',
+  say('the layout sheet','the six states are offered as tiles in the aspect-ratio row\u2019s own tiles, with the state you are in lit and one Done to leave, inset in the column rather than overflowing it',
     'title '+ls.eh+' \u00b7 tiles '+ls.tiles+' \u00b7 footer '+ls.foot.join('/')+' \u00b7 '+ls.w+'px in a '+ls.col+'px column (\u2212'+((ls.col-ls.w)/2)+'px each side) \u00b7 scrollWidth '+ls.sw+'/'+ls.iw,
-    ls.eh==='Layout'&&ls.tiles==='top left* right full'&&ls.foot.length===1&&ls.foot[0]==='Done'&&Math.abs((ls.col-ls.w)-20)<=1&&ls.sw===ls.iw,
-    'a tile row is the one shape that makes four options read as four options');
+    ls.eh==='Layout'&&ls.tiles==='top rail rail-l left* right full'&&ls.n===6&&ls.foot.length===1&&ls.foot[0]==='Done'&&Math.abs((ls.col-ls.w)-20)<=1&&ls.sw===ls.iw,
+    'a tile row is the one shape that makes six options read as six options');
 
   /* 7. A tile goes through `applyLayout`, not around it, so the header icon, the
      rail glyph and the grid cannot end up disagreeing \u2014 and `full`, which has no
@@ -1048,19 +1078,104 @@ async function runLayout(){
     railWide!=='none'&&railPhone&&railPhone.rail==='none'&&railPhone.head==='none',
     'offering a chooser for a layout the viewport refuses is a control that does nothing');
 
-  /* 9-13. IPAD-LAYOUT-PLAN.md 13.1: the sheet is *bounded* in the split layout.
+  /* 9-14. RAIL-LAYOUT-PLAN.md 13.1: the rail. Four rows measure the state at the
+     iPad's own size and two measure its two gates at sizes the frame has to be
+     moved to, because a `clamp()` or a condition that only holds at one viewport
+     is exactly what these exist to catch. Each injects the failure it is meant to
+     catch and requires its own number to move. */
+  const railGeom="(function(){var R=function(s){var e=document.querySelector(s);if(!e)return {w:0,h:0};var r=e.getBoundingClientRect();return {w:Math.round(r.width),h:Math.round(r.height)}};var P=document.getElementById('panel'),eb=P.querySelector('.eb'),rows=getComputedStyle(document.body).gridTemplateRows.split(' '),cs=getComputedStyle(document.body).gridTemplateColumns.split(' ');return {cv:R('#cv'),view:R('.view'),tlw:R('.tlw'),panel:R('#panel'),film:R('#track').h,audio:R('#atrack').h,band:Math.round(parseFloat(rows[3])),track:Math.round(parseFloat(cs[2])),eb:eb?{s:eb.scrollHeight,c:eb.clientHeight,ov:getComputedStyle(eb).overflowY}:null,pov:getComputedStyle(P).overflow,vw:innerWidth,vh:innerHeight,sw:document.documentElement.scrollWidth,sh:document.documentElement.scrollHeight}})()";
+
+  /* (a) The column is free. The claim is not "the sheet is small" but "the sheet is
+     paid for out of space the picture was not using": with a 16:9 project at
+     1194x834 the picture is height-limited, so it costs nothing to widen the band
+     beside it until the column takes more than the spare space. The row asserts the
+     pixels *and* the track, and the injection reserves the column past the width the
+     spare space can absorb \u2014 the reason the plan's own 320px injection would have
+     been a no-op dressed as a check at this viewport. */
+  run("layMode='rail';applyLayout();tool=null;panel()");await sleep(50);
+  const rc=ev(railGeom);
+  run("tool='adjust';panel()");await sleep(50);
+  const rOpen=ev(railGeom);
+  const freeInj=trial("body[data-layout=rail]{grid-template-columns:minmax(0,1fr) 12px 520px var(--rw)}",
+    "(function(){var keep=tool;tool=null;panel();var c=document.getElementById('cv').getBoundingClientRect(),t=getComputedStyle(document.body).gridTemplateColumns.split(' ');tool=keep;panel();return {w:Math.round(c.width),h:Math.round(c.height),track:Math.round(parseFloat(t[2]))}})()");
+  say('the column is free','the sheet is paid for out of the band beside the picture rather than out of the picture: with it open the preview is the same size it is with it closed, and a closed sheet reserves no column at all',
+    'canvas '+rc.cv.w+'\u00d7'+rc.cv.h+' closed \u2192 '+rOpen.cv.w+'\u00d7'+rOpen.cv.h+' open (sheet '+rOpen.panel.w+'\u00d7'+rOpen.panel.h+'), panel track '+rc.track+'\u2192'+rOpen.track+'px, page '+rOpen.sw+'\u00d7'+rOpen.sh+' in '+rOpen.vw+'\u00d7'+rOpen.vh,
+    rc.cv.w===rOpen.cv.w&&rc.cv.h===rOpen.cv.h&&rc.track===0&&rOpen.track>=280&&rOpen.panel.h>0&&rOpen.sw===rOpen.vw&&rOpen.sh===rOpen.vh,
+    'reserving the column at 520px \u21d2 the closed picture measures '+freeInj.w+'\u00d7'+freeInj.h+' on a '+freeInj.track+'px track, against '+rc.cv.w+'\u00d7'+rc.cv.h+' with no track at all');
+
+  /* (b) The timeline survives. The state exists to give the sheet a column, not to
+     cost the timeline its row \u2014 which is the one thing a side-by-side layout is
+     most likely to spend. */
+  run("layMode='rail';applyLayout();sel={k:'c',id:1};selMore.clear();tool='adjust';panel()");await sleep(50);
+  const twin=ev(railGeom);
+  const tlInj=trial("body[data-layout=rail].es .dock{display:none}", railGeom);
+  say('the timeline survives','with the sheet open the timeline is still at least the lane floor and both lanes are drawn, at the iPad\u2019s own size',
+    'timeline '+twin.tlw.w+'\u00d7'+twin.tlw.h+', film lane '+twin.film+'px, audio lane '+twin.audio+'px, sheet '+twin.panel.w+'px',
+    twin.tlw.h>=164&&twin.film>0&&twin.audio>0&&twin.panel.w>0&&tlInj.tlw.h===0,
+    'hiding the dock (the `top` rule) \u21d2 the timeline measures '+tlInj.tlw.w+'\u00d7'+tlInj.tlw.h+', so this row is measuring the band rather than describing it');
+
+  /* (c) The band is bounded. A row of `auto` would let the timeline grow with the
+     window and squeeze the preview, which is the failure the clamp prevents. */
+  const wantBand=Math.round(Math.min(300,Math.max(240,twin.vh*.3)));
+  const bandInj=trial("body[data-layout=rail]{grid-template-rows:auto minmax(0,1fr) auto min(38vh,340px) auto}", railGeom);
+  say('the band is bounded','the rail gives the timeline the same clamped band every other layout gives it, so it cannot become the state where the timeline grows with the window',
+    'row 4 = '+twin.band+'px, clamp(240, 30vh, 300) at '+twin.vh+' tall = '+wantBand+'px',
+    Math.abs(twin.band-wantBand)<=2,
+    'injecting min(38vh,340px) \u21d2 '+bandInj.band+'px, which is what a row that trusted `auto` would report');
+
+  /* (d) The rail is reachable. The fifteen-button rail is its worst case and needs
+     a clip selected to exist, so the row selects one: measured with nothing selected
+     it would be five buttons and would pass a rail that failed on the real thing. */
+  const railFit=await atSize(1024,768,async()=>{
+    run("layMode='rail';applyLayout();sel={k:'c',id:1};selMore.clear();tool=null;panel()");await sleep(70);
+    return ev("(function(){var T=document.getElementById('tools'),bs=[].slice.call(document.querySelectorAll('.tools button')),hs=bs.map(function(b){return Math.round(b.getBoundingClientRect().height)});return {n:bs.length,min:Math.min.apply(null,hs),scroll:T.scrollHeight,client:T.clientHeight,w:Math.round(T.getBoundingClientRect().width),vw:innerWidth,vh:innerHeight}})()");
+  });
+  const railInj=await atSize(1024,768,()=>trial("body[data-layout=rail] .tools button{height:26px}",
+    "(function(){var b=document.querySelectorAll('.tools button');return Math.min.apply(null,[].map.call(b,function(x){return Math.round(x.getBoundingClientRect().height)}))})()"));
+  say('the rail is reachable','with a clip selected every tool is at least a thumb tall and the whole rail fits a 768-tall iPad without scrolling, so the tools are reachable rather than merely present',
+    railFit.n+' buttons, shortest '+railFit.min+'px, rail '+railFit.w+'px wide, '+railFit.scroll+' of '+railFit.client+'px tall at '+railFit.vw+'\u00d7'+railFit.vh,
+    railFit.n>=15&&railFit.min>=44&&railFit.scroll<=railFit.client&&railFit.w<80,
+    'the row-shaped rail\u2019s own 26px buttons \u21d2 shortest '+railInj+'px, under the 44px floor the rest of the app holds to');
+
+  /* (e) The gate is two conditions, and each is checked by making a refused frame
+     believe the one thing that would let it through: the width is lied up to 1194 at
+     899x700, and past the height at 834x1194. Asserting the four outcomes alone could
+     not tell a working gate from one that had quietly lost half of itself. */
+  const gateAt=async(w,h)=>atSize(w,h,async()=>{
+    run("tool='layout';panel()");await sleep(70);
+    const n=ev("document.querySelectorAll('#panel [data-lay]').length");
+    run("layMode='rail';applyLayout()");await sleep(70);
+    return {attr:ev("document.body.getAttribute('data-layout')"),n:n,w:ev('innerWidth'),h:ev('innerHeight')};
+  });
+  const askRail=async(w,h,lied)=>atSize(w,h,()=>lied?lie(lied,()=>{run("layMode='rail';applyLayout()");return ev("document.body.getAttribute('data-layout')")}):(()=>{run("layMode='rail';applyLayout()");return ev("document.body.getAttribute('data-layout')")})());
+  const gSmall=await gateAt(899,700),gEdge=await gateAt(900,700),gTall=await gateAt(834,1194),gPad=await gateAt(1194,834);
+  const lieSmall=await askRail(899,700,1194),lieTall=await askRail(834,1194,1200);
+  say('the gate is two','the rail is offered only on a landscape screen at least 900px wide; at 899, and in portrait, the state falls back to the top and the Layout sheet stops offering it in the same breath',
+    (gSmall.attr||'top')+' at '+gSmall.w+'\u00d7'+gSmall.h+' ('+gSmall.n+' tiles) \u00b7 '+(gEdge.attr||'top')+' at '+gEdge.w+'\u00d7'+gEdge.h+' ('+gEdge.n+') \u00b7 '+(gTall.attr||'top')+' at '+gTall.w+'\u00d7'+gTall.h+' ('+gTall.n+') \u00b7 '+(gPad.attr||'top')+' at '+gPad.w+'\u00d7'+gPad.h+' ('+gPad.n+')',
+    !gSmall.attr&&gSmall.n===4&&gEdge.attr==='rail'&&gEdge.n===6&&!gTall.attr&&gTall.n===4&&gPad.attr==='rail'&&gPad.n===6&&lieSmall==='rail'&&lieTall==='rail',
+    'lying the width to 1194 at 899\u00d7700 \u21d2 '+lieSmall+', and past the height at 834\u00d71194 \u21d2 '+lieTall+': each half of the condition moves the answer on its own');
+
+  /* (f) Six states, six tiles. The count is taken from the DOM, not from the array,
+     so a map that silently truncated would show up here rather than in the header. */
+  run("layMode='rail';applyLayout();tool='layout';panel()");await sleep(60);
+  const six=ev("(function(){var t=[].slice.call(document.getElementById('panel').querySelectorAll('[data-lay]'));return {n:t.length,drawn:t.filter(function(x){return x.offsetParent!==null}).length,order:t.map(function(x){return x.dataset.lay}).join(' '),lit:t.filter(function(x){return x.classList.contains('on')}).length,states:LAYOUTS.length,head:LAYOUTS.join(' ')}})()");
+  const sixInj=trial("#panel [data-lay]:nth-child(6){display:none}",
+    "(function(){return [].filter.call(document.getElementById('panel').querySelectorAll('[data-lay]'),function(x){return x.offsetParent!==null}).length})()");
+  say('six states, six tiles','the Layout sheet draws one tile per state, in the header cycle\u2019s own order and vocabulary, with exactly one lit \u2014 the two surfaces a user can set a layout from cannot drift apart',
+    six.drawn+' of '+six.n+' tiles drawn in \u201c'+six.order+'\u201d, '+six.states+' states in \u201c'+six.head+'\u201d, '+six.lit+' lit',
+    six.states===6&&six.n===6&&six.drawn===6&&six.order===six.head&&six.lit===1&&sixInj===5,
+    'hiding the sixth tile \u21d2 '+sixInj+' drawn: the count is the DOM\u2019s, not a constant\u2019s');
+
+  /* 15-19. IPAD-LAYOUT-PLAN.md 13.1: the sheet is *bounded* in the split layout.
      R6b is one rule — `align-self:start;height:min(46dvh,50%)` — and it exists
      because `grid-area:tlw` alone put the sheet in the column's 1fr row, where the
      row's own default `align-self:stretch` made it fill whatever the column had
      left (measured 629px of an 834-tall screen at 1194x834). These five rows each
      measure, then inject the exact failure they are meant to catch *in the same
      frame*, measure again, and require the number to have moved. A row that cannot
-     go red is not a check, and the style is removed immediately so an injection
-     cannot leak into the next row. */
-  const trial=(css,expr)=>{
-    const d=LW.document,s=d.createElement('style');s.textContent=css;d.head.appendChild(s);
-    const v=ev(expr);s.remove();return v;
-  };
+     go red is not a check, and the     style is removed immediately so an injection cannot leak into the next row.
+     Both helpers are defined once, at the top of this section. */
+
   const sheetGeom="(function(){var P=document.getElementById('panel'),r=P.getBoundingClientRect(),ro=document.querySelector('.ro').getBoundingClientRect(),ar=document.querySelector('.ar').getBoundingClientRect(),row=ar.top-ro.bottom;return {h:Math.round(r.height),top:Math.round(r.top),bottom:Math.round(r.bottom),row:Math.round(row),roB:Math.round(ro.bottom),arT:Math.round(ar.top),ih:innerHeight,align:getComputedStyle(P).alignSelf,want:Math.round(Math.min(innerHeight*.46,row*.5)),vh46:Math.round(innerHeight*.46)}})()";
   run("layMode='left';applyLayout();tool='adjust';panel()");await sleep(40);
   const sb=ev(sheetGeom);

@@ -399,6 +399,15 @@ svg{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-l
    `flex:1 1 0` with a cap lets them meet the row at any width, and the glyph is
    sized in percentages so it scales with the tile it is standing in. */
 .rts{display:flex;gap:10px;flex:1 1 100%;justify-content:center}
+/* Six tiles have to be able to wrap. The shared `.rts` row is a `flex:1 1 0` row
+   with no minimum, so on a narrow sheet six tiles would shrink to nothing instead
+   of wrapping -- they only ever wrap once they have a width they refuse to go
+   below. 72px is where the label under the glyph still reads, and it is what
+   turns the row into 3x2 in the rail's own 310px column while leaving it one row
+   of six everywhere wider. Scoped with `.lay` so Aspect ratio's four tiles keep
+   the row they have. */
+.rts.lay{flex-wrap:wrap}
+.rts.lay .rt{min-width:72px}
 .rt{flex:1 1 0;min-width:0;max-width:96px;display:flex;flex-direction:column;align-items:center;gap:8px;padding:0;background:none;color:var(--on2)}
 .rt>i{width:100%;aspect-ratio:1/1;border-radius:16px;background:var(--sf2);border:2px solid transparent;display:grid;place-items:center}
 .rt>i>b{display:block;background:var(--on2);border-radius:2px}
@@ -713,7 +722,7 @@ svg{width:22px;height:22px;stroke-width:1.75}
    header) is a *phone* treatment. In a side layout there is slack, so the gutter
    is neutralised here — scoped to side states, so R4's global change is not made
    and phones keep the exact behaviour they have today. */
-:root{--pw:40%}
+:root{--pw:40%;--rw:64px;--sw:clamp(280px,26vw,320px)}
 #split{display:none;background:linear-gradient(90deg,transparent 5px,var(--ol) 5px,var(--ol) 7px,transparent 7px)}
 /* `#lay` is a direct child of `.bar`, not of `.br`, and that placement is load-bearing.
    `body.gut` — which a 9:16 project turns on at every width — stacks `.br` into a
@@ -732,7 +741,7 @@ svg{width:22px;height:22px;stroke-width:1.75}
 .tools button[data-t="layout"]{display:none}
 @media(min-width:600px){.tools button[data-t="layout"]{display:flex}}
 .bl{display:flex;align-items:center}
-body[data-layout=left],body[data-layout=right],body[data-layout=full]{display:grid;grid-template-columns:minmax(0,1fr);min-height:0;overflow:hidden}
+body[data-layout=left],body[data-layout=right],body[data-layout=full],body[data-layout=rail],body[data-layout="rail-l"]{display:grid;grid-template-columns:minmax(0,1fr);min-height:0;overflow:hidden}
 body[data-layout=left]{grid-template-columns:var(--pw) 12px minmax(0,1fr);grid-template-rows:auto auto minmax(0,1fr) auto auto;
   grid-template-areas:"bar bar bar" "view split ro" "view split tlw" "view split ar" "view split tools"}
 body[data-layout=right]{grid-template-columns:minmax(0,1fr) 12px var(--pw);grid-template-rows:auto auto minmax(0,1fr) auto auto;
@@ -740,6 +749,68 @@ body[data-layout=right]{grid-template-columns:minmax(0,1fr) 12px var(--pw);grid-
 /* `full` keeps the transport: the plan's `pb` area is our `.ar` row, and dropping it
    would leave a preview you cannot play or scrub. Transport left, tools beside it. */
 body[data-layout=full]{grid-template-rows:auto minmax(0,1fr) auto;grid-template-columns:auto minmax(0,1fr);grid-template-areas:"bar bar" "view view" "ar tools"}
+/* ── R14: the rail — preview on top, the sheet and the tools down one side ──
+   The fourth answer to "where does everything go", and the one a landscape iPad
+   with a widescreen project actually wants. `left`/`right` move the *preview* into
+   a side column, which is right for a 9:16 project (measured 429x762 in a 478px
+   column) and wrong for 16:9, where it hands the picture a tall narrow box. This
+   state moves the *rail* instead: the preview keeps its wide band on top, the
+   timeline keeps a wide band of its own in the middle, and the tools and the
+   sheet move into a full-height column down one edge.
+
+   The win is measured, not argued. At 1194x834 with Adjust open, `top` renders
+   the best picture (800x450) and deletes the timeline to do it, `left` keeps the
+   timeline and pays with a canvas three times smaller (454x255), and this state
+   keeps both: 771x434 against a 798px-wide timeline. The sheet's column costs the
+   picture nothing at that viewport, and 8-9% of it at 1024x768 and 1366x1024.
+
+   Two things about the grid decide whether that is true, and both are load
+   bearing. The panel's column is `auto`, so a closed sheet is a zero-width track
+   rather than a reserved one -- the same collapse the reference does by writing
+   `sidePanel.style.width='0px'` by hand. And the timeline's row is a *fixed*
+   clamp rather than a second `1fr`: the preview is the row that should absorb
+   every spare pixel, and the timeline only needs enough to be legible. Making
+   both rows flexible split the space evenly and cost the picture 67px, which
+   measured as a 653x367 canvas -- smaller than the `top` layout this state
+   exists to beat. */
+body[data-layout=rail]{grid-template-columns:minmax(0,1fr) 12px auto var(--rw);
+  grid-template-rows:auto minmax(0,1fr) auto clamp(240px,30vh,300px) auto;
+  grid-template-areas:"bar bar panel tools" "view split panel tools" "ro split panel tools" "tlw split panel tools" "ar split panel tools"}
+body[data-layout="rail-l"]{grid-template-columns:var(--rw) auto 12px minmax(0,1fr);
+  grid-template-rows:auto minmax(0,1fr) auto clamp(240px,30vh,300px) auto;
+  grid-template-areas:"tools panel bar bar" "tools panel split view" "tools panel split ro" "tools panel split tlw" "tools panel split ar"}
+/* The sheet runs the whole height of its column, so it needs none of the bound
+   `left`/`right` give it: that bound exists because there the sheet shares the
+   timeline's tall row and has to be told not to eat it. Here there is nothing to
+   be greedy with -- measured 310x834 at 1194x834. `width` is set rather than left
+   to the grid because the `min-width:900px` rule sets `#panel{width:min(960px,
+   100%)}` against the *body*, which in a 310px column is a 960px sheet; it is the
+   same trap R6c hit, and the same fix. */
+body[data-layout=rail] #panel,body[data-layout="rail-l"] #panel{grid-area:panel;
+  width:var(--sw);max-width:none;margin:0;border-radius:0;overflow:hidden;align-self:stretch}
+body[data-layout=rail] #panel>.eb,body[data-layout="rail-l"] #panel>.eb{min-height:0;overflow-y:auto;overscroll-behavior:contain}
+/* ── R16: the tools become a column ───────────────────────────────────────────
+   The row's own numbers are the reason this is not a one-line change. Left alone
+   the fifteen tool buttons measure 26px tall in a column -- far under the 44px
+   tap floor the rest of the app holds to -- and `min-height:44px` was not enough
+   either: the rail then measured 776px of content, because the >=900px rule sets
+   `gap:8px` and the two `.vd` group separators add their own height. All three
+   parts are needed: the separators go (a horizontal rule between groups of a
+   vertical list is a line through the middle of it), the gap comes down to 2px,
+   and the button takes a 46px height. That lands at 730px of content -- 15 x 46 +
+   28 + 12 -- which fits the 768-tall iPad with room to spare while keeping the
+   target above the floor. `overflow-y:auto` stays as the escape hatch for a
+   shorter window; the rail is the one scroller in the app that is allowed to
+   scroll rather than collapse. */
+body[data-layout=rail] .tools,body[data-layout="rail-l"] .tools{flex-direction:column;
+  justify-content:flex-start;gap:2px;padding:6px 4px;overflow-y:auto;-webkit-mask-image:none;mask-image:none}
+body[data-layout=rail] .tools button,body[data-layout="rail-l"] .tools button{flex:none;
+  width:auto;max-width:none;min-width:0;height:46px;padding:0;border-radius:12px}
+body[data-layout=rail] .tools button span,body[data-layout="rail-l"] .tools button span{display:none}
+body[data-layout=rail] .tools .vd,body[data-layout="rail-l"] .tools .vd{display:none}
+/* The divider only means something while the column it divides into is there. */
+body[data-layout=rail] #split,body[data-layout="rail-l"] #split{display:block;grid-area:split}
+body[data-layout=rail]:not(.es) #split,body[data-layout="rail-l"]:not(.es) #split{display:none}
 body[data-layout]:not([data-layout=top]) .dock{display:contents}
 body[data-layout]:not([data-layout=top]) .bar{position:static;grid-area:bar;height:56px;padding:0 6px;background:none}
 body[data-layout]:not([data-layout=top]) .view{grid-area:view;min-height:0;padding:8px 12px}
@@ -996,6 +1067,16 @@ layT:'<rect x="3" y="4.4" width="18" height="15.2" rx="2.4"/><path d="M3 15.2h18
 layL:'<rect x="3" y="4.4" width="18" height="15.2" rx="2.4"/><path d="M10.2 4.4v15.2"/>',
 layR:'<rect x="3" y="4.4" width="18" height="15.2" rx="2.4"/><path d="M13.8 4.4v15.2"/>',
 layF:'<rect x="3" y="4.4" width="18" height="15.2" rx="2.4"/>',
+/* The rail states. The mark is the same frame as the other four plus the one
+   thing that makes this state different: the divider near the top is the preview
+   band the rail layout keeps, and the strip down one edge is the column the sheet
+   and the tools move into. The horizontal line stops at the strip rather than
+   crossing it, because the rail runs the full height -- drawing it through would
+   say the sheet only reaches halfway down, which is the one thing this state is
+   for. Two literal paths rather than a mirror transform: the mirror would flip
+   the rounded corners' coordinates too and `ic()` writes raw paths into an svg. */
+layDR:'<rect x="3" y="4.4" width="18" height="15.2" rx="2.4"/><path d="M17 4.4v15.2M3 14.4h14"/>',
+layDL:'<rect x="3" y="4.4" width="18" height="15.2" rx="2.4"/><path d="M7 4.4v15.2M7 14.4h14"/>',
 /* ── the Settings sheet's five new marks ────────────────────────────────────
    `cog` is the sheet's title, and it has to be a gear and not the `sun` it
    would otherwise be: the sun is a 4px circle with eight rays starting right at
@@ -3013,8 +3094,16 @@ function panel(fromRowTap){
      and then, which is the whole reason this sheet beats cycling: the four
      states are on screen together, so you can look at them instead of
      imagining them. */
-  else if(tool=='layout')h=`<div class="rts">`+LAYOUTS.map(k=>
-    `<button class="rt${layMode==k?' on':''}" data-lay="${k}" aria-label="${LLBL[k]}"><i>${ic(layoutGlyph[k])}</i><span>${LLBL[k]}</span></button>`).join('')+`</div>`;
+  /* Two states are filtered out on a screen that cannot render them rather than
+     rendered as tiles that do nothing when tapped. A tile that silently refuses
+     is the failure mode this sheet exists to fix — the four states used to be
+     reachable only by cycling, one at a time, which is exactly a control that
+     hides its options. `.lay` is the one modifier on `.rts`: six tiles in a phone
+     sheet, or in the rail's own 310px column, have to wrap, and the shared row is
+     a `flex:1 1 0` row with no minimum, so it would shrink six tiles to nothing
+     instead of wrapping them. */
+  else if(tool=='layout')h=`<div class="rts lay">`+LAYOUTS.filter(layAllowed).map(k=>
+    `<button class="rt${layShown()==k?' on':''}" data-lay="${k}" aria-label="${LLBL[k]}"><i>${ic(layoutGlyph[k])}</i><span>${LLBL[k]}</span></button>`).join('')+`</div>`;
   /* Export. Three settings rows out of one descriptor array, and the options for
      only the row you opened — so the sheet is three lines tall however many
      settings it grows to. */
@@ -3188,8 +3277,11 @@ P.addEventListener('click',e=>{
      whole dock, transport included. */
   if(d.lay){
     layMode=d.lay;applyLayout();
-    P.querySelectorAll('[data-lay]').forEach(q=>q.classList.toggle('on',q.dataset.lay==layMode));
-    if(layMode=='full'){tool=null;document.body.classList.remove('es')}
+    /* Lit by what is shown, not by what was asked for: on a screen where the tap
+       fell back to `top` the tile that stays lit is `top`, because that is the
+       layout in front of you. */
+    P.querySelectorAll('[data-lay]').forEach(q=>q.classList.toggle('on',q.dataset.lay==layShown()));
+    if(layShown()=='full'){tool=null;document.body.classList.remove('es')}
     refresh();
     return;
   }
@@ -3338,39 +3430,83 @@ $('#theme').onclick=()=>{const d=document.documentElement,dark=d.dataset.theme?d
    is also why a side layout is never stored: there would be no way to leave one
    on a phone. `cycleLayout` refuses below 600 too, so the hidden button and the
    `p` key can never strand a phone in a layout it cannot see the control for. */
-const LAYOUTS=['top','left','right','full'];
+/* `top` (nothing moves), then the two rail states (the rail and the sheet move),
+   then the two preview states (the preview moves), then `full` (everything but
+   the preview goes). The order is the header's cycle, and it is grouped by what
+   moves so the icon's own title reads as a sequence rather than a list. */
+const LAYOUTS=['top','rail','rail-l','left','right','full'];
 /* `layMode`, not `layout`: `layout()` is already the timeline's own function. */
 let layMode='top';
-const layoutGlyph={top:'layT',left:'layL',right:'layR',full:'layF'};
-/* What the four states are called on the sheet's tiles. Short, because a tile is
-   96px wide; unambiguous, because "Preview" names which of the two regions is
-   moving and `top` is the stacked layout this app has always had. */
-const LLBL={top:'Preview top',left:'Preview left',right:'Preview right',full:'Preview only'};
+const layoutGlyph={top:'layT',rail:'layDR','rail-l':'layDL',left:'layL',right:'layR',full:'layF'};
+/* What the states are called on the sheet's tiles. Short, because a tile is 96px
+   wide; unambiguous, because each label names the region that moves — except
+   `top` and `full`, which are the two ends of the ladder and are named for what
+   the preview does instead. */
+const LLBL={top:'Preview top',rail:'Rail right','rail-l':'Rail left',left:'Preview left',right:'Preview right',full:'Preview only'};
+/* The rail is the only state with two conditions on it, because it is the only
+   one that needs both dimensions: width to give the sheet a column and height to
+   give it a full one, and a portrait screen has neither to spare. 900 rather
+   than 600 is measured, not picked — that is where the sheet's width and the
+   rail's stop being a rounding error against the preview's band (89% of the
+   closed canvas at 900x700, 92-100% at the three target iPads), and below it the
+   state has nothing to offer that `left` does not already give. */
+const railable=()=>innerWidth>=900&&innerWidth>innerHeight;
+const layAllowed=m=>m=='top'||(m=='rail'||m=='rail-l'?railable():innerWidth>=600);
+/* The state the user asked for and the state actually shown are two different
+   things, and keeping them apart is what makes rotation round-trip: an iPad in
+   `rail` rotated to portrait falls back to `top`, and rotating back returns to
+   `rail` rather than forgetting it. The old code overwrote `layMode` itself, so
+   the choice was destroyed by the rotation that could not render it. */
+const layShown=()=>layAllowed(layMode)?layMode:'top';
+/* The next state the cycle can actually reach. Without this a phone or a portrait
+   iPad would step onto `rail`, see nothing change, and have no way to tell that
+   from a broken button — the same silent no-op the Layout sheet's hidden tiles
+   exist to avoid. */
+function nextLayout(from){
+  for(let k=1;k<=LAYOUTS.length;k++){
+    const m=LAYOUTS[(LAYOUTS.indexOf(from)+k)%LAYOUTS.length];
+    if(layAllowed(m))return m;
+  }
+  return 'top';
+}
 function applyLayout(){
-  if(layMode!='top'&&innerWidth<600)layMode='top';
-  const b=document.body;
-  if(layMode=='top')b.removeAttribute('data-layout');else b.setAttribute('data-layout',layMode);
-  const next=LAYOUTS[(LAYOUTS.indexOf(layMode)+1)%LAYOUTS.length];
+  const b=document.body,shown=layShown();
+  if(shown=='top')b.removeAttribute('data-layout');else b.setAttribute('data-layout',shown);
+  /* The header describes what is on *screen*, not what was asked for, so a
+     portrait iPad showing the fallback does not wear the rail's glyph. */
+  const next=nextLayout(shown);
   const lb=$('#lay');
-  if(lb){lb.innerHTML=ic(layoutGlyph[layMode]);lb.title='Layout: '+layMode+' - tap for '+next;lb.setAttribute('aria-label','Layout: '+layMode+', next: '+next)}
-  /* The rail's entry wears the glyph of the state you are in, the same mark the
-     sheet's lit tile carries, and is re-drawn here as well as in `strip()` so
+  if(lb){lb.innerHTML=ic(layoutGlyph[shown]);lb.title='Layout: '+shown+' - tap for '+next;lb.setAttribute('aria-label','Layout: '+shown+', next: '+next)}
+  /* The rail's own entry wears the glyph of the state you are in, the same mark
+     the sheet's lit tile carries, and is re-drawn here as well as in `strip()` so
      the header's cycle and a tile tap leave the rail saying the same thing. */
   const rb=document.querySelector('#tools button[data-t="layout"] svg');
-  if(rb)rb.innerHTML=ICON[layoutGlyph[layMode]];
+  if(rb)rb.innerHTML=ICON[layoutGlyph[shown]];
   /* The grid sizes the preview itself, but `fitView()` still owns the gutter
      class and the filmstrip re-layout, and it is the one place that knows the
      canvas has changed shape. R3's side branch is not here yet; the inline
-     `flex` it writes is simply ignored by the grid. */
+     `flex` it writes is simply ignored by the grid. That holds for the rail too:
+     its preview row is `minmax(0,1fr)` and the inline basis is dropped, so no
+     branch is needed there either — only the filmstrip, which does re-lay out
+     because the film lane is a different height in this state. */
   fitView();
 }
 function cycleLayout(forceFull){
   if(innerWidth<600)return;
-  layMode=forceFull?'full':LAYOUTS[(LAYOUTS.indexOf(layMode)+1)%LAYOUTS.length];
+  layMode=forceFull?'full':nextLayout(layShown());
   applyLayout();
 }
 $('#lay').onclick=()=>cycleLayout(false);
-addEventListener('resize',()=>{if(layMode!='top'&&innerWidth<600){layMode='top';applyLayout()}fitView();paintRange($('#r1'));clips.length&&renderTL()});
+/* Re-apply only when what is shown actually changes. The gate has a landscape
+   half, so the shown state can move without `layMode` moving at all — which is
+   the rotation case — and that is the one thing the old handler, which only
+   watched for a state becoming illegal, could not see. `fitView()` still runs on
+   every resize, as it always has. */
+addEventListener('resize',()=>{
+  const shown=layShown(),had=document.body.getAttribute('data-layout')||'top';
+  if(shown!==had)applyLayout();
+  fitView();paintRange($('#r1'));clips.length&&renderTL();
+});
 applyLayout();
 addEventListener('keydown',e=>{
   /* Any focused field owns its keys — a range slider included, so an arrow key
