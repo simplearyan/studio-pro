@@ -450,7 +450,7 @@ svg{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-l
 .tx .td{position:absolute;left:6px;bottom:1px;font-size:9px;line-height:1.6;font-weight:500;font-variant-numeric:tabular-nums;background:rgba(0,0,0,.62);color:#fff;border-radius:3px;padding:0 4px;pointer-events:none}
 .tools button:active{background:color-mix(in srgb,var(--on) 10%,transparent)}
 @media(max-width:360px){.tools button{min-width:60px}.ar{padding:0 2px}#time{font-size:12px}.addf{width:40px;height:40px}}
-@supports not (color:color-mix(in srgb,red 50%,blue)){.sr{border-bottom:1px solid rgba(127,127,127,.18)}}
+@supports not (color:color-mix(in srgb,red 50%,blue)){.xr:hover,.xr.open{background:rgba(127,127,127,.12)}}
 /* no sticky hover wash on touch devices — it reads as a broken pressed state */
 @media(hover:none){.ib:hover,.tools button:hover,.ib:hover{background:none}}
 
@@ -463,33 +463,82 @@ svg{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-l
 #time{position:relative;z-index:1}
 
 /* ── the ⋮ sheet: rare actions + settings, one home, nothing gesture-only ──
-   S1-S7: the Settings sheet stops being a special case. `.set` is now only a
-   state flag — the class is still toggled so panel() can tell the two sheets
-   apart, but it carries no styling of its own. Everything that made this sheet
-   look borrowed is gone: its private padding, its `max-height:64vh` (a magic
-   number that never knew how much room the pinned preview left, and redundant
-   now that #panel sizes itself and scrolls), and its 13px/--on2 labels, which
-   made the quietest text on screen belong to the settings you are least likely
-   to check.
+   The Settings sheet was five unrelated rows in one list, and two things were
+   wrong with that at once: it is 220px of content in a body the split layout
+   bounds to 187px, so it opened already scrolling with "Timeline zoom" clipped
+   off the top edge — and a zoom readout, two frame steppers, a ruler chip, a
+   switch and a destructive button stacked together have no rhythm to learn,
+   because they are five different idioms at four different heights.
 
-   `.sr`/`.sg` stay — a list of four unrelated settings genuinely needs rows, and
-   the property sheets have none because each of them edits a single value. The
-   inconsistency was never the rows; it was the padding, the type, the missing
-   values and the private footer. Rows now speak the shared vocabulary: a 15px
-   label in --on like the readout, a tabular value in --on2, and 44px controls
-   matching the tap floor everywhere else. Four 48px rows plus the old title
-   padding came to 329px against 322px of room at 320x700, which is why Done used
-   to sit 1px below the fold; 44px rows and the standard title padding fit with
-   room to spare. */
-.eb.st{flex-direction:column;align-items:stretch;justify-content:center;flex-wrap:nowrap;gap:0}
-.sr{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;border-bottom:1px solid color-mix(in srgb,var(--on) 7%,transparent)}
-.sr:last-child{border-bottom:0}
-.sr>span:first-child{font-size:15px;font-weight:500;color:var(--on)}   /* the readout's size, not grey caption text */
-.sr .val{font-size:13px;font-weight:400;color:var(--on2);font-variant-numeric:tabular-nums;white-space:nowrap}
-.sr .chip{height:36px;padding:0 16px;border-radius:18px}
-.sg{display:flex;align-items:center;gap:8px;flex:1 1 auto;justify-content:flex-end;min-width:0}
-#panel.set .sg input[type=range]{flex:0 1 96px;width:96px;min-width:0;height:32px;accent-color:var(--pri)}
-.sg .ib{width:44px;height:44px}
+   So the sheet is a shelf of three subject tiles over the rows of the one you
+   picked — `.rt`, the tile Aspect ratio and Layout already use, over `.xr`,
+   Export's own label-and-value row. One category on screen is a third of the
+   content (66 + 10 + 2x52 = 180 against 220), which is what actually removes the
+   overflow; the rest is that the rows now share one grammar instead of five.
+
+   Nothing about `.eb` changes: the shelf and the row list are both `flex:1 1
+   100%`, so they wrap onto their own full-width lines in the existing centre.
+   `.sr`/`.sg`/`.eb.st` are gone with the list they were shaped for. */
+.seth{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px;text-align:left}
+.seth .t{grid-column:2;display:flex;align-items:center;gap:8px;font-size:16px;font-weight:600}
+.seth .t svg{width:18px;height:18px;flex:none;color:var(--on2)}
+.seth #sclose{grid-column:3;justify-self:end}
+/* The shelf's own size, and it is not the property sheets' 96px square. Three or
+   four full-size tiles put a 118px band above a 104px row list, which is taller
+   than the five rows this whole redesign exists to shorten. 44px is the tap
+   floor, so the tile is as small as it can legally be: 44 + 8 + ~14 = 66. */
+.rts.cat .rt>i{width:44px;height:44px;aspect-ratio:auto}
+.rts.cat{gap:14px}
+.rts.cat .rt{max-width:none}
+.rts.cat .rt>i svg{width:52%;height:52%}
+/* The Zoom category: a slider with its own toolbar on the value row. `.sv` is the
+   app's slider readout line and it is 16px tall by default; here it carries two
+   44px steppers and Reset, so it is sized to the touch floor and the whole widget
+   is 44 + 6 + 26 = 76 — one band, not a slider over a second row of buttons,
+   which would have been 100 and would not have fit the bound. */
+.zsl .sv{justify-content:space-between;align-items:center;gap:8px;min-height:44px}
+.zsl .zctl{display:flex;align-items:center;gap:6px;flex:none}
+/* The Ruler category: six chips, all the options on screen at once, the lit one
+   answering the question. 36px, like the export sheet's own option row. A grid
+   and not a wrapping flex row, because a wrap is a decision made by the widest
+   label: "1m" landed alone on a second line at 393px, which reads as a mistake
+   rather than as a set. Three columns is 3x2 at every width this sheet takes. */
+.rchips{flex:1 1 100%;display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.rchips .chip{height:36px;padding:0 14px;font-size:14px;min-width:0}
+/* Two things are scoped to `.set` here, and both are about the height rather
+   than the look. The rows' own padding is 15px in Export, which is right for a row
+   whose content is a line of text and wrong for one whose content is a 44px
+   button: 15+15+44 is a 74px row, and two of those plus a 66px shelf do not fit
+   the 323px the split layout bounds this sheet to. `min-height:44px` keeps the
+   rows that hold a small control (the switch, the storage readout) on the same
+   44px band as the rest, so every row is 44 or 52 and the list is 96. */
+#panel.set .xr{padding:4px 6px;min-height:44px;gap:8px}
+/* The label must not shrink. `.xr` is `space-between`, so a row whose controls
+   are wide squeezes the label instead of the controls, and "Timeline zoom" broke
+   across two lines on a 393px phone with three pixels to spare — a two-line label
+   in a 52px row is a clipped row. `nowrap` and `flex:none` make the label take
+   the width its text needs, which is what the 8px row gap and the 6px control gap
+   here pay for. */
+#panel.set .xr .xl{flex:none;white-space:nowrap}
+#panel.set .xv{gap:6px}
+.xr .val{font-size:13px;font-weight:400;color:var(--on2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.xr .ib{width:44px;height:44px}
+/* The panel's own 16px row gap costs 32px across three children; Settings needs
+   the title, the shelf and the footer with 8px between them instead, which buys
+   the shelf its 66px without the body having to shrink to pay for it. */
+#panel.set{gap:10px}
+/* And the gap *inside* the body, between the shelf and the rows it chooses. At
+   the sheet's default 14px the two bands came to 176px of content in a 175px
+   box at 1194x834 — three separate gaps of 10, 8 or 6 all fit and the difference
+   is only cushion, so this one is 10 for the same reason the panel's is. */
+#panel.set .eb{gap:10px}
+/* The one destructive control in the app gets its own full-width row and a
+   permanent orange. It used to be a 66x36 chip a hand's width from `Fit`,
+   wearing the same border and the same weight, with only the word to separate
+   "zoom to fit" from "delete my project". */
+.xr.dz{padding:2px 6px}
+.xr.dz .chip{flex:1 1 auto;height:44px;border-radius:12px;font-size:15px}
+.chip.warn.arm{background:var(--acc);border-color:transparent;color:var(--bg)}
 .sw{width:46px;height:28px;border-radius:14px;background:var(--sf2);position:relative;flex:none;transition:background .15s}
 .sw i{position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:var(--on2);transition:transform .15s,background .15s}
 .sw.on{background:var(--acc)}
@@ -946,7 +995,27 @@ more:'<circle cx="12" cy="5" r="1.8" fill="currentColor" stroke="none"/><circle 
 layT:'<rect x="3" y="4.4" width="18" height="15.2" rx="2.4"/><path d="M3 15.2h18"/>',
 layL:'<rect x="3" y="4.4" width="18" height="15.2" rx="2.4"/><path d="M10.2 4.4v15.2"/>',
 layR:'<rect x="3" y="4.4" width="18" height="15.2" rx="2.4"/><path d="M13.8 4.4v15.2"/>',
-layF:'<rect x="3" y="4.4" width="18" height="15.2" rx="2.4"/>'};
+layF:'<rect x="3" y="4.4" width="18" height="15.2" rx="2.4"/>',
+/* ── the Settings sheet's five new marks ────────────────────────────────────
+   `cog` is the sheet's title, and it has to be a gear and not the `sun` it
+   would otherwise be: the sun is a 4px circle with eight rays starting right at
+   its edge, and this is a wide ring (r 7.6) with a 2.9px hole and eight teeth
+   outside the ring. Two concentric circles is what separates "machine part"
+   from "star", and at 18px in a title that is the whole read. */
+cog:'<circle cx="12" cy="12" r="7.6"/><circle cx="12" cy="12" r="2.9"/><path d="M12 1.8v2.6M12 19.6v2.6M2.6 12h2.6M18.8 12h2.6M5.4 5.4l1.8 1.8M16.8 16.8l1.8 1.8M5.4 18.6l1.8-1.8M16.8 7.2l1.8-1.8"/>',
+/* `x` is the title's close affordance. It is the same two strokes `cx` draws in
+   the export overlay, written once so the two do not drift. */
+x:'<path d="M6.8 6.8l10.4 10.4M17.2 6.8 6.8 17.2"/>',
+/* `ruler` is the Timeline category: five ticks under a hairline, alternating
+   long and short, which is what a ruler is and not a generic "time" clock — the
+   transport already owns the transport's own marks and a clock would collide
+   with none of them but say less. */
+ruler:'<rect x="2.4" y="8.2" width="19.2" height="7.6" rx="1.8"/><path d="M6.4 8.2v3.4M9.6 8.2v5.2M12.8 8.2v3.4M16 8.2v5.2M19.2 8.2v3.4"/>',
+/* `store` is the Storage category: a stack of discs, the one shape everybody
+   already reads as "bytes on a device". It is a cylinder with a lid and a
+   waist, and deliberately not a folder (that would promise a file browser) or a
+   disc (already the vignette's and the vignette is not a place). */
+store:'<path d="M5.4 6.9c0-1.5 3-2.7 6.6-2.7s6.6 1.2 6.6 2.7-3 2.7-6.6 2.7-6.6-1.2-6.6-2.7z"/><path d="M5.4 6.9v10.2c0 1.5 3 2.7 6.6 2.7s6.6-1.2 6.6-2.7V6.9"/><path d="M5.4 12c0 1.5 3 2.7 6.6 2.7s6.6-1.2 6.6-2.7"/>'};
 /* Delete is the header's own trash can — the comment above the clip actions says
    so — so the rail borrows the glyph instead of carrying a second copy of the
    paths. It is an alias and not another literal because `ic()` resolves by
@@ -1999,6 +2068,15 @@ const stackInfo=c=>{const on=stackOn(c);if(on.length<2)return '';
    not of the clip — open Adjust on clip A, turn Highlights, Done, open it on
    clip B, and you want Highlights waiting, not Brightness. */
 let adjKey='bright';
+/* Which Settings category is open, and for the same reason `adjKey` is module
+   state: it is a property of the sheet in front of you, not of the project. Open
+   Settings, pick Storage, close it, open it again, and Storage is still there —
+   but a reload starts on Zoom, because a remembered category is a convenience
+   inside a session and a surprise across one. It is deliberately not persisted:
+   `lite:snap` and `lite:ruler` are settings, and which tab you last looked at is
+   not one. Zoom is the default because re-scaling the timeline is what this sheet
+   is opened for nine times in ten; the other three are things you set once. */
+let settingsCat='zoom';
 /* Which Filters control the strength slider is currently editing — 'vig',
    'grain', or a chain look's key. Module state for the same reason adjKey is:
    it is a property of the sheet in front of you, not of the clip, so opening
@@ -2657,26 +2735,127 @@ function syncZoom(){
   zv.textContent=(s<10?s.toFixed(1):Math.round(s))+' s across';
   const a=$('#zo'),b=$('#zi');if(a)a.disabled=pps<=ZOOM_MIN;if(b)b.disabled=pps>=ZOOM_MAX;
 }
+/* The steppers and Reset move `pps`, and the slider is a second view of the same
+   number — so it has to be told, or the thumb stays where the last drag left it
+   while the readout says something else and the sheet shows two zooms at once.
+   `syncZoom()` above owns the readout and the disabled ends; this owns the input,
+   which is the one piece of the control that is not a pure function of `pps`. */
+function zoomSliderSync(){const r=$('#r1');if(!r)return;r.value=String(Math.round(pps));paintRange(r)}
+/* ── the Settings shelf ──────────────────────────────────────────────────────
+   Five unrelated settings in one list is what made this sheet both too tall and
+   unreadable: 220px of rows in a 187px body at 1194x834, so it opened already
+   scrolling with the first row clipped, and its five rows used five different
+   control idioms at four different heights. They are not five peers — they are
+   three subjects. Timeline is how the timeline is drawn, Editing is how your
+   gestures behave, Storage is what is on the device — so the sheet becomes a
+   shelf of three category tiles over the rows of the one you picked.
+
+   That is what fixes the height, not the restyle: showing one category at a time
+   is a third of the content of showing all three (66 + 10 + 2x52 = 180 against
+   the old 220), and the bound that was clipping the fifth row now has room to
+   spare. The rows themselves are Export's own `.xr` — 15px label left, control
+   right — because that shape is already the app's "a name and its value" row and
+   a second one would be a second grammar for no reason.
+
+   The tiles are the same `.rt` component Aspect ratio and Layout use, at the
+   same radius and ring, with `.cat` sizing the square down to the 44px the
+   shelf's arithmetic assumes: four tiles at the sheet's full 96px would be a
+   118px shelf, which is taller than the rows it is meant to be replacing. */
+/* Four categories, and the split matters: "Timeline" used to hold zoom and ruler
+   interval as two rows of one category, which meant a slider and a picker shared
+   a pane and neither got to be the shape it wanted to be — zoom was a readout
+   with two steppers and a chip, and the interval was a button that cycled
+   through six values you could not see. They are two different subjects (how much
+   of the timeline is on screen; how coarsely it is labelled), so they are two
+   categories, and each one is a single control that is the right shape for it. */
+const SET_CATS=[
+  {k:'zoom',   n:'Zoom',    i:'zo'},
+  {k:'ruler',  n:'Ruler',   i:'ruler'},
+  {k:'editing',n:'Editing', i:'cut'},
+  {k:'storage',n:'Storage', i:'store'}
+];
+/* The ruler's six intervals as a chooser. It used to be one button that cycled,
+   which is a picker you have to step through blind — with `Auto` in the ring you
+   had to tap up to five times to get back to where you were, and nothing on the
+   sheet said what the options were. Six chips say all of it at once, and the lit
+   one is the answer. */
+const RULER_MODES_LBL=m=>m==='auto'?'Auto':m>=60?m/60+'m':m+'s';
+function setBody(){
+  if(settingsCat=='ruler')return `<div class="rchips">`+RULER_MODES.map(m=>
+    `<button class="chip${String(rulerMode)===String(m)?' on':''}" data-rul="${m}" aria-pressed="${String(rulerMode)===String(m)}">${RULER_MODES_LBL(m)}</button>`).join('')+`</div>`;
+  if(settingsCat=='editing')return `<div class="xlist">
+    <div class="xr"><span class="xl">Step one frame</span><span class="xv"><button class="ib" id="fb" aria-label="Previous frame">${ic('prev')}</button><button class="ib" id="ff" aria-label="Next frame">${ic('next')}</button></span></div>
+    <div class="xr"><span class="xl">Snap to edges</span><span class="xv"><button class="sw${snapOn?' on':''}" id="swsnap" role="switch" aria-checked="${snapOn}" aria-label="Snap to edges"><i></i></button></span></div></div>`;
+  if(settingsCat=='storage')return `<div class="xlist">
+    <div class="xr"><span class="xl">Saved project</span><span class="xv"><b class="val" id="sstor"></b></span></div>
+    <div class="xr dz"><button class="chip warn" id="sforget">Clear project</button></div></div>`;
+  /* Zoom is the one control here that is a *value* rather than a choice, so it is
+     the app's own slider — the same `.sl` widget and the same `#r1` input the
+     Speed, Volume and Adjust sheets use, so the track, the thumb, the fill and
+     the accent-on-grab all come with it. What it adds is the row above: the
+     readout on the left and the two steppers and Reset on the right, which is
+     Volume's shape (a slider plus a one-tap action) with the steppers that a
+     zoom needs and a slider alone cannot give you. The `.sv` row carries them so
+     the whole control is one 76px block instead of a slider over a toolbar. */
+  return `<div class="sl zsl">
+    <div class="sv"><b id="zv"></b><span class="zctl">
+      <button class="ib" id="zo" aria-label="Zoom out" title="Zoom out">${ic('zo')}</button>
+      <button class="ib" id="zi" aria-label="Zoom in" title="Zoom in">${ic('zi')}</button>
+      <button class="chip" data-a="fit" title="Fit the whole timeline">Reset</button>
+    </span></div>
+    <div class="slx"><input type="range" id="r1" min="${ZOOM_MIN}" max="${ZOOM_MAX}" step="1" value="${Math.round(pps)}" aria-label="Timeline zoom"></div>
+  </div>`;
+}
 function settingsSheet(){
   const p=$('#panel');esBase=null;document.body.classList.add('es');fitView();
-  p.innerHTML=`<div class="eh">Settings</div><div class="eb st">
-    <div class="sr"><span>Timeline zoom</span><span class="sg"><b class="val" id="zv"></b><button class="ib" id="zo" aria-label="Zoom out">${ic('zo')}</button><button class="ib" id="zi" aria-label="Zoom in">${ic('zi')}</button><button class="chip" data-a="fit">Fit</button></span></div>
-    <div class="sr"><span>Step one frame</span><span class="sg"><button class="ib" id="fb" aria-label="Previous frame">${ic('prev')}</button><button class="ib" id="ff" aria-label="Next frame">${ic('next')}</button></span></div>
-    <div class="sr"><span>Ruler interval</span><button class="chip" id="rulercyc" aria-label="Ruler interval">${rulerLabel()}</button></div>
-    <div class="sr"><span>Snap to edges</span><button class="sw${snapOn?' on':''}" id="swsnap" role="switch" aria-checked="${snapOn}" aria-label="Snap to edges"><i></i></button></div>
-    <div class="sr"><span>Saved project</span><span class="sg"><b class="val" id="sstor"></b><button class="chip" id="sforget">Clear</button></span></div>
-  </div><div class="ef"><div class="l"></div><div class="m"></div><div class="r"><button class="pillb pri" id="ed">Done</button></div></div>`;
+  p.innerHTML=`<div class="eh seth"><span class="t">${ic('cog')}Settings</span><button class="ib" id="sclose" aria-label="Close settings" title="Close">${ic('x')}</button></div>
+  <div class="eb"><div class="rts cat">`+SET_CATS.map(c=>`<button class="rt${settingsCat==c.k?' on':''}" data-cat="${c.k}" aria-label="${c.n}"><i>${ic(c.i)}</i><span>${c.n}</span></button>`).join('')+`</div>
+  ${setBody()}</div>
+  <div class="ef"><div class="l"></div><div class="m"></div><div class="r"><button class="pillb pri" id="ed">Done</button></div></div>`;
   p.classList.add('set');p.hidden=false;syncZoom();
+  /* The zoom track's fill needs a laid-out width, and this sheet can be built
+     while `#panel` is still `hidden` — the same two paints `panel()` does, for
+     the same reason: once now for the common case, once on the next frame for
+     the sheet that has just come back. `syncZoom()` above has already disabled
+     whichever stepper has hit its end. */
+  paintRange($('#r1'));
+  requestAnimationFrame(()=>paintRange($('#r1')));
   /* Read after the row is on screen, because a promise that resolves before the
-     row exists has nowhere to write. */
+     row exists has nowhere to write. The Storage category is not the default, so
+     this resolves into nothing on a fresh open and into the row that is there
+     when Storage is the category in front of you — which is the whole reason the
+     read is keyed to the element rather than to the open. */
   storageLine().then(s=>{const e=$('#sstor');if(e)e.textContent=s});
   /* Two taps, because this is the one destructive control in the app and a
-     single tap that erases an afternoon is not a feature. */
-  let armed=0;
+     single tap that erases an afternoon is not a feature. The chip now carries
+     `.warn` permanently — it is the only control in the app that destroys
+     something, and a warning that only appears once you have already committed a
+     tap is a warning about the wrong moment. So the arming toggles `.arm`
+     (a filled, louder state) instead of adding and removing `.warn`, which would
+     have stripped the chip's orange off again two and a half seconds later. */
+  /* Two taps inside 2.5s, and the first window is a real one. The old guard was
+     `armed!==Date.now()-2500`, which compares two moving clocks: it could only
+     ever be false in the *same millisecond* as the previous tap, so from a human
+     hand or from a test it was always true and the second tap re-armed instead of
+     erasing. `Clear` therefore never cleared anything — it flashed "Tap again"
+     twice and did nothing, which is the worst possible behaviour for the app's
+     one destructive control. `now-armedAt>2500` is the comparison the sentence
+     was trying to say. The timer keeps its own id so a re-arm cannot leave two
+     stacked resets fighting over the label. */
+  let armedAt=0,armT=0;
   const fc=$('#sforget');
-  if(fc)fc.onclick=()=>{
-    if(armed!==Date.now()-2500){armed=Date.now()-2500;fc.textContent='Tap again';fc.classList.add('warn');setTimeout(()=>{fc.textContent='Clear';fc.classList.remove('warn')},2500);return}
-    forgetAll();settingsSheet();
+  if(fc)fc.onclick=async()=>{
+    const now=Date.now();
+    if(now-armedAt>2500){
+      armedAt=now;
+      fc.textContent='Tap again to erase';fc.classList.add('arm');
+      clearTimeout(armT);
+      armT=setTimeout(()=>{if(fc.isConnected){fc.textContent='Clear project';fc.classList.remove('arm')}},2500);
+      return;
+    }
+    /* Await the erase before rebuilding, so the Storage readout the new sheet
+       renders is the one the erase just produced rather than the one before it. */
+    await forgetAll();settingsSheet();
   };
 }
 /* Centre the selected target, but only when the row is not already showing it.
@@ -2888,7 +3067,16 @@ function panel(fromRowTap){
 }
 const P=$('#panel');
 P.addEventListener('input',e=>{
-  const c=sel&&sel.k=='c'&&clips.find(x=>x.id==sel.id),x=sel&&sel.k=='t'&&texts.find(y=>y.id==sel.id),el=e.target,v=c&&srcs[c.src].v;
+  const el=e.target;
+  /* The Settings sheet's one slider is the timeline's zoom rather than a clip
+     value, so it is handled ahead of the clip guard below — that guard wants a
+     selected clip and would otherwise drop this input on the floor. The write is
+     one line because `pps` is the whole state: `renderTL()` redraws, and
+     `syncZoom()` owns the readout and the two steppers' disabled ends. */
+  if(el.id=='r1'&&P.classList.contains('set')){
+    paintRange(el);pps=clamp(+el.value,ZOOM_MIN,ZOOM_MAX);renderTL();syncZoom();return;
+  }
+  const c=sel&&sel.k=='c'&&clips.find(x=>x.id==sel.id),x=sel&&sel.k=='t'&&texts.find(y=>y.id==sel.id),v=c&&srcs[c.src].v;
   if(el.id=='r1'&&c){
     paintRange(el);
     /* Every selected clip, one gesture. `writeSlider` is one clip's worth of the
@@ -2928,20 +3116,33 @@ P.addEventListener('input',e=>{
 P.addEventListener('click',e=>{
   const b=e.target.closest('button');if(!b)return;const d=b.dataset;
   if(P.classList.contains('set')){
+    /* A category tile rebuilds the sheet rather than patching it: the rows below
+       the shelf are a different set of controls with different ids, so there is
+       nothing to patch. `settingsCat` is written first, so the rebuilt sheet
+       lights the tile that was tapped. */
+    if(d.cat){settingsCat=d.cat;settingsSheet();return}
+    /* The `×` and `Done` are the same act — one at each end of the sheet, which
+       is what a close affordance is for. Kept as two ids rather than one class so
+       each keeps its own label for a screen reader. */
+    if(b.id=='sclose'||b.id=='ed'){tool=null;document.body.classList.remove('es');refresh();return}
     if(b.id=='swsnap'){snapOn=!snapOn;b.classList.toggle('on',snapOn);try{localStorage.setItem('lite:snap',snapOn?'1':'0')}catch(_){} }
     else if(b.id=='fb')nudge(-1/30);
     else if(b.id=='ff')nudge(1/30);
     /* Zoom steps by 1.25x, not the old 1.5x: with the slider gone there is no
        way to jump directly, so each press has to be small enough to land on the
        level you wanted. Fit covers the coarse end, so fine is all this needs. */
-    else if(b.id=='zo'||b.id=='zi'){pps=clamp(b.id=='zo'?pps/1.25:pps*1.25,ZOOM_MIN,ZOOM_MAX);renderTL();syncZoom()}
-    else if(d.a=='fit'){fitZoom();syncZoom()}
-    /* Pinning overrides the *major* step only. The minor step is still major/k,
-       so the subdivision holds while pinned and pinning can never produce a
-       solid line of dots — the thing automatic mode would let happen. */
-    else if(b.id=='rulercyc'){const i=(RULER_MODES.indexOf(rulerMode)+1)%RULER_MODES.length;rulerMode=RULER_MODES[i];
-      try{localStorage.setItem('lite:ruler',rulerMode)}catch(_){}b.textContent=rulerLabel();paintRuler()}
-    else if(b.id=='ed'){tool=null;document.body.classList.remove('es');refresh()}
+    else if(b.id=='zo'||b.id=='zi'){pps=clamp(b.id=='zo'?pps/1.25:pps*1.25,ZOOM_MIN,ZOOM_MAX);renderTL();syncZoom();zoomSliderSync()}
+    else if(d.a=='fit'){fitZoom();syncZoom();zoomSliderSync()}
+    /* The interval is a choice, so it is chosen: the tap writes the mode, marks
+       its own chip and repaints the ruler. It patches rather than rebuilding the
+       sheet, the way `adjKey` does, so the chips do not jump under the finger
+       that just pressed one. */
+    else if(d.rul!==undefined){
+      rulerMode=d.rul==='auto'?'auto':+d.rul;
+      try{localStorage.setItem('lite:ruler',rulerMode)}catch(_){}
+      P.querySelectorAll('[data-rul]').forEach(q=>{const on=String(q.dataset.rul)===String(rulerMode);q.classList.toggle('on',on);q.setAttribute('aria-pressed',on)});
+      paintRuler();
+    }
     return;
   }
   if(d.tp){const x=texts.find(y=>y.id==sel.id);x.tp=d.tp;P.querySelectorAll('[data-tp]').forEach(q=>q.classList.toggle('on',q===b))}
@@ -3118,7 +3319,11 @@ function fitZoom(){const w=tlWidth();pps=clamp(w*.8/Math.max(total,1),ZOOM_MIN,Z
    pinched. View state, not document state — not in snap(), not undoable, the
    same as snapOn. */
 const RULER_MODES=['auto',1,5,10,30,60];
-const rulerLabel=()=>rulerMode==='auto'?'Auto':'≥'+(rulerMode>=60?rulerMode/60+'m':rulerMode+'s');
+/* `rulerLabel()` lived here and is gone: it named one interval with a `≥` in
+   front of it, which was the right label for a button that cycled blind ("at
+   least 5s, and more if it has to") and the wrong one for a chooser, where the
+   chip is the interval itself and the set of six is the answer. The chooser's
+   labels are `RULER_MODES_LBL`, next to the shelf that renders them. */
 try{if(localStorage.getItem('lite:snap')==='0')snapOn=false}catch(_){}
 try{const rm=localStorage.getItem('lite:ruler'),i=RULER_MODES.map(String).indexOf(rm);if(i>-1)rulerMode=RULER_MODES[i]}catch(_){}
 $('#more').onclick=()=>{tool=tool=='settings'?null:'settings';panel()};
