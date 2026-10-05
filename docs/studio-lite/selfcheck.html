@@ -92,7 +92,7 @@
   <p class="sub" style="margin-top:10px">The last two rows are not clip actions: one is the slider's own readout, and one is the split of the old Format sheet into Aspect ratio and Canvas plus the new Export sheet. They run here because they need the same synthetic clip and the same second instance.</p>
 
   <h2>The iPad layout toggle</h2>
-  <p class="sub">The side-by-side layout is the one feature whose whole promise is <em>invisible when it is wrong</em>: a grid that fails to place an area just leaves a gap, and a phone layout that has drifted is a phone layout that still looks like a phone. So these run at a real 1194&times;834 in a third instance, and the last row is the one that matters most &mdash; the phone numbers are compared against the <em>committed</em> build, not against a description of it.</p>
+  <p class="sub">The side-by-side layout is the one feature whose whole promise is <em>invisible when it is wrong</em>: a grid that fails to place an area just leaves a gap, and a phone layout that has drifted is a phone layout that still looks like a phone. So these run at a real 1194&times;834 in a third instance, and the phone numbers are compared against the <em>committed</em> build rather than against a description of it. The five rows on the sheet's height are the other half of that idea: each one measures, then injects the exact failure it is meant to catch <em>in the same frame</em>, measures again, and requires the number to move &mdash; a check that cannot go red is not a check. The bound's own rows inject the pre-R6b stylesheet, so what they catch is the specific bug they were written for: a sheet that stretched to fill the column.</p>
   <table id="layT"><thead><tr>
     <th style="width:16%">Check</th><th style="width:42%">What it promises</th>
     <th style="width:30%">Measured</th><th style="width:12%">Result</th>
@@ -810,7 +810,10 @@ async function runActions(){
        the first. */
     run(seed);
     const order=ev("[...document.querySelectorAll('#tools button')].map(b=>b.dataset.t)");
-    const want=['speed','volume','filter','adjust','rotate','trans','reverse','replace','rearrange','dup','del','ts','te','aspect','canvas'];
+    /* `layout` closes the project group for the same reason the group exists:
+       where the timeline goes is a property of the frame, like the ratio and the
+       backdrop, and not of the clip the other eleven act on. */
+    const want=['speed','volume','filter','adjust','rotate','trans','reverse','replace','rearrange','dup','del','ts','te','aspect','canvas','layout'];
     say('rail order','the four clip actions sit together on a selected clip, in the reference\u2019s order',
       order.join(' \u00b7 '), JSON.stringify(order)===JSON.stringify(want),
       'a rail whose actions drift apart is one you have to re-learn');
@@ -1004,7 +1007,111 @@ async function runLayout(){
     phone&&!diff.length&&stack===844,
     'measured from the build at HEAD at 393x844 with a 9:16 project and one clip');
 
-  run("layMode='top';applyLayout()");
+  /* 6. The layout sheet. It is the fourth way into the four states and the first
+     one that shows them: the claim is that it carries the same four in the same
+     vocabulary, in the aspect-ratio row's own tiles, and that it is the column's
+     width \u2014 because it is the same sheet, in the same place. */
+  run("layMode='left';applyLayout()");await sleep(30);
+  run("tool='layout';panel()");await sleep(30);
+  const ls=ev("(function(){var P=document.getElementById('panel');return {eh:P.querySelector('.eh').textContent,tiles:[].map.call(P.querySelectorAll('[data-lay]'),function(t){return t.dataset.lay+(t.classList.contains('on')?'*':'')}).join(' '),foot:[].map.call(P.querySelectorAll('.ef button'),function(b){return b.textContent}),w:Math.round(P.getBoundingClientRect().width),col:Math.round(document.querySelector('.ro').getBoundingClientRect().width)}})()");
+  say('the layout sheet','the four states are offered as tiles in the aspect-ratio row\u2019s own tiles, with the state you are in lit and one Done to leave',
+    'title '+ls.eh+' \u00b7 tiles '+ls.tiles+' \u00b7 footer '+ls.foot.join('/')+' \u00b7 '+ls.w+'px in a '+ls.col+'px column',
+    ls.eh==='Layout'&&ls.tiles==='top left* right full'&&ls.foot.length===1&&ls.foot[0]==='Done'&&ls.w===ls.col,
+    'a tile row is the one shape that makes four options read as four options');
+
+  /* 7. A tile goes through `applyLayout`, not around it, so the header icon, the
+     rail glyph and the grid cannot end up disagreeing \u2014 and `full`, which has no
+     column for a sheet to live in, closes it without taking the transport with
+     it. That last part is the bug the popover in `full` exists to prevent. */
+  const tw=ev("(function(){var P=document.getElementById('panel');P.querySelector('[data-lay=right]').click();return {attr:document.body.getAttribute('data-layout'),lit:!!P.querySelector('[data-lay=right].on'),title:document.querySelector('#lay').title}})()");
+  run("document.querySelector('#panel [data-lay=full]').click()");await sleep(30);
+  const tf=ev("{attr:document.body.getAttribute('data-layout'),es:document.body.classList.contains('es'),play:!!document.querySelector('#play').offsetParent}");
+  say('a tile applies the layout','tapping a tile moves the real layout and the header icon together; tapping Preview only closes the sheet and leaves the transport',
+    'right: '+tw.attr+', tile lit '+tw.lit+', header \u201c'+tw.title+'\u201d \u2192 full: '+tf.attr+', sheet '+(tf.es?'open':'closed')+', play '+(tf.play?'visible':'gone'),
+    tw.attr==='right'&&tw.lit&&/right/.test(tw.title)&&tf.attr==='full'&&!tf.es&&tf.play,
+    'two controls for one decision are safe only when they call the same function');
+
+  /* 8. The rail entry is offered exactly where the header icon is. Two gates for
+     one decision is how a phone ends up able to open a chooser for a layout its
+     own viewport refuses. */
+  const railWide=ev("getComputedStyle(document.querySelector('.tools button[data-t=layout]')).display");
+  const railPhone=RW?JSON.parse(RW.eval("JSON.stringify({rail:getComputedStyle(document.querySelector('.tools button[data-t=layout]')).display,head:getComputedStyle(document.querySelector('#lay')).display})")):null;
+  say('the rail entry is for iPads','the Layout button appears in the tool row at the same breakpoint as the header\u2019s cycle icon, and appears in neither place on a phone',
+    '1194px: rail '+railWide+' \u00b7 393px: rail '+(railPhone?railPhone.rail:'?')+', header '+(railPhone?railPhone.head:'?'),
+    railWide!=='none'&&railPhone&&railPhone.rail==='none'&&railPhone.head==='none',
+    'offering a chooser for a layout the viewport refuses is a control that does nothing');
+
+  /* 9-13. IPAD-LAYOUT-PLAN.md 13.1: the sheet is *bounded* in the split layout.
+     R6b is one rule — `align-self:start;height:min(46dvh,50%)` — and it exists
+     because `grid-area:tlw` alone put the sheet in the column's 1fr row, where the
+     row's own default `align-self:stretch` made it fill whatever the column had
+     left (measured 629px of an 834-tall screen at 1194x834). These five rows each
+     measure, then inject the exact failure they are meant to catch *in the same
+     frame*, measure again, and require the number to have moved. A row that cannot
+     go red is not a check, and the style is removed immediately so an injection
+     cannot leak into the next row. */
+  const trial=(css,expr)=>{
+    const d=LW.document,s=d.createElement('style');s.textContent=css;d.head.appendChild(s);
+    const v=ev(expr);s.remove();return v;
+  };
+  const sheetGeom="(function(){var P=document.getElementById('panel'),r=P.getBoundingClientRect(),ro=document.querySelector('.ro').getBoundingClientRect(),ar=document.querySelector('.ar').getBoundingClientRect(),row=ar.top-ro.bottom;return {h:Math.round(r.height),top:Math.round(r.top),bottom:Math.round(r.bottom),row:Math.round(row),roB:Math.round(ro.bottom),arT:Math.round(ar.top),ih:innerHeight,align:getComputedStyle(P).alignSelf,want:Math.round(Math.min(innerHeight*.46,row*.5)),vh46:Math.round(innerHeight*.46)}})()";
+  run("layMode='left';applyLayout();tool='adjust';panel()");await sleep(40);
+  const sb=ev(sheetGeom);
+  const sb100=trial("body[data-layout=left] #panel{height:100% !important}",sheetGeom);
+  const sb46=trial("body[data-layout=left] #panel{height:46vh !important}",sheetGeom);
+  /* The pre-R6b sheet, exactly: stretch with no height is what `grid-area:tlw`
+     alone produced, margins included. Injecting it is what proves these rows
+     would have been red before the bound landed. */
+  const sbOld=trial("body[data-layout=left] #panel{align-self:stretch !important;height:auto !important}",sheetGeom);
+  const sbBig=trial("body[data-layout=left] #panel{height:140% !important}",sheetGeom);
+  const halves=Math.min(sb.vh46,sb.row*.5),larger=Math.max(sb.vh46,sb.row*.5);
+
+  say('the sheet is bounded','in the split layout the sheet is capped at the smaller of half the timeline row and the phone\u2019s own sheet height, so it stops filling the column and stops covering the chrome',
+    'panel '+sb.h+'px \u00b7 candidates: 46% of '+sb.ih+' = '+sb.vh46+', half of the '+sb.row+'px row = '+Math.round(sb.row*.5)+' \u00b7 ruler '+sb.roB+' \u2264 '+sb.top+' \u2264 '+sb.bottom+' \u2264 '+sb.arT+' transport',
+    Math.abs(sb.h-halves)<=2&&sb.roB<=sb.top&&sb.bottom<=sb.arT,
+    'the same frame measured '+sbOld.h+'px before the bound \u2014 that is the column-filling sheet this rule removes');
+
+  say('the bound takes the smaller','where the two candidates differ the sheet takes the lower one \u2014 never taller than half the timeline, never taller than the sheet a phone gets',
+    'reported '+sb.h+'px, not '+Math.round(larger)+'px (the larger candidate)',
+    larger>halves+4&&Math.abs(sb.h-halves)<=2&&Math.abs(sb46.h-sb.h)>4,
+    'injecting height:46vh \u21d2 '+sb46.h+'px, so "is it the min or the max" is a question this row can answer');
+
+  say('it does not stretch','the sheet keeps its own height; a grid item that stretches ignores the height it was given, which is the whole bug',
+    'computed align-self '+sb.align+'; injected stretch reports '+sbOld.align+' and '+sbOld.h+'px',
+    sb.align!=='stretch'&&sbOld.align==='stretch'&&sbOld.h>sb.h+4,
+    'align-self:start is what makes the height mean anything, so it is asserted rather than assumed');
+
+  say('the chrome survives','a sheet taller than its row would cover the transport or the ruler; at the bound the ruler is above it and the transport below it',
+    'at the bound bottom '+sb.bottom+' \u2264 transport '+sb.arT+'; injected height:140% \u21d2 bottom '+sbBig.bottom+' vs '+sbBig.arT,
+    sb.bottom<=sb.arT&&sb.roB<=sb.top&&sbBig.bottom>sbBig.arT,
+    'the injection has to actually reach the transport, which is why this one is 140% and not 100%');
+
+  /* The phone is the other half of the promise: 46% is *its* number, and a rule
+     that leaked out of the split states would move it. All eleven tools and all
+     four project ratios, because the phone's sheet is a constant rather than a
+     content measurement \u2014 `fitView()`\u2019s VIEW_FLOOR is what makes it one. */
+  const evRW=expr=>JSON.parse(RW.eval('JSON.stringify('+expr+')'));
+  const phoneSheet="(function(){var g=function(s){return Math.round(document.querySelector(s).getBoundingClientRect().height)},P=document.getElementById('panel'),h=[],tools=['speed','volume','filter','adjust','rotate','trans','aspect','canvas','layout','export','rearrange'],ars=['9:16','16:9','1:1','4:5'];ars.forEach(function(a){proj.ar=a;if(typeof applyProj==='function')applyProj();tools.forEach(function(t){tool=t;panel();h.push(Math.round(P.getBoundingClientRect().height))})});proj.ar='9:16';if(typeof applyProj==='function')applyProj();tool='adjust';panel();var r={min:Math.min.apply(null,h),max:Math.max.apply(null,h),n:h.length,sheet:Math.round(P.getBoundingClientRect().height),view:g('.view'),bodyH:Math.round(document.body.clientHeight)};tool=null;panel();return r})()";
+  const ph=RW?evRW(phoneSheet):null;
+  /* The injection has to be one that *can* move this number. `height:50%` looks
+     like it should and does not: the phone's `#panel` is a `flex:1 1 auto` item in
+     the body's column next to a `.view` pinned at `flex:0 0 Npx`, so the panel just
+     absorbs the negative free space and lands back on 388 \u2014 a no-op dressed as a
+     failure. `flex:0 0 300px` is the honest one: it is a rule that moves the phone
+     sheet, which is exactly what this row claims it would catch. */
+  let phInj=null;
+  if(RW){
+    const d=RW.document,s=d.createElement('style');
+    s.textContent='#panel{flex:0 0 300px !important}';
+    d.head.appendChild(s);phInj=evRW("(function(){tool='adjust';panel();var P=document.getElementById('panel'),r=Math.round(P.getBoundingClientRect().height);tool=null;panel();return {sheet:r}})()");
+    s.remove();
+  }
+  say('the bound is not on the phone','the bound is scoped to the two split states, so a phone\u2019s sheet is the same 388px it always was, for every tool and every project ratio',
+    ph?(ph.n+' measurements, sheet '+ph.min+'\u2013'+ph.max+', view '+ph.view+', view+sheet '+ph.view+'+'+ph.sheet+'='+(ph.view+ph.sheet)+' vs body '+ph.bodyH+' \u00b7 injected unscoped flex:0 0 300px \u21d2 '+phInj.sheet):'not measured',
+    !!ph&&ph.n===44&&ph.min===388&&ph.max===388&&ph.view===456&&ph.view+ph.sheet===ph.bodyH&&phInj&&phInj.sheet!==388,
+    'an unscoped height moves it, so this row is a real diff against the phone baseline and not a description of it');
+
+  run("tool=null;layMode='top';applyLayout()");
   return {pass,fail};
 }
 

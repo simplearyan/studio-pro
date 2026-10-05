@@ -406,6 +406,14 @@ svg{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-l
 .rt.on>i>b{background:var(--on)}
 .rt>span{font-size:12px;line-height:1.2;text-align:center}
 .rt.on>span{color:var(--on);font-weight:500}
+/* Layout tiles are the aspect-ratio tiles entire — same row, same ring, same
+   label weight — and differ only in what sits inside the square: a wireframe of
+   the layout instead of a ratio block. Inheriting the tile is the point; a second
+   tile style would be a second thing to keep in step, and the two sheets are
+   meant to read as the same kind of choice. The glyph is drawn at 44% so the
+   four pictures are the same size as an aspect ratio's block, not larger. */
+.rt>i svg{width:44%;height:44%;stroke-width:1.4}
+.rt.on>i svg{color:var(--on)}
 /* ── Canvas: the backdrop as swatches ─────────────────────────────────────
    A background is a colour, so it is chosen from colours rather than named in
    words. The custom chip is the one control here that is not a preset: a
@@ -667,6 +675,13 @@ svg{width:22px;height:22px;stroke-width:1.75}
    600px) it adds nothing at all. */
 #lay{display:none}
 @media(min-width:600px){#lay{display:grid}}
+/* The rail's Layout entry is offered exactly where the header's cycle icon is —
+   `#lay`'s own breakpoint, not a second one. Two gates for one decision is how a
+   control and the thing it controls end up disagreeing, and `applyLayout()`
+   refuses a side layout below 600px, so a phone must not be offered the chooser
+   either. */
+.tools button[data-t="layout"]{display:none}
+@media(min-width:600px){.tools button[data-t="layout"]{display:flex}}
 .bl{display:flex;align-items:center}
 body[data-layout=left],body[data-layout=right],body[data-layout=full]{display:grid;grid-template-columns:minmax(0,1fr);min-height:0;overflow:hidden}
 body[data-layout=left]{grid-template-columns:var(--pw) 12px minmax(0,1fr);grid-template-rows:auto auto minmax(0,1fr) auto auto;
@@ -687,10 +702,42 @@ body[data-layout]:not([data-layout=top]) .tools{grid-area:tools;justify-content:
    ruler, transport and tools stay put and the timeline is still one column away.
    This is the minimum of R6 the grid needs to not be broken by a sheet; the
    full popover form is still to come. */
-body[data-layout]:not([data-layout=top]) #panel{grid-area:tlw;margin:8px 10px;min-height:0}
+/* Scoped to the two split states by name, not by `:not([data-layout=top])`:
+   `full` has no `tlw` row to put a sheet in, and it needs a different rule for
+   the panel rather than this one plus an override. */
+/* R6b: the sheet is *bounded*. `grid-area:tlw` alone put it in the column's
+   `minmax(0,1fr)` row, where the row's default `align-self:stretch` made it fill
+   whatever the column had left — measured 629px of a 834-tall screen, against
+   the 388 the same sheet gets on a phone. `align-self:start` is what makes the
+   `height` mean anything at all: a stretched grid item ignores its own height, so
+   the two declarations are one change, not two.
+
+   `min(46dvh, 50%)`: 50% is the row the timeline lives in, 46% is the phone's own
+   sheet (there `#panel` shares the body with a `.view` capped at 54%, so the sheet
+   is always the 46% left over — the same 388px for every tool and every project
+   ratio). The smaller of the two is the honest bound: never taller than half the
+   timeline, never taller than the sheet a phone would get. Measured 322 / 323 /
+   502 at 1194x834, 768x836 and 834x1194.
+
+   The doubled declaration is the file's own `100dvh` fallback pattern: a browser
+   without `dvh` drops the second line and falls back to `vh`, and one without
+   either drops the whole declaration back to stretching — today's behaviour,
+   which is a safe place to land. */
+body[data-layout=left] #panel,body[data-layout=right] #panel{grid-area:tlw;margin:8px 10px;min-height:0;
+  align-self:start;
+  height:min(46vh,50%);height:min(46dvh,50%)}
 body[data-layout]:not([data-layout=top]).es .tlw{display:none}
 body[data-layout=left] #split,body[data-layout=right] #split{display:block;grid-area:split}
-body[data-layout=full] .ro,body[data-layout=full] .tlw,body[data-layout=full] #split,body[data-layout=full] #panel{display:none}
+body[data-layout=full] .ro,body[data-layout=full] .tlw,body[data-layout=full] #split{display:none}
+/* `full` has no column to host a sheet — but it has three ways *in*: the header's
+   Settings and Export, and the rail's Layout. `display:none` here made all three
+   open a sheet nobody could see, which is a control that does nothing. So in
+   `full` the sheet is the reference's own fallback shape: a popover, floated over
+   the preview, its own width rather than the column's. Its footer is still the
+   footer, so Done and Cancel keep their places. */
+body[data-layout=full] #panel{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);
+  width:min(420px,calc(100% - 32px));max-height:min(60%,520px);margin:0;padding:18px 20px 16px;
+  border-radius:20px;box-shadow:0 18px 48px rgba(0,0,0,.55);z-index:9}
 /* The gutter is a phone treatment: drop it inside a side layout only. */
 body[data-layout]:not([data-layout=top]).gut .view{padding-left:12px;padding-right:12px}
 body[data-layout]:not([data-layout=top]).gut .bar{height:56px;padding:0 6px;align-items:center}
@@ -846,6 +893,20 @@ layT:'<rect x="3" y="4.4" width="18" height="15.2" rx="2.4"/><path d="M3 15.2h18
 layL:'<rect x="3" y="4.4" width="18" height="15.2" rx="2.4"/><path d="M10.2 4.4v15.2"/>',
 layR:'<rect x="3" y="4.4" width="18" height="15.2" rx="2.4"/><path d="M13.8 4.4v15.2"/>',
 layF:'<rect x="3" y="4.4" width="18" height="15.2" rx="2.4"/>'};
+/* Delete is the header's own trash can — the comment above the clip actions says
+   so — so the rail borrows the glyph instead of carrying a second copy of the
+   paths. It is an alias and not another literal because `ic()` resolves by
+   string: a tool key the map does not have interpolates `undefined` into the
+   `<svg>`, which is not an exception and not a console warning, just a blank
+   square where an icon should be. That is what had happened here — the rail's
+   Delete has been drawing nothing, and only the label under it said which
+   control it was. */
+ICON.del=ICON.trash;
+/* And `layout`, for the same reason: `strip()` hands it the glyph of the state
+   you are in, but the name has to resolve on its own or the day that special
+   case is refactored the button goes blank again, silently. The split mark is
+   the honest default — it is the layout this control mostly exists to reach. */
+ICON.layout=ICON.layL;
 const ic=n=>`<svg viewBox="0 0 24 24">${ICON[n]}</svg>`;
 /* The card preview for Grain, as a CSS layer.
 
@@ -2445,8 +2506,8 @@ let esBase=null;
    header's own action, where the reference keeps it — but it is a sheet, so it
    is registered here with the rest. The other labels are already plain: what
    the control does, in the fewest words that still say it. */
-const LBL={add:'Add video',text:'Text',edit:'Edit text',speed:'Speed',volume:'Volume',filter:'Filters',adjust:'Adjust',rotate:'Rotate',trans:'Transition',aspect:'Aspect',canvas:'Canvas',dup:'Duplicate',ts:'Trim start',te:'Trim end',reverse:'Reverse',replace:'Replace',rearrange:'Rearrange',del:'Delete'};
-const TOOLS=['speed','volume','filter','adjust','rotate','trans','aspect','canvas','export','text','rearrange'],TTL={speed:'Speed',volume:'Volume',filter:'Filters',adjust:'Adjust',rotate:'Rotation',trans:'Transition',aspect:'Aspect ratio',canvas:'Canvas',export:'Export',text:'Text',rearrange:'Rearrange'};
+const LBL={add:'Add video',text:'Text',edit:'Edit text',speed:'Speed',volume:'Volume',filter:'Filters',adjust:'Adjust',rotate:'Rotate',trans:'Transition',aspect:'Aspect',canvas:'Canvas',layout:'Layout',dup:'Duplicate',ts:'Trim start',te:'Trim end',reverse:'Reverse',replace:'Replace',rearrange:'Rearrange',del:'Delete'};
+const TOOLS=['speed','volume','filter','adjust','rotate','trans','aspect','canvas','layout','export','text','rearrange'],TTL={speed:'Speed',volume:'Volume',filter:'Filters',adjust:'Adjust',rotate:'Rotation',trans:'Transition',aspect:'Aspect ratio',canvas:'Canvas',layout:'Layout',export:'Export',text:'Text',rearrange:'Rearrange'};
 /* The volume a Mute tap will come back to. Module state and not a clip field,
    because it is a property of the *gesture* — how loud was this clip a moment
    ago — rather than of the project; two clips muted in a row each remember the
@@ -2499,13 +2560,21 @@ function rdend(){rdrag=null;removeEventListener('pointermove',rdmove);removeEven
 function strip(){
   const ci=sel&&sel.k=='c'?clips.findIndex(c=>c.id==sel.id):-1;
   const cs=ci>=0?clips[ci]:null;
+  /* Layout rides the project group beside Aspect and Canvas, because it is the
+     same kind of thing: a property of the *frame you are looking through*, not
+     of a clip. It is deliberately in that group rather than on its own, so
+     "where does the timeline go" sits with the other two project panels. */
   const groups=!clips.length?[['add']]
-    :!sel?[['add','text'],['aspect','canvas']]
+    :!sel?[['add','text'],['aspect','canvas','layout']]
     :sel.k=='t'?[['edit','dup','ts','te']]
     :[['speed','volume','filter','adjust','rotate',...(ci>0?['trans']:[])],
       ['reverse','replace','rearrange','dup','del','ts','te'],
-      ['aspect','canvas']];
-  $('#tools').innerHTML=groups.map(g=>g.map(x=>`<button data-t="${x}"${x=='reverse'&&cs&&cs.rev?' class="on"':''}>${ic(x)}<span>${LBL[x]}</span></button>`).join('')).join('<i class="vd"></i>');
+      ['aspect','canvas','layout']];
+  /* The rail's own glyph tracks the state you are in (`layoutGlyph`), where the
+     header's cycle icon shows the state a tap would give you. One is a chooser
+     and one is a cycler, and a chooser that names the current value is what
+     every other picker in the app does. */
+  $('#tools').innerHTML=groups.map(g=>g.map(x=>`<button data-t="${x}"${x=='reverse'&&cs&&cs.rev?' class="on"':''}>${ic(x=='layout'?layoutGlyph[layMode]:x)}<span>${LBL[x]}</span></button>`).join('')).join('<i class="vd"></i>');
 }
 function addText(){
   if(!clips.length)return toast('Add a video first');
@@ -2611,7 +2680,7 @@ function panel(fromRowTap){
   /* Read before the rebuild, put back after it. Both shelves scroll, so this is
      a property of the sheet rather than of either tool. */
   const car0=p.querySelector('.car'),sl0=car0?car0.scrollLeft:0;
-  let h='';const c=['aspect','canvas','export','text'].includes(tool)?null:curSel();
+  let h='';const c=['aspect','canvas','layout','export','text'].includes(tool)?null:curSel();
   if(tool=='text'){
     const x=sel&&sel.k=='t'&&texts.find(y=>y.id==sel.id);if(!x){p.hidden=true;document.body.classList.remove('es');fitView();return}
     h=`<input type="text" id="ti" maxlength="60" placeholder="Type your title" value="${esc(x.t).replace(/"/g,'&quot;')}"><div class="tpl">`+[['rainbow','Rainbow'],['plain','Plain'],['neon','Neon'],['comic','Comic']].map(([k,l])=>`<button class="chip${(x.tp||'plain')==k?' on':''}" data-tp="${k}"><span class="tp-${k}">${l}</span></button>`).join('')+`</div><div class="sub" id="txinfo">${txInfo(x)}</div>`;
@@ -2703,6 +2772,16 @@ function panel(fromRowTap){
      colour is not one of the presets, which is what stops a custom pick and a
      preset from both claiming the selection. */
   else if(tool=='canvas')h=`<div class="sws"><label class="swt custom${BG.some(([,v])=>v==proj.bg)?'':' on'}" id="bgcSw" title="Custom colour"><input type="color" id="bgc" value="${proj.bg}"></label><i class="vd2"></i>`+BG.map(([n,v])=>`<button class="swt${proj.bg==v?' on':''}" data-bg="${v}" title="${n}" aria-label="${n}" style="background:${v}"></button>`).join('')+`</div>`;
+  /* Layout is a shape too, so it is chosen from shapes, from the same tile row
+     the aspect ratios use. The four glyphs are the header icon's own
+     (`layT`/`layL`/`layR`/`layF`), so the picture on a tile is the same picture
+     the header draws for that state — one set of four marks for one set of four
+     states, and no new artwork to keep in sync. A tap applies the layout there
+     and then, which is the whole reason this sheet beats cycling: the four
+     states are on screen together, so you can look at them instead of
+     imagining them. */
+  else if(tool=='layout')h=`<div class="rts">`+LAYOUTS.map(k=>
+    `<button class="rt${layMode==k?' on':''}" data-lay="${k}" aria-label="${LLBL[k]}"><i>${ic(layoutGlyph[k])}</i><span>${LLBL[k]}</span></button>`).join('')+`</div>`;
   /* Export. Three settings rows out of one descriptor array, and the options for
      only the row you opened — so the sheet is three lines tall however many
      settings it grows to. */
@@ -2727,7 +2806,16 @@ function panel(fromRowTap){
   const nm=selClips().length;
   const manyNote=nm>1&&['speed','volume','filter','adjust','rotate','trans'].includes(tool)
     ?'<div class="sub">'+nm+' clips · one gesture edits all</div>':'';
-  p.innerHTML=`<div class="eh">${TTL[tool]}</div><div class="eb">${manyNote}${h}</div><div class="ef"><div class="l"><button class="pillb" id="ec">Cancel</button></div><div class="m">${['filter','adjust'].includes(tool)?`<button class="pillb ghost" id="ea">Apply to all</button>`:(!['text','rearrange','export'].includes(tool)?'<button class="pillb ghost" id="er">Reset</button>':'')}</div><div class="r">${tool=='export'?'<button class="pillb pri" id="exr">Export</button>':'<button class="pillb pri" id="ed">Done</button>'}</div></div>`;
+  /* Layout is the one sheet whose footer is a single action, and the reason is
+     that it is the one sheet that commits on tap. Every other sheet edits a
+     value and so needs Cancel (put it back) and Reset (its default); a layout
+     writes `layMode` the moment a tile is tapped, is not part of the snapshot
+     `esBase` carries, and cannot be un-tapped — so Cancel and Reset would be two
+     buttons that both mean Done. One button, and it says the right thing. */
+  const foot=tool=='layout'
+    ?`<div class="ef"><div class="l"></div><div class="m"></div><div class="r"><button class="pillb pri" id="ed">Done</button></div></div>`
+    :`<div class="ef"><div class="l"><button class="pillb" id="ec">Cancel</button></div><div class="m">${['filter','adjust'].includes(tool)?`<button class="pillb ghost" id="ea">Apply to all</button>`:(!['text','rearrange','export'].includes(tool)?'<button class="pillb ghost" id="er">Reset</button>':'')}</div><div class="r">${tool=='export'?'<button class="pillb pri" id="exr">Export</button>':'<button class="pillb pri" id="ed">Done</button>'}</div></div>`;
+  p.innerHTML=`<div class="eh">${TTL[tool]}</div><div class="eb">${manyNote}${h}</div>`+foot;
   p.hidden=false;document.body.classList.add('es');
   /* Put the row back where the user left it. panel() throws the sheet's markup
      away and rebuilds it, and a new .car is scrolled to 0 — which is how the
@@ -2838,6 +2926,18 @@ P.addEventListener('click',e=>{
   if(b.id=='ea'){const c=curSel();if(clips.length<2)return toast('Only one clip to apply to');
     clips.forEach(k=>{if(k!==c){k.ad={...(c.ad||{})};k.f=c.f;k.fs=c.fs;k.vig=c.vig||0;k.grain=c.grain||0;k.blue=c.blue||0;k.blur=c.blur||0;k.opacity=opac(c)}});toast('Applied to all clips');refresh()}
   if(d.ar){proj.ar=d.ar;applyProj();panel();fitView()}
+  /* A layout tile applies on tap, through the same `applyLayout()` the header
+     icon calls — which is what keeps the two controls in step instead of
+     agreeing by resemblance. `full` has no column for the sheet to live in, so
+     it closes: leaving `body.es` on with the panel `display:none` would hide the
+     whole dock, transport included. */
+  if(d.lay){
+    layMode=d.lay;applyLayout();
+    P.querySelectorAll('[data-lay]').forEach(q=>q.classList.toggle('on',q.dataset.lay==layMode));
+    if(layMode=='full'){tool=null;document.body.classList.remove('es')}
+    refresh();
+    return;
+  }
   if(d.bg){proj.bg=d.bg;panel()}
   /* The export rows. Tapping a row opens its options and tapping one closes the
      row, so the sheet never grows past its three lines and the value you picked
@@ -2983,6 +3083,10 @@ const LAYOUTS=['top','left','right','full'];
 /* `layMode`, not `layout`: `layout()` is already the timeline's own function. */
 let layMode='top';
 const layoutGlyph={top:'layT',left:'layL',right:'layR',full:'layF'};
+/* What the four states are called on the sheet's tiles. Short, because a tile is
+   96px wide; unambiguous, because "Preview" names which of the two regions is
+   moving and `top` is the stacked layout this app has always had. */
+const LLBL={top:'Preview top',left:'Preview left',right:'Preview right',full:'Preview only'};
 function applyLayout(){
   if(layMode!='top'&&innerWidth<600)layMode='top';
   const b=document.body;
@@ -2990,6 +3094,11 @@ function applyLayout(){
   const next=LAYOUTS[(LAYOUTS.indexOf(layMode)+1)%LAYOUTS.length];
   const lb=$('#lay');
   if(lb){lb.innerHTML=ic(layoutGlyph[layMode]);lb.title='Layout: '+layMode+' - tap for '+next;lb.setAttribute('aria-label','Layout: '+layMode+', next: '+next)}
+  /* The rail's entry wears the glyph of the state you are in, the same mark the
+     sheet's lit tile carries, and is re-drawn here as well as in `strip()` so
+     the header's cycle and a tile tap leave the rail saying the same thing. */
+  const rb=document.querySelector('#tools button[data-t="layout"] svg');
+  if(rb)rb.innerHTML=ICON[layoutGlyph[layMode]];
   /* The grid sizes the preview itself, but `fitView()` still owns the gutter
      class and the filmstrip re-layout, and it is the one place that knows the
      canvas has changed shape. R3's side branch is not here yet; the inline

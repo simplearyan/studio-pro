@@ -11,9 +11,15 @@ implements exactly this. It was measured, not guessed at — see §1 — and mos
 this plan is a port of its mechanism plus the four things it gets wrong or leaves
 out for our file.
 
-**This is a plan.** Most of it is still unbuilt. **R1 and R2 in §3 are built and
-measured** — the grid, the four states and the header toggle; §3.2 records what
-shipped and what is deliberately not there yet. The mock is otherwise at
+**This is a plan.** Most of it is still unbuilt. **R1, R2 and R3 in §3 are built
+and measured** — the grid, the four states, the header toggle, and the Layout
+sheet that shows the four states (§3.3); §3.2 records what shipped and what is
+deliberately not there yet. R6 has shipped in the minimum
+shape the grid needs (the sheet takes the timeline column's tall row instead of
+hiding the dock) — and that is exactly what leaves it **filling the whole
+column**. **§7.1 bounds it** — built and measured: `align-self:start` plus
+`height:min(46dvh,50%)`, so the sheet is 322px at 1194×834 instead of 629, with
+the ruler still above it and the transport still below. The mock is otherwise at
 `ecc11dd` plus the uncommitted Sharpen work.
 
 > Every "before" number in §2 and every "after" number in §1 was measured by
@@ -161,12 +167,15 @@ file has to change shape, which is where all the risk is.
 - **R1** `body[data-layout]` ∈ {`top`, `left`, `right`, `full`}, with `.dock`
   becoming `display:contents` in the side states only. — **built**
 - **R2** A header icon `#lay` cycling the four states, hidden below 600px. — **built**
-- **R3** A Settings row so the state is discoverable and readable in words. The
-  header icon alone is a mystery on first run; the reference has no Settings and
-  we do, so we can do better than the reference here.
+- **R3** A **Layout sheet**: the four states offered as four tiles, in the
+  aspect-ratio row's own style, reachable from the tool row on an iPad. The
+  header icon alone is a mystery on first run and a cycle shows you one state at
+  a time; a tile row shows all four. — **built**, §3.3
 - **R4** `fitView()` learns a second branch for the column (§5).
 - **R5** The gutter stops keying on the project ratio (§6).
-- **R6** The sheet moves into the timeline column instead of hiding the dock (§7).
+- **R6** The sheet moves into the timeline column instead of hiding the dock (§7),
+  and is **bounded to half the timeline — or to the phone's own sheet height —
+  instead of stretching to the column** (§7.1).
 - **R7** The tool row adapts to the *column* width, not the viewport, and gets a
   collapse affordance (§8).
 - **R8** `--pw` clamped 0.28–0.6, draggable, persisted, keyboard-nudgeable.
@@ -228,9 +237,55 @@ Three things the plan did not foresee:
    the cheapest possible R4 if one is ever wanted.
 
 What is **not** here yet, in the order §12 puts it: the draggable `--pw` divider
-(R5), the sheet's popover form (R6), the Settings row (R3), tool labels from a
-measurement (R7), safe-area insets (R9), `pointer:coarse` (R10), view transitions
-(R11), and the flip to `auto` (R13, a separate decision).
+(R5), the timeline reclaiming the other half (R6c, §7.1 — R6b, the bound itself,
+has shipped), tool labels from a measurement (R7), safe-area insets (R9),
+`pointer:coarse` (R10), view transitions (R11), and the flip to `auto` (R13, a
+separate decision).
+
+What R6 shipped as, and what it costs: `body[data-layout]:not([data-layout=top])
+#panel{grid-area:tlw}` plus `body…es .tlw{display:none}`. `tlw` is the column's
+`minmax(0,1fr)` row, so the sheet is whatever the column has left — measured
+**629px of a 834-tall screen at 1194×834**, against the 322–388 the phone gives
+the same sheet. That is the number §7.1 is about.
+
+### 3.3 The Layout sheet, as built
+
+R3 turned out to be the same control as Aspect ratio with different pictures in
+it, so it is built out of that sheet rather than beside it: the same `.rts` tile
+row, the same `.rt` ring and label, the same centred footer. A tile is the state,
+the glyph is the header icon's own mark for that state (`layT`/`layL`/`layR`/
+`layF`), and the label says which region moves — `Preview top`, `Preview left`,
+`Preview right`, `Preview only`. **`layout` sits in the rail's project group
+alongside `aspect` and `canvas`**, because where the timeline goes is a property
+of the frame rather than of a clip, and because that group is already the one
+that survives having nothing selected.
+
+Three things it does that the header icon cannot:
+
+- **It shows all four at once.** The icon cycles, so three of the four states are
+  invisible until you have clicked through them; the sheet is a comparison.
+- **It applies on tap**, through the same `applyLayout()` the icon calls — not a
+  second code path. That is what keeps the grid, the header icon, the rail glyph
+  and the lit tile from ever disagreeing, and it is asserted (§13.1 row 7).
+- **It has one button.** A layout writes `layMode` the moment a tile is tapped,
+is not part of the snapshot `esBase` carries, and cannot be un-tapped, so Cancel
+  and Reset would be two more ways to say Done. The footer is Done alone.
+
+**The rail entry is gated exactly where `#lay` is** — `@media(min-width:600px)`,
+not a second breakpoint, because `applyLayout()` refuses a side layout below 600
+and a chooser for a layout the viewport refuses is a control that does nothing.
+Measured: at 1194×834 the button is `display:flex` and `#lay` is `display:grid`;
+at 393×844 both are `display:none` and `data-layout` is unset.
+
+**One bug this found, and the fix.** `body[data-layout=full] #panel{display:none}`
+was true before R3 and stayed true — so in `full` the rail's Layout button opened a
+sheet that rendered nowhere, and so did the header's **Export** and **Settings**,
+which are reachable in `full` and had been silently opening an invisible sheet.
+In `full` the sheet is now the reference's own fallback shape: a popover, floated
+over the preview at `min(420px, 100% − 32px)`, bottom-centred, its own radius and
+shadow, with its footer intact. The side states keep the column-width sheet, which
+is why the rule that puts `#panel` in `grid-area:tlw` is now scoped to `left` and
+`right` by name rather than to "anything that is not `top`".
 
 ---
 
@@ -381,9 +436,106 @@ In the side states:
   and is not a defect.
 - `full` has no column, so entering `full` closes the sheet, and `Cancel`/`Done`
   return to the layout you came from.
-- `.es` must no longer imply "the picture may not move" in side mode — with the
+-  `.es` must no longer imply "the picture may not move" in side mode — with the
   panel inside the column, the preview column's height is untouched by
   construction. `fitView()`'s `chrome` cache stays as it is for `top`.
+
+### 7.1 The sheet is bounded, not the whole column
+
+§7 puts the sheet *into* the column. This decides how much of the column it may
+take, and it is the one thing the shipped R6-minimum got wrong: `#panel` is
+`grid-area:tlw` and `tlw` is the column's `minmax(0,1fr)` row, so the sheet is
+whatever the column has left over. Measured with a 9:16 project, one clip, the
+timeline dock laid out:
+
+| viewport | state | **sheet today** | the row it sits in | column |
+|---|---|---|---|---|
+| 393×844 | `top` (phone) | **388** | 456 view + 388 sheet = 844 | 844 |
+| 768×836 | `left` | **631** | 647 | 780 |
+| 1194×834 | `left` | **629** | 645 | 778 |
+| 834×1194 | `left` | **989** | 1005 | 1138 |
+
+**The phone's number is a constant, not a content measurement.** On the phone the sheet is
+`#panel{flex:1 1 auto}` sharing the body column with a `.view` capped at `54%`, so
+it is `bodyH − viewH` = **46% of the viewport**, and it is the *same* 388 for
+every tool — Speed, Volume, Filters, Adjust, Rotation, Transition, Aspect ratio,
+Canvas, Export and Rearrange all measured 388 at 393×844, each with
+`scrollHeight === clientHeight` and `.eb` 253 — and the same 388 again at `9:16`,
+`16:9`, `1:1` and `4:5`. `fitView()`'s `VIEW_FLOOR=.46` is what makes it
+ratio-independent: `want` can never resolve below 46% of `innerHeight`, so `view`
+is always the 54% ceiling and the sheet always the 46% left underneath it.
+
+So the request names two rules, and they are computed, not chosen:
+
+- **(a) half the timeline** — half of the column's tall row: **323 / 322 / 502**
+  at the three iPad viewports. Plain `50%`, because the panel's grid area *is*
+  that row.
+- **(b) the phone's sheet** — **46% of the viewport**: **385 / 384 / 549**.
+  Plain `46vh`, or `46dvh` on iOS, where `vh` is the large viewport and the
+  number should track the toolbar the way `100dvh` already does.
+
+**Ship the intersection**, which honours both halves of the sentence — never
+taller than half the timeline, and never taller than the phone's own sheet:
+
+```css
+body[data-layout]:not([data-layout=top]) #panel{
+  grid-area:tlw; margin:8px 10px; min-height:0;
+  align-self:start;              /* docked under the ruler, not stretched */
+  height:min(46dvh, 50%);        /* ← the whole change */
+}
+```
+
+| viewport | half the row (a) | 46vh (b) | **sheet** | was |
+|---|---|---|---|---|
+| 768×836 | 323 | 385 | **323** | 631 |
+| 1194×834 | 322 | 384 | **322** | 629 |
+| 834×1194 | 502 | 549 | **502** | 989 |
+
+`align-self:start` is not decoration: the row's default is `stretch`, which makes
+the item fill the row and silently ignore `height` — that is the current bug in
+one property. With it, the sheet keeps the top edge it has today (just under the
+ruler, the timecode still visible) and the space it gives up opens *between* the
+sheet and the transport, so nothing on screen moves except the sheet's own
+bottom edge and the transport/tools rows stay exactly where they are.
+
+**What 187px of sheet costs.** The sheet's fixed rows do not change — `.eh` 23,
+`.ef` 44, `20px/16px` padding, two 16px gaps — so `.eb` goes from 253 to **187**.
+Every sheet fits in 253 today; at 187, Adjust (knob row 72 + slider 48 + readout),
+Filters, Aspect ratio's tiles, Canvas's swatches, Text's input and chips, and
+Rearrange's card row all still fit, and anything that does not falls back on the
+`#panel{overflow-y:auto}` that is already there — the sheet scrolls, which is what
+it already does on a 353px phone. Sheet scrolling is not a defect here; it is
+precisely why the bound is a `min()` and not a hard 50%.
+
+**The half the sheet gives up is currently wasted.** With the shipped rule the
+freed ~320px is background, because `.es` hides the timeline
+(`body[data-layout]:not([data-layout=top]).es .tlw{display:none}`) — the sheet is
+*in* the timeline's grid area, so the two cannot both be there. The literal
+reading of "half of the timeline" gives that half back:
+
+```css
+/* the tall row becomes two, in the side states only */
+body[data-layout=left].es,body[data-layout=right].es{
+  grid-template-rows:auto auto minmax(0,1fr) minmax(0,1fr) auto auto;
+  grid-template-areas:"bar bar bar" "view split ro" "view split panel"
+                      "view split tlw" "view split ar" "view split tools"}
+body[data-layout]:not([data-layout=top]) #panel{grid-area:panel;height:auto}
+body[data-layout]:not([data-layout=top]).es .tlw{display:block}
+```
+
+The sheet takes the first half and the timeline keeps the second. `.tlw` gets 322
+there against a measured `laneFloor` of **164** at 1194×834 (film lane 88 + audio
+lane 44 + `#inn` padding + `#track`'s cap) — so the lanes, the ruler, the playhead
+and `Fit`'s `pps` all still hold, and `ResizeObserver` on `#tl` re-renders on the
+height change exactly as it does on the phone. This is **R6c** below, and it is
+deliberately *after* **R6b**: bounding the sheet is one rule and has to be true on
+its own before the timeline is asked to share the space.
+
+Two things it must not do: the phone (`top`) path stays byte-identical, because
+every rule here is scoped to `body[data-layout]:not([data-layout=top])`; and
+`full`, which has no column at all, already `display:none`s `#panel`, so entering
+`full` with a sheet open must close it rather than inherit a height for a grid
+area that no longer exists.
 
 ---
 
@@ -459,6 +611,9 @@ follow the column rather than the viewport.
 | 5 | **The divider lands under a notch.** | R9 before R8, and clamp against the inset box. |
 | 6 | **A layout that only works in one browser.** | The reference's whole mechanism is plain CSS grid + `grid-template-areas`. No `:has()`, no container queries, no `dvh` requirement (we already have the `@supports` pattern if needed). |
 | 7 | **Zoom in a narrower column feels broken** if `Fit` isn't the default. | Close the "default to Fit" item in the same pass. |
+| 8 | **A bounded sheet clips a shelf.** `.eb` drops 253 → 187 at 1194×834. | `#panel{overflow-y:auto}` is already there and already the phone's behaviour at 353px; the check measures `.eb` against its content per tool, and the wideset sheets (Adjust, Filters) are the two that already scroll at `--pw` 0.6. |
+| 9 | **`min(46dvh, 50%)` is easy to misread** — `50%` is the *row*, not the column, and `stretch` silently ignores `height`. | §7.1 names which row and why; the check asserts the pixel height (323 / 322 / 502), and a stretched panel fails it on the first measurement. |
+| 10 | **R6c puts the timeline back while a sheet is open**, which nothing has done before. | `.tlw` at 322 against a 164 `laneFloor`; the check asserts the lanes are on screen and the playhead still tracks at 1194×834 before the row split ships. |
 
 ---
 
@@ -474,6 +629,8 @@ Each step is independently verifiable and leaves the app working.
 | R4 | the gutter's width test | header 116 → 56 at 1194×834, 1366×1024, 834×1194; phones unchanged |
 | R5 | `#split` + `--pw` + persistence | drag, arrows, dblclick, and a reload all hold the width |
 | R6 | sheet into the column; `dock` no longer hides in side states | Adjust and Filters open with the timeline still visible, and the panel is exactly the column's width |
+| R6b | the sheet's bound: `align-self:start` + `height:min(46dvh,50%)`, one rule (§7.1) — **built** | 1194×834 reports **322px** against the 629 the same frame measures with the pre-R6b stylesheet injected; the ruler is above the sheet and the transport below it; `top` at 393×844 still reports 388 for all eleven tools and all four ratios — **5 rows, self-check 13/13** |
+| R6c | the timeline gets the other half back (`.es` splits the tall row) (§7.1) | at 1194×834 with a sheet open the lanes are on screen, `.tlw` ≥ 164 (the `laneFloor`), and the playhead still tracks |
 | R7 | the `#lay` header icon + `p` / `shift+P` | cycles 4 states, hidden below 600px |
 | R8 | the Settings row | state readable in words, and it writes the same key the icon does |
 | R9 | tool labels from a measurement, `.tcol`/`tmin`, transport on the tools row | no horizontal scroll in the tools row at any `--pw` |
@@ -496,11 +653,43 @@ Every row is a measurement, not a look.
 | header | 56px at every viewport ≥600 in every state |
 | the divider | `--pw` 0.28 / 0.4 / 0.6 at 1194×834 and 1366×1024; survives reload; arrow keys move it 2% |
 | the sheet | the panel's width equals the timeline column's at every `--pw`; Adjust's eight knobs need no horizontal scroll at `--pw` 0.28 and 0.40 and do scroll at 0.60, which is the phone's behaviour and not a defect; the timeline is still on screen behind the sheet |
+| the sheet's height | `left` at 768×836, 1194×834, 834×1194: panel height = `min(46% innerHeight, 50% of the tlw row)` ±2px (**323 / 322 / 502**), and it is a failure to report 631 / 629 / 989; the ruler's bottom ≤ the sheet's top and the transport's top ≥ the sheet's bottom at all three |
+| the sheet's content | `.eb` ≥ 187 at 1194×834 with every tool that has content, and no tool's `.eb` is clipped rather than scrolled (`#panel.scrollHeight` ≥ content, `overflow-y:auto`) |
+| the phone is untouched | `top` at 393×844 with all eleven tools and all four project ratios (`9:16` `16:9` `1:1` `4:5`) still reports a 388px sheet and a 456px view |
+| the reclaimed half | after R6c, `left` at 1194×834 with a sheet open: `.tlw` ≥ 164 and the film and audio lanes both have a non-zero height |
+| the layout sheet | the rail's Layout entry is present at 1194×834 and `display:none` at 393×844, in both cases matching `#lay`; the sheet's tiles read `top left right full` with exactly one lit, its width equals the column's (704 at 1194×834), and its footer is `Done` alone; a tile tap moves `data-layout` and the header title; `full` closes the sheet and leaves `#play` visible |
+| `full`'s three ways in | in `full`, the rail's Layout, the header's Export and the header's Settings all open a panel with a non-zero rect (the popover), and the transport stays on screen |
 | tools | no horizontal scroll in `#tools` at any `--pw`, labels on or off as measured |
 | rotation | 1194×834 → 834×1194 → 1194×834 returns to `left` with the picture and timeline intact |
 | touch | `pointer:coarse` emulation: zoom steppers hidden, every target ≥44px, nothing overlapping |
 | themes | dark and light at 1194×834 in all four states |
 | build | `npm run build` clean; no new console errors beyond the known dev-only `sw.js` 404 |
+
+### 13.1 The rows the self-check gains
+
+[`selfcheck.html`](selfcheck.html) already reaches a second, iPad-sized mock through
+`LW` (the `layframe` iframe), seeds it a clip with `w.eval('srcs[1]=…;clips.push(…)')`
+and drives it with `run()` / `ev()`. The bound is five more rows in that same
+frame, and each one is written so that breaking the rule turns it red:
+
+**Built.** The rows are in [`selfcheck.html`](selfcheck.html), and the injection
+column below is what actually shipped rather than what was planned — the three
+that changed are marked, because each change was a case of an injection that
+*looked* like a failure and was not.
+
+| row | asserts | the injection that must fail it |
+|---|---|---|
+| the sheet is bounded | `left` at 1194×834, one clip, `tool='adjust'`: the panel's height is `min(.46*innerHeight, .5*<tlw row>)` ±2px, and the ruler is above it while the transport is below | the **pre-R6b stylesheet**: `align-self:stretch !important;height:auto !important` ⇒ **629px**, the column-filling sheet this rule removed |
+| the bound takes the smaller | the reported height equals `Math.min(vh46, row*0.5)`, not the larger of the two, and the two are actually different at this viewport | force `height:46vh` ⇒ **384 ≠ 322** |
+| it does not stretch | `getComputedStyle(#panel).alignSelf` is not `stretch` | inject `align-self:stretch !important` ⇒ computed `stretch` (the height does not move — `stretch` only bites when `height` is `auto`, so this row watches the property, and the row above watches the number) |
+| the chrome survives | the ruler's bottom ≤ the sheet's top and the transport's top ≥ the sheet's bottom | `height:140% !important` ⇒ bottom **997 > 656**. Not 100%: a 100%-tall sheet overflows its row by the 8px margin and just touches the transport, which is 8px of luck, not a check |
+| the bound is not on the phone | 393×844, all eleven tools × all four project ratios: 388px sheet, 456px view, `view + sheet = bodyH` | an unscoped `#panel{flex:0 0 300px !important}` ⇒ **300 ≠ 388**. Not `height:50%`: the phone's sheet is a `flex:1 1 auto` item beside a `.view` pinned at `flex:0 0 Npx`, so a taller basis simply shrinks back to 388 — a no-op dressed as a failure |
+
+All five are **13 of 13** together with the eight rows already there, and each was
+taken red by its own injection before being left green. The Layout sheet is covered
+by three of those eight: the tiles and the footer, a tile tap going through
+`applyLayout()` and closing on `full` without taking the transport, and the rail
+entry's gate matching `#lay`'s.
 
 ---
 
