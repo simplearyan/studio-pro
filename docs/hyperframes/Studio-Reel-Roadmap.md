@@ -185,11 +185,22 @@ tested against. **Risk if skipped:** the whole format is designed against an ima
 
 - [ ] **Write down `templates/storyboard.schema.json`** (G1) — the plan's §3.5 shape, including the
       two sections the current compiler ignores (`tokens`, `frame`), with unknown keys preserved.
-- [ ] `storyboard.json` → `hic-storyboard.js` → `Storyboard.html` as a CLI step.
+- [x] `storyboard.json` → `hic-storyboard.js` → clip as a CLI step.
+      `automation/studio-reel/reel-compile.cjs` reconciles the authoring IR to the emitter's real
+      contract and compiles it. The R0 film now yields `dur=26s`, `name="A Breath of Air"`, 4/4
+      scenes and 11/11 renderable elements, where it previously yielded `dur=NaN`. **It exits
+      non-zero**: 11 of 22 authored elements have no case in `buildElHtml`, which has no `default`,
+      so they silently emit empty divs. See breath-of-air/NOTES.md §4a.
+- [ ] **The roadmap's own gate is unreachable and must be rewritten.** "Byte-identical to the R0
+      hand-compiled one" cannot hold: the R0 composition is `.scene s1` markup with orbs and nine
+      gradients, the emitter's vocabulary is `.hss-*` with one flat background and six element
+      kinds. Replace it with: *the deferred inventory in `reel-compile.cjs` reaches zero.*
 - [ ] Teach `automation/html-in-canvas/render.js` to accept an **`.html` composition directly**
       (today it renders `.js` compositions that *create* clips).
-- [ ] Round-trip check: the R0 IR emits a reel byte-identical to the R0 hand-compiled one mod
-      formatting.
+- [ ] Give `buildElHtml` a `default` that throws on an unknown `type` — an empty div and a green
+      exit is the worst pair of outcomes available.
+- [ ] Emit per-scene `background` and `ambient`; name the three hardcoded easing curves so
+      authored `ease` stops being discarded.
 - [ ] Schema validation as a hard error with a JSON pointer.
 
 **Gate:** R0 renders end to end with zero hand-editing. **This is the phase that retires the biggest

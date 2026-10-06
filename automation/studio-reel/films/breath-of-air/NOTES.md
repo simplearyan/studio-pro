@@ -78,6 +78,43 @@ therefore **does not compile today**. Reconciling the two is R1's first job and
 is smaller than it looks — but it must happen before anything else, because
 every downstream phase assumes one IR.
 
+### 4a. Done, and it was not smaller than it looked
+
+`automation/studio-reel/reel-compile.cjs` now reconciles and compiles. The
+reconciliation is done **in code**, not by checking in a second JSON: two
+hand-maintained copies of one film drift, and the drift is silent.
+
+Fed to the emitter unchanged the IR does not throw. It returns `dur = NaN` and
+`name = "Storyboard"` — a clip with no length and no identity, which is worse
+than an error because nothing stops. After reconciliation: `dur = 26s`,
+`name = "A Breath of Air"`, 4/4 scenes, and all 11 elements the emitter can
+build render with real text.
+
+What is left is not a field-name problem. **Eleven of the film's 22 elements
+have no case in the emitter's `buildElHtml`** — `stat`, `card`, `tiles`,
+`pills`, `credit` — and that switch has no `default`. Each one silently emits
+`<div class="hss-el" id="…"></div>`: an empty div, no warning, no error, and a
+green exit code. Per-scene backgrounds (four gradients vs one flat
+`sb.background`), all three ambient layers, and every authored `ease` curve
+are discarded the same way, because the runtime hardcodes three curves and
+names none of them.
+
+So the CLI **exits non-zero while that inventory is non-empty**. A green build
+over a reel missing half its content is precisely the failure R1 exists to
+prevent, so the gate is red on purpose until the emitter grows:
+
+    node automation/studio-reel/reel-compile.cjs           # gate, exits 1 today
+    node automation/studio-reel/reel-compile.cjs --write-html   # renderable reel
+
+The roadmap's R1 gate — "emits a reel byte-identical to the R0 hand-compiled
+one" — is **not reachable**, and it is worth being blunt about why. The R0
+composition is `.scene s1` markup with orbs, kickers, stats and nine gradients;
+the emitter's vocabulary is `.hss-*` with a flat background and six element
+kinds. They are not the same design language, so byte-identity would require
+rewriting the reference film rather than compiling it. A weaker gate is needed:
+the honest one is the deferred inventory reaching zero, which is what
+`reel-compile.cjs` measures.
+
 ## 5. Nine things the IR cannot yet say
 
 Recorded in `storyboard.json` under `x_summary`, and repeated here because they
