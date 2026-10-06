@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MAYA CHEN — Design Engineer &amp; Notes</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.85em' font-size='80'>◆</text></svg>">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+
+<script src="https://unpkg.com/@phosphor-icons/web"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+
+<script>
+  // Set theme before paint to avoid flash
+  (function(){
+    var stored = localStorage.getItem('theme');
+    var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (stored === 'dark' || (!stored && prefersDark)) {
+      document.documentElement.classList.add('dark');
+    }
+  })();
+
+  tailwind.config = {
+    darkMode: 'class',
+    theme: {
+      extend: {
+        fontFamily: {
+          display: ['"Space Grotesk"', 'sans-serif'],
+          sans: ['Inter', 'sans-serif'],
+          mono: ['"JetBrains Mono"', 'monospace'],
+        },
+        colors: {
+          paper: '#FBF6EC',
+          ink: '#15121A',
+          coal: '#151217',
+          panel: '#211C29',
+          sun: '#FFC93C',
+          coral: '#FF5A5F',
+          teal: '#00A896',
+          violet: '#7B61FF',
+          pink: '#FF6FA5',
+        },
+        boxShadow: {
+          'brutal-xs': '3px 3px 0px 0px rgba(0,0,0,1)',
+          'brutal-sm': '5px 5px 0px 0px rgba(0,0,0,1)',
+          'brutal': '8px 8px 0px 0px rgba(0,0,0,1)',
+          'brutal-lg': '12px 12px 0px 0px rgba(0,0,0,1)',
+          'brutal-sun': '8px 8px 0px 0px #FFC93C',
+          'brutal-coral': '8px 8px 0px 0px #FF5A5F',
+          'brutal-teal': '8px 8px 0px 0px #00A896',
+          'brutal-violet': '8px 8px 0px 0px #7B61FF',
+          'brutal-pink': '8px 8px 0px 0px #FF6FA5',
+        }
+      }
+    }
+  }
+</script>
+
+<style type="text/tailwindcss">
+  ::selection { @apply bg-sun text-ink; }
+
+  body {
+    @apply bg-paper text-ink dark:bg-coal dark:text-paper antialiased;
+    background-image: radial-gradient(rgba(21,18,26,0.14) 1.5px, transparent 1.5px);
+    background-size: 26px 26px;
+  }
+  .dark body {
+    background-image: radial-gradient(rgba(251,246,236,0.08) 1.5px, transparent 1.5px);
+  }
+
+  ::-webkit-scrollbar { width: 12px; }
+  ::-webkit-scrollbar-track { background: transparent; border-left: 3px solid black; }
+  ::-webkit-scrollbar-thumb { background: #FFC93C; border: 3px solid black; }
+  .dark ::-webkit-scrollbar-track { border-left: 3px solid #FBF6EC33; }
+  .dark ::-webkit-scrollbar-thumb { background: #7B61FF; border: 3px solid #151217; }
+
+  .brutal-hover { transition: transform .12s ease, box-shadow .12s ease; }
+  .brutal-hover:hover { transform: translate(-2px,-2px); }
+  .brutal-hover:active { transform: translate(4px,4px); box-shadow: 0px 0px 0px 0px rgba(0,0,0,1) !important; }
+
+  .chip {
+    @apply font-mono text-xs sm:text-sm font-bold uppercase tracking-wide px-3 py-1.5 border-[3px] border-ink dark:border-paper bg-paper dark:bg-panel text-ink dark:text-paper;
+  }
+
+  .card {
+    @apply border-[3px] border-ink dark:border-paper/80 bg-paper dark:bg-panel shadow-brutal-sm dark:shadow-[6px_6px_0px_0px_rgba(251,246,236,0.5)];
+  }
+
+  /* Marquee ticker */
+  .ticker-track {
+    display: flex;
+    width: max-content;
+    animation: ticker 26s linear infinite;
+  }
+  .ticker-track:hover { animation-play-state: paused; }
+  @keyframes ticker {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+
+  .prose-note :where(p) { @apply mb-5 leading-relaxed; }
+  .prose-note :where(h3) { @apply font-display text-2xl sm:text-3xl font-bold mt-10 mb-3; }
+  .prose-note :where(strong) { @apply font-bold; }
+  .prose-note :where(code) { @apply font-mono text-[0.85em] bg-ink text-paper dark:bg-paper dark:text-ink px-1.5 py-0.5; }
+  .prose-note :where(blockquote) {
+    @apply border-l-[6px] border-sun bg-white/60 dark:bg-black/25 pl-5 py-3 my-8 italic text-lg sm:text-xl font-display font-medium;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ticker-track { animation: none; }
+    .brutal-hover { transition: none; }
+  }
+</style>
+</head>
+
+<body class="min-h-screen flex flex-col overflow-x-hidden">
+
+  <!-- NAV -->
+  <nav class="sticky top-0 z-40 bg-paper/95 dark:bg-coal/95 backdrop-blur border-b-[3px] border-ink dark:border-paper/70">
+    <div class="max-w-6xl mx-auto flex items-center justify-between px-4 sm:px-6 py-3">
+      <a href="#top" class="flex items-center gap-3 group">
+        <span class="w-10 h-10 flex items-center justify-center bg-violet text-white border-[3px] border-ink shadow-brutal-xs font-display font-bold text-lg brutal-hover">MC</span>
+        <span class="font-display font-bold text-lg sm:text-xl tracking-tight hidden xs:inline">Maya Chen</span>
+      </a>
+
+      <div class="hidden md:flex items-center gap-1 font-mono text-sm font-bold uppercase">
+        <a href="#work" class="px-3 py-2 hover:text-violet dark:hover:text-sun transition-colors">Work</a>
+        <a href="#notes" class="px-3 py-2 hover:text-violet dark:hover:text-sun transition-colors">Notes</a>
+        <a href="#about" class="px-3 py-2 hover:text-violet dark:hover:text-sun transition-colors">About</a>
+        <a href="#contact" class="px-3 py-2 hover:text-violet dark:hover:text-sun transition-colors">Contact</a>
+      </div>
+
+      <div class="flex items-center gap-2 sm:gap-3">
+        <button onclick="toggleTheme()" class="w-10 h-10 flex items-center justify-center bg-sun border-[3px] border-ink shadow-brutal-xs brutal-hover dark:bg-panel dark:border-paper">
+          <i id="theme-icon" class="ph-bold ph-moon text-lg text-ink dark:text-paper"></i>
+        </button>
+        <button onclick="toggleMobileNav()" class="md:hidden w-10 h-10 flex items-center justify-center bg-paper dark:bg-panel border-[3px] border-ink dark:border-paper shadow-brutal-xs brutal-hover">
+          <i id="mobile-nav-icon" class="ph-bold ph-list text-lg"></i>
+        </button>
+      </div>
+    </div>
+
+    <div id="mobile-nav" class="hidden md:hidden border-t-[3px] border-ink dark:border-paper/70 bg-paper dark:bg-coal">
+      <div class="flex flex-col font-mono text-sm font-bold uppercase divide-y-2 divide-ink/10 dark:divide-paper/10">
+        <a href="#work" onclick="toggleMobileNav()" class="px-5 py-3">Work</a>
+        <a href="#notes" onclick="toggleMobileNav()" class="px-5 py-3">Notes</a>
+        <a href="#about" onclick="toggleMobileNav()" class="px-5 py-3">About</a>
+        <a href="#contact" onclick="toggleMobileNav()" class="px-5 py-3">Contact</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- HOME VIEW -->
+  <div id="home-view" class="block">
+
+    <!-- HERO -->
+    <header id="top" class="max-w-6xl mx-auto px-4 sm:px-6 pt-14 sm:pt-20 pb-10 sm:pb-16">
+      <div class="flex flex-wrap items-center gap-3 mb-6">
+        <span class="chip bg-teal text-ink -rotate-2">◆ AVAILABLE FOR WORK</span>
+        <span class="chip">📍 LISBON, PT</span>
+      </div>
+
+      <h1 class="font-display font-bold text-[13vw] leading-[0.95] sm:text-7xl md:text-8xl tracking-tight">
+        HEY, I'M<br>
+        <span class="inline-block bg-violet text-white px-3 sm:px-4 border-[3px] border-ink shadow-brutal-sm rotate-1">MAYA CHEN</span>
+      </h1>
+
+      <p class="font-sans text-lg sm:text-2xl font-medium max-w-2xl mt-8 leading-relaxed">
+        I design and build software, then write down what I learn.
+        Currently a design engineer at a fintech startup, and a person who
+        thinks whitespace is underrated.
+      </p>
+
+      <div class="flex flex-wrap gap-4 mt-9">
+        <a href="#work" class="font-display font-bold text-lg px-6 py-3 bg-ink text-paper dark:bg-paper dark:text-ink border-[3px] border-ink dark:border-paper shadow-brutal-sm brutal-hover uppercase">
+          See the work
+        </a>
+        <a href="#notes" class="font-display font-bold text-lg px-6 py-3 bg-paper dark:bg-panel border-[3px] border-ink dark:border-paper shadow-brutal-sm brutal-hover uppercase">
+          Read the notes
+        </a>
+      </div>
+    </header>
+
+    <!-- TICKER -->
+    <div class="w-full bg-ink text-paper border-y-[3px] border-ink dark:border-paper/70 overflow-hidden py-3">
+      <div class="ticker-track font-mono font-bold text-sm sm:text-base uppercase tracking-widest">
+        <span class="px-6 whitespace-nowrap">Figma <span class="text-sun">✦</span> React <span class="text-coral">✦</span> TypeScript <span class="text-teal">✦</span> Design Systems <span class="text-pink">✦</span> Swift <span class="text-violet">✦</span> Writing <span class="text-sun">✦</span> Tailwind <span class="text-coral">✦</span> Coffee <span class="text-teal">✦</span></span>
+        <span class="px-6 whitespace-nowrap" aria-hidden="true">Figma <span class="text-sun">✦</span> React <span class="text-coral">✦</span> TypeScript <span class="text-teal">✦</span> Design Systems <span class="text-pink">✦</span> Swift <span class="text-violet">✦</span> Writing <span class="text-sun">✦</span> Tailwind <span class="text-coral">✦</span> Coffee <span class="text-teal">✦</span></span>
+      </div>
+    </div>
+
+    <!-- WORK -->
+    <section id="work" class="max-w-6xl mx-auto px-4 sm:px-6 pt-16 sm:pt-24 pb-6">
+      <div class="flex items-end justify-between flex-wrap gap-4 mb-10">
+        <h2 class="font-display font-bold text-4xl sm:text-5xl">
+          <span class="bg-sun px-3 border-[3px] border-ink shadow-brutal-xs -rotate-1 inline-block">WORK</span>
+        </h2>
+        <p class="font-mono text-sm uppercase tracking-wide">04 selected projects</p>
+      </div>
+
+      <div class="grid sm:grid-cols-2 gap-6 sm:gap-8">
+
+        <article class="card p-5 sm:p-6 brutal-hover">
+          <div class="border-[3px] border-ink dark:border-paper/60 mb-4 overflow-hidden">
+            <img src="https://images.unsplash.com/photo-1517842645767-c639042777db?auto=format&fit=crop&q=80&w=800" alt="Notebook and pen on a desk, representing the Fieldnotes app" class="w-full h-44 object-cover grayscale hover:grayscale-0 transition-all duration-300">
+          </div>
+          <div class="flex items-center gap-2 mb-2">
+            <span class="chip bg-coral text-ink text-[11px] py-1">PWA</span>
+            <span class="font-mono text-xs uppercase tracking-wide opacity-70">2025</span>
+          </div>
+          <h3 class="font-display font-bold text-2xl mb-2">Fieldnotes</h3>
+          <p class="font-sans text-sm sm:text-base leading-relaxed mb-4">
+            An offline-first notes app for people who write while standing up —
+            on trains, in kitchens, between meetings. No accounts, no sync
+            spinners, just fast capture.
+          </p>
+          <div class="flex flex-wrap gap-2">
+            <span class="chip text-[11px] py-1">React</span>
+            <span class="chip text-[11px] py-1">IndexedDB</span>
+            <span class="chip text-[11px] py-1">Service Workers</span>
+          </div>
+        </article>
+
+        <article class="card p-5 sm:p-6 brutal-hover">
+          <div class="border-[3px] border-ink dark:border-paper/60 mb-4 overflow-hidden">
+            <img src="https://images.unsplash.com/photo-1461344577544-4e5dc9487184?auto=format&fit=crop&q=80&w=800" alt="Calendar and checklist, representing the Loop habit tracker" class="w-full h-44 object-cover grayscale hover:grayscale-0 transition-all duration-300">
+          </div>
+          <div class="flex items-center gap-2 mb-2">
+            <span class="chip bg-teal text-ink text-[11px] py-1">iOS</span>
+            <span class="font-mono text-xs uppercase tracking-wide opacity-70">2024</span>
+          </div>
+          <h3 class="font-display font-bold text-2xl mb-2">Loop</h3>
+          <p class="font-sans text-sm sm:text-base leading-relaxed mb-4">
+            A habit tracker with honest streaks — miss a day and the count
+            doesn't reset to zero, it just tells you the truth. Built after
+            getting tired of apps that guilt people into quitting.
+          </p>
+          <div class="flex flex-wrap gap-2">
+            <span class="chip text-[11px] py-1">Swift</span>
+            <span class="chip text-[11px] py-1">SwiftUI</span>
+            <span class="chip text-[11px] py-1">HealthKit</span>
+          </div>
+        </article>
+
+        <article class="card p-5 sm:p-6 brutal-hover">
+          <div class="border-[3px] border-ink dark:border-paper/60 mb-4 overflow-hidden">
+            <img src="https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&q=80&w=800" alt="Suitcase and map, representing the Wayfare itinerary redesign" class="w-full h-44 object-cover grayscale hover:grayscale-0 transition-all duration-300">
+          </div>
+          <div class="flex items-center gap-2 mb-2">
+            <span class="chip bg-violet text-white text-[11px] py-1">Product Design</span>
+            <span class="font-mono text-xs uppercase tracking-wide opacity-70">2023</span>
+          </div>
+          <h3 class="font-display font-bold text-2xl mb-2">Wayfare</h3>
+          <p class="font-sans text-sm sm:text-base leading-relaxed mb-4">
+            A full redesign of a travel startup's itinerary builder, cutting
+            the average time-to-first-plan from six minutes to ninety
+            seconds through a clearer information hierarchy.
+          </p>
+          <div class="flex flex-wrap gap-2">
+            <span class="chip text-[11px] py-1">Figma</span>
+            <span class="chip text-[11px] py-1">Design Systems</span>
+            <span class="chip text-[11px] py-1">User Testing</span>
+          </div>
+        </article>
+
+        <article class="card p-5 sm:p-6 brutal-hover">
+          <div class="border-[3px] border-ink dark:border-paper/60 mb-4 overflow-hidden">
+            <img src="https://images.unsplash.com/photo-1587440871875-191322ee64b0?auto=format&fit=crop&q=80&w=800" alt="Grid of colored blocks, representing the Component Kit design system" class="w-full h-44 object-cover grayscale hover:grayscale-0 transition-all duration-300">
+          </div>
+          <div class="flex items-center gap-2 mb-2">
+            <span class="chip bg-pink text-ink text-[11px] py-1">Open Source</span>
+            <span class="font-mono text-xs uppercase tracking-wide opacity-70">2022 — now</span>
+          </div>
+          <h3 class="font-display font-bold text-2xl mb-2">Component Kit</h3>
+          <p class="font-sans text-sm sm:text-base leading-relaxed mb-4">
+            An open-source, accessibility-first component library. Started
+            as an internal tool, now used in a handful of small products
+            I don't even know about anymore.
+          </p>
+          <div class="flex flex-wrap gap-2">
+            <span class="chip text-[11px] py-1">TypeScript</span>
+            <span class="chip text-[11px] py-1">Storybook</span>
+            <span class="chip text-[11px] py-1">a11y</span>
+          </div>
+        </article>
+
+      </div>
+    </section>
+
+    <!-- NOTES -->
+    <section id="notes" class="max-w-6xl mx-auto px-4 sm:px-6 pt-16 sm:pt-24 pb-6">
+      <div class="flex items-end justify-between flex-wrap gap-4 mb-10">
+        <h2 class="font-display font-bold text-4xl sm:text-5xl">
+          <span class="bg-coral text-ink px-3 border-[3px] border-ink shadow-brutal-xs rotate-1 inline-block">NOTES</span>
+        </h2>
+        <p class="font-mono text-sm uppercase tracking-wide">short essays, mostly on making things</p>
+      </div>
+
+      <div class="grid sm:grid-cols-2 gap-6 sm:gap-8">
+
+        <button onclick="showNote(1)" class="text-left card p-6 brutal-hover">
+          <div class="flex items-center gap-2 mb-3 font-mono text-xs uppercase tracking-wide">
+            <span>Mar 02, 2026</span><span>·</span><span>4 min read</span>
+          </div>
+          <h3 class="font-display font-bold text-xl sm:text-2xl mb-2">The Case for Boring Tools</h3>
+          <p class="font-sans text-sm sm:text-base leading-relaxed opacity-90">
+            Why I stopped chasing the newest framework and started asking
+            what I'd still be happy maintaining in three years.
+          </p>
+          <span class="inline-flex items-center gap-1 mt-4 font-mono text-xs font-bold uppercase tracking-wide text-violet dark:text-sun">
+            Read note <i class="ph-bold ph-arrow-right"></i>
+          </span>
+        </button>
+
+        <button onclick="showNote(2)" class="text-left card p-6 brutal-hover">
+          <div class="flex items-center gap-2 mb-3 font-mono text-xs uppercase tracking-wide">
+            <span>Jan 18, 2026</span><span>·</span><span>5 min read</span>
+          </div>
+          <h3 class="font-display font-bold text-xl sm:text-2xl mb-2">Reading Code Like a Story</h3>
+          <p class="font-sans text-sm sm:text-base leading-relaxed opacity-90">
+            A habit that made me a better reviewer: reading a codebase
+            for its plot before I read it for its bugs.
+          </p>
+          <span class="inline-flex items-center gap-1 mt-4 font-mono text-xs font-bold uppercase tracking-wide text-violet dark:text-sun">
+            Read note <i class="ph-bold ph-arrow-right"></i>
+          </span>
+        </button>
+
+        <button onclick="showNote(3)" class="text-left card p-6 brutal-hover">
+          <div class="flex items-center gap-2 mb-3 font-mono text-xs uppercase tracking-wide">
+            <span>Nov 09, 2025</span><span>·</span><span>3 min read</span>
+          </div>
+          <h3 class="font-display font-bold text-xl sm:text-2xl mb-2">Whitespace Is a Design Decision</h3>
+          <p class="font-sans text-sm sm:text-base leading-relaxed opacity-90">
+            Empty space isn't what's left over after you're done designing.
+            It's one of the strongest tools you have.
+          </p>
+          <span class="inline-flex items-center gap-1 mt-4 font-mono text-xs font-bold uppercase tracking-wide text-violet dark:text-sun">
+            Read note <i class="ph-bold ph-arrow-right"></i>
+          </span>
+        </button>
+
+        <button onclick="showNote(4)" class="text-left card p-6 brutal-hover">
+          <div class="flex items-center gap-2 mb-3 font-mono text-xs uppercase tracking-wide">
+            <span>Aug 27, 2025</span><span>·</span><span>6 min read</span>
+          </div>
+          <h3 class="font-display font-bold text-xl sm:text-2xl mb-2">What Five Side Projects Taught Me</h3>
+          <p class="font-sans text-sm sm:text-base leading-relaxed opacity-90">
+            Only one of my five side projects has real users. Here's what
+            the other four were still worth.
+          </p>
+          <span class="inline-flex items-center gap-1 mt-4 font-mono text-xs font-bold uppercase tracking-wide text-violet dark:text-sun">
+            Read note <i class="ph-bold ph-arrow-right"></i>
+          </span>
+        </button>
+
+      </div>
+    </section>
+
+    <!-- ABOUT -->
+    <section id="about" class="max-w-6xl mx-auto px-4 sm:px-6 pt-16 sm:pt-24 pb-6">
+      <h2 class="font-display font-bold text-4xl sm:text-5xl mb-10">
+        <span class="bg-teal text-ink px-3 border-[3px] border-ink shadow-brutal-xs -rotate-1 inline-block">ABOUT</span>
+      </h2>
+
+      <div class="grid md:grid-cols-5 gap-8 sm:gap-10">
+        <div class="md:col-span-3 space-y-5 font-sans text-base sm:text-lg leading-relaxed">
+          <p>
+            I'm a design engineer — half the time in Figma, half the time in
+            a terminal, and I've stopped apologizing for liking both. I
+            currently work on the design systems team at a fintech startup,
+            where my job is making sure "consistent" doesn't mean "boring."
+          </p>
+          <p>
+            Before that I spent three years as a frontend developer, which
+            is mostly why my designs tend to already know how they'll be
+            built. I studied Human-Computer Interaction, which is a fancy
+            way of saying I got a degree in paying attention to people.
+          </p>
+          <p>
+            Outside of work: bad plant care, good coffee, and a running
+            note-taking habit that occasionally turns into the essays
+            you'll find on this site.
+          </p>
+
+          <div class="pt-4">
+            <h3 class="font-mono text-xs font-bold uppercase tracking-widest mb-3 opacity-70">Now</h3>
+            <ul class="space-y-2 font-mono text-sm">
+              <li class="flex gap-2"><i class="ph-bold ph-map-pin text-coral mt-0.5"></i> Based in Lisbon, Portugal</li>
+              <li class="flex gap-2"><i class="ph-bold ph-briefcase text-violet mt-0.5"></i> Design Engineer @ a fintech startup</li>
+              <li class="flex gap-2"><i class="ph-bold ph-book-open text-teal mt-0.5"></i> Reading about tools for thought</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="md:col-span-2">
+          <div class="card p-5 sm:p-6 -rotate-1">
+            <h3 class="font-mono text-xs font-bold uppercase tracking-widest mb-4 opacity-70">Toolbox</h3>
+            <div class="flex flex-wrap gap-2 mb-6">
+              <span class="chip">Figma</span>
+              <span class="chip">React</span>
+              <span class="chip">TypeScript</span>
+              <span class="chip">Swift</span>
+              <span class="chip">Tailwind</span>
+              <span class="chip">Notion</span>
+            </div>
+            <h3 class="font-mono text-xs font-bold uppercase tracking-widest mb-4 opacity-70">Timeline</h3>
+            <ul class="space-y-3 font-mono text-sm">
+              <li class="flex justify-between gap-3"><span>2024 — now</span><span class="text-right">Design Engineer, Northbeam</span></li>
+              <li class="flex justify-between gap-3"><span>2021 — 2024</span><span class="text-right">Frontend Dev, Studio Loop</span></li>
+              <li class="flex justify-between gap-3"><span>2020</span><span class="text-right">BA, HCI, Porto</span></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CONTACT / FOOTER -->
+    <footer id="contact" class="max-w-6xl mx-auto px-4 sm:px-6 pt-16 sm:pt-20 pb-14">
+      <div class="card p-6 sm:p-10 bg-violet text-white dark:bg-panel rotate-0">
+        <h2 class="font-display font-bold text-3xl sm:text-5xl mb-3">LET'S TALK</h2>
+        <p class="font-sans text-base sm:text-lg max-w-xl mb-7 opacity-90">
+          Open to freelance design engineering work, and always happy to
+          talk shop about tools, systems, and notebooks.
+        </p>
+        <div class="flex flex-wrap gap-3">
+          <a href="mailto:hello@mayachen.example" class="inline-flex items-center gap-2 font-display font-bold px-5 py-2.5 bg-sun text-ink border-[3px] border-ink shadow-brutal-xs brutal-hover uppercase">
+            <i class="ph-bold ph-envelope-simple"></i> Email
+          </a>
+          <a href="#" class="inline-flex items-center gap-2 font-display font-bold px-5 py-2.5 bg-paper text-ink border-[3px] border-ink shadow-brutal-xs brutal-hover uppercase">
+            <i class="ph-bold ph-github-logo"></i> GitHub
+          </a>
+          <a href="#" class="inline-flex items-center gap-2 font-display font-bold px-5 py-2.5 bg-paper text-ink border-[3px] border-ink shadow-brutal-xs brutal-hover uppercase">
+            <i class="ph-bold ph-linkedin-logo"></i> LinkedIn
+          </a>
+        </div>
+      </div>
+
+      <p class="font-mono text-xs uppercase tracking-wide text-center mt-10 opacity-60">
+        © 2026 Maya Chen. Built with too much coffee.
+      </p>
+    </footer>
+  </div>
+
+  <!-- NOTE VIEWS -->
+  <div id="note-1" class="hidden">
+    <article class="max-w-3xl mx-auto px-4 sm:px-6 pt-10 sm:pt-16 pb-24">
+      <button onclick="showHome()" class="inline-flex items-center gap-2 font-mono text-sm font-bold uppercase mb-8 brutal-hover px-3 py-2 border-[3px] border-ink dark:border-paper bg-paper dark:bg-panel shadow-brutal-xs">
+        <i class="ph-bold ph-arrow-left"></i> Back
+      </button>
+      <div class="flex items-center gap-2 mb-4 font-mono text-xs uppercase tracking-wide">
+        <span>Mar 02, 2026</span><span>·</span><span>4 min read</span>
+      </div>
+      <h1 class="font-display font-bold text-4xl sm:text-5xl mb-8 leading-tight">The Case for Boring Tools</h1>
+      <div class="prose-note font-sans text-base sm:text-lg">
+        <p>Every few months a new framework promises to make everything I already know how to do faster, cleaner, or more "delightful." Some of them are genuinely good. Most of them cost more than they save, once you count the migration, the retraining, and the six months of Stack Overflow answers that don't exist yet.</p>
+        <p>I used to treat my stack like a wardrobe — always looking for the next thing to try on. Somewhere around my third framework migration in two years, I noticed the actual work wasn't getting any better. Just newer.</p>
+        <blockquote>Boring tools don't ask you to think about them. That's the whole point.</blockquote>
+        <h3>What "boring" actually means</h3>
+        <p>Boring doesn't mean old, and it definitely doesn't mean bad. It means the rough edges are already known, documented, and probably already fixed by someone else. A boring tool has a community that's stopped arguing about the fundamentals and started arguing about the interesting problems.</p>
+        <p>When I pick a tool now, I ask one question: will I still be glad I chose this in three years, when the excitement has worn off and all that's left is the maintenance? If the honest answer is no, I keep looking — but I stop mistaking novelty for progress.</p>
+        <h3>The tools I keep coming back to</h3>
+        <p>Plain HTML where a framework isn't earning its keep. A relational database before anything fancier. A monospace font in my editor and nowhere else. None of it is exciting to write about, which might be the strongest argument in its favor.</p>
+      </div>
+    </article>
+  </div>
+
+  <div id="note-2" class="hidden">
+    <article class="max-w-3xl mx-auto px-4 sm:px-6 pt-10 sm:pt-16 pb-24">
+      <button onclick="showHome()" class="inline-flex items-center gap-2 font-mono text-sm font-bold uppercase mb-8 brutal-hover px-3 py-2 border-[3px] border-ink dark:border-paper bg-paper dark:bg-panel shadow-brutal-xs">
+        <i class="ph-bold ph-arrow-left"></i> Back
+      </button>
+      <div class="flex items-center gap-2 mb-4 font-mono text-xs uppercase tracking-wide">
+        <span>Jan 18, 2026</span><span>·</span><span>5 min read</span>
+      </div>
+      <h1 class="font-display font-bold text-4xl sm:text-5xl mb-8 leading-tight">Reading Code Like a Story</h1>
+      <div class="prose-note font-sans text-base sm:text-lg">
+        <p>The first time I reviewed a pull request line by line, top to bottom, I caught every style violation and missed the fact that the whole feature solved the wrong problem. Since then I've reviewed code in a completely different order, and it's changed what I catch.</p>
+        <p>Now I start with the entry point — the button click, the API route, the cron job — and follow it the way a reader follows a plot. Who calls this? What did they want to happen? What actually happens three functions later?</p>
+        <blockquote>Bugs hide in the implementation. Bad decisions hide in the plot.</blockquote>
+        <h3>Character, setting, plot</h3>
+        <p>Every codebase has characters (the core objects), a setting (the constraints it operates under — latency, scale, who's allowed to call what), and a plot (the actual sequence of decisions a request goes through). Reading for plot first means I understand intent before I judge implementation.</p>
+        <p>It also means I ask better questions in review. Instead of "why did you name this <code>tmp</code>," I ask "why does this function need to know about billing at all." One of those questions changes a variable name. The other one changes an architecture.</p>
+        <h3>A small practice</h3>
+        <p>Before reviewing anything substantial now, I spend two minutes writing a one-sentence summary of what the change does, in plain language, before I look at a single diff. If I can't write that sentence, that's the first thing I flag.</p>
+      </div>
+    </article>
+  </div>
+
+  <div id="note-3" class="hidden">
+    <article class="max-w-3xl mx-auto px-4 sm:px-6 pt-10 sm:pt-16 pb-24">
+      <button onclick="showHome()" class="inline-flex items-center gap-2 font-mono text-sm font-bold uppercase mb-8 brutal-hover px-3 py-2 border-[3px] border-ink dark:border-paper bg-paper dark:bg-panel shadow-brutal-xs">
+        <i class="ph-bold ph-arrow-left"></i> Back
+      </button>
+      <div class="flex items-center gap-2 mb-4 font-mono text-xs uppercase tracking-wide">
+        <span>Nov 09, 2025</span><span>·</span><span>3 min read</span>
+      </div>
+      <h1 class="font-display font-bold text-4xl sm:text-5xl mb-8 leading-tight">Whitespace Is a Design Decision</h1>
+      <div class="prose-note font-sans text-base sm:text-lg">
+        <p>Early in my career, a design director looked at a dashboard I'd built and asked why every panel was fighting for attention. I didn't have an answer, because I hadn't decided anything — I'd just filled the space that was there.</p>
+        <p>Whitespace isn't the absence of a decision. It's a decision that says: this thing next to it matters more than something else would have. Every pixel of margin is a small claim about hierarchy.</p>
+        <blockquote>If everything is emphasized, nothing is.</blockquote>
+        <h3>The test I use now</h3>
+        <p>Before adding density to a screen, I ask what I'm actually solving for. Sometimes the honest answer is "the client wants to see more on one screen," which is a real constraint — but it's different from "the user needs more on one screen," and the two call for different layouts entirely.</p>
+        <p>Generous spacing isn't a style, it's a tool for telling someone where to look first, second, and never. Tight spacing has its place too — a data table earns its density. A homepage rarely does.</p>
+        <h3>One rule that's held up</h3>
+        <p>Group by relationship, separate by difference, and make the gap between groups noticeably bigger than the gap within one. It sounds obvious written down. It's the thing I still get wrong first and fix second.</p>
+      </div>
+    </article>
+  </div>
+
+  <div id="note-4" class="hidden">
+    <article class="max-w-3xl mx-auto px-4 sm:px-6 pt-10 sm:pt-16 pb-24">
+      <button onclick="showHome()" class="inline-flex items-center gap-2 font-mono text-sm font-bold uppercase mb-8 brutal-hover px-3 py-2 border-[3px] border-ink dark:border-paper bg-paper dark:bg-panel shadow-brutal-xs">
+        <i class="ph-bold ph-arrow-left"></i> Back
+      </button>
+      <div class="flex items-center gap-2 mb-4 font-mono text-xs uppercase tracking-wide">
+        <span>Aug 27, 2025</span><span>·</span><span>6 min read</span>
+      </div>
+      <h1 class="font-display font-bold text-4xl sm:text-5xl mb-8 leading-tight">What Five Side Projects Taught Me</h1>
+      <div class="prose-note font-sans text-base sm:text-lg">
+        <p>Only one of the five side projects I've shipped in the last four years has real, ongoing users. If I measured them purely by outcome, four of them were a waste of evenings. I don't think that's true, and here's why.</p>
+        <h3>The habit tracker nobody used</h3>
+        <p>My first project taught me how to ship something end to end, alone, without a team to catch my mistakes. That skill — not the app itself — is what I still use every day.</p>
+        <h3>The recipe app I abandoned</h3>
+        <p>I quit this one three weeks in, once I realized I didn't actually want to build it, I wanted to have built it. That's an expensive distinction to learn cheaply, and side projects are the cheapest place to learn it.</p>
+        <blockquote>A side project's job isn't always to succeed. Sometimes it's to teach you what you don't want to build again.</blockquote>
+        <h3>The design system that became a job</h3>
+        <p>Component Kit started as a weekend project to solve my own annoyance with a client's inconsistent buttons. Two years later, it's used in products I've never seen, and it's a meaningful line on my résumé. I didn't plan that. I just kept maintaining it after the annoyance was gone.</p>
+        <h3>What I'd tell someone starting their first one</h3>
+        <p>Pick something you'll want to open again in a week, not because it's ambitious, but because you're curious what happens next. Ambition fades. Curiosity, in my experience, is what actually ships things.</p>
+      </div>
+    </article>
+  </div>
+
+<script>
+  const html = document.documentElement;
+  const themeIcon = document.getElementById('theme-icon');
+  function syncThemeIcon() {
+    if (html.classList.contains('dark')) {
+      themeIcon.classList.remove('ph-moon');
+      themeIcon.classList.add('ph-sun');
+    } else {
+      themeIcon.classList.remove('ph-sun');
+      themeIcon.classList.add('ph-moon');
+    }
+  }
+  syncThemeIcon();
+
+  function toggleTheme() {
+    html.classList.toggle('dark');
+    localStorage.setItem('theme', html.classList.contains('dark') ? 'dark' : 'light');
+    syncThemeIcon();
+  }
+
+  function toggleMobileNav() {
+    const nav = document.getElementById('mobile-nav');
+    const icon = document.getElementById('mobile-nav-icon');
+    nav.classList.toggle('hidden');
+    icon.classList.toggle('ph-list');
+    icon.classList.toggle('ph-x');
+  }
+
+  const noteIds = ['note-1', 'note-2', 'note-3', 'note-4'];
+  function showNote(n) {
+    document.getElementById('home-view').classList.add('hidden');
+    noteIds.forEach(id => document.getElementById(id).classList.add('hidden'));
+    document.getElementById('note-' + n).classList.remove('hidden');
+    window.scrollTo(0, 0);
+  }
+  function showHome() {
+    noteIds.forEach(id => document.getElementById(id).classList.add('hidden'));
+    document.getElementById('home-view').classList.remove('hidden');
+    window.scrollTo(0, 0);
+  }
+</script>
+</body>
+</html>

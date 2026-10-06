@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="hi" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>जन सुराज | Jan Suraaj Vision</title>
+    <link rel="icon" href="image_5dd284.png">
+
+    <!-- Google Fonts: Bebas Neue (English Headings), Khand (Hindi Headings), Hind (Hindi Body), JetBrains Mono (Tags) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Hind:wght@400;500;600;700&family=Khand:wght@500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    
+    <!-- Phosphor Icons for Neo-Brutalist iconography -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+
+    <!-- Tailwind CSS Setup -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        display: ['"Bebas Neue"', 'sans-serif'], // English display
+                        hindiDisplay: ['Khand', 'sans-serif'], // Hindi bold display
+                        sans: ['Hind', 'sans-serif'], // Hindi readable body
+                        mono: ['"JetBrains Mono"', 'monospace'],
+                    },
+                    colors: {
+                        brand: {
+                            coal: '#0F0D0E',
+                            gray: '#231F20',
+                            yellow: '#FDCB0B', // Jan Suraaj Logo Yellow
+                            saffron: '#F97316', // Orange
+                            green: '#16A34A', // Green
+                            blue: '#2563EB', // Ambedkarite Blue
+                            pink: '#F38BA3', 
+                            white: '#FDFBF4' // Off-white/khadi color
+                        }
+                    },
+                    boxShadow: {
+                        'brutal-sm': '4px 4px 0px 0px rgba(0,0,0,1)',
+                        'brutal': '8px 8px 0px 0px rgba(0,0,0,1)',
+                        'brutal-lg': '12px 12px 0px 0px rgba(0,0,0,1)',
+                        'brutal-yellow': '8px 8px 0px 0px #FDCB0B',
+                        'brutal-saffron': '8px 8px 0px 0px #F97316',
+                        'brutal-green': '8px 8px 0px 0px #16A34A',
+                        'brutal-blue': '8px 8px 0px 0px #2563EB',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style type="text/tailwindcss">
+        body {
+            transition: background-color 0.2s, background-image 0.2s;
+        }
+        
+        /* Background Themes - Adapted for Political Site */
+        body.theme-bg-dots {
+            background-color: #ffffff;
+            background-image: radial-gradient(circle, rgba(203, 213, 225, 0.8) 2px, transparent 2px);
+            background-size: 32px 32px;
+        }
+        .dark body.theme-bg-dots {
+            background-color: theme('colors.brand.coal');
+            background-image: radial-gradient(circle, rgba(35, 31, 32, 0.8) 2px, transparent 2px);
+        }
+        
+        body.theme-bg-blueprint {
+            background-color: #fcfaf0;
+            background-image: 
+                linear-gradient(to right, rgba(253, 203, 11, 0.15) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(253, 203, 11, 0.15) 1px, transparent 1px);
+            background-size: 40px 40px;
+        }
+        .dark body.theme-bg-blueprint {
+            background-color: #12100a;
+            background-image: 
+                linear-gradient(to right, rgba(253, 203, 11, 0.08) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(253, 203, 11, 0.08) 1px, transparent 1px);
+            background-size: 40px 40px;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 12px; }
+        ::-webkit-scrollbar-track { background: transparent; border-left: 2px solid black; }
+        ::-webkit-scrollbar-thumb { background: #FDCB0B; border: 2px solid black; }
+        .dark ::-webkit-scrollbar-track { border-left: 2px solid #231F20; }
+        .dark ::-webkit-scrollbar-thumb { background: #F97316; border: 2px solid theme('colors.brand.coal'); }
+
+        /* Brutalist Card Classes */
+        .card-saffron { @apply bg-brand-saffron border-[3px] border-black shadow-brutal text-black dark:bg-brand-gray dark:border-brand-saffron dark:shadow-brutal-saffron dark:text-white; }
+        .card-yellow { @apply bg-brand-yellow border-[3px] border-black shadow-brutal text-black dark:bg-brand-gray dark:border-brand-yellow dark:shadow-brutal-yellow dark:text-white; }
+        .card-green { @apply bg-brand-green border-[3px] border-black shadow-brutal text-black dark:bg-brand-gray dark:border-brand-green dark:shadow-brutal-green dark:text-white; }
+        .card-blue { @apply bg-brand-blue border-[3px] border-black shadow-brutal text-white dark:bg-brand-gray dark:border-brand-blue dark:shadow-brutal-blue dark:text-white; }
+        
+        /* Interactive Hover */
+        .brutal-hover {
+            transition: transform 0.1s ease, box-shadow 0.1s ease;
+        }
+        .brutal-hover:active {
+            transform: translate(4px, 4px);
+            box-shadow: 0px 0px 0px 0px rgba(0,0,0,1) !important;
+        }
+
+        /* Utilities */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+
+<body class="text-brand-gray dark:text-brand-white antialiased min-h-screen flex flex-col selection:bg-brand-saffron selection:text-black overflow-x-hidden theme-bg-dots">
+    
+    <!-- TOP NAV (Brutalist Banner) -->
+    <nav id="navbar" class="fixed md:relative top-0 z-50 bg-brand-white dark:bg-brand-coal border-b-[3px] border-black dark:border-brand-gray w-full flex items-center justify-between p-3 sm:p-4 transition-transform duration-300 ease-in-out md:!transform-none">
+        
+        <div class="flex items-center gap-3 sm:gap-4">
+            <!-- Logo -->
+            <div onclick="showHome()" class="w-12 h-12 sm:w-14 sm:h-14 bg-brand-yellow border-[3px] border-black shadow-brutal-sm flex items-center justify-center brutal-hover cursor-pointer overflow-hidden p-1 flex-shrink-0">
+                <img src="image_5dd284.png" alt="Jan Suraaj Logo" class="w-full h-full object-contain">
+            </div>
+            <div class="cursor-pointer flex-shrink-0" onclick="showHome()">
+                <h1 class="font-hindiDisplay font-bold text-3xl sm:text-4xl leading-none tracking-wide text-black dark:text-white mt-1">जन सुराज</h1>
+                <p class="font-mono text-[9px] sm:text-[11px] font-bold text-brand-saffron dark:text-brand-yellow uppercase tracking-widest hidden sm:block">व्यवस्था परिवर्तन का महाभियान</p>
+            </div>
+        </div>
+
+        <!-- Desktop Search Bar -->
+        <div class="hidden md:flex flex-1 max-w-xl mx-6 lg:mx-12 relative group">
+            <input type="text" placeholder="योजनाएं और विचार खोजें..." class="w-full bg-white dark:bg-brand-gray border-[3px] border-black dark:border-white shadow-brutal-sm px-4 py-2 font-sans text-black dark:text-white focus:outline-none focus:-translate-y-1 focus:-translate-x-1 focus:shadow-brutal transition-all" />
+            <button class="absolute right-0 top-0 bottom-0 px-4 bg-brand-yellow border-l-[3px] border-black dark:border-white flex items-center justify-center brutal-hover">
+                <i class="ph-bold ph-magnifying-glass text-black text-lg"></i>
+            </button>
+        </div>
+        
+        <div class="flex items-center gap-3 sm:gap-4 flex-shrink-0">
+            <!-- Theme Toggle -->
+            <button onclick="toggleTheme()" class="w-10 h-10 rounded-full bg-brand-yellow dark:bg-brand-gray border-[3px] border-black dark:border-brand-yellow shadow-brutal-sm flex items-center justify-center text-black dark:text-brand-yellow brutal-hover transition-colors">
+                <i id="theme-icon" class="ph-bold ph-moon text-xl"></i>
+            </button>
+            
+            <button class="hidden md:flex font-hindiDisplay font-bold text-2xl tracking-wide bg-brand-yellow hover:bg-black hover:text-brand-yellow transition-colors border-[3px] border-black px-6 py-1 shadow-brutal-sm brutal-hover text-black">
+                पदयात्रा से जुड़ें
+            </button>
+        </div>
+    </nav>
+
+    <!-- MAIN CONTENT -->
+    <main class="flex-1 max-w-7xl mx-auto w-full p-4 md:p-8 pt-24 md:pt-8 z-10 pb-24">
+        
+        <!-- HOME VIEW (Grid of Blogs/Visions) -->
+        <div id="home-view" class="w-full block animate-[fadeIn_0.3s_ease-in-out]">
+            <!-- Hero Section -->
+            <div class="flex flex-col items-center justify-center mb-16 mt-4 sm:mt-12 text-center relative">
+                <i class="ph-bold ph-megaphone absolute text-5xl text-brand-saffron top-0 left-[5%] hidden md:block -rotate-12"></i>
+                <i class="ph-bold ph-users-three absolute text-4xl text-brand-blue bottom-0 right-[10%] hidden md:block rotate-12"></i>
+                
+                <div class="inline-block bg-brand-yellow text-black font-display text-4xl sm:text-5xl px-6 py-2 border-[3px] border-black shadow-brutal-sm mb-4 -rotate-2">
+                    VISION & IDEAS
+                </div>
+                <h2 class="font-hindiDisplay font-bold text-4xl sm:text-6xl text-black dark:text-white mt-2 mb-4">सही लोग, सही सोच, सामूहिक प्रयास</h2>
+                <p class="font-sans text-lg sm:text-xl font-medium max-w-3xl px-4 text-black dark:text-gray-300">
+                    प्रशांत किशोर द्वारा शुरू किया गया 'जन सुराज' केवल एक राजनीतिक मंच नहीं, बल्कि बिहार के सामाजिक और आर्थिक पुनर्जागरण का ब्लूप्रिंट है। नीचे हमारी प्रमुख विचारधाराओं को पढ़ें।
+                </p>
+            </div>
+
+            <!-- Blog Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8 max-w-6xl mx-auto">
+                
+                <!-- Card 1: Poverty -->
+                <div onclick="showArticle('poverty')" class="flex flex-col border-[3px] border-black rounded-2xl overflow-hidden brutal-hover shadow-brutal cursor-pointer bg-white dark:bg-[#1A1A1A] text-black dark:text-white transition-transform">
+                    <div class="h-48 flex items-center justify-center border-b-[3px] border-black bg-brand-saffron relative overflow-hidden">
+                        <i class="ph-fill ph-plant text-[6rem] text-black/20 absolute -bottom-4 -right-4 -rotate-12"></i>
+                        <span class="text-[4rem] drop-shadow-md z-10">🌾</span>
+                    </div>
+                    <div class="p-6 flex flex-col flex-grow">
+                        <div class="font-mono text-xs font-bold text-brand-saffron mb-2 uppercase">Vision 01</div>
+                        <h3 class="font-hindiDisplay font-bold text-3xl leading-tight mb-2">गरीबी उन्मूलन का मास्टरप्लान</h3>
+                        <p class="font-sans text-base font-medium opacity-80 leading-relaxed">गांव के स्तर पर पूंजी निर्माण और शिक्षा के अधिकार से गरीबी के दुष्चक्र को तोड़ने की रणनीति।</p>
+                    </div>
+                </div>
+
+                <!-- Card 2: Employment -->
+                <div onclick="showArticle('employment')" class="flex flex-col border-[3px] border-black rounded-2xl overflow-hidden brutal-hover shadow-brutal cursor-pointer bg-white dark:bg-[#1A1A1A] text-black dark:text-white transition-transform md:-translate-y-4">
+                    <div class="h-48 flex items-center justify-center border-b-[3px] border-black bg-brand-green relative overflow-hidden">
+                        <i class="ph-fill ph-briefcase text-[6rem] text-black/20 absolute -bottom-4 -right-4 rotate-12"></i>
+                        <span class="text-[4rem] drop-shadow-md z-10">💼</span>
+                    </div>
+                    <div class="p-6 flex flex-col flex-grow">
+                        <div class="font-mono text-xs font-bold text-brand-green mb-2 uppercase">Vision 02</div>
+                        <h3 class="font-hindiDisplay font-bold text-3xl leading-tight mb-2">बिहार में रोज़गार सृजन</h3>
+                        <p class="font-sans text-base font-medium opacity-80 leading-relaxed">पलायन रोकना और कृषि-आधारित उद्योगों के माध्यम से स्थानीय स्तर पर लाखों नौकरियाँ पैदा करना।</p>
+                    </div>
+                </div>
+
+                <!-- Card 3: Ideology -->
+                <div onclick="showArticle('ideology')" class="flex flex-col border-[3px] border-black rounded-2xl overflow-hidden brutal-hover shadow-brutal cursor-pointer bg-white dark:bg-[#1A1A1A] text-black dark:text-white transition-transform">
+                    <div class="h-48 flex items-center justify-center border-b-[3px] border-black bg-brand-blue relative overflow-hidden">
+                        <i class="ph-fill ph-scales text-[6rem] text-black/20 absolute -bottom-4 -right-4 -rotate-12"></i>
+                        <img src="image_5dd284.png" alt="Gandhi Ambedkar" class="h-36 object-contain z-10 drop-shadow-lg">
+                    </div>
+                    <div class="p-6 flex flex-col flex-grow">
+                        <div class="font-mono text-xs font-bold text-brand-blue mb-2 uppercase">Vision 03</div>
+                        <h3 class="font-hindiDisplay font-bold text-3xl leading-tight mb-2">गांधी और अंबेडकर का मार्ग</h3>
+                        <p class="font-sans text-base font-medium opacity-80 leading-relaxed">ग्राम स्वराज्य और सामाजिक न्याय का संगम। एक ऐसे समाज का निर्माण जहाँ हर वर्ग को समान अवसर मिले।</p>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="mt-20 md:mt-32 max-w-6xl mx-auto px-4">
+                <div class="bg-brand-yellow border-[4px] border-black shadow-brutal-lg p-8 md:p-12 -rotate-1 relative overflow-hidden text-black">
+                    <i class="ph-fill ph-quotes absolute -top-4 -left-4 text-[10rem] text-black/10"></i>
+                    <h2 class="font-display text-4xl md:text-5xl mb-4 tracking-wider uppercase">The Core Vision</h2>
+                    <p class="font-hindiDisplay font-bold text-3xl md:text-5xl leading-tight z-10 relative">
+                        "हमारा लक्ष्य सिर्फ सरकार बदलना नहीं, बल्कि उस व्यवस्था को बदलना है जिसने बिहार को दशकों तक पीछे रखा है। हमें एक ऐसा बिहार बनाना है जहाँ युवाओं को रोज़गार के लिए अपनों को न छोड़ना पड़े।"
+                    </p>
+                    <div class="mt-8 flex items-center gap-4">
+                        <div class="w-16 h-16 rounded-full overflow-hidden border-[3px] border-black bg-white">
+                            <img src="https://placehold.co/100x100/16A34A/FFF?text=PK" alt="Prashant Kishor" class="w-full h-full object-cover">
+                        </div>
+                        <div>
+                            <h4 class="font-hindiDisplay font-bold text-2xl">प्रशांत किशोर</h4>
+                            <p class="font-mono text-sm font-bold uppercase">संस्थापक, जन सुराज</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-20 md:mt-32 max-w-7xl mx-auto">
+                <div class="flex items-end justify-between mb-8 px-4">
+                    <div>
+                        <div class="inline-block bg-brand-yellow text-black font-display text-xl px-4 py-1 border-[3px] border-black shadow-brutal-sm rotate-2 mb-2">LATEST UPDATES</div>
+                        <h2 class="font-hindiDisplay font-bold text-4xl sm:text-5xl text-black dark:text-white">पदयात्रा डायरी और विचार</h2>
+                    </div>
+                    <div class="hidden sm:flex gap-2">
+                        <!-- Navigation mock buttons for playlist -->
+                        <button class="w-10 h-10 border-[3px] border-black bg-white dark:bg-brand-gray text-black dark:text-white flex items-center justify-center brutal-hover"><i class="ph-bold ph-caret-left"></i></button>
+                        <button class="w-10 h-10 border-[3px] border-black bg-brand-yellow text-black flex items-center justify-center brutal-hover"><i class="ph-bold ph-caret-right"></i></button>
+                    </div>
+                </div>
+                
+                <!-- Horizontal Scroll Container -->
+                <div class="flex overflow-x-auto gap-6 pb-8 px-4 snap-x snap-mandatory no-scrollbar">
+                    <!-- Playlist Card 1 -->
+                    <div class="min-w-[280px] sm:min-w-[320px] snap-center flex flex-col border-[3px] border-black rounded-xl overflow-hidden brutal-hover shadow-brutal-sm cursor-pointer bg-white dark:bg-[#1A1A1A] text-black dark:text-white group">
+                        <div class="overflow-hidden h-40 border-b-[3px] border-black">
+                            <img src="https://placehold.co/400x250/FDCB0B/0F0D0E?text=Education" alt="Education" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">
+                        </div>
+                        <div class="p-5 flex flex-col h-full">
+                            <span class="bg-brand-blue text-white text-xs font-mono px-2 py-1 w-max mb-3 border-[2px] border-black shadow-brutal-sm">EDUCATION</span>
+                            <h4 class="font-hindiDisplay font-bold text-2xl leading-tight mb-2 group-hover:text-brand-blue transition-colors">हर पंचायत में उत्कृष्ट विद्यालय</h4>
+                            <p class="font-sans text-sm opacity-80">शिक्षा व्यवस्था में आमूल-चूल परिवर्तन की आवश्यकता।</p>
+                        </div>
+                    </div>
+                    <!-- Playlist Card 2 -->
+                    <div class="min-w-[280px] sm:min-w-[320px] snap-center flex flex-col border-[3px] border-black rounded-xl overflow-hidden brutal-hover shadow-brutal-sm cursor-pointer bg-white dark:bg-[#1A1A1A] text-black dark:text-white group">
+                        <div class="overflow-hidden h-40 border-b-[3px] border-black">
+                            <img src="https://placehold.co/400x250/16A34A/FFF?text=Agriculture" alt="Agriculture" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">
+                        </div>
+                        <div class="p-5 flex flex-col h-full">
+                            <span class="bg-brand-green text-black text-xs font-mono px-2 py-1 w-max mb-3 border-[2px] border-black shadow-brutal-sm">AGRICULTURE</span>
+                            <h4 class="font-hindiDisplay font-bold text-2xl leading-tight mb-2 group-hover:text-brand-green transition-colors">किसानों को सही मूल्य</h4>
+                            <p class="font-sans text-sm opacity-80">कृषि आधारित उद्योगों से कैसे बदलेगी किसानों की किस्मत।</p>
+                        </div>
+                    </div>
+                    <!-- Playlist Card 3 -->
+                    <div class="min-w-[280px] sm:min-w-[320px] snap-center flex flex-col border-[3px] border-black rounded-xl overflow-hidden brutal-hover shadow-brutal-sm cursor-pointer bg-white dark:bg-[#1A1A1A] text-black dark:text-white group">
+                        <div class="overflow-hidden h-40 border-b-[3px] border-black">
+                            <img src="https://placehold.co/400x250/F97316/0F0D0E?text=Empowerment" alt="Women" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">
+                        </div>
+                        <div class="p-5 flex flex-col h-full">
+                            <span class="bg-brand-saffron text-black text-xs font-mono px-2 py-1 w-max mb-3 border-[2px] border-black shadow-brutal-sm">EMPOWERMENT</span>
+                            <h4 class="font-hindiDisplay font-bold text-2xl leading-tight mb-2 group-hover:text-brand-saffron transition-colors">महिला उद्यमिता को बढ़ावा</h4>
+                            <p class="font-sans text-sm opacity-80">जीविका दीदियों को लघु उद्योग का मालिक बनाने की योजना।</p>
+                        </div>
+                    </div>
+                    <!-- Playlist Card 4 -->
+                    <div class="min-w-[280px] sm:min-w-[320px] snap-center flex flex-col border-[3px] border-black rounded-xl overflow-hidden brutal-hover shadow-brutal-sm cursor-pointer bg-white dark:bg-[#1A1A1A] text-black dark:text-white group">
+                        <div class="overflow-hidden h-40 border-b-[3px] border-black">
+                            <img src="https://placehold.co/400x250/F38BA3/0F0D0E?text=Health" alt="Health" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">
+                        </div>
+                        <div class="p-5 flex flex-col h-full">
+                            <span class="bg-brand-pink text-black text-xs font-mono px-2 py-1 w-max mb-3 border-[2px] border-black shadow-brutal-sm">HEALTHCARE</span>
+                            <h4 class="font-hindiDisplay font-bold text-2xl leading-tight mb-2 group-hover:text-brand-pink transition-colors">स्वस्थ बिहार, समृद्ध बिहार</h4>
+                            <p class="font-sans text-sm opacity-80">प्राथमिक स्वास्थ्य केंद्रों के आधुनिकीकरण का ब्लूप्रिंट।</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-20 md:mt-32 max-w-6xl mx-auto px-4">
+                <div class="grid md:grid-cols-2 border-[4px] border-black bg-brand-coal text-white dark:bg-white dark:text-black overflow-hidden shadow-brutal">
+                    <!-- Left Info -->
+                    <div class="p-8 md:p-12 border-b-[4px] md:border-b-0 md:border-r-[4px] border-black dark:border-black flex flex-col justify-center relative bg-[url('https://placehold.co/600x600/0F0D0E/231F20?text=+')] bg-cover bg-center dark:bg-[url('https://placehold.co/600x600/FDFBF4/E5E5E5?text=+')]">
+                        <div class="absolute inset-0 bg-brand-coal/90 dark:bg-white/90"></div>
+                        <div class="relative z-10">
+                            <h2 class="font-hindiDisplay font-bold text-5xl md:text-6xl mb-4 text-brand-yellow dark:text-brand-saffron">अब आपकी बारी है!</h2>
+                            <p class="font-sans text-lg mb-8 opacity-90">बिहार को बदलने के इस महाभियान में अपना योगदान दें। जन सुराज से जुड़कर व्यवस्था परिवर्तन का हिस्सा बनें।</p>
+                            
+                            <div class="space-y-4 font-mono">
+                                <div class="flex items-center gap-4 text-lg">
+                                    <i class="ph-fill ph-phone text-2xl text-brand-saffron"></i> +91 99999 99999
+                                </div>
+                                <div class="flex items-center gap-4 text-lg">
+                                    <i class="ph-fill ph-envelope-simple text-2xl text-brand-blue"></i> join@jansuraaj.org
+                                </div>
+                                <div class="flex items-center gap-4 text-lg">
+                                    <i class="ph-fill ph-map-pin text-2xl text-brand-green"></i> Patna, Bihar, India
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Right Form -->
+                    <div class="p-8 md:p-12 bg-white text-black dark:bg-brand-gray dark:text-white">
+                        <h3 class="font-display text-3xl mb-6 uppercase">Join the Movement</h3>
+                        <form class="space-y-5" onsubmit="event.preventDefault(); document.getElementById('success-msg').classList.remove('hidden');">
+                            <div>
+                                <label class="block font-mono text-sm font-bold mb-2">NAME / नाम</label>
+                                <input type="text" required class="w-full bg-transparent border-[3px] border-black dark:border-white p-3 font-sans focus:outline-none focus:bg-brand-yellow focus:text-black focus:border-black transition-colors placeholder:text-gray-400" placeholder="आपका नाम">
+                            </div>
+                            <div>
+                                <label class="block font-mono text-sm font-bold mb-2">PHONE / फ़ोन नंबर</label>
+                                <input type="tel" required class="w-full bg-transparent border-[3px] border-black dark:border-white p-3 font-sans focus:outline-none focus:bg-brand-yellow focus:text-black focus:border-black transition-colors placeholder:text-gray-400" placeholder="आपका नंबर">
+                            </div>
+                            <div>
+                                <label class="block font-mono text-sm font-bold mb-2">MESSAGE / संदेश</label>
+                                <textarea rows="3" class="w-full bg-transparent border-[3px] border-black dark:border-white p-3 font-sans focus:outline-none focus:bg-brand-yellow focus:text-black focus:border-black transition-colors placeholder:text-gray-400" placeholder="आपका सुझाव..."></textarea>
+                            </div>
+                            
+                            <!-- Success Message Mock -->
+                            <div id="success-msg" class="hidden bg-brand-green text-black border-[3px] border-black p-3 font-mono font-bold text-sm text-center">
+                                ✓ धन्यवाद! आपका संदेश प्राप्त हो गया है।
+                            </div>
+
+                            <button type="submit" class="w-full bg-brand-yellow hover:bg-black hover:text-brand-yellow transition-colors text-black font-hindiDisplay font-bold text-2xl py-3 border-[3px] border-black shadow-brutal-sm brutal-hover mt-4">
+                                सम्मिलित हों (SUBMIT)
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- ARTICLE 1: POVERTY -->
+        <div id="article-poverty" class="article-view w-full hidden max-w-4xl mx-auto animate-[fadeIn_0.3s_ease-in-out]">
+            <button onclick="showHome()" class="mb-8 font-mono text-sm bg-brand-white dark:bg-brand-gray border-2 border-black dark:border-white px-4 py-1 brutal-hover flex items-center gap-2">
+                <i class="ph-bold ph-arrow-left"></i> BACK TO HOME
+            </button>
+
+            <header class="mb-12 relative">
+                <div class="absolute -top-4 -left-4 bg-brand-saffron text-black font-display text-lg px-3 py-1 border-[3px] border-black shadow-brutal-sm -rotate-6 z-10">
+                    ECONOMICS
+                </div>
+                <h1 class="font-hindiDisplay font-bold text-5xl sm:text-7xl text-black dark:text-white leading-[1.1] mb-6">
+                    गरीबी उन्मूलन: बिहार का आर्थिक पुनर्जागरण
+                </h1>
+            </header>
+
+            <div class="space-y-8">
+                <article class="card-saffron p-6 md:p-10 relative">
+                    <div class="absolute -top-5 right-6 w-12 h-12 bg-white border-[3px] border-black shadow-brutal-sm flex items-center justify-center text-2xl rotate-12 dark:bg-brand-saffron dark:text-black">
+                        📊
+                    </div>
+                    
+                    <div class="font-sans text-lg md:text-xl font-medium leading-relaxed space-y-6">
+                        <p>
+                            प्रशांत किशोर का स्पष्ट मानना है कि बिहार में गरीबी का मुख्य कारण संसाधनों की कमी नहीं, बल्कि <strong>सही नीतियों और राजनीतिक इच्छाशक्ति का अभाव</strong> है। पिछले कई दशकों से बिहार ने जाति और धर्म के नाम पर मतदान किया है, जिससे विकास के मुद्दे पीछे छूट गए।
+                        </p>
+
+                        <div class="bg-white/80 dark:bg-black/30 border-l-[6px] border-black dark:border-white p-5 italic">
+                            <strong class="font-hindiDisplay font-bold not-italic text-2xl block mb-2">मूल समस्या:</strong>
+                            "बिहार का पैसा बिहार में नहीं रुक रहा है। यहां के लोग मजदूरी करने बाहर जाते हैं और वहां से जो पैसा भेजते हैं, वह बुनियादी जरूरतों में खर्च होकर वापस दूसरे राज्यों की कंपनियों में चला जाता है।"
+                        </div>
+
+                        <h3 class="font-hindiDisplay font-bold text-3xl mt-8 mb-4 border-b-2 border-black/20 pb-2">समाधान का ब्लूप्रिंट</h3>
+                        <ul class="list-disc list-inside space-y-3 ml-2">
+                            <li><span class="bg-black text-white px-2 py-0.5 rounded-sm">पूंजी निर्माण (Capital Formation):</span> पंचायत स्तर पर सहकारी समितियों का निर्माण ताकि किसानों और छोटे व्यवसायियों को आसानी से ऋण मिल सके।</li>
+                            <li><span class="bg-black text-white px-2 py-0.5 rounded-sm">शिक्षा में निवेश:</span> जब तक शिक्षा व्यवस्था सुधरेगी नहीं, तब तक गरीबी का दुष्चक्र नहीं टूटेगा। जन सुराज का लक्ष्य बजट का एक बड़ा हिस्सा सरकारी स्कूलों को सुधारने में लगाना है।</li>
+                            <li><span class="bg-black text-white px-2 py-0.5 rounded-sm">महिलाओं की आर्थिक भागीदारी:</span> केवल जीविका दीदियों तक सीमित न रहकर, महिलाओं को लघु उद्योगों का मालिक बनाना।</li>
+                        </ul>
+                    </div>
+                </article>
+            </div>
+        </div>
+
+        <!-- ARTICLE 2: EMPLOYMENT -->
+        <div id="article-employment" class="article-view w-full hidden max-w-4xl mx-auto animate-[fadeIn_0.3s_ease-in-out]">
+            <button onclick="showHome()" class="mb-8 font-mono text-sm bg-brand-white dark:bg-brand-gray border-2 border-black dark:border-white px-4 py-1 brutal-hover flex items-center gap-2">
+                <i class="ph-bold ph-arrow-left"></i> BACK TO HOME
+            </button>
+
+            <header class="mb-12 relative">
+                <div class="absolute -top-4 -left-4 bg-brand-green text-black font-display text-lg px-3 py-1 border-[3px] border-black shadow-brutal-sm -rotate-6 z-10">
+                    DEVELOPMENT
+                </div>
+                <h1 class="font-hindiDisplay font-bold text-5xl sm:text-7xl text-black dark:text-white leading-[1.1] mb-6">
+                    रोज़गार सृजन: पलायन रोकने की रणनीति
+                </h1>
+            </header>
+
+            <div class="space-y-8">
+                <article class="card-green p-6 md:p-10 relative">
+                    <div class="font-sans text-lg md:text-xl font-medium leading-relaxed space-y-6">
+                        <p>
+                            बिहार की सबसे बड़ी त्रासदी <strong>'पलायन'</strong> है। यहाँ का युवा देश के हर कोने में जाकर मजदूरी कर रहा है, कारखाने चला रहा है, लेकिन खुद बिहार में फैक्ट्रियां बंद पड़ी हैं। जन सुराज का पहला लक्ष्य इस श्रम शक्ति को बिहार के विकास में लगाना है।
+                        </p>
+
+                        <!-- Brutalist Info Box -->
+                        <div class="grid md:grid-cols-2 gap-6 my-8">
+                            <div class="border-[3px] border-black p-4 bg-white dark:bg-brand-gray shadow-brutal-sm -rotate-1">
+                                <h4 class="font-hindiDisplay font-bold text-2xl text-brand-green mb-2">क्या गलत हुआ?</h4>
+                                <p class="text-base">राजनेताओं ने नौकरियां देने के खोखले वादे किए। बिना उद्योग लगाए और बिना निवेश लाए, केवल सरकारी नौकरियों के भरोसे पूरे राज्य का विकास संभव नहीं है।</p>
+                            </div>
+                            <div class="border-[3px] border-black p-4 bg-black text-white dark:border-white shadow-brutal-sm rotate-1">
+                                <h4 class="font-hindiDisplay font-bold text-2xl text-brand-yellow mb-2">क्या करना होगा?</h4>
+                                <p class="text-base">कृषि-आधारित उद्योगों का जाल बिछाना होगा। मक्का, लीची, मखाना और गन्ने की प्रोसेसिंग यूनिट्स ब्लॉक स्तर पर लगानी होंगी।</p>
+                            </div>
+                        </div>
+
+                        <h3 class="font-hindiDisplay font-bold text-3xl mt-8 mb-4 border-b-2 border-black/20 pb-2">प्रशांत किशोर का 3-सूत्रीय रोजगार प्लान</h3>
+                        <ol class="list-decimal list-inside space-y-4 font-mono text-base bg-white/50 dark:bg-black/20 p-6 border-[3px] border-black dark:border-white">
+                            <li><strong>कृषि प्रसंस्करण (Agro-Processing):</strong> किसानों की फसल सीधे बाजार में न जाकर पहले प्रोसेस हो (जैसे मक्के से इथेनॉल या स्टार्च)। इससे गांव में ही फैक्ट्री लगेगी।</li>
+                            <li><strong>टेक्सटाइल हब (Textile Hubs):</strong> सूरत और तिरुपुर में काम करने वाले बिहार के कारीगरों के लिए बिहार में ही क्लस्टर बनाना।</li>
+                            <li><strong>स्किल डेवलपमेंट (Skill Development):</strong> कागजी डिग्रियों के बजाय युवाओं को आधुनिक तकनीक (Modern Tech & Manufacturing) में प्रशिक्षित करना।</li>
+                        </ol>
+                    </div>
+                </article>
+            </div>
+        </div>
+
+        <!-- ARTICLE 3: IDEOLOGY -->
+        <div id="article-ideology" class="article-view w-full hidden max-w-4xl mx-auto animate-[fadeIn_0.3s_ease-in-out]">
+            <button onclick="showHome()" class="mb-8 font-mono text-sm bg-brand-white dark:bg-brand-gray border-2 border-black dark:border-white px-4 py-1 brutal-hover flex items-center gap-2">
+                <i class="ph-bold ph-arrow-left"></i> BACK TO HOME
+            </button>
+
+            <header class="mb-12 relative flex flex-col md:flex-row gap-8 items-center">
+                <div class="flex-1">
+                    <div class="inline-block bg-brand-blue text-white font-display text-lg px-3 py-1 border-[3px] border-black shadow-brutal-sm -rotate-2 mb-4">
+                        CORE PHILOSOPHY
+                    </div>
+                    <h1 class="font-hindiDisplay font-bold text-5xl sm:text-7xl text-black dark:text-white leading-[1.1]">
+                        गांधी और अंबेडकर के सपनों का भारत
+                    </h1>
+                </div>
+                <!-- Prominent use of the provided logo in the article header -->
+                <div class="w-48 h-48 border-[3px] border-black shadow-brutal bg-brand-yellow p-2 rotate-2 flex-shrink-0">
+                    <img src="image_5dd284.png" alt="Gandhi and Ambedkar - Jan Suraaj" class="w-full h-full object-contain bg-white rounded-full">
+                </div>
+            </header>
+
+            <div class="space-y-8">
+                <article class="card-blue p-6 md:p-10 relative">
+                    <div class="font-sans text-lg md:text-xl font-medium leading-relaxed space-y-6">
+                        <p class="text-xl sm:text-2xl font-hindiDisplay font-bold mb-6 text-brand-yellow">
+                            "जन सुराज का आधार कोई राजनीतिक समीकरण नहीं, बल्कि दो महान विचारकों की विचारधारा का संगम है।"
+                        </p>
+                        
+                        <p>
+                            अक्सर भारतीय राजनीति में महात्मा गांधी और डॉ. बी.आर. अंबेडकर को अलग-अलग खांचों में बांटकर देखा जाता है। जन सुराज का लोगो <strong>(स्वराज और सामाजिक न्याय का प्रतीक)</strong> स्पष्ट करता है कि बिहार और देश का कल्याण इन दोनों महापुरुषों के सिद्धांतों को एक साथ लागू करने में है।
+                        </p>
+
+                        <div class="grid md:grid-cols-2 gap-8 mt-8">
+                            <!-- Gandhi Section -->
+                            <div class="bg-white text-black p-6 border-[3px] border-black">
+                                <i class="ph-fill ph-spinner text-4xl mb-4 text-brand-saffron"></i>
+                                <h3 class="font-hindiDisplay font-bold text-3xl mb-3">महात्मा गांधी का 'ग्राम स्वराज्य'</h3>
+                                <p class="text-base">
+                                    गांधी जी का मानना था कि भारत की आत्मा गांवों में बसती है। सत्ता का विकेंद्रीकरण होना चाहिए। प्रशांत किशोर की पदयात्रा इसी सिद्धांत पर आधारित है—गांव-गांव जाकर लोगों को जगाना, पंचायत स्तर पर नेतृत्व तैयार करना, और अर्थव्यवस्था को निचले स्तर (Bottom-up) से मजबूत करना।
+                                </p>
+                            </div>
+
+                            <!-- Ambedkar Section -->
+                            <div class="bg-black text-white p-6 border-[3px] border-white">
+                                <i class="ph-fill ph-book-open-text text-4xl mb-4 text-brand-blue"></i>
+                                <h3 class="font-hindiDisplay font-bold text-3xl mb-3">अंबेडकर का 'सामाजिक न्याय'</h3>
+                                <p class="text-base">
+                                    बाबासाहेब ने कहा था, "शिक्षित बनो, संगठित रहो, संघर्ष करो।" जन सुराज मानता है कि बिना समतामूलक समाज के, जहां शोषितों, दलितों और पिछड़ों को सत्ता और शिक्षा में उचित भागीदारी न मिले, सच्चा सुराज कभी नहीं आ सकता। शिक्षा व्यवस्था में सुधार बाबासाहेब के सपनों को पूरा करने का मुख्य हथियार है।
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="mt-8 bg-brand-yellow text-black border-[3px] border-black p-6 shadow-brutal-sm -rotate-1">
+                            <strong class="font-display text-2xl uppercase tracking-wider block mb-2">The Synthesis:</strong>
+                            <p class="font-hindiDisplay font-bold text-2xl leading-tight">
+                                गांधी का विकेंद्रीकृत आर्थिक मॉडल + अंबेडकर का सामाजिक न्याय और शिक्षा का अधिकार = जन सुराज।
+                            </p>
+                        </div>
+                    </div>
+                </article>
+            </div>
+        </div>
+
+    </main>
+
+    <footer class="bg-brand-yellow text-black border-t-[6px] border-black w-full mt-20 relative z-10 transition-colors">
+        <div class="max-w-7xl mx-auto px-4 md:px-8 py-12 md:py-16 grid grid-cols-1 md:grid-cols-3 gap-10">
+            <!-- Brand & About -->
+            <div class="flex flex-col items-start">
+                <div class="flex items-center gap-4 mb-6">
+                    <div class="w-16 h-16 bg-white border-[3px] border-black p-1 shadow-brutal-sm flex-shrink-0">
+                        <img src="image_5dd284.png" alt="Jan Suraaj Logo" class="w-full h-full object-contain rounded-full">
+                    </div>
+                    <h2 class="font-hindiDisplay font-bold text-4xl sm:text-5xl leading-none">जन सुराज</h2>
+                </div>
+                <p class="font-sans text-lg font-bold leading-tight max-w-sm mb-6">
+                    सही लोग, सही सोच, सामूहिक प्रयास। <br>बिहार के नवनिर्माण का संकल्प।
+                </p>
+                <div class="flex gap-3">
+                    <a href="#" class="w-12 h-12 bg-white text-black border-[3px] border-black flex items-center justify-center brutal-hover shadow-brutal-sm hover:bg-black hover:text-brand-yellow transition-colors"><i class="ph-bold ph-twitter-logo text-xl"></i></a>
+                    <a href="#" class="w-12 h-12 bg-white text-black border-[3px] border-black flex items-center justify-center brutal-hover shadow-brutal-sm hover:bg-black hover:text-brand-yellow transition-colors"><i class="ph-bold ph-facebook-logo text-xl"></i></a>
+                    <a href="#" class="w-12 h-12 bg-white text-black border-[3px] border-black flex items-center justify-center brutal-hover shadow-brutal-sm hover:bg-black hover:text-brand-yellow transition-colors"><i class="ph-bold ph-instagram-logo text-xl"></i></a>
+                    <a href="#" class="w-12 h-12 bg-white text-black border-[3px] border-black flex items-center justify-center brutal-hover shadow-brutal-sm hover:bg-black hover:text-brand-yellow transition-colors"><i class="ph-bold ph-youtube-logo text-xl"></i></a>
+                </div>
+            </div>
+
+            <!-- Quick Links -->
+            <div class="flex flex-col md:pl-8">
+                <h4 class="font-display text-3xl uppercase tracking-wider mb-6 border-b-4 border-black pb-1 w-max">Explore</h4>
+                <ul class="space-y-4 font-hindiDisplay font-bold text-3xl">
+                    <li><a href="#" class="hover:underline decoration-4 underline-offset-4 flex items-center gap-2"><i class="ph-bold ph-arrow-right text-xl"></i> पदयात्रा</a></li>
+                    <li><a href="#" class="hover:underline decoration-4 underline-offset-4 flex items-center gap-2"><i class="ph-bold ph-arrow-right text-xl"></i> विचारधारा</a></li>
+                    <li><a href="#" class="hover:underline decoration-4 underline-offset-4 flex items-center gap-2"><i class="ph-bold ph-arrow-right text-xl"></i> जुड़ें (Join)</a></li>
+                </ul>
+            </div>
+
+            <!-- Newsletter -->
+            <div>
+                <h4 class="font-display text-3xl uppercase tracking-wider mb-6 border-b-4 border-black pb-1 w-max">Updates</h4>
+                <form class="flex flex-col gap-4" onsubmit="event.preventDefault();">
+                    <input type="email" required placeholder="Email Address..." class="w-full bg-white border-[3px] border-black p-4 font-mono text-base focus:outline-none focus:shadow-brutal transition-all text-black placeholder:text-gray-500">
+                    <button class="bg-black text-brand-yellow font-display text-2xl py-4 border-[3px] border-black shadow-brutal-sm brutal-hover uppercase tracking-widest hover:bg-brand-gray transition-colors">SUBSCRIBE</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Copyright -->
+        <div class="border-t-[4px] border-black bg-white text-black p-4 text-center font-mono text-sm font-bold tracking-widest uppercase">
+            &copy; 2026 Jan Suraaj.
+        </div>
+    </footer>
+
+    <script>
+        // --- Navigation Logic ---
+        const homeView = document.getElementById('home-view');
+        const articles = {
+            'poverty': document.getElementById('article-poverty'),
+            'employment': document.getElementById('article-employment'),
+            'ideology': document.getElementById('article-ideology')
+        };
+
+        function showArticle(articleId) {
+            // Hide home
+            homeView.classList.add('hidden');
+            homeView.classList.remove('block');
+            
+            // Hide all articles
+            Object.values(articles).forEach(el => {
+                el.classList.add('hidden');
+                el.classList.remove('block');
+            });
+            
+            // Show specific article
+            if(articles[articleId]) {
+                articles[articleId].classList.remove('hidden');
+                articles[articleId].classList.add('block');
+            }
+            
+            window.scrollTo(0, 0);
+        }
+
+        function showHome() {
+            // Hide all articles
+            Object.values(articles).forEach(el => {
+                el.classList.add('hidden');
+                el.classList.remove('block');
+            });
+            
+            // Show home
+            homeView.classList.remove('hidden');
+            homeView.classList.add('block');
+            window.scrollTo(0, 0);
+        }
+
+        // --- Theme Toggle Logic ---
+        const html = document.documentElement;
+        const themeIcon = document.getElementById('theme-icon');
+
+        // Check local storage or system preference on load
+        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            html.classList.add('dark');
+            themeIcon.classList.replace('ph-moon', 'ph-sun');
+        } else {
+            html.classList.remove('dark');
+            themeIcon.classList.replace('ph-sun', 'ph-moon');
+        }
+
+        function toggleTheme() {
+            if (html.classList.contains('dark')) {
+                html.classList.remove('dark');
+                localStorage.theme = 'light';
+                themeIcon.classList.replace('ph-sun', 'ph-moon');
+            } else {
+                html.classList.add('dark');
+                localStorage.theme = 'dark';
+                themeIcon.classList.replace('ph-moon', 'ph-sun');
+            }
+        }
+        
+        // Setup initial background (can be expanded like original)
+        document.body.classList.add('theme-bg-dots');
+
+    </script>
+</body>
+</html>

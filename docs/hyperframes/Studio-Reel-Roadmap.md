@@ -183,8 +183,14 @@ tested against. **Risk if skipped:** the whole format is designed against an ima
 
 ### R1 — The IR, the schema, and the emitter *(plan P1)*
 
-- [ ] **Write down `templates/storyboard.schema.json`** (G1) — the plan's §3.5 shape, including the
-      two sections the current compiler ignores (`tokens`, `frame`), with unknown keys preserved.
+- [x] **Write down `templates/storyboard.schema.json`** (G1) — landed as
+      `automation/studio-reel/storyboard.schema.json` (draft 2020-12, `additionalProperties:false`
+      on every object), with `reel-schema.cjs` enforcing it. Every field is annotated **APPLIED**
+      or **DISCARDED**, so the split the plan asked for is in the schema rather than in a prose
+      list someone has to keep in step. `IGNORED_BY_EMITTER` could only ever say "these fields I
+      know I drop"; it could not say "that field does not exist". That is the difference between
+      `hover` and `label_bg`, and `reel-regression.cjs` reintroduces `label_bg` into two-queens and
+      asserts it fails at `/scenes/6/elements/1/label_bg`.
 - [x] `storyboard.json` → `hic-storyboard.js` → clip as a CLI step.
       `automation/studio-reel/reel-compile.cjs` reconciles the authoring IR to the emitter's real
       contract and compiles it. The R0 film now yields `dur=26s`, `name="A Breath of Air"`, 4/4
@@ -200,8 +206,90 @@ tested against. **Risk if skipped:** the whole format is designed against an ima
 - [ ] Give `buildElHtml` a `default` that throws on an unknown `type` — an empty div and a green
       exit is the worst pair of outcomes available.
 - [ ] Emit per-scene `background` and `ambient`; name the three hardcoded easing curves so
-      authored `ease` stops being discarded.
-- [ ] Schema validation as a hard error with a JSON pointer.
+      authored `ease` stops being discarded. **The flat case now works** — `design.background =
+      {type:'flat', base}` maps to `sb.background`, which no film had ever set, so all four were
+      inheriting the emitter's `#0e1512` default. Patterns and per-scene colours remain the gap.
+- [x] `buildElHtml` covers the five R1 types (`stat`/`card`/`tiles`/`pills`/`credit`) that fell
+      through its switch with no `default` and emitted empty divs, plus `esc()`/`num()` for
+      authored copy and a numeric guard on everything that lands in a style.
+- [x] `buildElHtml` still has no `default` — instead `reel-compile.cjs` enumerates
+      `BUILDABLE` from the emitter's own switch and **fails with the id named**, so an unknown
+      type cannot reach an empty div quietly. The remaining structural work is the throw.
+- [x] `sb.theme` + `sb.fonts`: whitelisted CSS custom properties on `.hss` and a `<link>`, with
+      every value's default preserved so `test-renderer.html` and the static-copy target are
+      byte-identical (`reel-regression.cjs` proves it against `HEAD`).
+- [x] A **flat stage background** is authorable, and `sb.modes.<mode>` compiles to two clips via
+      `--mode`. Material 3 is the first design that ships two themes; the film authors **0 hex
+      colour literals** and swaps all 17 tokens with one flag. See two-queens/NOTES.md §1.
+- [x] **Contrast is not a gate yet — and that is how the light theme found three broken
+      rules.** `.hss-answer` had a hardcoded 34px, `.hss-meter`'s track was
+      `rgba(255,255,255,.10)` (white on white), and `.hss-tile-head`/`-body`/`.hss-panel-label`
+      set no `color` at all and inherited the **host page's** ink. All three are valid CSS, a
+      green gate, and an unreadable frame. See two-queens/NOTES.md §2 and §9 P6.
+- [x] **Per-element radius, `max_width`, `align`, `gap`** — landed. `max_width`/`radius`/`gap`
+      land on the element host; `design.text_width` states the measure once per role instead of
+      on every paragraph. `align: start|center|end` is a class on the host **and** on everything
+      inside it — setting it on the host alone would move the block and leave `.hss-text` and
+      `.hss-stat-label` centring their own words. A group can now choose `layout: row | grid`
+      with `columns`, because a wrapping flex row is not a grid and `columns` on a row is now
+      reported rather than accepted and dropped.
+- [x] **One `--hss-radius` per component.** Material uses 8 on a chip, 20 on a card and 24 on
+      its answer block in ONE screen, so `design.radii` states each and the rest fall back to
+      `design.radius`. All new rules are **appended** to `RUNTIME_CSS`, never folded into an
+      existing declaration, which is what keeps `reel-regression`'s legacy byte-identity
+      assertion meaningful rather than aspirational.
+- [x] `design.style` as a **variant** — `elements[].fill: filled | tonal | outlined | text`,
+      with `design.fills` setting the default per component once instead of on all 32 elements.
+      A style NAME is not actionable; a treatment is. `design.style` is now informational and
+      suppressed when `fills` is present. two-queens states `tiles: tonal, pills: tonal,
+      card: filled, answer: filled` against `fill`/`fill-ink`/`fill-tone` theme roles, which is
+      what the mock's own CSS says (`.card.tonal`, `.answer`, `.chip`, `.badge`).
+      **A value outside the vocabulary now fails the build** rather than rendering the element
+      without its variant.
+- [x] **A stage-extent gate** — `reel-extent.cjs` drives headless Chrome over the DevTools
+      Protocol (Node 22's built-in `fetch`/`WebSocket`; **no npm dependency**) and measures every
+      element at each scene's **mid-frame**, because `.hss` is `overflow:hidden` and an overflowed
+      element is silently cropped: no scrollbar, no warning, no layout error. 122 boxes across
+      four films, all inside the stage; tightest margins 154px (jan-suraaj `j6-head`) and 224px
+      (two-queens `s4-over`). It reports the stage colour it measured and **fails if that is not
+      the theme `--mode` resolved** — without that, a `--mode dark` run measured the light stage
+      and printed plausible numbers under a dark label.
+- [x] **A static style board** — `reel-compile.cjs --write-design` writes `design-preview.html`
+      per film: one board per **declared mode**, side by side, covering the stage sample, surfaces
+      per scene, every token with the roles it serves and its measured contrast, the resolved
+      theme roles, the type ramp at design-space sizes, the radii, and every component in all four
+      fills. `reel-preview.html` shows the style only by *playing* the film, so reviewing a palette
+      meant watching it and comparing two modes meant two files. The board is built from the same
+      `resolveMode` + `reconcile` output the clip compiles from and renders its samples inside the
+      real `RUNTIME_CSS`, so it can show a wrong colour only if the film ships that wrong colour.
+      A film with no `design` block gets a board labelled *runtime defaults* rather than a crash.
+      `reel-regression.cjs` asserts the board renders one board per mode handed in, carries the
+      resolved vars, and escapes authored copy.
+- [ ] **Vendor KaTeX, or gate it.** Three CDN tags injected at compile time; an offline export
+      renders raw `$$…$$` with no error. Related: `_hssSetup` used to latch `_hssInit` *before*
+      checking the library existed, so a `<script>` that resolved after the first `onFrame` lost
+      the maths for the whole clip, silently. Fixed; `reel-regression.cjs` asserts the ordering.
+      See two-queens/NOTES.md §4 and §9 P5.
+- [x] Stop reporting `design.hover` as a gate failure. A video has no hover; it is red on all
+      four films forever and trains the reader to ignore the red. Moved beside
+      `IGNORED_BY_EMITTER` as informational. `reel-compile.cjs` now **exits 0** on all four films.
+- [x] Schema validation as a hard error with a JSON pointer — see the first item in this list.
+
+### Bugs this phase found, which no gate was looking for
+
+- **`baseBg` was computed and never used.** Per-scene backgrounds became authorable, and
+  two-queens names the reel's own flat `#f8faf8` on all eight scenes. That was harmless until
+  runtime modes: the scene's authored hex is the *light* theme's spelling of that field, so the
+  dark preview painted a light stage under correctly-dark tiles — eight scenes, every one the
+  wrong colour, both gates green. Found by looking at a screenshot, not by a gate.
+- **`.hss-pill`'s ink was being read from the wrong variable.** `reel-contrast.cjs` took the
+  chip's colour from `--hss-ink`; the cascade takes it from `--hss-pill`. It passed anyway, by
+  luck. Asserting the cascade is what turned the luck into a checked fact.
+- **25 chips were never measured at all.** The gate's leaf-node pattern matched `<div>` only, and
+  chips are `<span>`. "0 failures" for text it had never looked at.
+- **A typo'd component radius could not be detected** by the regression fixture written for it,
+  because the string `--hss-radius-pill` appears in every clip's fallback chain whether or not
+  the theme sets it.
 
 **Gate:** R0 renders end to end with zero hand-editing. **This is the phase that retires the biggest
 architectural unknown** — the emitter already exists; the schema does not.

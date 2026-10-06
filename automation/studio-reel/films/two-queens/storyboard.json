@@ -1,0 +1,283 @@
+{
+  "meta": {
+    "title": "Two Queens, One King — Probability Explained",
+    "id": "two-queens",
+    "aspect": "16:9",
+    "fps": 30,
+    "duration": 67,
+    "design": "material-3",
+    "source_mock": "reference/two-queens-mock.html",
+    "x_note": "Fourth film, fourth design language: Material 3. FIRST film that ships two themes. One storyboard, two token tables, --mode light|dark. Every word is quoted from the mock except the closing 'about 1 in 256', which is arithmetic the mock does not print. See NOTES.md."
+  },
+
+  "design": {
+    "style": "material 3",
+    "tokens": {
+      "bg": "#f8faf8",
+      "surface": "#ffffff",
+      "container": "#eef3f0",
+      "container-hi": "#e3ebe6",
+      "on-surface": "#191c1a",
+      "on-variant": "#404943",
+      "outline": "#707972",
+      "outline-var": "#c0c9c2",
+      "primary": "#006c50",
+      "on-primary": "#ffffff",
+      "primary-container": "#b4f0d3",
+      "on-primary-container": "#002116",
+      "tertiary": "#7a5900",
+      "tertiary-container": "#ffdea0",
+      "on-tertiary-container": "#261a00",
+      "error": "#ba1a1a",
+      "success": "#006c50"
+    },
+
+    "modes": {
+      "light": {
+        "x_note": "The base design.tokens above ARE the light theme. Declared with no overrides so that `--mode light` is a checked name rather than an implicit default, and so both artefacts are named reel-preview-<mode>.html."
+      },
+      "dark": {
+        "tokens": {
+          "bg": "#101412",
+          "surface": "#171d1a",
+          "container": "#1c2320",
+          "container-hi": "#262d2a",
+          "on-surface": "#e0e3e0",
+          "on-variant": "#c0c9c2",
+          "outline": "#8a938c",
+          "outline-var": "#404943",
+          "primary": "#6ddbb1",
+          "on-primary": "#00382a",
+          "primary-container": "#00513b",
+          "on-primary-container": "#b4f0d3",
+          "tertiary": "#efc04f",
+          "tertiary-container": "#5b4300",
+          "on-tertiary-container": "#ffdea0",
+          "error": "#ffb4ab",
+          "success": "#6ddbb1"
+        },
+        "background": { "type": "flat", "base": "#101412" },
+        "border": "1px solid #404943",
+        "elevation": {
+          "md": "0 1px 2px rgba(0,0,0,.5),0 2px 6px 2px rgba(0,0,0,.35)"
+        }
+      }
+    },
+
+    "theme_map": {
+      "panel": "container",
+      "ink": "on-surface",
+      "meter": "primary",
+      "meter-track": "container-hi",
+      "accent": "primary",
+      "num-a": "primary",
+      "num-b": "primary-container",
+      "fill": "primary-container",
+      "fill-ink": "on-primary-container",
+      "fill-tone": "container"
+    },
+
+    "fills": {
+      "tiles": "tonal",
+      "pills": "tonal",
+      "card": "filled",
+      "answer": "filled"
+    },
+    "fills_note": "The mock states these per component in CSS (`.card.tonal`, `.answer`, `.chip`, `.badge`), so the film states them once here instead of on all 32 elements. `filled` is the strong container — primary-container with on-primary-container ink, which is the mock's answer block. `tonal` is the low-emphasis container, which is where the givens and the chips live. The emitter had no way to say any of this before: `design.style: material 3` was reported as 'not implemented' on every film because a style NAME is not something a film can act on.",
+
+    "radii": {
+      "pill": "8px",
+      "card": "20px",
+      "tile": "20px",
+      "answer": "24px"
+    },
+    "radii_note": "One `--hss-radius` could not carry a design that uses 8 on a chip, 20 on a card and 24 on its answer block in the same screen — so the film had to pick one number and live with it on all four components. Stated once per component here; `design.radius` below stays as the fallback for anything not named.",
+
+    "fonts": {
+      "display": { "family": "Google Sans Flex", "weight": 500, "usage": "every heading — M3 display is weight 500, not 800" },
+      "title_hi": { "family": "Google Sans Flex", "weight": 500 },
+      "body_hi": { "family": "Google Sans Flex", "weight": 400 },
+      "overline": { "family": "Roboto Mono", "weight": 500, "usage": "section labels and step numbers" },
+      "mono": { "family": "Roboto Mono", "weight": 500 }
+    },
+    "font_href": "https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500&family=Google+Sans+Flex:wght@400;500;600&display=swap",
+
+    "elevation": {
+      "sm": "0 1px 2px rgba(0,0,0,.14),0 1px 3px 1px rgba(0,0,0,.08)",
+      "md": "0 1px 2px rgba(0,0,0,.14),0 2px 6px 2px rgba(0,0,0,.08)"
+    },
+    "radius": "20px",
+    "border": "1px solid #c0c9c2",
+    "background": { "type": "flat", "base": "#f8faf8" },
+    "hover": "tint + elevation on press; no film equivalent, a video has no hover",
+    "x_note": "design.background.type is 'flat' on purpose: this is the first film whose background is not near-black. Every scene asks for the same flat bg, and per-scene backgrounds now compile, so the field is honoured either way.",
+
+    "text_width": {
+      "lead": 1240,
+      "body": 1240
+    },
+    "text_width_note": "Material's `max-width:44rem` prose measure, expressed ONCE per role instead of repeated on every paragraph. Emitted as an element-level max-width because the runtime lays a scene out as one centred flex column and cannot cap a measure from CSS alone. Headings are deliberately uncapped."
+  },
+
+  "frame": {
+    "design_space": { "w": 1920, "h": 1080 },
+    "safe": { "title": 0.05, "action": 0.03, "max_text_width": 1100 },
+    "ramp": {
+      "overline": { "family": "Roboto Mono", "size": 22, "weight": 500, "tracking": "0.16em", "case": "upper" },
+      "title": { "family": "Google Sans Flex", "size": 92, "weight": 500, "tracking": "-0.01em" },
+      "title_hi": { "family": "Google Sans Flex", "size": 58, "weight": 500, "tracking": "-0.01em" },
+      "lead": { "family": "Google Sans Flex", "size": 32, "weight": 400 },
+      "body": { "family": "Google Sans Flex", "size": 26, "weight": 400 },
+      "mono": { "family": "Roboto Mono", "size": 22, "weight": 500, "tracking": "0.06em", "case": "upper" },
+      "math": { "size": 62 },
+      "math_sm": { "size": 40 },
+      "answer": { "family": "Google Sans Flex", "size": 108, "weight": 500, "tracking": "-0.02em" }
+    },
+    "beat": { "hold": 7.0, "long": 10.0 }
+  },
+
+  "scenes": [
+    {
+      "id": "s1", "frame": "hero", "tone": "on-surface", "start": 0, "dur": 7, "exit": "cut",
+      "background": { "type": "flat", "base": "#f8faf8" },
+      "elements": [
+        { "id": "s1-over", "type": "text", "role": "overline", "color": "tertiary",
+          "text": "Joint probability · Card draws", "at_ms": 200, "in": { "type": "fade", "dur_ms": 600 } },
+        { "id": "s1-title", "type": "text", "role": "title", "text": "Two Queens, One King", "at_ms": 500,
+          "in": { "type": "slide", "from_y": 26, "dur_ms": 800 } },
+        { "id": "s1-lead", "type": "text", "role": "lead", "color": "on-variant",
+          "text": "Drawing 4 cards from a standard deck — working out the joint probability, then turning it into a short.",
+          "at_ms": 1100, "in": { "type": "fade", "dur_ms": 700 } }
+      ]
+    },
+
+    {
+      "id": "s2", "frame": "given", "tone": "on-surface", "start": 7, "dur": 8, "exit": "cut",
+      "background": { "type": "flat", "base": "#f8faf8" },
+      "elements": [
+        { "id": "s2-over", "type": "text", "role": "overline", "color": "primary",
+          "text": "Part 1 · Work the problem", "at_ms": 150, "in": { "type": "fade", "dur_ms": 600 } },
+        { "id": "s2-title", "type": "text", "role": "title_hi", "text": "The givens", "at_ms": 400,
+          "in": { "type": "slide", "from_y": 24, "dur_ms": 700 } },
+        { "id": "s2-tiles", "type": "tiles", "columns": 4, "gap": "0.6vw", "at_ms": 1000,
+          "in": { "type": "slide", "from_y": 30, "dur_ms": 700, "stagger_ms": 110 },
+          "items": [
+            { "icon": "52", "head": "Deck", "body": "Standard, 52 cards" },
+            { "icon": "4", "head": "Draw", "body": "4 cards" },
+            { "icon": "X = 2", "head": "Queens", "body": "exactly two" },
+            { "icon": "Y = 1", "head": "Kings", "body": "exactly one" }
+          ] },
+        { "id": "s2-goal", "type": "latex", "role": "math_sm", "color": "primary",
+          "text": "f_{XY}(2,\\,1)\\;=\\;?", "at_ms": 1800, "in": { "type": "fade", "dur_ms": 700 } }
+      ]
+    },
+
+    {
+      "id": "s3", "frame": "step1", "tone": "on-surface", "start": 15, "dur": 9, "exit": "cut",
+      "background": { "type": "flat", "base": "#f8faf8" },
+      "elements": [
+        { "id": "s3-over", "type": "text", "role": "overline", "color": "primary", "text": "Step 1", "at_ms": 150,
+          "in": { "type": "fade", "dur_ms": 600 } },
+        { "id": "s3-title", "type": "text", "role": "title_hi", "text": "Total possible outcomes", "at_ms": 400,
+          "in": { "type": "slide", "from_y": 24, "dur_ms": 700 } },
+        { "id": "s3-body", "type": "text", "role": "body", "color": "on-variant",
+          "text": "The number of ways to draw any 4 cards from 52 is a straightforward combination.",
+          "at_ms": 900, "in": { "type": "fade", "dur_ms": 700 } },
+        { "id": "s3-math", "type": "latex", "role": "math",
+          "text": "\\binom{52}{4} = \\frac{52!}{4!(52-4)!} = 270{,}725", "at_ms": 1500,
+          "in": { "type": "slide", "from_y": 22, "dur_ms": 800 } }
+      ]
+    },
+
+    {
+      "id": "s4", "frame": "step2", "tone": "on-surface", "start": 24, "dur": 10, "exit": "cut",
+      "background": { "type": "flat", "base": "#f8faf8" },
+      "elements": [
+        { "id": "s4-over", "type": "text", "role": "overline", "color": "tertiary", "text": "Step 2", "at_ms": 150,
+          "in": { "type": "fade", "dur_ms": 600 } },
+        { "id": "s4-title", "type": "text", "role": "title_hi", "text": "Favourable outcomes", "at_ms": 400,
+          "in": { "type": "slide", "from_y": 24, "dur_ms": 700 } },
+        { "id": "s4-math", "type": "latex", "role": "math_sm", "at_ms": 1000,
+          "text": "\\begin{aligned}\\text{The Queens}\\quad &\\binom{4}{2} = 6 \\\\ \\text{The King}\\quad &\\binom{4}{1} = 4 \\\\ \\text{The last card}\\quad &\\binom{44}{1} = 44\\end{aligned}",
+          "in": { "type": "slide", "from_y": 24, "dur_ms": 800 } },
+        { "id": "s4-body", "type": "text", "role": "body", "color": "on-variant",
+          "text": "The last card must be neither Queen nor King, leaving 52 − 4 − 4 = 44 safe cards.",
+          "at_ms": 1900, "in": { "type": "fade", "dur_ms": 700 } }
+      ]
+    },
+
+    {
+      "id": "s5", "frame": "step3", "tone": "on-surface", "start": 34, "dur": 10, "exit": "cut",
+      "background": { "type": "flat", "base": "#f8faf8" },
+      "elements": [
+        { "id": "s5-over", "type": "text", "role": "overline", "color": "primary", "text": "Step 3", "at_ms": 150,
+          "in": { "type": "fade", "dur_ms": 600 } },
+        { "id": "s5-title", "type": "text", "role": "title_hi", "text": "Putting it together", "at_ms": 400,
+          "in": { "type": "slide", "from_y": 24, "dur_ms": 700 } },
+        { "id": "s5-body", "type": "text", "role": "body", "color": "on-variant",
+          "text": "Multiply the favourable combinations and divide by the total.",
+          "at_ms": 900, "in": { "type": "fade", "dur_ms": 700 } },
+        { "id": "s5-math", "type": "latex", "role": "math_sm", "at_ms": 1500,
+          "text": "\\text{Probability} = \\frac{\\binom{4}{2} \\times \\binom{4}{1} \\times \\binom{44}{1}}{\\binom{52}{4}}",
+          "in": { "type": "pop", "overshoot": 1.05, "dur_ms": 800 } }
+      ]
+    },
+
+    {
+      "id": "s6", "frame": "numbers", "tone": "on-surface", "start": 44, "dur": 9, "exit": "cut",
+      "background": { "type": "flat", "base": "#f8faf8" },
+      "elements": [
+        { "id": "s6-over", "type": "text", "role": "overline", "color": "primary", "text": "The numbers", "at_ms": 150,
+          "in": { "type": "fade", "dur_ms": 600 } },
+        { "id": "s6-math", "type": "latex", "role": "math_sm", "at_ms": 700,
+          "text": "= \\frac{6 \\times 4 \\times 44}{270{,}725} = \\frac{1{,}056}{270{,}725}",
+          "in": { "type": "slide", "from_y": 22, "dur_ms": 800 } },
+        { "id": "s6-stat", "type": "stat", "value": "1,056", "label": "winning hands, out of 270,725 possible",
+          "at_ms": 1600, "in": { "type": "pop", "overshoot": 1.15, "dur_ms": 800 }, "color": "on-variant" },
+        { "id": "s6-pills", "type": "pills", "at_ms": 2300,
+          "in": { "type": "slide", "from_y": 20, "dur_ms": 700, "stagger_ms": 120 },
+          "color": "primary",
+          "items": ["6 queen pairs", "4 kings", "44 others"] }
+      ]
+    },
+
+    {
+      "id": "s7", "frame": "answer", "tone": "on-surface", "start": 53, "dur": 8, "exit": "cut",
+      "background": { "type": "flat", "base": "#f8faf8" },
+      "elements": [
+        { "id": "s7-over", "type": "text", "role": "overline", "color": "primary", "text": "Answer", "at_ms": 150,
+          "in": { "type": "fade", "dur_ms": 600 } },
+        { "id": "s7-answer", "type": "answer", "role": "answer", "color": "primary",
+          "text": "≈ 0.0039", "at_ms": 500,
+          "in": { "type": "pop", "overshoot": 1.12, "dur_ms": 800 } },
+        { "id": "s7-card", "type": "card", "big": "0.39%", "small": "of all four-card hands succeed",
+          "meter": { "pct": 0.39, "dur_ms": 1600 }, "meter_at_ms": 600,
+          "at_ms": 1200, "in": { "type": "slide", "from_y": 26, "dur_ms": 700 }, "color": "primary" },
+        { "id": "s7-pills", "type": "pills", "at_ms": 2200,
+          "in": { "type": "slide", "from_y": 20, "dur_ms": 700, "stagger_ms": 130 },
+          "color": "primary",
+          "items": ["roughly 1 hand in 256", "matches option B"] }
+      ]
+    },
+
+    {
+      "id": "s8", "frame": "close", "tone": "on-surface", "start": 61, "dur": 6, "exit": "cut",
+      "background": { "type": "flat", "base": "#f8faf8" },
+      "elements": [
+        { "id": "s8-over", "type": "text", "role": "overline", "color": "tertiary", "text": "Part 2 · Build the short", "at_ms": 150,
+          "in": { "type": "fade", "dur_ms": 600 } },
+        { "id": "s8-title", "type": "text", "role": "title", "text": "15 seconds, one equation", "at_ms": 450,
+          "in": { "type": "slide", "from_y": 26, "dur_ms": 800 } },
+        { "id": "s8-body", "type": "text", "role": "lead", "color": "on-variant",
+          "text": "Preview the explainer, then grab the script and the code behind it.",
+          "at_ms": 1100, "in": { "type": "fade", "dur_ms": 700 } },
+        { "id": "s8-pills", "type": "pills", "at_ms": 1700,
+          "in": { "type": "slide", "from_y": 20, "dur_ms": 700, "stagger_ms": 110 },
+          "color": "primary",
+          "items": ["HTML", "CSS", "JS", "KaTeX"] },
+        { "id": "s8-credit", "type": "credit", "text": "Two Queens, One King · Probability Explained", "at_ms": 2300,
+          "in": { "type": "fade", "dur_ms": 700 } }
+      ]
+    }
+  ]
+}

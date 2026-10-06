@@ -1,0 +1,505 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://studio-pro.local/schemas/studio-reel/storyboard.schema.json",
+  "title": "Studio Reel storyboard",
+  "description": "The authoring IR for films/<film>/storyboard.json. This file exists because IGNORED_BY_EMITTER is a hand-maintained LIST, so a field the author INVENTED is indistinguishable from a field the design deliberately does not express. jan-suraaj's `label_bg` is the case that justifies it: the emitter's field is `slab_bg`, the name was dropped, and for the last five seconds of the film the call to action rendered near-black on near-black at 1.05:1 with a green build. `additionalProperties: false` turns that class of mistake into a build error with a JSON pointer. Fields are marked APPLIED or DISCARDED; a DISCARDED field is accepted and reported by reel-compile.cjs, which is the honest outcome — it is deliberate, not accidental.",
+
+  "$defs": {
+    "note": {
+      "description": "Author annotation. Never compiled; never reported.",
+      "type": "string"
+    },
+    "annotations": {
+      "type": "object",
+      "patternProperties": {
+        "^x_[A-Za-z0-9_]*$": { "$ref": "#/$defs/note" },
+        "^[A-Za-z0-9_]*_note$": { "$ref": "#/$defs/note" }
+      }
+    },
+
+    "hexOrToken": {
+      "description": "A literal `#rgb`/`#rrggbb`/`#rrggbbaa`, or the NAME of a key in this film's design.tokens. Resolved by reel-compile.cjs; an unresolvable name is a warning that names the fallback it used.",
+      "type": "string",
+      "minLength": 1
+    },
+
+    "tokenTable": {
+      "description": "A film's own palette. Keyed by whatever the brand calls its colours — `coal`, `container`, `tertiary` — which is exactly why no code may infer a role from a name.",
+      "type": "object",
+      "patternProperties": {
+        "^[^\\s]+$": { "type": "string", "minLength": 1 }
+      }
+    },
+
+    "surface": {
+      "description": "APPLIED. A scene or reel background. `type` names a recipe the compiler implements; an unknown type is reported rather than flattened to a colour nobody asked for.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "enum": ["flat", "dots", "blueprint", "gradient", "linear-gradient", "radial-gradient"],
+          "description": "flat = `base` only; dots/blueprint = a repeating pattern over `base`; gradient = two stops from/angle; linear-gradient/radial-gradient = `value` passed through verbatim as the gradient body."
+        },
+        "base": { "$ref": "#/$defs/hexOrToken" },
+        "ink": { "$ref": "#/$defs/hexOrToken", "description": "Pattern colour (the dot, or the blueprint line)." },
+        "size": { "type": "string", "description": "CSS background-size, e.g. \"32px 32px\"." },
+        "angle": { "type": "number" },
+        "from": { "$ref": "#/$defs/hexOrToken" },
+        "to": { "$ref": "#/$defs/hexOrToken" },
+        "value": { "type": "string", "description": "The whole gradient body for linear-gradient/radial-gradient. Rejected if it contains ; { } < >." },
+        "alpha": { "type": "number" }
+      },
+      "patternProperties": { "^x_[A-Za-z0-9_]*$": { "$ref": "#/$defs/note" } },
+      "additionalProperties": false
+    },
+
+    "typeStep": {
+      "description": "APPLIED (via resolveRamp). One step of `frame.ramp`, in 1920x1080 design-space px — not vw. The emitter turns `size` into a stage-relative vw length so a clip survives any stage size; `type_scale.min_px` adds a legibility floor underneath it.",
+      "type": "object",
+      "properties": {
+        "size": { "type": "number", "exclusiveMinimum": 0 },
+        "weight": { "type": "integer" },
+        "tracking": { "type": "string", "description": "CSS letter-spacing: \"-2px\" or \"0.08em\"." },
+        "family": { "type": "string" },
+        "case": { "enum": ["upper", "lower"] },
+        "min_px": { "type": "number" }
+      },
+      "patternProperties": { "^x_[A-Za-z0-9_]*$": { "$ref": "#/$defs/note" } },
+      "additionalProperties": false
+    },
+
+    "fontRole": {
+      "description": "APPLIED — `family` reaches the clip as a real webfont <link>. `usage` and `script` are author notes.",
+      "type": "object",
+      "properties": {
+        "family": { "type": "string", "minLength": 1 },
+        "weight": { "type": "integer" },
+        "usage": { "type": "string" },
+        "script": { "type": "string" }
+      },
+      "patternProperties": { "^x_[A-Za-z0-9_]*$": { "$ref": "#/$defs/note" } },
+      "additionalProperties": false
+    },
+
+    "themeRole": {
+      "description": "A role the emitter paints, pointing at THIS film's token name. Naming a role the emitter has no key for is a build failure, not a silent drop — that is the rule that stops a plausible default standing in for a declaration.",
+      "type": "object",
+      "properties": {
+        "panel": { "$ref": "#/$defs/hexOrToken" },
+        "ink": { "$ref": "#/$defs/hexOrToken" },
+        "meter": { "$ref": "#/$defs/hexOrToken" },
+        "meter-track": { "$ref": "#/$defs/hexOrToken" },
+        "accent": { "$ref": "#/$defs/hexOrToken" },
+        "num-a": { "$ref": "#/$defs/hexOrToken" },
+        "num-b": { "$ref": "#/$defs/hexOrToken" },
+        "slab-ink": { "$ref": "#/$defs/hexOrToken" },
+        "fill": { "$ref": "#/$defs/hexOrToken", "description": "A FILLED component's surface — container / primary-container." },
+        "fill-ink": { "$ref": "#/$defs/hexOrToken", "description": "The type drawn on a filled component. A different role from `ink`: a bright block carries dark type, a dark stage carries light type." },
+        "fill-tone": { "$ref": "#/$defs/hexOrToken", "description": "The TONAL component surface. Unset, the emitter mixes the ink at 14% over the stage." },
+        "outline": { "$ref": "#/$defs/hexOrToken" }
+      },
+      "patternProperties": { "^x_[A-Za-z0-9_]*$": { "$ref": "#/$defs/note" } },
+      "additionalProperties": false
+    },
+
+    "mode": {
+      "description": "One runtime theme. `tokens` is MERGED over the base table rather than replacing it, so a mode only names what differs. Every declared mode ships in the SAME clip as a [data-mode] rule, which is what lets one artefact serve both a light and a dark viewer.",
+      "type": "object",
+      "properties": {
+        "tokens": { "$ref": "#/$defs/tokenTable" },
+        "theme_map": { "$ref": "#/$defs/themeRole" },
+        "background": { "$ref": "#/$defs/surface" },
+        "border": { "type": "string" },
+        "elevation": { "$ref": "#/$defs/elevation" },
+        "type_scale": { "$ref": "#/$defs/typeScale" },
+        "radii": { "$ref": "#/$defs/radii" }
+      },
+      "patternProperties": { "^x_[A-Za-z0-9_]*$": { "$ref": "#/$defs/note" } },
+      "additionalProperties": false
+    },
+
+    "elevation": {
+      "description": "APPLIED — `md` becomes --hss-shadow.",
+      "type": "object",
+      "properties": {
+        "sm": { "type": "string" },
+        "md": { "type": "string" },
+        "lg": { "type": "string" }
+      },
+      "patternProperties": { "^x_[A-Za-z0-9_]*$": { "$ref": "#/$defs/note" } },
+      "additionalProperties": false
+    },
+
+    "typeScale": {
+      "description": "APPLIED. A whole type system in one block instead of nine hand-tuned ramp steps. `preset` is a FLOOR: frame.ramp still wins, so an existing film can adopt a preset and keep its own numbers. `scale` multiplies the ramp; `min_px` is a legibility floor for embeds narrower than the design space. reel-compile.cjs asserts the ramp is monotonic, because a scale change can otherwise invert the hierarchy silently.",
+      "type": "object",
+      "properties": {
+        "preset": { "enum": ["poster", "editorial", "documentary", "data"] },
+        "scale": { "type": "number", "exclusiveMinimum": 0 },
+        "min_px": { "type": "number" },
+        "overrides": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/typeStep" }
+        }
+      },
+      "patternProperties": { "^x_[A-Za-z0-9_]*$": { "$ref": "#/$defs/note" } },
+      "additionalProperties": false
+    },
+
+    "radii": {
+      "description": "APPLIED. One radius per component. Material uses 8 on a chip, 20 on a card and 24 on its answer block in ONE screen, which a single --hss-radius cannot carry — so a film had to pick one number and live with it on all four. Anything not named falls back to design.radius.",
+      "type": "object",
+      "properties": {
+        "pill": { "type": ["string", "number"] },
+        "card": { "type": ["string", "number"] },
+        "tile": { "type": ["string", "number"] },
+        "answer": { "type": ["string", "number"] }
+      },
+      "patternProperties": { "^x_[A-Za-z0-9_]*$": { "$ref": "#/$defs/note" } },
+      "additionalProperties": false
+    },
+
+    "fills": {
+      "description": "APPLIED. The variant each component type defaults to, stated ONCE per film instead of on every element. Elements override with their own `fill`.",
+      "type": "object",
+      "properties": {
+        "card": { "$ref": "#/$defs/fillName" },
+        "tiles": { "$ref": "#/$defs/fillName" },
+        "pills": { "$ref": "#/$defs/fillName" },
+        "answer": { "$ref": "#/$defs/fillName" }
+      },
+      "patternProperties": { "^x_[A-Za-z0-9_]*$": { "$ref": "#/$defs/note" } },
+      "additionalProperties": false
+    },
+
+    "fillName": {
+      "enum": ["filled", "tonal", "outlined", "text"],
+      "description": "filled = the theme's container surface with on-container ink; tonal = the low-emphasis container; outlined = border only; text = bare. Anything outside this set fails the build rather than rendering the element without its variant."
+    },
+
+    "textWidth": {
+      "description": "APPLIED. The prose measure, expressed ONCE per role (Material's max-width:44rem) instead of repeated on every paragraph. An element's own max_width still wins.",
+      "type": "object",
+      "additionalProperties": { "type": "number", "exclusiveMinimum": 0 }
+    },
+
+    "design": {
+      "description": "The design system. Everything here that has no mapping is reported by reel-compile.cjs; anything whose NAME is not in this schema is a build failure.",
+      "type": "object",
+      "properties": {
+        "style": {
+          "type": "string",
+          "description": "DISCARDED, informational. Names the style LANGUAGE (\"material 3\", \"neo-brutalism\"). Not actionable on its own — the actionable half is `fills` + `radii`, which say which treatments and which shapes that language means. Stating this alone prints one informational line naming the per-element `fill` vocabulary."
+        },
+        "tokens": { "$ref": "#/$defs/tokenTable" },
+        "theme_map": { "$ref": "#/$defs/themeRole" },
+        "fills": { "$ref": "#/$defs/fills" },
+        "radii": { "$ref": "#/$defs/radii" },
+        "modes": {
+          "type": "object",
+          "description": "Runtime themes compiled into the SAME clip as [data-mode] rules. A design that ships two themes is one artefact, not two files to keep in step.",
+          "additionalProperties": { "$ref": "#/$defs/mode" }
+        },
+        "fonts": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/fontRole" }
+        },
+        "font_href": { "type": "string" },
+        "type_scale": { "$ref": "#/$defs/typeScale" },
+        "text_width": { "$ref": "#/$defs/textWidth" },
+        "radius": { "type": ["string", "number"] },
+        "border": { "type": "string" },
+        "elevation": { "$ref": "#/$defs/elevation" },
+        "background": { "$ref": "#/$defs/surface" },
+        "hover": {
+          "type": "string",
+          "description": "DISCARDED, informational. A video has no hover. Kept so the design record stays complete; it is reported beside IGNORED_BY_EMITTER rather than as a failure, because a red you cannot fix trains you to ignore the red."
+        },
+        "math": {
+          "type": "object",
+          "properties": {
+            "src": {
+              "type": "string",
+              "description": "APPLIED-gated. Where the KaTeX renderer comes from. EMPTY is a hard failure for a film with latex/answer elements, because that is exactly what an offline export produces: raw `$$…$$` with no error and a green gate. A `cdn:` value is reported as informational, not failed — the compiler cannot prove the network works."
+            }
+          },
+          "patternProperties": { "^x_[A-Za-z0-9_]*$": { "$ref": "#/$defs/note" } },
+          "additionalProperties": false
+        }
+      },
+      "patternProperties": { "^x_[A-Za-z0-9_]*$": { "$ref": "#/$defs/note" }, "^[A-Za-z0-9_]*_note$": { "$ref": "#/$defs/note" } },
+      "additionalProperties": false
+    },
+
+    "frame": {
+      "description": "The design space. `design_space` and `safe` are DISCARDED — the emitter is stage-relative and takes its geometry from the stage it is embedded in. `ramp` is APPLIED and wins over any type_scale preset.",
+      "type": "object",
+      "properties": {
+        "design_space": {
+          "type": "object",
+          "properties": { "w": { "type": "number" }, "h": { "type": "number" } },
+          "patternProperties": { "^x_[A-Za-z0-9_]*$": { "$ref": "#/$defs/note" } },
+          "additionalProperties": false
+        },
+        "safe": {
+          "type": "object",
+          "description": "DISCARDED. Authored for a designer; there is no safe-area layer to apply it to.",
+          "properties": {
+            "title": { "type": "number" },
+            "action": { "type": "number" },
+            "max_lines": { "type": "number" },
+            "max_text_width": { "type": "number" }
+          },
+          "patternProperties": { "^x_[A-Za-z0-9_]*$": { "$ref": "#/$defs/note" } },
+          "additionalProperties": false
+        },
+        "beat": {
+          "type": "object",
+          "description": "DISCARDED. Authored pacing intent in seconds.",
+          "properties": { "hold": { "type": "number" }, "long": { "type": "number" } },
+          "patternProperties": { "^x_[A-Za-z0-9_]*$": { "$ref": "#/$defs/note" } },
+          "additionalProperties": false
+        },
+        "ramp": {
+          "type": "object",
+          "description": "APPLIED. Role name -> step. Role names are the film's own; the compiler resolves each through type_scale and then asserts the ORDER is monotonic.",
+          "additionalProperties": { "$ref": "#/$defs/typeStep" }
+        }
+      },
+      "patternProperties": { "^x_[A-Za-z0-9_]*$": { "$ref": "#/$defs/note" } },
+      "additionalProperties": false
+    },
+
+    "entrance": {
+      "description": "APPLIED except `ease` and `type: slot`. The runtime hardcodes three curves (ease-out, back, else fade), so every authored cubic-bezier is discarded and reported; `slot` falls through to the fade branch and loses `from_scale`. Animations are a pure function of t — never a wall clock and never a CSS transition — or scrub, deep links and the exporter disagree with each other.",
+      "type": "object",
+      "properties": {
+        "type": { "enum": ["fade", "slide", "pop", "slot"] },
+        "start_ms": { "type": "number" },
+        "dur_ms": { "type": "number" },
+        "from_x": { "type": "number" },
+        "from_y": { "type": "number" },
+        "from_scale": { "type": "number" },
+        "overshoot": { "type": "number" },
+        "stagger_ms": { "type": "number" },
+        "ease": { "type": "string", "description": "DISCARDED — see above." }
+      },
+      "patternProperties": { "^x_[A-Za-z0-9_]*$": { "$ref": "#/$defs/note" } },
+      "additionalProperties": false
+    },
+
+    "item": {
+      "description": "APPLIED for the element types that have items: pills (a string), tiles (icon/head/body), cards (label/accent/muted). One shape covering all three.",
+      "type": ["object", "string"],
+      "properties": {
+        "icon": { "type": "string" },
+        "head": { "type": "string" },
+        "body": { "type": "string" },
+        "label": { "type": "string" },
+        "accent": { "type": "string" },
+        "muted": { "type": "boolean" }
+      },
+      "patternProperties": { "^x_[A-Za-z0-9_]*$": { "$ref": "#/$defs/note" } },
+      "additionalProperties": false
+    },
+
+    "element": {
+      "description": "One element. The property list is the UNION across all types rather than a per-type oneOf: the field NAME is what this schema exists to police, and a typo is the failure mode that shipped (`label_bg` for `slab_bg`). Each property below says whether it is APPLIED or DISCARDED.",
+      "type": "object",
+      "required": ["id", "type"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "type": {
+          "enum": ["text", "latex", "answer", "cards", "image", "shape", "stat", "card", "tiles", "pills", "credit"],
+          "description": "Anything else renders as an EMPTY <div class=\"hss-el\"> with no warning — the exact silent failure this pipeline was built to remove."
+        },
+        "at_ms": { "type": "number", "minimum": 0, "description": "APPLIED — offset from the scene start." },
+        "in": { "$ref": "#/$defs/entrance" },
+
+        "text": { "type": "string", "description": "APPLIED for text/latex/answer/credit. latex and answer are spliced UNESCAPED so backslashes and bare `&` alignment markers survive, so an angle bracket in one of those is a hard failure, not a warning." },
+        "value": { "type": "string", "description": "APPLIED for stat. The numeral; its gradient is one authored colour plus a CSS stop." },
+        "label": { "type": "string", "description": "APPLIED for stat. The caption under the numeral." },
+        "big": { "type": "string", "description": "APPLIED for card." },
+        "small": { "type": "string", "description": "APPLIED for card." },
+        "items": { "type": "array", "items": { "$ref": "#/$defs/item" }, "description": "APPLIED for cards/tiles/pills." },
+
+        "role": {
+          "type": "string",
+          "description": "APPLIED (indirectly) — resolves through frame.ramp or type_scale for SIZE and WEIGHT, and through design.fonts for the family. `role` is how a text element says which step of the type system it is; it is the answer to \"how do I change text size\" without touching any element."
+        },
+        "style": {
+          "type": "string",
+          "description": "DISCARDED, advisory. Names the component (\"slab\", \"label\", \"display\") so a reader can tell what a scene is made of. It is NOT the visual switch — that is `fill`. Reported once per film with the distinct values."
+        },
+        "fill": {
+          "$ref": "#/$defs/fillName",
+          "description": "APPLIED. The variant for card/tiles/pills/answer, defaulting from design.fills. A value outside the vocabulary, or on a type that has none, fails the build."
+        },
+        "align": {
+          "enum": ["start", "center", "end"],
+          "description": "APPLIED. Cross-axis position of the element in the scene AND the text alignment of everything inside it — the descendant half matters, because .hss-text and .hss-stat-label set text-align themselves and would otherwise ignore a host-level setting."
+        },
+        "group": {
+          "type": "string",
+          "description": "APPLIED. Consecutive elements sharing a name go inside one row wrapper. It is a layout instruction, not an element type: each element keeps its own id and its own phase."
+        },
+        "layout": {
+          "enum": ["row", "grid"],
+          "description": "APPLIED. `grid` is what a two-column \"given | solving\" solve needs; a wrapping flex row is not a grid, and `columns` on a row is reported rather than accepted and dropped."
+        },
+        "columns": { "type": "number", "description": "APPLIED. On a `tiles` element it is the tile grid. On anything else it is the group's column count and requires layout: \"grid\"." },
+        "radius": { "type": ["string", "number"], "description": "APPLIED — border-radius on the element host." },
+        "max_width": { "type": "number", "description": "APPLIED — the measure cap. Defaults from design.text_width[role]." },
+        "gap": { "type": ["string", "number"], "description": "APPLIED — gap on the element host, inherited by its row/group wrapper." },
+
+        "color": { "$ref": "#/$defs/hexOrToken", "description": "APPLIED. Beats the scene tone." },
+        "num_color": { "$ref": "#/$defs/hexOrToken", "description": "APPLIED for stat." },
+        "meter_color": { "$ref": "#/$defs/hexOrToken", "description": "APPLIED for card." },
+        "panel": { "$ref": "#/$defs/hexOrToken", "description": "APPLIED for card/tiles — a per-element surface override." },
+        "slab_bg": {
+          "$ref": "#/$defs/hexOrToken",
+          "description": "APPLIED. The brutalist name slab: display type reversed out of a solid brand block. NOT `label_bg` — that was the typo that shipped, and this schema is why it cannot ship again."
+        },
+        "slab_ink": { "$ref": "#/$defs/hexOrToken", "description": "APPLIED. The type ON a slab. A different role from the stage ink; sharing one is how a bright block ends up paper-on-yellow at 1.43:1." },
+
+        "meter": {
+          "type": "object",
+          "description": "APPLIED for card. The meter runs on its OWN phase so a panel can settle while its bar is still filling. Width is a function of t, never a CSS transition — a transition reads the wall clock and breaks determinism.",
+          "properties": {
+            "pct": { "type": "number" },
+            "dur_ms": { "type": "number" },
+            "ease": { "type": "string", "description": "DISCARDED — see entrance.ease." }
+          },
+          "patternProperties": { "^x_[A-Za-z0-9_]*$": { "$ref": "#/$defs/note" } },
+          "additionalProperties": false
+        },
+        "meter_at_ms": { "type": "number", "description": "APPLIED — the meter phase offset from the element's own at_ms." },
+
+        "place": {
+          "type": "object",
+          "description": "DISCARDED for credit — the emitter pins a credit to bottom-centre, so an authored place is reported. Kept so the intent stays in the record.",
+          "properties": {
+            "align": { "type": "string" },
+            "bottom": { "type": "number" }
+          },
+          "patternProperties": { "^x_[A-Za-z0-9_]*$": { "$ref": "#/$defs/note" } },
+          "additionalProperties": false
+        },
+
+        "shape": { "type": "string", "description": "APPLIED for shape." },
+        "of": { "type": "string", "description": "APPLIED for shape — the id this shape overlays." },
+        "src": { "type": "string", "description": "APPLIED for image." },
+
+        "width": { "type": "number", "description": "DISCARDED. The stage is a flow layout; there is no width to set. Use max_width." },
+        "rotate": {
+          "type": "number",
+          "description": "DISCARDED. The runtime OWNS `transform` on every frame — _ap writes scale()/translate() — so any authored angle would be overwritten sixty times a second. It needs a composite, not a declaration."
+        }
+      },
+      "patternProperties": { "^x_[A-Za-z0-9_]*$": { "$ref": "#/$defs/note" }, "^[A-Za-z0-9_]*_note$": { "$ref": "#/$defs/note" } },
+      "additionalProperties": false
+    },
+
+    "ambient": {
+      "description": "DISCARDED in full — there is no decorative-layer concept. Reported per scene with a count, so the loss is visible without being a build failure.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "kind": { "type": "string" },
+        "opacity": { "type": "number" },
+        "size": { "type": "number" },
+        "tone": { "type": "string" },
+        "blur": { "type": "number" },
+        "place": {
+          "type": "object",
+          "properties": {
+            "left": { "type": "number" }, "right": { "type": "number" },
+            "top": { "type": "number" }, "bottom": { "type": "number" },
+            "top_pct": { "type": "number" }, "center_x": { "type": "boolean" }
+          },
+          "patternProperties": { "^x_[A-Za-z0-9_]*$": { "$ref": "#/$defs/note" } },
+          "additionalProperties": false
+        },
+        "loop": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "dur_ms": { "type": "number" },
+            "iterations": { "type": ["string", "number"] },
+            "y": { "type": "number" },
+            "from_scale": { "type": "number" },
+            "direction": { "type": "string" },
+            "ease": { "type": "string" }
+          },
+          "patternProperties": { "^x_[A-Za-z0-9_]*$": { "$ref": "#/$defs/note" } },
+          "additionalProperties": false
+        }
+      },
+      "patternProperties": { "^x_[A-Za-z0-9_]*$": { "$ref": "#/$defs/note" } },
+      "additionalProperties": false
+    },
+
+    "scene": {
+      "type": "object",
+      "required": ["id", "start", "dur", "elements"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "start": { "type": "number", "description": "APPLIED — seconds from the start of the clip." },
+        "dur": { "type": "number", "description": "APPLIED — seconds." },
+        "tone": { "type": "string", "description": "DISCARDED as a colour source: it resolved nothing the compiler could read. It is still accepted and reported; use `color` per element instead." },
+        "frame": { "type": "string", "description": "DISCARDED — a narrative label for the beat, not layout." },
+        "exit": { "type": "string", "description": "DISCARDED — the emitter cross-fades scenes on a fixed curve." },
+        "background": { "$ref": "#/$defs/surface" },
+        "gap": { "type": ["string", "number"], "description": "APPLIED — the scene's flex column gap." },
+        "ambient": { "type": "array", "items": { "$ref": "#/$defs/ambient" }, "description": "DISCARDED — see $defs/ambient." },
+        "elements": { "type": "array", "items": { "$ref": "#/$defs/element" }, "minItems": 1 }
+      },
+      "patternProperties": { "^x_[A-Za-z0-9_]*$": { "$ref": "#/$defs/note" }, "^[A-Za-z0-9_]*_note$": { "$ref": "#/$defs/note" } },
+      "additionalProperties": false
+    },
+
+    "storyboard": {
+      "type": "object",
+      "required": ["meta", "scenes"],
+      "properties": {
+        "meta": {
+          "type": "object",
+          "required": ["id", "title", "aspect", "duration"],
+          "properties": {
+            "id": { "type": "string", "minLength": 1 },
+            "title": { "type": "string", "minLength": 1 },
+            "aspect": { "enum": ["16:9", "9:16", "1:1", "4:5"] },
+            "duration": { "type": "number", "exclusiveMinimum": 0, "description": "SECONDS, not ms. The whole reason reel-compile.cjs exists: the IR uses seconds and the emitter uses ms, and feeding one to the other silently yields dur=NaN — a clip with no length." },
+            "fps": { "type": "number", "exclusiveMinimum": 0 },
+            "design": { "type": "string", "description": "DISCARDED — a free-text design statement, kept for the record." },
+            "source_mock": { "type": "string", "description": "DISCARDED — where the mock came from." }
+          },
+          "patternProperties": { "^x_[A-Za-z0-9_]*$": { "$ref": "#/$defs/note" } },
+          "additionalProperties": false
+        },
+        "design": { "$ref": "#/$defs/design" },
+        "frame": { "$ref": "#/$defs/frame" },
+        "tokens": { "$ref": "#/$defs/tokenTable", "description": "LEGACY — the pre-`design` palette, used by breath-of-air which predates the design block. Superseded by design.tokens." },
+        "scenes": { "type": "array", "items": { "$ref": "#/$defs/scene" }, "minItems": 1 },
+        "x_summary": {
+          "type": "object",
+          "description": "Author's own tally, kept so the storyboard can be read without running the compiler. It is named like an annotation and is one, but it is structured rather than free text — which is why the root's `x_` pattern carves out `summary` instead of claiming it and then failing the object below.",
+          "properties": {
+            "scenes": { "type": "number" },
+            "elements": { "type": "number" },
+            "ambient_layers": { "type": "number" },
+            "total_ms": { "type": "number" },
+            "expressions_the_emitter_cannot_represent": { "type": "array", "items": { "type": "string" } }
+          },
+          "additionalProperties": false
+        }
+      },
+      "patternProperties": {
+        "^x_(?!summary$)[A-Za-z0-9_]*$": { "$ref": "#/$defs/note" },
+        "^[A-Za-z0-9_]*_note$": { "$ref": "#/$defs/note" }
+      },
+      "additionalProperties": false
+    }
+  },
+
+  "$ref": "#/$defs/storyboard"
+}

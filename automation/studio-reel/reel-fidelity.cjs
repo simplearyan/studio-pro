@@ -74,18 +74,37 @@ for (const film of films) {
   const clip = compileStoryboard(top);
   console.log(`\n=== ${film} ===`);
 
-  let checked = 0;
+  /* Assert the four things that carry content — id, size class, colour and the
+     text itself — rather than one exact style string. The theme layer adds a
+     `font-family` declaration to elements whose role names a brand face, so a
+     whole-attribute comparison started failing on a correct film. Each part is
+     checked where it is, so an added declaration cannot mask a wrong value. */
+let checked = 0;
   for (const sc of top.scenes) {
     for (const el of sc.elements) {
       checked++;
-      const want = `<div class="hss-el" id="${el.id}"><div class="hss-text hss-${el.size}" style="color:${el.color}">${el.text}</div>`;
-      if (clip.html.indexOf(want) === -1) {
+      const i = clip.html.indexOf(`id="${el.id}"`);
+      if (i === -1) {
         failures++;
-        console.log(`  TEXT MISMATCH ${el.id}: expected ${JSON.stringify(want.slice(0, 110))}`);
+        console.log(`  MISSING ${el.id}: no wrapper with that id`);
+        continue;
+      }
+      const start = clip.html.lastIndexOf('<div', i);
+      const win = clip.html.slice(start, i + 600);
+      const problems = [];
+      if (win.indexOf(`hss-text hss-${el.size}`) === -1) problems.push(`size class hss-${el.size}`);
+      if (win.indexOf(`color:${el.color};`) === -1) problems.push(`colour ${el.color}`);
+      /* the emitter ESCAPES authored copy, so compare against the escaped
+         form - an apostrophe is stored as &#39; and renders identically. */
+      const escT = el.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+      if (win.indexOf(`>${escT}</div>`) === -1) problems.push(`text ${JSON.stringify(el.text.slice(0, 40))}`);
+      if (problems.length) {
+        failures++;
+        console.log(`  TEXT MISMATCH ${el.id}: ${problems.join(', ')} missing`);
       }
     }
   }
-  console.log(`  text+style     ${checked - (failures)}/${checked} elements byte-exact (id, size, colour, text)`);
+  console.log(`  text+style     ${checked - (failures)}/${checked} elements exact (id, size, colour, text)`);
 
   // the literal onFrame(t) reads back out of the emitted js
   const m = clip.js.match(/var SB = (\{[\s\S]*?\});/);
