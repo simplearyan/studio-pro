@@ -95,7 +95,15 @@
         "fill": { "$ref": "#/$defs/hexOrToken", "description": "A FILLED component's surface — container / primary-container." },
         "fill-ink": { "$ref": "#/$defs/hexOrToken", "description": "The type drawn on a filled component. A different role from `ink`: a bright block carries dark type, a dark stage carries light type." },
         "fill-tone": { "$ref": "#/$defs/hexOrToken", "description": "The TONAL component surface. Unset, the emitter mixes the ink at 14% over the stage." },
-        "outline": { "$ref": "#/$defs/hexOrToken" }
+        "outline": { "$ref": "#/$defs/hexOrToken" },
+        "on-variant": { "$ref": "#/$defs/hexOrToken", "description": "The muted secondary ink the chart CSS reads for axis labels, ticks and legends. A variable the stylesheet consumes and the theme cannot set is a hardcoded colour wearing a var() costume." },
+        "s1": { "$ref": "#/$defs/hexOrToken" },
+        "s2": { "$ref": "#/$defs/hexOrToken" },
+        "s3": { "$ref": "#/$defs/hexOrToken" },
+        "s4": { "$ref": "#/$defs/hexOrToken" },
+        "s5": { "$ref": "#/$defs/hexOrToken" },
+        "s6": { "$ref": "#/$defs/hexOrToken" },
+        "chart-grid": { "$ref": "#/$defs/hexOrToken", "description": "Gridlines and axis rules. Themed for the same reason the meter track is: a grid hardcoded to rgba(255,255,255,.13) is invisible on a light stage and reads as \"no grid authored\" rather than \"grid I cannot see\"." }
       },
       "patternProperties": { "^x_[A-Za-z0-9_]*$": { "$ref": "#/$defs/note" } },
       "additionalProperties": false
@@ -219,7 +227,7 @@
           "properties": {
             "src": {
               "type": "string",
-              "description": "APPLIED-gated. Where the KaTeX renderer comes from. EMPTY is a hard failure for a film with latex/answer elements, because that is exactly what an offline export produces: raw `$$…$$` with no error and a green gate. A `cdn:` value is reported as informational, not failed — the compiler cannot prove the network works."
+              "description": "APPLIED-gated. Where the KaTeX renderer comes from. DEFAULTS TO `vendor/katex` — the dist vendored at public/vendor/katex, which is INLINED into the clip (one <style> with every face as a woff2 data URI, plus two data: URL scripts) so the clip renders with no network at all: exported to a bare file, opened from file://, read on a plane. EMPTY is a hard failure for a film with latex elements, because that is exactly what an offline export produces: raw `$$…$$` with no error and a green gate. A `cdn:` value is reported as informational, not failed — the compiler cannot prove the network works — and ships the three jsDelivr tags instead. Only `latex` triggers any of this: `answer` is plain text with no delimiters."
             }
           },
           "patternProperties": { "^x_[A-Za-z0-9_]*$": { "$ref": "#/$defs/note" } },
@@ -287,6 +295,29 @@
       "additionalProperties": false
     },
 
+    "chartSegment": {
+      "description": "APPLIED for chart (donut). One ring segment, index-aligned with series[0]. Separate from $defs/item because a pie is the one chart where the colour is a FIXED categorical slot and the ORDER carries the meaning — reusing `accent` would have made the donut's palette read like an item's highlight.",
+      "type": "object",
+      "properties": {
+        "color": { "$ref": "#/$defs/hexOrToken" }
+      },
+      "patternProperties": { "^x_[A-Za-z0-9_]*$": { "$ref": "#/$defs/note" } },
+      "additionalProperties": false
+    },
+
+    "chartSeries": {
+      "description": "APPLIED for chart. One series: a name for the legend and one value per category. `color` is a hex or a TOKEN in the film's own palette, resolved against the mode in force — so a series named as a token swaps with the theme instead of being the one hand-picked colour of the five that does not.",
+      "type": "object",
+      "required": ["values"],
+      "properties": {
+        "name": { "type": "string" },
+        "values": { "type": "array", "items": { "type": "number" }, "minItems": 1 },
+        "color": { "$ref": "#/$defs/hexOrToken" }
+      },
+      "patternProperties": { "^x_[A-Za-z0-9_]*$": { "$ref": "#/$defs/note" } },
+      "additionalProperties": false
+    },
+
     "item": {
       "description": "APPLIED for the element types that have items: pills (a string), tiles (icon/head/body), cards (label/accent/muted). One shape covering all three.",
       "type": ["object", "string"],
@@ -309,8 +340,9 @@
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "type": {
-          "enum": ["text", "latex", "answer", "cards", "image", "shape", "stat", "card", "tiles", "pills", "credit"],
-          "description": "Anything else renders as an EMPTY <div class=\"hss-el\"> with no warning — the exact silent failure this pipeline was built to remove."
+          "enum": ["text", "latex", "answer", "cards", "image", "shape", "stat", "card", "tiles", "pills", "credit", "chart"],
+
+          "description": "Anything else is a HARD FAILURE at the emitter: buildElHtml throws, and reel-compile reports the element as deferred with the emitter's own message. It used to fall out of the switch and emit an EMPTY <div class=\"hss-el\"> with no warning — the exact silent failure this pipeline was built to remove, and the reason the emitter now has a throwing `default`. This enum is a convenience for the authoring side only; the emitter's switch is the contract."
         },
         "at_ms": { "type": "number", "minimum": 0, "description": "APPLIED — offset from the scene start." },
         "in": { "$ref": "#/$defs/entrance" },
@@ -321,6 +353,32 @@
         "big": { "type": "string", "description": "APPLIED for card." },
         "small": { "type": "string", "description": "APPLIED for card." },
         "items": { "type": "array", "items": { "$ref": "#/$defs/item" }, "description": "APPLIED for cards/tiles/pills." },
+
+        "chart": {
+          "enum": ["columns", "bars", "line", "donut"],
+          "description": "APPLIED for chart. `columns` and `bars` are the same marks on the other axis; `line` carries the optional `area` fill; `donut` reads series[0] as its segments. Geometry is computed once at compile time and is animated from t, so a chart scrubs like the rest of the film."
+        },
+        "series": { "type": "array", "items": { "$ref": "#/$defs/chartSeries" }, "minItems": 1, "description": "APPLIED for chart. One entry per colour; every series is drawn." },
+        "categories": { "type": "array", "items": { "type": "string" }, "description": "APPLIED for chart. The axis labels, one per value. Shorter than the data it is padded, not truncated." },
+        "stacked": { "type": "boolean", "description": "APPLIED for chart (columns/bars). The scale SUMS the column before asking for the max — reading a single series would clip the stack." },
+        "area": { "type": "boolean", "description": "APPLIED for chart (line). Fills under the line, revealed left-to-right by an animated clip so the fill and the stroke arrive together." },
+        "dots": { "type": "boolean", "description": "APPLIED for chart (line, default true)." },
+        "values": { "type": "boolean", "description": "APPLIED for chart. Value labels on the marks; off for line, whose labels would collide with the stroke." },
+        "grid": { "type": "boolean", "description": "APPLIED for chart (default true). Gridlines and axis ticks." },
+        "legend": { "type": "boolean", "description": "APPLIED for chart (default true when more than one series)." },
+        "min": { "type": "number", "description": "APPLIED for chart. The axis floor. Unauthored, or 0, means the axis starts at 0 — and that default is the editorial rule this used to be instead of an option: a truncated axis is a lie the reader cannot see, so nothing could accidentally be truncated. An authored floor ABOVE 0 is applied and REPORTED by reel-compile as a declared choice, because a threshold film needs it: times that move 18 seconds inside a 241-second space draw as a flat line from 0, and the barrier the film is about disappears into it. Ignored for `stacked`, where every layer would be shrunk by the same offset and the stack would stop summing to its own column." },
+        "max": { "type": "number", "description": "APPLIED for chart. An authored ceiling, so two charts on one screen share an axis; otherwise the data sets the scale." },
+        "ref": { "type": "number", "description": "APPLIED for chart (columns/bars/line). A threshold drawn across the plot at this value — the record that stood, the limit, the target. Horizontal on columns/line, VERTICAL on bars, for the same reason the grid is: on bars the value axis runs left to right, and a horizontal rule behind the bars reads as another bar. Drawn even when `grid` is off, because a threshold is usually the point of the chart. It never clamps the axis: a threshold above the data sits outside the plot rather than inflating the scale to hide the gap, and the coordinate is clamped to the plot rect so the line stays on the graphic." },
+        "ref_label": { "type": "string", "description": "APPLIED for chart (with `ref`). The words beside the line. Defaults to the formatted value plus the unit — authored when the number has a name the film would rather say: 4:00.00 rather than 240." },
+        "unit": { "type": "string", "description": "APPLIED for chart. Appended to the top axis tick and the foot." },
+        "decimals": { "type": "number", "minimum": 0, "maximum": 4, "description": "APPLIED for chart. Decimal places on every printed number." },
+        "kicker": { "type": "string", "description": "APPLIED for chart. The eyebrow above the title — how an editorial graphic says which section it belongs to." },
+        "title": { "type": "string", "description": "APPLIED for chart. Authored INSIDE the element rather than as a sibling text element, so the graphic and its headline cannot drift apart or be reordered." },
+        "subtitle": { "type": "string", "description": "APPLIED for chart." },
+        "source": { "type": "string", "description": "APPLIED for chart. The provenance line. A number without its source is the thing a data story exists to fix." },
+        "segments": { "type": "array", "items": { "$ref": "#/$defs/chartSegment" }, "description": "APPLIED for chart (donut). See $defs/chartSegment." },
+        "chart_at_ms": { "type": "number", "description": "APPLIED for chart — the mark-drawing phase offset from the element's own at_ms, so a title can settle while the bars are still growing." },
+        "chart_in": { "$ref": "#/$defs/entrance", "description": "APPLIED for chart — the mark-drawing phase. `stagger_ms` here is the per-bar delay, which is the whole difference between a chart and a block that changes size." },
 
         "role": {
           "type": "string",

@@ -139,10 +139,22 @@ every frame until then. `reel-regression.cjs` asserts the *order* — the guard
 must appear before the latch — rather than the outcome, because the failure is
 invisible from the outside.
 
-**Still open → P5:** KaTeX is three CDN `<script>`/`<link>` tags injected at
-compile time. An offline export renders raw LaTeX, and nothing checks for it.
-The film should vendor KaTeX or the gate should fail when a `latex` element
-coexists with no renderer.
+**Shipped → P5 (vendored AND inlined).** The three CDN tags were replaced by
+a dist that lives in this repo: `design.math.src` defaults to `vendor/katex`
+(`public/vendor/katex`, written by `automation/studio-reel/vendor-katex.cjs`,
+katex@0.16.11 pinned), and the compiler inlines it into the clip as one
+`<style>` carrying every @font-face as a woff2 data URI plus two
+`<script src="data:text/javascript;base64,…">` tags.
+
+Data: URLs rather than inline script bodies, because `hic-frame.js` mounts clip
+html with `innerHTML` and an inline script **never executes** there — only
+external `<script src>` tags are hoisted. A data: URL is external, so the same
+markup runs through the renderer *and* from `file://` with no server, which is
+what "offline export" has to mean to be true. Verified offline: all five
+formulas typeset on the clip page and on the scenes board.
+
+This film pays ~722KB for it, and it pays it only when it has `latex`
+elements — `answer` no longer counts as maths, so the-peak ships none of it.
 
 ## 5. Token names vs hardcoded names
 
@@ -229,10 +241,16 @@ two-column "given | solving" solve grid or its `max-width: 46rem` prose.
 `.hss`, plus an optional in-clip toggle, so one artefact serves light and dark.
 Build-time `--mode` stays as the export path.
 
-**P5 — Fail when the maths has no renderer.** Gate `latex` elements on a
-resolved KaTeX source (vendored or CDN), and add a *content* assertion — the
-emitted clip must contain no `$$` after the first `onFrame`. That single check
-catches the latch bug class permanently.
+**P5 — Fail when the maths has no renderer — shipped, and not the way it was
+sketched.** The gate half was easy: `reel-compile` refuses to ship a film with
+`latex` and no `design.math.src`, and the default now resolves to a vendored
+dist instead of the network.
+
+The *content* half turned out to need a browser, and only `reel-extent.cjs`
+runs one. It now reports `5/5 latex element(s) typeset` and fails if any
+`.hss-latex` still reads as `$$…$$` after `onFrame` has run for every scene.
+That single check catches the latch bug class permanently — it is the only
+assertion in the pipeline that asks the stage instead of the markup.
 
 **P6 — A contrast gate.** Walk `theme_map` × `background` and every
 `e.color` × its host surface, compute WCAG contrast, fail below 3:1. It is ~40

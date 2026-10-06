@@ -1,117 +1,110 @@
 /**
- * reel-contrast.cjs — the contrast gate.
+ * reel-contrast.cjs — the contrast gate, measured by a browser.
  *
- * Measured, on the four films as they stood before this gate existed:
+ * WHAT IT DOES. Opens every film's standalone page in headless Chrome, lifts
+ * the animation to its finished state, and asks every element that owns text
+ * what colour it actually paints and what it paints onto. Fails below WCAG AA
+ * (3:1 large, 4.5:1 normal) plus a hard 3:1 floor on every node. `--min`
+ * raises the bar further.
  *
- *   breath-of-air      0 failures   (no design block; the runtime default is light ink)
- *   jan-suraaj         1 failure    j9-cta        1.05:1   #0F0D0E on #0e1512
- *   studio-pro-showcase 18 failures p1..p9-badge  1.00:1   #151217 on #0e1512
- *                                     p9-foot      1.00:1
- *                                     p3-tiles x8  1.09-1.12:1  #151217 on #211C29
- *   two-queens         0 failures   both modes
+ * ── WHAT IT USED TO DO, AND WHY THAT IS GONE ────────────────────────────────
+ * This file used to hold a hand-written model of the cascade: HOST_SURFACE
+ * (which class sits on which surface), FILL_SURFACE, FILL_INK, CSS_INK (which
+ * token each class's text reads), SVG_PX, TONAL_INK_MIX and TEXT_ALPHA — six
+ * tables that had to agree with RUNTIME_CSS, plus `assertEmitterContract`, a
+ * seventh check that they did. The tables were defensible when colour
+ * resolution was a closed set, and they caught real bugs: a chip reading
+ * --hss-ink when the CSS reads --hss-pill, a class whose opacity was 0.75 and
+ * nobody had written down.
  *
- * 19 of 88 measured text nodes were unreadable, and every one of them was
- * syntactically valid CSS with a green build. That is the whole argument for
- * this file: nothing else in the pipeline looks at COLOUR PAIRS.
+ * They are also the wrong tool. They enumerate the emitter's *current* rules,
+ * so they can only ever be as true as they were written, and the day a new
+ * component appears they are silent rather than wrong — the same failure mode
+ * as BUILDABLE was. A browser has no tables: `getComputedStyle` resolves the
+ * cascade that shipped, including inherited custom properties, inline styles,
+ * colour-mix(), per-mode [data-mode] rules and the authored ramp's real
+ * font-size at the design-space width. Asking it removes six things to keep in
+ * step and `assertEmitterContract` with them.
  *
- * WHY A NODE ANALYSER AND NOT A BROWSER. reel-fidelity reads the compiled
- * markup, not a live DOM, so it runs in CI with no Chromium. This gate takes
- * the same input and the same discipline. What it needs from the cascade —
- * which surface each element sits on, and what opacity its text is drawn at —
- * is a CLOSED set, because the emitter's RUNTIME_CSS is a closed set. Those
- * two facts are tabulated in HOST_SURFACE and TEXT_ALPHA below and are
- * asserted against the emitter's actual CSS by `assertEmitterContract()`.
- * If someone adds a rule that breaks the assumption, the gate says so instead
- * of quietly measuring the wrong surface.
+ * WHAT IS DELIBERATELY STILL IN NODE. The WCAG maths. It lives in one place
+ * (`luminance`/`contrast`/`composite` below) because `reel-compile` borrows it
+ * for the design board's ratio chips; the page only reports colour components
+ * and sizes it resolved, and Node does the arithmetic. A second copy of that
+ * formula inside the page would be the same mistake as a second colour
+ * resolver, which is exactly what `theme_map` exists to prevent.
  *
- * The one thing it cannot see is `background-clip:text` (the gradient stat
- * numeral), where `color` is transparent by design. Those are SKIPPED, and
- * the skip is counted so a silent zero-measurement cannot pass for a pass.
+ * THE ONE THING A COMPUTED COLOUR CANNOT TELL US. Backdrop sampling walks up
+ * collecting `background-color` layers, because `background-image` has no
+ * colour to read — a gradient is painted, not declared as a value. Where an
+ * ancestor carries one, the node is measured against the nearest opaque colour
+ * beneath it and COUNTED (`on a background-image`), never silently passed.
+ * Today that is 133 of 289 nodes, and all 133 are in films whose gradients are
+ * dark decorative washes over a dark stage, so the approximation is
+ * conservative rather than hopeful — but it is an approximation. The honest
+ * fix is to sample the painted pixel: one `Page.captureScreenshot` per film,
+ * decode with `zlib` (PNG is a deflated filtered scanline), and take the
+ * backdrop from the pixels around each node. That is the whole of what remains
+ * between this gate and measuring the film as rendered.
+ *
+ * IT CANNOT PASS BY NOT RUNNING. No browser, or a protocol failure, exits
+ * NON-ZERO. A gate that skips itself is worse than no gate: the day it starts
+ * skipping is the day a film ships unreadable and everyone believes it ran.
  *
  * Usage:
  *   node automation/studio-reel/reel-contrast.cjs
- *   node automation/studio-reel/reel-contrast.cjs --only <film>
- *   node automation/studio-reel/reel-contrast.cjs --mode dark
- *   node automation/studio-reel/reel-contrast.cjs --min 4.5   # stricter floor
+ *   node automation/studio-reel/reel-contrast.cjs --only two-queens --mode dark
+ *   node automation/studio-reel/reel-contrast.cjs --min 4.5   # demand more than WCAG
  */
 'use strict';
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const vm = require('vm');
+const { DEFAULT_W, DEFAULT_H, findBrowser, launchBrowser } = require('./cdp.cjs');
 
 const ROOT = path.resolve(__dirname, '../..');
 const EMITTER = path.join(ROOT, 'docs/html-in-canvas/hic-storyboard.js');
 
 /* ── colour maths ─────────────────────────────────────────────────────────
- * WCAG 2.1 relative luminance. sRGB is not linear, so every channel is
- * de-gamma'd first; using the raw 0..1 value understates light colours badly
- * enough to turn a 4.2:1 pair into a reported 9:1. */
+ * The ONE copy. reel-compile's design board renders these next to every
+ * swatch, so a second copy would be a second thing to get wrong. */
 function parseColor(c) {
-  const s = String(c).trim();
-  let m = s.match(/^#([0-9a-f]{3,8})$/i);
-  if (m) {
-    let h = m[1];
+  if (c == null) return null;
+  const s = String(c).trim().toLowerCase();
+  if (!s || s === 'transparent') return [0, 0, 0, 0];
+  if (s[0] === '#') {
+    let h = s.slice(1);
     if (h.length === 3 || h.length === 4) h = h.split('').map((x) => x + x).join('');
-    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16), h.length >= 8 ? parseInt(h.slice(6, 8), 16) / 255 : 1];
+    if (h.length !== 6 && h.length !== 8) return null;
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16),
+      parseInt(h.slice(4, 6), 16), h.length === 8 ? parseInt(h.slice(6, 8), 16) / 255 : 1];
   }
-  m = s.match(/rgba?\(([^)]+)\)/i);
-  if (m) { const p = m[1].split(/[\s,/]+/).filter(Boolean).map(Number); return [p[0], p[1], p[2], p.length > 3 ? p[3] : 1]; }
-  return null;
+  const m = s.match(/rgba?\(([^)]+)\)/);
+  if (!m) return null;
+  const p = m[1].split(/[\s,\/]+/).filter(Boolean).map(Number);
+  if (p.length < 3 || p.some((n) => Number.isNaN(n))) return null;
+  return [p[0], p[1], p[2], p.length > 3 ? p[3] : 1];
 }
-const chan = (v) => { v /= 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
-const luminance = ([r, g, b]) => 0.2126 * chan(r) + 0.7152 * chan(g) + 0.0722 * chan(b);
-const composite = (fg, bg, a) => fg.map((c, i) => c * a + bg[i] * (1 - a));
+
+function luminance(rgb) {
+  const c = rgb.slice(0, 3).map((v) => {
+    const s = v / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+}
+
 function contrast(a, b) {
-  const L1 = luminance(a), L2 = luminance(b);
-  return (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05);
+  const l1 = luminance(a);
+  const l2 = luminance(b);
+  return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
 }
 
-/* ── the closed cascade ───────────────────────────────────────────────────
- * Which SURFACE each text node is actually painted against, by class. The
- * stage is the answer for everything that is not on a panel. */
-const HOST_SURFACE = {
-  'hss-tile-head': 'panel', 'hss-tile-body': 'panel',
-  'hss-panel-num': 'panel', 'hss-panel-label': 'panel',
-  'hss-pill': 'stage',
-  'hss-text': 'stage', 'hss-latex': 'stage', 'hss-answer': 'stage',
-  'hss-credit': 'stage', 'hss-stat-label': 'stage',
-  'hss-stat-num': 'gradient',           // color:transparent + background-clip:text
-  'hss-card': 'own',                    // carries its own inline background
-};
-
-/* A COMPONENT VARIANT overrides the class default above. The four treatments
- * are a closed set, so the surface each one paints is too — which is the only
- * reason this file can stay a Node analyser instead of needing a browser.
- *
- * This table was wrong by omission until the variants existed and, worse, the
- * `.hss-pill` INK was being read from --hss-ink when the cascade takes it from
- * --hss-pill. That passed by luck: the two happened to have enough contrast
- * against the stage. Asserting the cascade is what turned the luck into a
- * checked fact, and it is asserted again in assertEmitterContract(). */
-const FILL_SURFACE = {
-  'hss-fill-filled': 'fill',           // --hss-fill, falling back to --hss-panel
-  'hss-fill-tonal': 'fill-tone',       // --hss-fill-tone, falling back to 14% ink over the stage
-  'hss-fill-outlined': 'stage',        // background:none — the border is not a fill
-  'hss-fill-text': 'stage',
-};
-/* Only `filled` paints a colour of its own; the other three inherit. */
-const FILL_INK = { 'hss-fill-filled': 'fill-ink' };
-
-/* The color-mix the emitter falls back to when a theme names no
- * --hss-fill-tone. Kept here as an ARITHMETIC fact rather than a string so the
- * gate measures the surface a browser would actually paint. */
-const TONAL_INK_MIX = 0.14;
-
-/* Opacity the runtime draws each text class AT. Not a detail: a 4.6:1 pair
- * drawn at .74 over the same surface composites down under 3:1, which is why
- * an audit that ignores opacity under-reports. */
-const TEXT_ALPHA = {
-  'hss-credit': 0.75, 'hss-tile-body': 0.74, 'hss-panel-label': 0.75, 'hss-stat-label': 0.78,
-};
-
-/* Every class that can hold text. Keep in step with buildElHtml. */
-const TEXT_CLASSES = Object.keys(HOST_SURFACE);
+function composite(fg, bg, alpha) {
+  const a = alpha === undefined ? 1 : alpha;
+  return [0, 1, 2].map((i) => fg[i] * a + bg[i] * (1 - a));
+}
 
 function loadEmitter() {
   const src = fs.readFileSync(EMITTER, 'utf8');
@@ -120,320 +113,354 @@ function loadEmitter() {
   return shim.exports;
 }
 
-/* The tabulated cascade is only trustworthy while it matches the emitter.
- * Verify the facts it rests on rather than assuming them. */
-function assertEmitterContract(emitter) {
-  const css = emitter.RUNTIME_CSS;
-  const problems = [];
-  for (const [cls, alpha] of Object.entries(TEXT_ALPHA)) {
-    const rule = css.slice(css.indexOf('.' + cls + '{'));
-    const body = rule.slice(0, rule.indexOf('}'));
-    const found = body.match(/opacity:([\d.]+)/);
-    if (!found) problems.push(`.${cls} has no opacity declaration, but the gate assumes ${alpha}`);
-    else if (Math.abs(parseFloat(found[1]) - alpha) > 0.001) {
-      problems.push(`.${cls} opacity is ${found[1]}, gate assumes ${alpha} — update TEXT_ALPHA`);
-    }
-  }
-  if (!/background-clip:text/.test(css)) problems.push('.hss-stat-num no longer uses background-clip:text — re-check the gradient-numeral skip');
-
-  /* The variant surfaces. Each is asserted by the VARIABLE it reads, because
-     that is the part that silently changes a colour: a rename would still
-     parse, still render, and still pass every other check here. */
-  const reads = (selector, prop) => {
-    const i = css.indexOf(selector);
-    if (i === -1) return null;
-    const body = css.slice(i, css.indexOf('}', i));
-    return body.includes(prop);
-  };
-  const wanted = [
-    ['.hss-fill-filled{', '--hss-fill,', 'filled variant surface'],
-    ['.hss-fill-filled{', '--hss-fill-ink,', 'filled variant ink'],
-    ['.hss-fill-tonal{', '--hss-fill-tone,', 'tonal variant surface'],
-    ['.hss-pill{', '--hss-pill,', 'pill ink (NOT --hss-ink — that is how the old table read it)'],
-  ];
-  for (const [sel, prop, what] of wanted) {
-    if (!reads(sel, prop)) problems.push(`${sel.slice(0, -1)} no longer reads ${prop} — the gate's ${what} assumption is stale`);
-  }
-  /* the tonal fallback is an arithmetic constant here and a literal there */
-  const mix = css.match(/color-mix\(in srgb,var\(--hss-ink[^)]*\)\s*([\d.]+)%/);
-  if (!mix) problems.push('.hss-fill-tonal no longer falls back to a color-mix of the ink — update TONAL_INK_MIX');
-  else if (Math.abs(parseFloat(mix[1]) / 100 - TONAL_INK_MIX) > 0.001) {
-    problems.push(`.hss-fill-tonal fallback mixes ${mix[1]}%, gate assumes ${TONAL_INK_MIX * 100}%`);
-  }
-  /* a filled pill takes its fill FROM the pill accent, so a badge is accent-on-ink
-     rather than container-on-ink — the opposite pairing. Getting it backwards
-     inverts the measurement. */
-  if (!reads('.hss-pill.hss-fill-filled{', '--hss-fill:var(--hss-pill')) {
-    problems.push('.hss-pill.hss-fill-filled no longer takes its fill from --hss-pill — update the filled-pill surface');
-  }
-  return problems;
+/* ── the measurement, executed IN the page ────────────────────────────────
+ * Colour is not knowable outside a browser. The old gate reconstructed it
+ * from tables of the emitter's rules; this asks the rules directly.
+ *
+ * Built by join() rather than a template literal on purpose: the body is
+ * several hundred characters of code containing `${...}`-shaped text and
+ * quotes, and a template literal would be parsing itself.
+ *
+ * Returns primitives only — arrays and numbers — so Runtime.evaluate can
+ * serialise it by value. The WCAG arithmetic happens back in Node. */
+function measureExpression(mode) {
+  return [
+    '(async () => {',
+    'const MODE = ' + JSON.stringify(mode || '') + ';',
+    'const stage = document.getElementById("hss");',
+    'if (!stage) return { error: "no #hss stage in the document" };',
+    /* Only a film that DECLARES modes has [data-mode] rules. Stamping the
+       attribute onto a single-theme film is harmless today but it is a claim
+       about a mode that does not exist, and the next person to add a
+       data-mode rule would get it applied to films that never asked for it. */
+    'if (MODE) stage.setAttribute("data-mode", MODE);',
+    'try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch (e) {}',
+    /* Typeset first. The clip does this on its first onFrame, and we are not
+       going to run frames — without this every formula would be measured as
+       raw $$...$$ source, which is a text node nobody ever sees. `_hssSetup`
+       probes for renderMathInElement rather than latching, so a short wait for
+       the data: scripts is enough; if the renderer never appears the rows come
+       back as source and the KaTeX presence check below reports it. */
+    'for (let i = 0; i < 40 && !window.renderMathInElement; i++) await new Promise(function(r){setTimeout(r,50);});',
+    'try { if (typeof _hssSetup === "function") _hssSetup(); } catch (e) {}',
+    /* Lift the ANIMATION state, not the design. `.hss-scene`/`.hss-el` start
+       at opacity 0 and onFrame drives them; measuring that state reports the
+       entrance rather than the film, and measuring one scene at a time would
+       never see the other seven. Stylesheet !important beats the inline
+       styles onFrame writes, so this holds against a running animation loop.
+       Only opacity and transform are lifted — a class that deliberately sets
+       opacity (the credit at .75, a chart tick at .8) must keep it, because
+       THAT opacity is part of the pairing being audited. */
+    '(function(){var s=document.createElement("style");',
+    ' s.textContent=".hss-scene{display:flex!important;opacity:1!important}.hss-el,.hss-slot,.hss-cardwrap{opacity:1!important;transform:none!important}";',
+    ' document.head.appendChild(s);})();',
+    'await new Promise(function(r){setTimeout(r,150);});',
+    /* Resolve a computed colour string to [r,g,b,a]. Modern Chrome emits both
+       `rgba(r,g,b,a)` and space-separated `rgb(r g b / a)`, and colour-mix()
+       (       the tonal fill) resolves to `color(srgb …)` with each channel in 0..1
+       — so one pattern is not enough, and getting it wrong would silently
+       report every tonal surface as near-black. Testing the `color` prefix is
+       what makes the 0..1 scaling safe: a plain `rgb(1,1,1)` is not scaled. */
+    'function pc(s){',
+    '  if(!s) return null;',
+    '  const n=s.match(/[-.0-9]+/g); if(!n) return null;',
+    '  let v=n.map(Number); if(v.some(function(x){return isNaN(x);})) return null;',
+    '  if(s.indexOf("color")===0 && v[0]<=1 && v[1]<=1 && v[2]<=1){',
+    '    v=[v[0]*255,v[1]*255,v[2]*255].concat(v.slice(3));',
+    '  }',
+    '  return [v[0],v[1],v[2], v.length>3 ? v[3] : 1];',
+    '}',
+    /* The painted backdrop: walk up collecting background-color layers and
+       composite from the outermost inward. Background-color only — a
+       background-image cannot be sampled without reading pixels, so nodes
+       sitting on a gradient report `img:true` and are counted, not guessed
+       at. The old gate did exactly this implicitly (it used the stage colour
+       for every class with no surface) and never said so. */
+    'function backdrop(el){',
+    '  const layers=[]; let img=false;',
+    '  for(let n=el;n;n=n.parentElement){',
+    '    const cs=getComputedStyle(n);',
+    '    const c=pc(cs.backgroundColor);',
+    '    if(c && c[3]>0) layers.push({c:c,src:n});',
+    '    const bi=cs.backgroundImage; if(bi && bi!=="none") img=true;',
+    '  }',
+    '  let out=pc(getComputedStyle(document.body).backgroundColor);',
+    '  if(!out || out[3]<1) out=[255,255,255,1];',
+    '  let src=null;',
+    '  for(let i=layers.length-1;i>=0;i--){',
+    '    const c=layers[i].c; src=layers[i].src;',
+    '    out=[c[0]*c[3]+out[0]*(1-c[3]), c[1]*c[3]+out[1]*(1-c[3]), c[2]*c[3]+out[2]*(1-c[3]), 1];',
+    '  }',
+    '  return {rgb:out.slice(0,3), img:img, src:src};',
+    '}',
+    /* Opacity multiplies down the tree, so it has to be accumulated rather
+       than read off the node. Ancestors stop at the stage: everything above
+       it is page chrome, not the film. */
+    'function opacityOf(el){',
+    '  let op=1;',
+    '  for(let n=el;n;n=n.parentElement){',
+    '    const o=parseFloat(getComputedStyle(n).opacity); if(!isNaN(o)) op*=o;',
+    '    if(n===stage) break;',
+    '  }',
+    '  return op;',
+    '}',
+    /* Text owner. Walk every text node, take its parent, and climb out of any
+       KaTeX subtree: one formula is one measurement, reported at the `.katex`
+       root whose computed colour is what the glyphs inherit. Counting
+       KaTeX's ~40 inner spans per formula would have measured the same
+       pairing forty times and drowned the table. */    'const rows=[]; const seen=new Set(); let skippedInk=0, imgBackdrop=0;',
+    'const w=document.createTreeWalker(stage, NodeFilter.SHOW_TEXT, null);',
+    'let tn;',
+    'while((tn=w.nextNode())){',
+    '  const txt=(tn.nodeValue||"").trim(); if(!txt) continue;',
+    '  let el=tn.parentNode;',
+    '  if(!el || el.nodeType!==1) continue;',
+    '  if(el.tagName==="SCRIPT"||el.tagName==="STYLE") continue;',
+    '  while(el && el.parentElement && el.parentElement.closest && el.parentElement.closest(".katex")) el=el.parentElement;',
+    '  if(seen.has(el)) continue; seen.add(el);',
+    '  const cs=getComputedStyle(el);',
+    '  if(cs.display==="none"||cs.visibility==="hidden") continue;',
+    '  const r=el.getBoundingClientRect();',
+    '  if(r.width<1||r.height<1) continue;',
+    '  const fg=pc(cs.color); if(!fg) continue;',
+    '  const op=opacityOf(el);',
+    /* Ink we cannot see has no contrast to complain about. This is how the
+       old gate's "gradient-clipped" skip falls out of the measurement rather
+       than being a class name in a table: background-clip:text paints colour
+       through the glyph and leaves `color` transparent. */
+    '  if(fg[3]*op<0.01){ skippedInk++; continue; }',
+    '  const bg=backdrop(el);',
+    '  if(bg.img) imgBackdrop++;',
+    '  const cls=(el.getAttribute("class")||el.tagName.toLowerCase()).trim();',
+    '  const owner=el.closest(".hss-el[id]");',
+    '  rows.push({',
+    '    id: (owner && owner.id) || el.id || "?",',
+    '    cls: cls,',
+    '    px: parseFloat(cs.fontSize),',
+    '    weight: (/^[0-9]+$/.test(cs.fontWeight) ? parseInt(cs.fontWeight,10) : (/bold|bolder/.test(cs.fontWeight)?700:400)),',
+    '    fg: [fg[0],fg[1],fg[2], fg[3]*op],',
+    '    bg: bg.rgb,',
+    '    img: bg.img,',
+    '    bgFrom: (bg.src && (bg.src.getAttribute("class")||bg.src.tagName.toLowerCase())) || "page"',
+    '  });',
+    '}',    'return { rows: rows, skippedInk: skippedInk, imgBackdrop: imgBackdrop,',
+    '  katexLoaded: !!window.renderMathInElement, stage: stage.getAttribute("data-mode"),',
+    '  stageBg: getComputedStyle(stage).backgroundColor };',
+    '})()',
+  ].join('\n');
 }
 
-/* ── read the compiled markup ──────────────────────────────────────────────
- * The gate measures clip.html, so it measures exactly what ships: the
- * resolver's colour, the authored ramp's size, the emitter's classes. */
-function auditClip(html, theme, stageBg, panelBg, defaultInk) {
-  const rows = [];
-  let skippedGradient = 0;
-  const fillHex = parseColor(theme.fill) || null;
-  const fillInk = parseColor(theme['fill-ink'] || theme['slab-ink']) || null;
-  const fillTone = parseColor(theme['fill-tone']) || null;
-
-  /* `--hss-pill` is declared on the .hss-pills CONTAINER and inherited by
-     every chip, so it is not on the node the text lives in. The emitter
-     writes one value per pills element, so the nearest preceding declaration
-     is the one that applies — the same positional trick as idAt below. */
-  const pillMarks = [];
-  const pillRe = /--hss-pill:\s*([^;"]+)/g;
-  let pm;
-  while ((pm = pillRe.exec(html))) { const c = parseColor(pm[1]); if (c) pillMarks.push([pm.index, c.slice(0, 3)]); }
-  const pillAt = (pos) => {
-    let found = null;
-    for (const [ix, rgb] of pillMarks) { if (ix > pos) break; found = rgb; }
-    return found;
-  };
-
-  /* Every .hss-el wrapper carries id="x", so the last one before a text node
-   * is that node's owner. A failure that names a CSS class instead of a
-   * storyboard.json id is not actionable. */
-  const idMarks = [];
-  const idRe = /id="([^"]+)"/g;
-  let im;
-  while ((im = idRe.exec(html))) idMarks.push([im.index, im[1]]);
-  const idAt = (pos) => {
-    let found = '?';
-    for (const [ix, id] of idMarks) { if (ix > pos) break; found = id; }
-    return found;
-  };
-
-  /* Only LEAF text nodes: they contain no child markup at compile time, so a
-     `[^<]*` body is exact. The earlier pattern used a non-greedy body and
-     matched `class="hss-text"` with ONE class, which silently skipped every
-     multi-class node — 43 nodes measured where a browser saw 88. Matching any
-     class list and then testing each class is what closes that gap. */
-  /* Leaf text nodes. The tag alternation is not cosmetic: `.hss-pill` is a
-     <span>, so a <div>-only pattern matched every other text-bearing element
-     in the runtime and silently reported "0 failures" for chips it had never
-     looked at. Nine chips across the four films were unmeasured. */
-  const nodeRe = /<(?:div|span) class="([^"]*)"([^>]*)>([^<]*)<\/(?:div|span)>/g;
-  let m;
-  while ((m = nodeRe.exec(html))) {
-    const classes = m[1].split(/\s+/);
-    const cls = classes.find((c) => TEXT_CLASSES.includes(c));
-    if (!cls) continue;
-    const attrs = m[2] || '';
-    const styleMatch = attrs.match(/style="([^"]*)"/);
-    if (!(m[3] || '').trim()) continue;
-
-    if (HOST_SURFACE[cls] === 'gradient') { skippedGradient++; continue; }
-
-    const style = {};
-    if (styleMatch) for (const decl of styleMatch[1].split(';')) {
-      const i = decl.indexOf(':');
-      if (i > 0) style[decl.slice(0, i).trim()] = decl.slice(i + 1).trim();
-    }
-
-    /* host surface. An inline background WINS over everything: the brutalist
-     * name-slab is an .hss-text with its own background, and measuring it
-     * against the stage reports 1:1 for a heading that is perfectly legible.
-     * Then a component VARIANT wins over the class default, then the class
-     * default. That order is the cascade. */
-    const pillInk = pillAt(m.index);
-    const inlinePanel = parseColor(style['--hss-panel']);
-    const fillKind = classes.find((c) => FILL_SURFACE[c]) ? FILL_SURFACE[classes.find((c) => FILL_SURFACE[c])] : null;
-    const surfaceKind = fillKind || HOST_SURFACE[cls];
-
-    let bg = stageBg, bgSource = 'stage';
-    const own = parseColor(style.background);
-    if (own && own[3] >= 1) { bg = own.slice(0, 3); bgSource = 'inline background (slab)'; }
-    else if (surfaceKind === 'fill') {
-      /* a FILLED pill is a badge: accent fill with on-ink type, the opposite
-         pairing to a filled container. Reading --hss-panel for it would
-         measure a chip as a container and pass on the wrong pairing. */
-      if (cls === 'hss-pill' && pillInk) { bg = pillInk; bgSource = '--hss-pill (filled)'; }
-      else if (fillHex) { bg = fillHex.slice(0, 3); bgSource = '--hss-fill'; }
-      else if (inlinePanel) { bg = inlinePanel.slice(0, 3); bgSource = 'inline --hss-panel (fill)'; }
-      else { bg = panelBg; bgSource = '--hss-panel (fill fallback)'; }
-    } else if (surfaceKind === 'fill-tone') {
-      if (fillTone) { bg = fillTone.slice(0, 3); bgSource = '--hss-fill-tone'; }
-      else {
-        /* the emitter's fallback: the ink at 14% over whatever is behind it */
-        const ink = (parseColor(defaultInk) || [248, 250, 252]).slice(0, 3);
-        bg = composite(ink, stageBg, TONAL_INK_MIX);
-        bgSource = `--hss-ink at ${TONAL_INK_MIX * 100}% (tonal fallback)`;
-      }
-    } else if (surfaceKind === 'panel') {
-      bg = (inlinePanel && inlinePanel[3] >= 1) ? inlinePanel.slice(0, 3) : panelBg;
-      bgSource = (inlinePanel && inlinePanel[3] >= 1) ? 'inline --hss-panel' : '--hss-panel';
-    } else if (surfaceKind === 'own') { if (!own) continue; bg = own.slice(0, 3); bgSource = 'own background'; }
-
-    /* ink. parseColor returns RGBA; composite is RGB, so slice first or the
-       alpha slot becomes bg[3] * (1-a) = NaN and poisons the whole row.
-       Order mirrors the cascade: an authored colour wins, then a filled
-       component's own on-container ink, then a chip's accent, then the stage
-       ink. Note the chip accent sits ABOVE the stage ink — `.hss-pill` sets
-       `color:var(--hss-pill)` and this table used to read --hss-ink. */
-    const fgRaw = style.color;
-    let fg, fgSource;
-    if (fgRaw) { const c = parseColor(fgRaw); if (!c) continue; fg = c.slice(0, 3); fgSource = 'inline'; }
-    else if (cls === 'hss-pill' && fillKind !== 'fill' && pillInk) { fg = pillInk; fgSource = '--hss-pill'; }
-    else if (fillKind === 'fill' && fillInk) { fg = fillInk.slice(0, 3); fgSource = '--hss-fill-ink'; }
-    else { fg = (parseColor(defaultInk) || [248, 250, 252]).slice(0, 3); fgSource = '--hss-ink'; }
-    fg = composite(fg, bg, TEXT_ALPHA[cls] !== undefined ? TEXT_ALPHA[cls] : 1);
-
-    /* size: the emitted value is vw, so resolve it at the DESIGN-SPACE width.
-     * Measuring at the embed width instead would change the WCAG threshold —
-     * the same element passes at 1920 and fails at 512, which is nonsense. */
-    let px = null;
-    if (style['font-size']) {
-      /* max(2.083vw,14px) — the floor form type_scale.min_px emits. The
-         threshold is decided at the DESIGN-SPACE size, because that is the
-         size the film is authored and exported at; the floor exists only to
-         keep an embed legible. */
-      const mx = style['font-size'].match(/^max\(([\d.]+)vw,\s*([\d.]+)px\)$/);
-      if (mx) px = parseFloat(mx[1]) * 19.2;
-      else {
-        const vw = style['font-size'].match(/^([\d.]+)vw$/);
-        if (vw) px = parseFloat(vw[1]) * 19.2;
-        else { const p = style['font-size'].match(/^([\d.]+)px$/); if (p) px = parseFloat(p[1]); }
-      }
-    }
-    if (px === null) {
-      const byClass = { 'hss-tile-head': 1.3, 'hss-tile-body': 0.98, 'hss-panel-num': 3.1, 'hss-panel-label': 1.05, 'hss-stat-label': 1.25, 'hss-credit': 0.95, 'hss-pill': 1.25 };
-      px = (byClass[cls] || 1.8) * 19.2;
-    }
-    const weight = style['font-weight'] ? parseInt(style['font-weight']) : (cls === 'hss-pill' || cls === 'hss-tile-head' || cls === 'hss-panel-num' ? 700 : 400);
-
-    rows.push({
-      cls, px: Math.round(px), weight,
-      ratio: +contrast(fg, bg).toFixed(2),
-      fgSource, bgSource,
-      fg: 'rgb(' + fg.map(Math.round).join(',') + ')',
-      bg: 'rgb(' + bg.map(Math.round).join(',') + ')',
-      elId: idAt(m.index),
-    });
-  }
-  return { rows, skippedGradient };
-}
-
-function main() {
+async function main() {
   const argv = process.argv.slice(2);
   const only = argv.includes('--only') ? argv[argv.indexOf('--only') + 1] : null;
   const mode = argv.includes('--mode') ? argv[argv.indexOf('--mode') + 1] : 'light';
   const minArg = argv.includes('--min') ? argv[argv.indexOf('--min') + 1] : null;
+  const width = argv.includes('--width') ? parseInt(argv[argv.indexOf('--width') + 1], 10) : DEFAULT_W;
+  const height = argv.includes('--height') ? parseInt(argv[argv.indexOf('--height') + 1], 10) : DEFAULT_H;
+
+  const bin = findBrowser();
+  if (!bin) {
+    console.error('reel-contrast: FAILED — no Chrome/Chromium/Edge found.');
+    console.error('  Set CHROME_PATH, or install one of:');
+    console.error('    C:/Program Files/Google/Chrome/Application/chrome.exe');
+    console.error('    /Applications/Google Chrome.app/Contents/MacOS/Google Chrome');
+    console.error('    /usr/bin/google-chrome');
+    return 1;
+  }
 
   const emitter = loadEmitter();
-  const contract = assertEmitterContract(emitter);
-
   const filmsDir = path.join(__dirname, 'films');
   const films = fs.readdirSync(filmsDir)
     .filter((d) => fs.existsSync(path.join(filmsDir, d, 'storyboard.json')) && (!only || d === only));
 
-  console.log('=== emitter cascade contract ===');
-  if (contract.length) {
-    for (const p of contract) console.log(`  FAIL  ${p}`);
-    console.log('\nreel-contrast: FAILED — the gate\'s assumptions no longer match the emitter, so its numbers cannot be trusted.');
+  /* Resolve the design by borrowing reel-compile's own resolver rather than
+   * keeping a second copy: a second resolver would drift, and a contrast
+   * gate that measures a different palette than the one that ships is worse
+   * than no gate at all. */
+  const { resolveMode, reconcile } = require('./reel-compile.cjs').__test;
+
+  const jobs = [];
+  for (const film of films) {
+    const dir = path.join(filmsDir, film);
+    const sb = JSON.parse(fs.readFileSync(path.join(dir, 'storyboard.json'), 'utf8'));
+    const resolved = resolveMode(sb, mode);
+    if (resolved.error) { console.error(`\n=== ${film} ===\n  ${resolved.error}`); return 1; }
+    const { top } = reconcile(sb, resolved.design, mode);
+    const clip = emitter.compileStoryboard(JSON.parse(JSON.stringify(top)));
+    const page = emitter.buildStandalonePage(JSON.parse(JSON.stringify(top)));
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reel-contrast-')), 'reel.html');
+    fs.writeFileSync(file, page);
+    jobs.push({ film, file, clip, mode: resolved.modes && resolved.modes.length ? mode : null });
+  }
+
+  return runJobs(bin, jobs, width, height, mode, minArg).then(
+    (code) => code,
+    (err) => {
+      console.error('\nreel-contrast: FAILED — ' + err.message);
+      return 1;
+    }
+  );
+}
+
+async function runJobs(bin, jobs, width, height, mode, minArg) {
+  let browser;
+  try {
+    browser = await launchBrowser(bin, width, height);
+  } catch (e) {
+    console.error('reel-contrast: FAILED — could not start the browser: ' + e.message);
     return 1;
   }
-  console.log(`  ok    ${Object.keys(TEXT_ALPHA).length} opacity assumptions and the gradient-clip skip match RUNTIME_CSS`);
 
   let failures = 0;
   let totalRows = 0;
   let totalSkipped = 0;
+  let totalImg = 0;
+  const HARD_FLOOR = 3;
 
-  for (const film of films) {
-    const dir = path.join(filmsDir, film);
-    const sb = JSON.parse(fs.readFileSync(path.join(dir, 'storyboard.json'), 'utf8'));
+  try {
+    for (const job of jobs) {
+      const { film, file, clip } = job;
+      const target = await browser.cdp.send('Target.createTarget', { url: 'about:blank' });
+      const sess = await browser.cdp.send('Target.attachToTarget', { targetId: target.targetId, flatten: true });
+      const sid = sess.sessionId;
+      await browser.cdp.send('Page.enable', {}, sid);
+      await browser.cdp.send('Runtime.enable', {}, sid);
+      await browser.cdp.send('Emulation.setDeviceMetricsOverride', {
+        width, height, deviceScaleFactor: 1, mobile: false,
+      }, sid);
 
-    /* Resolve the design by borrowing reel-compile's own resolver rather than
-     * keeping a second copy: a second resolver would drift, and a contrast
-     * gate that measures a different palette than the one that ships is worse
-     * than no gate at all. */
-    const { resolveMode, reconcile } = require('./reel-compile.cjs').__test;
-    const resolved = resolveMode(sb, mode);
-    const { top } = reconcile(sb, resolved.design, mode);
+      const loaded = new Promise((resolve) => {
+        const prev = browser.cdp.ws.onmessage;
+        browser.cdp.ws.onmessage = (m) => {
+          prev(m);
+          try {
+            const d = JSON.parse(m.data);
+            if (d.method === 'Page.loadEventFired' && d.sessionId === sid) resolve();
+          } catch (e) { /* not ours */ }
+        };
+        setTimeout(resolve, 20000);
+      });
+      await browser.cdp.send('Page.navigate', { url: 'file:///' + file.replace(/\\/g, '/') }, sid);
+      await loaded;
 
-    const stage = parseColor(top.background || '#0e1512');
-    const themeVars = top.theme || {};
-    const panel = parseColor(themeVars.panel || '#121a26') || [18, 26, 38];
-    const ink = themeVars.ink || '#f8fafc';
+      const res = await browser.cdp.send('Runtime.evaluate', {
+        expression: measureExpression(job.mode),
+        awaitPromise: true,
+        returnByValue: true,
+      }, sid);
+      await browser.cdp.send('Target.closeTarget', { targetId: target.targetId });
 
-    const clip = emitter.compileStoryboard(JSON.parse(JSON.stringify(top)));
-    const { rows, skippedGradient } = auditClip(clip.html, themeVars,
-      [stage[0], stage[1], stage[2]], [panel[0], panel[1], panel[2]], ink);
+      const value = res.result && res.result.value;
+      if (!value) {
+        console.log(`\n=== ${film} (${mode}) ===`);
+        const d = res.exceptionDetails || {};
+        const why = (d.exception && d.exception.description) || d.text || 'no value';
+        console.log('  FAIL  the page did not answer: ' + String(why).split('\n')[0]);
+        failures++;
+        continue;
+      }
+      if (value.error) {
+        console.log(`\n=== ${film} (${mode}) ===`);
+        console.log(`  FAIL  ${value.error}`);
+        failures++;
+        continue;
+      }
 
-    /* Attach the authored element id resolved during the walk. */
-    const seen = {};
-    const withIds = rows.map((r) => {
-      seen[r.cls] = (seen[r.cls] || 0) + 1;
-      return Object.assign({}, r, { id: r.elId });
-    });
+      const rows = value.rows;
+      console.log(`\n=== ${film} (${job.mode || 'single theme'}) ===`);
+      console.log(`  stage          ${value.stageBg}${value.stage ? `  [data-mode=${value.stage}]` : ''}`);
+      console.log(`  measured       ${rows.length} text nodes` +
+        (value.skippedInk ? `, ${value.skippedInk} transparent/gradient ink skipped` : '') +
+        (value.imgBackdrop ? `, ${value.imgBackdrop} on a background-image` : ''));
+      const hasLatex = /class="hss-latex/.test(clip.html);
+      const katexRoots = rows.filter((r) => /^katex/.test(r.cls)).length;
+      console.log(`  maths          ${hasLatex ? (value.katexLoaded ? 'renderer loaded' : 'NO RENDERER (no renderMathInElement)') : 'none (no latex elements)'}` +
+        (hasLatex && katexRoots ? ` · ${katexRoots} formula(s) measured as one node each` : ''));
 
-    console.log(`\n=== ${film} (${mode}) ===`);
-    console.log(`  stage          ${stage ? 'rgb(' + [stage[0], stage[1], stage[2]].join(',') + ')' : '(emitter default #0e1512)'}`);
-    console.log(`  --hss-ink      ${ink}   --hss-panel ${themeVars.panel || '(runtime default)'}`);
-    console.log(`  measured       ${withIds.length} text nodes` + (skippedGradient ? `, ${skippedGradient} gradient-clipped skipped` : ''));
+      if (hasLatex && !value.katexLoaded) {
+        console.log('  FAIL  the maths renderer never loaded — formulas would be raw source on stage');
+        failures++;
+      }
 
-    if (!withIds.length) {
-      console.log('  FAIL  nothing measured — an empty result is not a pass');
-      failures++;
-      continue;
-    }
+      if (!rows.length) {
+        console.log('  FAIL  nothing measured — an empty result is not a pass');
+        failures++;
+        continue;
+      }
 
-    const HARD_FLOOR = 3;
-      const bad = withIds.filter((r) => {
-        /* AA per WCAG 2.1 — 3:1 for >=24px or >=18.66px bold, 4.5:1 below
-         * that — AND a hard 3:1 floor on EVERY node regardless of size. The
-         * floor exists because "large text" is a legibility judgement that
-         * fails badly on a phone or a projector: a 24px label that passes AA
-         * at 3.2:1 is unreadable in practice. --min raises the bar further. */
-        const aa = minArg ? parseFloat(minArg) : (r.px >= 24 || (r.px >= 18.66 && r.weight >= 700) ? 3 : 4.5);
+      /* AA per WCAG 2.1 — 3:1 for >=24px or >=18.66px bold, 4.5:1 below that —
+       * AND a hard 3:1 floor on EVERY node regardless of size. The floor exists
+       * because "large text" is a legibility judgement that fails badly on a
+       * phone or a projector: a 24px label that passes AA at 3.2:1 is
+       * unreadable in practice. --min raises the bar further. */
+      const bad = rows.filter((r) => {
+        const px = r.px;
+        const aa = minArg ? parseFloat(minArg) : (px >= 24 || (px >= 18.66 && r.weight >= 700) ? 3 : 4.5);
         const need = Math.max(aa, minArg ? aa : HARD_FLOOR);
         r.need = need;
+        const bg = r.bg.map(Math.round);
+        const eff = composite(r.fg.slice(0, 3), bg, r.fg[3]);
+        r.ratio = +contrast(eff, bg).toFixed(2);
+        r.fgOut = 'rgb(' + eff.map(Math.round).join(',') + ')';
+        r.bgOut = 'rgb(' + bg.join(',') + ')';
         return r.ratio < need;
       }).sort((a, b) => a.ratio - b.ratio);
 
-    totalRows += withIds.length;
-    totalSkipped += skippedGradient;
+      totalRows += rows.length;
+      totalSkipped += value.skippedInk;
+      totalImg += value.imgBackdrop;
 
-    const byClass = {};
-    for (const r of withIds) {
-      byClass[r.cls] = byClass[r.cls] || { n: 0, min: Infinity };
-      byClass[r.cls].n++;
-      byClass[r.cls].min = Math.min(byClass[r.cls].min, r.ratio);
-    }
-    for (const [cls, s] of Object.entries(byClass).sort((a, b) => a[1].min - b[1].min)) {
-      console.log(`  ${String(s.min).padStart(6)}:1 min   ${cls.padEnd(16)} x${s.n}`);
-    }
-
-    if (bad.length) {
-      console.log(`  CONTRAST FAILURES (${bad.length}):`);
-      for (const r of bad) {
-        console.log(`    - ${r.id}  .${r.cls}  ${r.px}px/${r.weight}  ${r.ratio}:1  (needs ${r.need}:1)  ${r.fg} on ${r.bg}  [fg:${r.fgSource} bg:${r.bgSource}]`);
+      const byClass = {};
+      for (const r of rows) {
+        const key = r.cls.split(/\s+/)[0];
+        byClass[key] = byClass[key] || { n: 0, min: Infinity };
+        byClass[key].n++;
+        if (r.ratio !== undefined) byClass[key].min = Math.min(byClass[key].min, r.ratio);
       }
-      failures++;
-    } else {
-      console.log(`  contrast       OK — ${withIds.length}/${withIds.length} text nodes meet WCAG AA and the ${minArg ? parseFloat(minArg) : HARD_FLOOR}:1 floor`);
+      for (const [cls, s] of Object.entries(byClass).sort((a, b) => a[1].min - b[1].min)) {
+        console.log(`  ${String(isFinite(s.min) ? s.min.toFixed(2) : '-').padStart(6)}:1 min   ${cls.padEnd(16)} x${s.n}`);
+      }
+
+      if (bad.length) {
+        console.log(`  CONTRAST FAILURES (${bad.length}):`);
+        for (const r of bad) {
+          console.log(`    - ${r.id}  ${r.cls}  ${r.px.toFixed(1)}px/${r.weight}  ${r.ratio}:1  (needs ${r.need}:1)  ${r.fgOut} on ${r.bgOut}  [bg from .${r.bgFrom}]`);
+        }
+        failures++;
+      } else {
+        console.log(`  contrast       OK — ${rows.length}/${rows.length} text nodes meet WCAG AA and the ${minArg ? parseFloat(minArg) : HARD_FLOOR}:1 floor`);
+      }
+      if (value.imgBackdrop) {
+        console.log(`    ${value.imgBackdrop} node(s) sit under a background-image; their backdrop is the nearest opaque`);
+        console.log('    colour beneath the gradient, which is an approximation — not a pass/fail claim.');
+      }
     }
+  } finally {
+    browser.close();
   }
 
   console.log('');
-  console.log(`  totals: ${totalRows} text nodes measured, ${totalSkipped} gradient-clipped skipped, ${failures} film(s) failing`);
+  console.log(`  totals: ${totalRows} text nodes measured, ${totalSkipped} transparent/gradient ink skipped, ${totalImg} on a background-image, ${failures} film(s) failing`);
   if (failures) {
     console.error(`reel-contrast: FAILED (${failures}) — valid CSS, unreadable pixels.`);
     return 1;
   }
-  console.log('reel-contrast: OK — every measured text node meets its WCAG AA threshold.');
+  console.log('reel-contrast: OK — measured in a browser, every text node meets its WCAG AA threshold.');
   return 0;
 }
 
 /* The design board renders a contrast ratio next to every swatch, and it
- * borrows these three rather than reimplementing them. A second copy of the
- * WCAG maths is a second thing to get wrong, and it would drift silently —
- * the same mistake as a second colour resolver, which is what `theme_map`
+ * borrows these rather than reimplementing them. A second copy of the WCAG
+ * maths is a second thing to get wrong, and it would drift silently — the
+ * same mistake as a second colour resolver, which is what `theme_map`
  * exists to prevent. */
 module.exports = { parseColor, luminance, contrast, composite };
 
 /* Guarded so requiring this file borrows the maths without running the audit.
    reel-compile.cjs pulls it in while building the design board. */
-if (require.main === module) process.exit(main());
+if (require.main === module) {
+  main().then(
+    (code) => process.exit(code || 0),
+    (err) => { console.error('reel-contrast: FAILED — ' + (err && err.message)); process.exit(1); }
+  );
+}

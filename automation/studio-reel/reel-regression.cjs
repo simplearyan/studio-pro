@@ -15,8 +15,9 @@
  * What it checks:
  *   - html, css and js are byte-identical for a storyboard using only the
  *     pre-existing types (text, latex, cards, shape)
- *   - an UNKNOWN type still behaves the old way (empty div), so this change
- *     did not silently alter the fallback that other code may rely on
+ *   - an UNKNOWN type is now a throw rather than a silent empty div (see the
+ *     note at that assertion — this one is a deliberate reversal, not a
+ *     regression), and emitterSupportsType() answers from the switch
  *   - the five new types now produce non-empty markup
  *
  * Usage: node automation/studio-reel/reel-regression.cjs
@@ -38,8 +39,25 @@ function loadFrom(src, label) {
   return shim.exports;
 }
 
+/* The baseline is PINNED, not HEAD.
+ *
+ * This gate answers one question — did adding to the shared emitter change
+ * what an existing caller gets — and `HEAD` is the wrong thing to ask it of.
+ * While the change is uncommitted HEAD is the old emitter and the check reads
+ * correctly; the moment the change lands, HEAD becomes the new emitter and
+ * every assertion here compares it against itself. Ten of them then fail on
+ * text that is simply no longer old, and the suite that exists to catch a
+ * dropped rule goes red on a commit that dropped none.
+ *
+ * `baf1d56` is the last commit whose `hic-storyboard.js` predates the R1
+ * element types. Pinning to it keeps the assertions meaningful forever and
+ * makes every future addition prove itself against the same legible baseline.
+ * When a change genuinely intends to alter legacy output, that has to be
+ * declared in RUNTIME_EDITS below rather than absorbed by moving the pin. */
+const BASELINE = 'baf1d56';
+
 function gitShow(rel) {
-  return execFileSync('git', ['show', 'HEAD:' + rel], { cwd: ROOT, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
+  return execFileSync('git', ['show', BASELINE + ':' + rel], { cwd: ROOT, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
 }
 
 /* A storyboard using ONLY the types that existed before this change. */
@@ -74,7 +92,7 @@ function check(label, cond, detail) {
   else { failures++; console.log(`  FAIL  ${label}${detail ? ' — ' + detail : ''}`); }
 }
 
-const before = loadFrom(gitShow(EMITTER_REL), 'hic-storyboard.js@HEAD');
+const before = loadFrom(gitShow(EMITTER_REL), 'hic-storyboard.js@' + BASELINE);
 let plainBeforeHtml = '';
 const after = loadFrom(fs.readFileSync(path.join(ROOT, EMITTER_REL), 'utf8'), EMITTER_REL);
 
@@ -125,28 +143,37 @@ if (a.err || b.err) {
   }
   check('css: every legacy rule still present with its DEFAULT value',
     supersetMiss(a.css, untheme(b.css), '}', ';') === '', supersetMiss(a.css, untheme(b.css), '}', ';'));
-  /* Two runtime lines were EDITED rather than added, both to make the scene
-     hide/advance rule type-aware. They are listed here so the check stays a
-     superset check: any OTHER legacy line disappearing is still a failure.
+  /* These runtime lines were EDITED rather than added, and they are listed
+     here so the check stays a superset check: any OTHER legacy line
+     disappearing is still a failure. Declaring the old text lets an edit be
+     intentional without weakening the check for everything else.
 
-     The last two are the KaTeX latch fix. The old code set _hssInit=true on
-     the first frame whether or not the library had loaded, so a clip whose
-     KaTeX <script> resolved after the first onFrame rendered raw `$$…$$` for
-     the entire reel with no error. Declaring the old text lets the edit be
-     intentional without weakening the check for everything else. */
+     1-3. make the scene hide/advance rule type-aware, rather than assuming
+          every host is a card row.
+     4-5. the KaTeX latch fix: the old code set _hssInit=true on the first
+          frame whether or not the library had loaded, so a clip whose KaTeX
+          <script> resolved after the first onFrame rendered raw `$$…$$` for
+          the entire reel with no error.
+     6.    _hssSetup falls back to document.body, so a BOARD can typeset —
+          the scenes preview has several stages and no #hss. */
   const RUNTIME_EDITS = [
     ['if(e.type!=="cards")_hidden(eN);', 'if(!isGroupT(e.type))_hidden(eN);'],
     ['var ws2=e._ws||_cards(e,-1);', 'var ws2=(e.type==="cards"?_cards(e,-1):_group(e,-1));'],
     ['if(e.type==="cards"){_cards(e,tL);continue;}', 'if(e.type==="cards"){_cards(e,tL);}'],
     ['if(_hssInit) return; _hssInit=true;', 'if(_hssInit) return;'],
     ['if(root&&window.renderMathInElement){', 'if(!(root&&window.renderMathInElement)) return;'],
+    /* The scenes board renders several <div class="hss"> stages and has no
+       #hss, so the hook returned before typesetting anything — the board
+       showed raw $$…$$ while the film beside it set it. The clip still finds
+       #hss, so this changes a no-op into a no-op for every existing caller. */
+    ['var root=document.getElementById("hss");', 'var root=document.getElementById("hss")||document.body;'],
   ];
   let jsLegacy = a.js;
   for (const [from, to] of RUNTIME_EDITS) {
     if (jsLegacy.indexOf(from) === -1) { failures++; console.log(`  FAIL  expected legacy runtime text absent: ${from.slice(0, 40)}`); }
     jsLegacy = jsLegacy.split(from).join(to);
   }
-  check('js: every legacy runtime line still present (modulo 2 declared edits)',
+  check(`js: every legacy runtime line still present (modulo ${RUNTIME_EDITS.length} declared edits)`,
     supersetMiss(jsLegacy, b.js, '\n') === '', supersetMiss(jsLegacy, b.js, '\n'));
   check('name/dur/ds unchanged', a.name === b.name && a.dur === b.dur && a.ds === b.ds,
     `${a.name}/${a.dur}/${a.ds} vs ${b.name}/${b.dur}/${b.ds}`);
@@ -162,12 +189,50 @@ if (a.err || b.err) {
     (b.html.match(/class="hss-cardwrap"/g) || []).length === 3);
 }
 
-console.log('\n=== the silent-empty-div fallback must be UNCHANGED ===');
+console.log('\n=== the silent-empty-div fallback is now a hard failure ===');
+/* DELIBERATE CHANGE, and the one assertion in this file that was written to
+ * fail on purpose. It used to read "unknown type still emits an empty wrapper
+ * (no throw added)" — i.e. it pinned the SILENT LOSS as the contract, so that a
+ * future emitter could not quietly start throwing. That was the wrong thing to
+ * protect. An element that renders as <div class="hss-el" id="zz"></div> is a
+ * scene that is correct minus one element, with no error anywhere and a green
+ * gate; every rule in this pipeline exists to make that impossible, and
+ * reel-compile's BUILDABLE list only caught it because a human kept the list in
+ * step with the switch.
+ *
+ * So the baseline behaviour is still asserted (the old emitter DID emit the
+ * empty wrapper — that is the history this test now documents), and the
+ * working-tree behaviour is asserted to be the opposite: a throw, carrying the
+ * offending type, from the one place that knows. */
 const ub = before.compileStoryboard(JSON.parse(JSON.stringify(UNKNOWN)));
-const ua = after.compileStoryboard(JSON.parse(JSON.stringify(UNKNOWN)));
-check('unknown type still emits an empty wrapper (no throw added)',
-  /<div class="hss-el" id="zz"><\/div>/.test(ub.html) && /<div class="hss-el" id="zz"><\/div>/.test(ua.html),
-  `before=${/id="zz"><\/div>/.test(ub.html)} after=${/id="zz"><\/div>/.test(ua.html)}`);
+let uaErr = null;
+try { after.compileStoryboard(JSON.parse(JSON.stringify(UNKNOWN))); } catch (e) { uaErr = e; }
+check('the baseline emitted an empty wrapper for an unknown type (the old silent loss)',
+  /<div class="hss-el" id="zz"><\/div>/.test(ub.html),
+  `baseline html had the empty wrapper: ${/id="zz"><\/div>/.test(ub.html)}`);
+check('an unknown type is now a THROW, not an empty wrapper',
+  !!uaErr, uaErr ? `threw: ${uaErr.message}` : 'compiled without throwing — the default case is gone');
+check('the throw names the offending type and is flagged as unknownType',
+  !!uaErr && /"hologram"/.test(uaErr.message) && uaErr.unknownType === true,
+  uaErr ? `${uaErr.message} (unknownType=${uaErr.unknownType})` : 'no error');
+/* the property reel-compile depends on: the switch is asked, not a list beside
+ * it, so every supported type answers yes and an unsupported one answers no.
+ * If a case were ever added without this agreeing, deferral would silently
+ * mis-classify it in one direction or the other. */
+const KNOWN_TYPES = ['text', 'latex', 'answer', 'cards', 'image', 'shape',
+  'stat', 'card', 'tiles', 'pills', 'credit', 'chart'];
+check('emitterSupportsType says yes to all 12 case labels and no to the unknown one',
+  KNOWN_TYPES.every((t) => after.emitterSupportsType(t) === true) &&
+  after.emitterSupportsType('hologram') === false &&
+  after.emitterSupportsType(undefined) === false,
+  KNOWN_TYPES.filter((t) => after.emitterSupportsType(t) !== true).join(',') || 'all 12 ok');
+check('the probed emitter agrees with the switch for every legacy+buildable type',
+  (() => {
+    // a probe must not throw for a TYPE reason on any real case, and must not
+    // be able to throw a non-unknownType error that emitterSupportsType would
+    // re-raise. Verified by asserting the whole probe set returns a boolean.
+    return KNOWN_TYPES.every((t) => typeof after.emitterSupportsType(t) === 'boolean');
+  })());
 
 console.log('\n=== the five new types now produce real markup ===');
 const NEW = {
@@ -417,6 +482,66 @@ check('an authored latex size reaches the markup', /class="hss-latex" style="col
 check('an unauthored latex element is unchanged (no stray font-size)',
   /class="hss-latex" style="color:#ffffff"/.test(la.html));
 
+console.log('\n=== the scenes page: every scene, settled, and none of them playing ===');
+/* its own fixture, so this section does not depend on where the chart section
+   happens to sit in the file */
+const SC_CHART = {
+  title: 'S', aspect: '16:9', total_duration_ms: 3000,
+  scenes: [
+    { start_ms: 0, end_ms: 1500, elements: [
+      { id: 'q1', type: 'chart', chart: 'columns', at_ms: 0, categories: ['a', 'b'], series: [{ name: 'x', values: [1, 2] }] },
+      { id: 'q2', type: 'chart', chart: 'line', area: true, at_ms: 0, categories: ['a', 'b'], series: [{ name: 'y', values: [1, 2] }] },
+    ] },
+    { start_ms: 1500, end_ms: 3000, elements: [
+      { id: 'q3', type: 'chart', chart: 'donut', at_ms: 0, categories: ['a', 'b'], series: [{ name: 'z', values: [1, 1] }] },
+    ] },
+  ],
+};
+const scClip = after.compileStoryboard(JSON.parse(JSON.stringify(SC_CHART)));
+const scPage = after.buildScenesPage({
+  title: 'S', css: scClip.css, js: scClip.js, theme: scClip.theme,
+  preview: 'reel-preview.html', board: 'design-preview.html',
+  scenes: scClip.sceneHtml.map((html, i) => ({
+    index: i + 1, id: 'sc' + i, start: '0.0', end: '3.0', dur: '3.0',
+    elements: 3, kinds: 'chart', html, bg: '#0e1512', mode: null, ratio: '16 / 9', note: 'settled',
+  })),
+});
+check('the emitter exports buildScenesPage', typeof after.buildScenesPage === 'function');
+check('one stage per scene, in order',
+  (scPage.match(/class="hss"/g) || []).length === scClip.sceneHtml.length &&
+  scPage.indexOf('scene-sc0') < scPage.indexOf('scene-sc1'));
+/* the page carries the FILM's stylesheet and runtime rather than a re-render,
+   which is the whole claim: a component cannot look right here and wrong in
+   the film. */
+check('the page embeds the compiled clip CSS and JS verbatim',
+  scPage.indexOf(scClip.css) !== -1 && scPage.indexOf('function onFrame(t)') !== -1);
+check('the page never starts an animation loop',
+  scPage.indexOf('requestAnimationFrame') === -1);
+check('the page settles using the clip\'s own settle()',
+  /function settle\(root\)/.test(scClip.js) && /_hssSetup\(\);settle\(document\);/.test(scPage));
+/* settle() is `_chart`'s inverse, so every kind _chart can move must have a
+   finished state. A kind added to one and not the other draws a mark the film
+   shows and the preview never does — silently. */
+check('settle handles every animated kind a chart can emit',
+  (function () {
+    const kinds = new Set();
+    const re = /data-k="(col|row|line|area|arc|value)"/g;
+    let m2; while ((m2 = re.exec(scClip.html))) kinds.add(m2[1]);
+    const body = scClip.js.slice(scClip.js.indexOf('function settle(root)'), scClip.js.indexOf('function onFrame'));
+    return kinds.size >= 5 && [...kinds].every((k) => body.indexOf('m==="' + k + '"') !== -1);
+  })());
+/* the clip JS is spliced into a <script> in this page, so a `</script>` inside
+   authored copy would end the block and dump the rest of the runtime as text */
+check('the embedded runtime cannot be closed early by authored copy',
+  after.buildScenesPage({
+    title: 'x', js: 'var a="</' + 'script>";alert(1)', css: '', scenes: [],
+  }).indexOf('</' + 'script>";alert(1)') === -1);
+check('a scene id from the storyboard is escaped on the page',
+  after.buildScenesPage({
+    title: 'x', css: '', js: '',
+    scenes: [{ index: 1, id: '"><img src=x onerror=1>', html: '<div></div>', start: '0', end: '1', dur: '1', elements: 1 }],
+  }).indexOf('<img src=x') === -1);
+
 console.log('\n=== the design board: a style preview that cannot lie about the film ===');
 /* buildDesignPage is the second consumer of the resolved design. Its whole
    claim is "every colour here is the one the film ships", so the invariants
@@ -428,7 +553,12 @@ const BOARD = {
   preview: 'reel-preview.html',
   boards: [
     {
-      mode: 'dark', bg: '#0e1512', theme: { ink: '#f8fafc', 'fill': '#0b6bcb' },
+      mode: 'dark', bg: '#0e1512',
+      theme: {
+        ink: '#f8fafc', 'fill': '#0b6bcb',
+        s1: '#ffeb00', s2: '#7cc4ff', s3: '#ff7a59', s4: '#7bdcb5', s5: '#c9a6ff', s6: '#e8eae9',
+        'chart-grid': '#2e3437', 'on-variant': '#a3a8a6',
+      },
       palette: { brand: '#e7ba55' }, roleUse: { brand: ['fill'] }, ramp: [
         { role: 'display', px: 96, weight: 700, family: 'Inter', used: true },
       ],
@@ -463,6 +593,197 @@ check('the board loads the runtime stylesheet, so samples are the real component
 const boardXss = after.buildDesignPage(Object.assign({}, BOARD, { title: '</h1><script>bad()</' + 'script>' }));
 check('authored copy on the board is escaped like the film\'s',
   !/<script>bad\(\)<\/script>/.test(boardXss));
+/* The mode tag sits ON the stage swatch but its background is the board's white
+   paper, so it must not inherit the stage ink. It did, and the label rendered
+   near-white on near-white — present, correct and invisible. The accessibility
+   tree could not see it either, because the text was there; only a screenshot
+   did. */
+check('the mode tag carries board ink, not the stage ink it sits on',
+  /\.dsp-tag\{[^}]*color:var\(--dsp-ink\)/.test(after.DESIGN_CSS) &&
+  !/class="dsp-tag" style="color:/.test(boardHtmlOut));
+/* the chart roles are only worth declaring if the board shows them: the board
+   is where a designer checks that the palette they wrote is the palette that
+   ships, and a category the board omits is a category nobody reviews. */
+check('every chart theme role the film can set is listed on the board',
+  ['--hss-s1', '--hss-s6', '--hss-chart-grid', '--hss-on-variant'].every(
+    (k) => boardHtmlOut.indexOf('>' + k + '<') !== -1));
+
+console.log('\n=== charts: geometry is computed once, progress is the only runtime state ===');
+/* A chart's danger is not that it throws — it is that it renders NOTHING and
+   exits 0. A value that coerces to NaN produces a bar with no height, and an
+   SVG attribute the parser rejects produces a mark that is simply not there.
+   Every assertion below is about a mark that must EXIST. */
+const CHART = {
+  title: 'C', aspect: '16:9', total_duration_ms: 3000,
+  scenes: [{
+    start_ms: 0, end_ms: 3000,
+    elements: [
+      { id: 'k1', type: 'chart', chart: 'columns', at_ms: 0, categories: ['a', 'b', 'c', 'd'],
+        series: [{ name: 'one', values: [10, 40, 25, 60] }, { name: 'two', values: [5, 20, 30, 15] }] },
+      { id: 'k2', type: 'chart', chart: 'line', area: true, at_ms: 0, categories: ['a', 'b', 'c'],
+        series: [{ name: 's', values: [1, 3, 2] }] },
+      { id: 'k3', type: 'chart', chart: 'donut', at_ms: 0, categories: ['a', 'b'],
+        series: [{ name: 'd', values: [3, 1] }] },
+    ],
+  }],
+};
+const ka = after.compileStoryboard(JSON.parse(JSON.stringify(CHART)));
+check('every series x category renders a bar',
+  (ka.html.match(/class="hss-bar"/g) || []).length === 8, `got ${(ka.html.match(/class="hss-bar"/g) || []).length}, want 8`);
+check('a bar carries the geometry the runtime will move it with',
+  /data-anim="1" data-k="col" data-i="0" data-by="[\d.]+" data-ty="[\d.]+"/.test(ka.html));
+check('a line normalises to pathLength 1, so the runtime never needs PI',
+  /class="hss-chart-stroke"[^>]*pathLength="1" stroke-dasharray="1 1" stroke-dashoffset="1"/.test(ka.html));
+/* the wrapper is `hss-chart-<kind>`, so a polyline named `hss-chart-line` would
+   BE the container class for a line chart: two different elements sharing one
+   name, and the first rule written for either silently hits both. */
+check('the line stroke does not share a class with its own container',
+  !/class="hss-chart-line"/.test(ka.html) && /class="hss-chart hss-chart-line"/.test(ka.html));
+check('an area fill is revealed by an animated clip whose width the runtime owns',
+  /<clipPath id="hss-clip-k2"><rect[^>]*data-k="area" data-w="\d+/.test(ka.html));
+check('a donut segment is a fraction of the ring, not a degree',
+  /data-k="arc" data-frac="0\.75000"/.test(ka.html));
+check('the chart phase travels with the element, as the meter does',
+  /"type":"chart"[\s\S]{0,200}?"min":\{[^}]*\}/.test(ka.js) && /function _chart\(e,t\)/.test(ka.js));
+check('the runtime applies progress per node, so a series can stagger',
+  /_ph\(a,t-ii\*st\)/.test(ka.js));
+/* stacked: the scale must SUM the column. Reading one series would clip the
+   stack — the bars would render, fit, and be wrong. */
+const stk = after.compileStoryboard({
+  title: 'S', aspect: '16:9', total_duration_ms: 1,
+  scenes: [{ start_ms: 0, end_ms: 1, elements: [{ id: 's', type: 'chart', chart: 'columns', stacked: true, at_ms: 0,
+    categories: ['a', 'b'], series: [{ name: 'x', values: [10, 10] }, { name: 'y', values: [30, 30] }] }] }],
+});
+const tops = (stk.html.match(/data-ty="([\d.]+)"/g) || []).map((m) => Number(m.slice(9, -1)));
+check('a stacked column is scaled by the SUM, not by its largest layer',
+  Math.abs(Math.min(...tops) - (458 - 428)) < 1.5, `lowest top ${Math.min(...tops)} (a partial scale would stop near 351)`);
+/* whitelist: this string lands in a fill attribute */
+const paint = after.compileStoryboard({
+  title: 'P', aspect: '16:9', total_duration_ms: 1,
+  scenes: [{ start_ms: 0, end_ms: 1, elements: [{ id: 'p', type: 'chart', chart: 'columns', at_ms: 0,
+    categories: ['a'], series: [{ name: 'n', values: [1], color: '" onload="alert(1)' }] }] }],
+}).html;
+check('a series colour that is not a colour cannot become an attribute',
+  paint.indexOf('onload') === -1 && /fill="var\(--hss-s1,#ffeb00\)"/.test(paint));
+const paintOk = after.compileStoryboard({
+  title: 'P', aspect: '16:9', total_duration_ms: 1,
+  scenes: [{ start_ms: 0, end_ms: 1, elements: [{ id: 'p', type: 'chart', chart: 'columns', at_ms: 0,
+    categories: ['a'], series: [{ name: 'n', values: [1], color: '#FDCB0B' }] }] }],
+}).html;
+check('a hex series colour reaches the mark verbatim', /fill="#FDCB0B"/.test(paintOk));
+/* an unknown kind is a fallback, not an empty div: the schema rejects it, but
+   this file is also loaded directly by test-renderer.html */
+check('an unknown chart kind falls back to columns rather than rendering nothing',
+  /class="hss-chart hss-chart-columns"/.test(after.compileStoryboard({
+    title: 'U', aspect: '16:9', total_duration_ms: 1,
+    scenes: [{ start_ms: 0, end_ms: 1, elements: [{ id: 'u', type: 'chart', chart: 'treemap', at_ms: 0,
+      categories: ['a'], series: [{ name: 'n', values: [1] }] }] }],
+  }).html));
+check('a chart with no series says so instead of rendering an empty frame',
+  /hss-chart-empty/.test(after.compileStoryboard({
+    title: 'E', aspect: '16:9', total_duration_ms: 1,
+    scenes: [{ start_ms: 0, end_ms: 1, elements: [{ id: 'e', type: 'chart', chart: 'columns', at_ms: 0, series: [] }] }],
+  }).html));
+check('a category name is escaped like any other authored copy',
+  !/<img src=x/.test(after.compileStoryboard({
+    title: 'X', aspect: '16:9', total_duration_ms: 1,
+    scenes: [{ start_ms: 0, end_ms: 1, elements: [{ id: 'x', type: 'chart', chart: 'columns', at_ms: 0,
+      categories: ['<img src=x onerror=1>'], series: [{ name: 'n', values: [1] }] }] }],
+  }).html));
+
+console.log('\n=== a reference line is a threshold the chart can DRAW, not one it describes ===');
+/* The sixth film is about a barrier — a number a record had to beat — and
+   could not ask for the one mark that carries it. These are the assertions
+   that keep the mark honest: on the VALUE axis (so `bars` gets a vertical
+   line, not a horizontal rule that reads as another series), drawn even with
+   `grid` off, clamped inside the plot, and never allowed to set the scale. */
+const REFC = {
+  title: 'R', aspect: '16:9', total_duration_ms: 3000,
+  scenes: [{ start_ms: 0, end_ms: 3000, elements: [
+    { id: 'r1', type: 'chart', chart: 'columns', grid: false, at_ms: 0,
+      ref: 15, ref_label: '4:00.00', categories: ['a', 'b', 'c'],
+      series: [{ name: 'one', values: [10, 20, 30] }] },
+    { id: 'r2', type: 'chart', chart: 'bars', at_ms: 0, ref: 15,
+      categories: ['alpha', 'beta'], series: [{ name: 'one', values: [10, 30] }] },
+    { id: 'r3', type: 'chart', chart: 'columns', at_ms: 0,
+      categories: ['a'], series: [{ name: 'one', values: [1] }] },
+    { id: 'r4', type: 'chart', chart: 'line', at_ms: 0, ref: 9, ref_label: '<b>x</b>',
+      categories: ['a', 'b'], series: [{ name: 'one', values: [1, 10] }] },
+  ] }],
+};
+const refHtml = after.compileStoryboard(REFC).html;
+/* matchAll, because `.match(re, /g)` drops the capture groups and a
+   subsequent /[\d.]+/ over the full match picks up the digits in `x1`/`y2`
+   themselves — which is how this got 8 numbers instead of 4. */
+const coords = Array.from(refHtml.matchAll(
+  /class="hss-chart-ref" x1="([\d.]+)" y1="([\d.]+)" x2="([\d.]+)" y2="([\d.]+)"/g
+), (m) => m.slice(1).map(Number));
+check('a threshold is drawn even when the grid is off',
+  (refHtml.match(/class="hss-chart-ref"/g) || []).length === 3,
+  `${(refHtml.match(/class="hss-chart-ref"/g) || []).length} line(s), want 3 (r1 has ref and grid:false)`);
+check('on columns the threshold is HORIZONTAL, at the value on the axis',
+  coords.length >= 1 && coords[0][1] === coords[0][3] && coords[0][1] > 30 && coords[0][1] < 458,
+  JSON.stringify(coords[0]));
+check('on bars it is VERTICAL — a horizontal rule there would read as a series',
+  coords.length >= 2 && coords[1][0] === coords[1][2] && coords[1][1] === 30 && coords[1][3] === 458,
+  JSON.stringify(coords[1]));
+/* r3 sits between two charts that DO draw a threshold, so the slice has to be
+   bounded on both sides or it would find its neighbour's line. */
+const r3body = (refHtml.split('id="r3"')[1] || '').split('id="r4"')[0];
+check('a chart with no ref draws no threshold', r3body.indexOf('hss-chart-ref') === -1);
+/* indexOf rather than a regex for the escaped one: the pattern contains `/`,
+   and a regex literal here would end at the first slash inside `&lt;/b&gt;`. */
+check('the authored label lands beside the line, escaped',
+  /hss-chart-ref-label[^>]*>4:00\.00</.test(refHtml) &&
+  refHtml.indexOf('<b>x</b>') === -1 &&
+  refHtml.indexOf('hss-chart-ref-label') !== -1 &&
+  refHtml.indexOf('&lt;b&gt;x&lt;/b&gt;') !== -1);
+/* The specificity lesson from the value label, applied before it could bite a
+   second time: `.hss-chart-svg text` is (0,1,1) and would beat a lone
+   `.hss-chart-ref-label` (0,1,0), so the threshold's own label would inherit
+   the generic tick ink and the accent would never reach it. */
+check('the threshold label wins the specificity fight with `.hss-chart-svg text`',
+  after.RUNTIME_CSS.indexOf('.hss-chart-svg .hss-chart-ref-label{') !== -1);
+check('the threshold stroke reads the accent, with the ink as its fallback',
+  after.RUNTIME_CSS.indexOf('.hss-chart-ref{stroke:var(--hss-accent,var(--hss-ink,') !== -1);
+
+console.log('\n=== a declared axis floor, because a threshold needs room to be seen ===');
+/* THE GAP THE SIXTH FILM FOUND. The floor was hard-wired to 0 as an
+   editorial rule — a truncated axis is a lie the reader cannot see — which
+   is also what makes a threshold chart impossible: 18 seconds of movement
+   inside a 241-second space draws flat, and the barrier disappears into the
+   line it is meant to separate. The floor became authorable; the ban on
+   silence did not, which is what reel-compile's informational line is for. */
+const FLOOR = {
+  title: 'F', aspect: '16:9', total_duration_ms: 3000,
+  scenes: [{ start_ms: 0, end_ms: 3000, elements: [
+    { id: 'f1', type: 'chart', chart: 'line', at_ms: 0, min: 220, max: 245, ref: 240,
+      ref_label: 'the wall', categories: ['a', 'b'],
+      series: [{ name: 's', values: [241.4, 223.13] }] },
+    { id: 'f2', type: 'chart', chart: 'columns', stacked: true, at_ms: 0, min: 220,
+      categories: ['a'], series: [{ name: 'x', values: [10] }, { name: 'y', values: [30] }] },
+    { id: 'f3', type: 'chart', chart: 'columns', at_ms: 0,
+      categories: ['a'], series: [{ name: 'x', values: [40] }] },
+  ] }],
+};
+const floorHtml = after.compileStoryboard(FLOOR).html;
+const floorRef = Array.from(floorHtml.matchAll(
+  /class="hss-chart-ref" x1="([\d.]+)" y1="([\d.]+)" x2="([\d.]+)" y2="([\d.]+)"/g
+), (m) => m.slice(1).map(Number));
+check('an authored floor puts the threshold where it belongs on the axis',
+  floorRef.length === 1 && Math.abs(floorRef[0][1] - (458 - 0.8 * 428)) < 1,
+  JSON.stringify(floorRef[0]) + ' want y=' + (458 - 0.8 * 428));
+check('the bottom tick prints the FLOOR, not zero',
+  /hss-chart-tick[^>]*>220</.test(floorHtml));
+check('a chart with no floor still starts at zero (nothing truncated by accident)',
+  /hss-chart-tick[^>]*>0</.test(floorHtml.split('id="f3"')[1] || ''));
+/* stacked + floor: every layer shrunk by the same offset stops summing to
+   its own column, so the floor loses and the compiler reports it. */
+const stackTops = (floorHtml.split('id="f2"')[1] || '').split('id="f3"')[0]
+  .match(/data-ty="([\d.]+)"/g) || [];
+check('a stacked chart keeps the zero floor, so its layers still sum',
+  stackTops.length === 2 && Math.abs(Number(stackTops[1].slice(9, -1)) - (458 - 428 * 40 / 40)) < 1.5,
+  JSON.stringify(stackTops));
 
 console.log('\n=== escaping: authored copy cannot become markup ===');
 const XSS = {
@@ -497,6 +818,100 @@ function supersetMiss(oldText, newText, sep, sep2) {
   }
   return missing.length ? `${missing.length} legacy chunk(s) gone, first: ${missing[0]}` : '';
 }
+
+console.log('\n=== the maths renderer is IN THE CLIP, not on the network ===');
+/* A clip is a portable HTML fragment: exported to a bare file, opened with no
+ * server, mounted by hic-frame.js with innerHTML. The three jsDelivr tags this
+ * emitter used to emit satisfy none of those — on a plane, renderMathInElement
+ * never appears, _hssSetup retries forever, and the formula stays literal
+ * $$…$$ with no error and a green gate. `sb.math` is the fix, and it is only
+ * four properties wide, so the assertions are about the SHAPE of it. */
+const crypto = require('crypto');
+const VEND = path.join(ROOT, 'public/vendor/katex');
+const manifest = JSON.parse(fs.readFileSync(path.join(VEND, 'katex.manifest.json'), 'utf8'));
+
+check('every vendored file exists and matches its manifest sha256',
+  Object.entries(manifest.files).every(([name, f]) => {
+    const buf = fs.readFileSync(path.join(VEND, name));
+    return crypto.createHash('sha256').update(buf).digest('hex') === f.sha256;
+  }),
+  Object.keys(manifest.files).join(', '));
+
+const vendCss = fs.readFileSync(path.join(VEND, 'katex.min.css'), 'utf8');
+check('the vendored stylesheet carries all 20 faces as woff2 data URIs',
+  (vendCss.match(/@font-face/g) || []).length === 20 &&
+  (vendCss.match(/data:font\/woff2;base64,/g) || []).length === 20 &&
+  vendCss.indexOf('url(fonts') === -1,
+  `faces=${(vendCss.match(/@font-face/g) || []).length} ` +
+  `inlined=${(vendCss.match(/data:font\/woff2;base64,/g) || []).length} ` +
+  `remote=${(vendCss.match(/url\(fonts/g) || []).length}`);
+
+/* The two films that answer it: two-queens HAS formulae, the-peak has none.
+   Both go through the real reconcile() rather than a hand-built fixture, so
+   what is asserted is the path the gate actually runs. */
+const { __test: rc } = require('./reel-compile.cjs');
+const readFilm = (n) => JSON.parse(fs.readFileSync(
+  path.join(ROOT, 'automation/studio-reel/films', n, 'storyboard.json'), 'utf8'));
+const compileFilm = (n) => {
+  const sb = readFilm(n);
+  const rec = rc.reconcile(sb, sb.design, 'light');
+  return { mathInfo: rec.mathInfo, top: rec.top, html: after.compileStoryboard(rec.top).html };
+};
+
+const mathFilm = compileFilm('two-queens');
+check('the compiler inlines the vendored KaTeX for the film with formulae',
+  !!mathFilm.mathInfo && mathFilm.mathInfo.src === 'vendor/katex' && !!mathFilm.mathInfo.version && mathFilm.mathInfo.bytes > 100000,
+  mathFilm.mathInfo ? `${mathFilm.mathInfo.src}@${mathFilm.mathInfo.version} ${mathFilm.mathInfo.bytes}B` : 'no mathInfo');
+check('a maths clip inlines the renderer and keeps no CDN reference',
+  mathFilm.html.indexOf('<script src="data:text/javascript;base64,') !== -1 &&
+  mathFilm.html.indexOf('@font-face') !== -1 &&
+  mathFilm.html.indexOf('cdn.jsdelivr.net') === -1,
+  `data=${mathFilm.html.indexOf('data:text/javascript;base64') >= 0} ` +
+  `fontFace=${mathFilm.html.indexOf('@font-face') >= 0} ` +
+  `cdn=${mathFilm.html.indexOf('cdn.jsdelivr.net') >= 0}`);
+/* TWO scripts, and katex.min.js must land BEFORE auto-render — the second one
+   reads `window.katex` the moment it runs, and a hoisting order that put it
+   first fails at frame one with no error anywhere. The data: URL holds base64,
+   so the file name is not readable in the markup; assert order by which blob
+   decodes to which source. */
+const dataSrcs = (mathFilm.html.match(/<script src="data:text\/javascript;base64,([A-Za-z0-9+/=]+)">/g) || [])
+  .map((m) => m.replace(/^<script src="data:text\/javascript;base64,/, '').replace(/">$/, ''));
+const decoded = dataSrcs.map((b) => Buffer.from(b, 'base64').toString('utf8'));
+check('the clip carries BOTH scripts, katex before auto-render',
+  decoded.length === 2 &&
+  decoded[0].indexOf('katex') !== -1 &&
+  decoded[1].indexOf('renderMathInElement') !== -1,
+  decoded.map((d) => d.slice(0, 18)).join(' | '));
+check('the inlined CSS is exactly the vendored stylesheet',
+  mathFilm.html.indexOf('<style>' + fs.readFileSync(path.join(VEND, 'katex.min.css'), 'utf8') + '</style>') !== -1);
+
+/* A film with NO formulae pays nothing. The blob is ~722KB and it belongs to
+   the films that need it — a scene list with no `latex` element must not drag
+   a renderer along because the compiler happened to load one. */
+const noMathFilm = compileFilm('the-peak');
+check('a film with no formulae ships none of it',
+  noMathFilm.mathInfo === null && noMathFilm.html.indexOf('data:text/javascript;base64') === -1 &&
+  noMathFilm.html.indexOf('@font-face') === -1,
+  noMathFilm.mathInfo ? `mathInfo=${noMathFilm.mathInfo.src}` : (noMathFilm.html.indexOf('@font-face') >= 0 ? 'the blob leaked into a non-maths clip' : ''));
+
+/* Back-compat: sb.math absent is still the CDN tags. A caller that hands this
+   emitter a storyboard and nothing else — every non-film consumer — must keep
+   getting a renderer it can name, not an empty head. */
+const legacyMath = after.compileStoryboard({
+  title: 'Cdn', aspect: '16:9', total_duration_ms: 1000,
+  scenes: [{ start_ms: 0, end_ms: 1000, elements: [{ id: 'm1', type: 'latex', text: 'x', at_ms: 0 }] }],
+});
+check('without sb.math the emitter falls back to the CDN tags (unchanged)',
+  legacyMath.html.indexOf('https://cdn.jsdelivr.net/npm/katex@0.16.11') !== -1 &&
+  legacyMath.html.indexOf('auto-render.min.js') !== -1);
+
+/* The scenes board renders eight <div class="hss"> stages and has no #hss, so
+   _hssSetup used to return before it ever typed anything. That is why the
+   board showed raw $$…$$ while the film beside it set it — two artefacts
+   disagreeing about the same scene. The fallback is what closes it. */
+check('_hssSetup falls back to document.body, so a board can typeset',
+  fs.readFileSync(path.join(ROOT, EMITTER_REL), 'utf8').indexOf(
+    'document.getElementById("hss")||document.body') !== -1);
 
 console.log('');
 if (failures) {

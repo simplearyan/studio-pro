@@ -24,18 +24,22 @@
  *   4. compile, then assert the clip is structurally sound
  *   5. print the deferred inventory and exit NON-ZERO while it is non-empty
  *
- * Step 5 is the honest gate. The emitter's buildElHtml() has no `default` case,
- * so an element type it does not know silently emits `<div class="hss-el" id=…
- * ></div>` — an empty div, no warning, no error. Half of this film's 22
- * elements are types the emitter has never heard of, and a green exit code
- * over a reel missing them is exactly the failure R1 exists to prevent. The
- * script therefore fails while the inventory is non-empty, and names every
- * item, so the remaining work is enumerated rather than discovered.
+ * Step 3 is answered by the emitter, not by a list here. buildElHtml() used to
+ * have no `default` case, so an element type it did not know silently emitted
+ * `<div class="hss-el" id=…></div>` — an empty div, no warning, no error. This
+ * script kept `BUILDABLE`, a hand-kept copy of the switch's case labels, and
+ * asked that instead; it had already drifted once (the emitter grew `chart`
+ * and nothing forced the copy to follow). The emitter now throws on an unknown
+ * type and exports emitterSupportsType(), which runs the switch itself, so
+ * "can the emitter build this?" and "what does the emitter say?" are the same
+ * question asked once — and step 5's inventory is the emitter's own answer.
  *
  * Usage:
  *   node automation/studio-reel/reel-compile.cjs                 # compile + gate
  *   node automation/studio-reel/reel-compile.cjs --write-clip    # also emit .reel-clip.json
  *   node automation/studio-reel/reel-compile.cjs --write-html    # also emit a standalone reel page
+ *   node automation/studio-reel/reel-compile.cjs --write-scenes  # also emit scenes-preview.html (all scenes, settled)
+ *   node automation/studio-reel/reel-compile.cjs --write-design  # also emit design-preview.html (the style board)
  *   node automation/studio-reel/reel-compile.cjs --only <film>   # pick one film
  *   node automation/studio-reel/reel-compile.cjs --mode dark     # swap design.modes.dark into the tokens
  *
@@ -54,12 +58,6 @@ const vm = require('vm');
 
 const ROOT = path.resolve(__dirname, '../..');
 const EMITTER = path.join(ROOT, 'docs/html-in-canvas/hic-storyboard.js');
-
-/* Element types buildElHtml() actually has a `case` for. Anything else falls
- * through the switch with inner='' and emits an empty wrapper. Read off the
- * emitter's switch, not from the docs — this is the contract that matters. */
-const BUILDABLE = new Set(['text', 'latex', 'answer', 'cards', 'image', 'shape',
-  'stat', 'card', 'tiles', 'pills', 'credit']);
 
 /* Classes that exist in RUNTIME_CSS. e.size becomes .hss-<size>, so a size
  * outside this set silently loses its font-size. hss-title is the largest the
@@ -158,6 +156,13 @@ const THEME_ROLES = {
      `fill`/`fill-ink` are container/on-container: a filled block is a bright
      field carrying dark type, which is the slab-ink trap one level up. */
   'fill-tone': 'fill-tone', fill: 'fill', 'fill-ink': 'fill-ink', outline: 'outline',
+  /* the chart roles. A categorical palette belongs to the design language, not
+     to one chart: five graphics that each picked their own blue are five
+     graphics that do not look like one publication. Declared here so
+     `design.theme_map` can point them at tokens the same way every other role
+     is pointed — which is what makes them swap with `--mode`. */
+  s1: 's1', s2: 's2', s3: 's3', s4: 's4', s5: 's5', s6: 's6',
+  'chart-grid': 'chart-grid', 'on-variant': 'on-variant',
 };
 
 /* The four visual treatments a component can take, and the four components
@@ -177,17 +182,13 @@ const FILL_RADIUS = { pill: 'radius-pill', card: 'radius-card', tile: 'radius-ti
 const LAYOUTS = ['row', 'grid'];
 const ALIGNS = ['start', 'center', 'end'];
 
-/* Why each type cannot be expressed, in the emitter's terms. stat/card/tiles/
-   pills/credit were here until the emitter grew cases for them; anything still
-   listed is genuinely outside its vocabulary. */
-const DEFER_REASON = {
-  stat: 'gradient-filled numeral over an 18px caption, stacked. The emitter\'s text is one size and one colour, with no background-clip: text.',
-  card: 'panel + numeral + caption + an independently animated meter bar. The emitter\'s cards is a row of 56x78 tiles carrying one label each.',
-  tiles: 'a 2x2 grid of emoji glyph + 28px head + 18px body. The emitter has no grid layout and no emoji.',
-  pills: 'a row of outlined 100px-radius chips. The emitter\'s cards are filled tiles with a drop shadow.',
-  credit: 'an absolutely positioned footer. The emitter lays every scene out as one centred flex column (.hss-scene) and has no footer slot.',
-};
-
+/* DEFER_REASON used to live here: a hand-written apology per type the emitter
+ * could not build, keyed by type name. Five of its six entries went stale the
+ * moment the emitter grew cases for those types, and the sixth was keyed to a
+ * type that already built — a table of reasons is a table that can disagree
+ * with the thing it describes. The reason now comes from the emitter's own
+ * error (see emitterSupportsType), which is the code that refuses.
+ */
 /* Recursively find which authored fields the emitter never reads. Kept as data
  * so the note cannot rot into a claim: every one of these is present in the IR
  * and provably discarded by the emitter. */
@@ -338,12 +339,70 @@ function resolveMode(sb, mode) {
   };
 }
 
+/* The emitter, loaded once per process. reconcile() asks the emitter whether it
+ * can build an element type, so it needs the emitter — and reconcile is also
+ * called directly by reel-contrast and reel-extent through __test, which never
+ * went through main()'s single loadEmitter(). Memoised rather than threaded
+ * through a fourth parameter: the answer is a pure function of the file, and a
+ * caller that forgets to pass it would end up asking a list again instead of
+ * the switch. */
+let _emitterApi = null;
+function emitterApi() { return _emitterApi || (_emitterApi = loadEmitter()); }
+
+/* ── the vendored maths renderer ────────────────────────────────────────
+ * Where `design.math.src` points when it is unauthored, and the three files a
+ * clip needs from there. Written by automation/studio-reel/vendor-katex.cjs. */
+const MATH_DEFAULT_SRC = 'vendor/katex';
+const KATEX_FILES = { css: 'katex.min.css', js: 'katex.min.js', render: 'auto-render.min.js' };
+
+/* `design.math.src` is spelled the way the SITE names the folder —
+ * "vendor/katex", which is what Vite serves from public/ — while this script
+ * has to find it on DISK, which is one directory above that URL. Both
+ * spellings resolve, so the author never has to know which side of the
+ * web-root seam they are standing on. */
+function findKatexDist(src) {
+  for (const dir of [path.join(ROOT, 'public', src), path.join(ROOT, src)]) {
+    const files = {};
+    for (const [k, f] of Object.entries(KATEX_FILES)) files[k] = path.join(dir, f);
+    if (Object.values(files).every((f) => fs.existsSync(f))) {
+      /* Summed BEFORE version/bytes are added, so the reduce never stats a
+         field that was added to this very map one line earlier. */
+      files.bytes = Object.values(files).reduce((a, f) => a + fs.statSync(f).size, 0);
+      const mp = path.join(dir, 'katex.manifest.json');
+      files.version = fs.existsSync(mp) ? (JSON.parse(fs.readFileSync(mp, 'utf8')).version || null) : null;
+      return files;
+    }
+  }
+  return null;
+}
+
+/* One <style> plus two data: URLs — the emitter's `sb.math` shape exactly.
+ * The scripts are data: URIs rather than inline <script> bodies because
+ * hic-frame.js mounts clip html with innerHTML, where an inline script never
+ * runs; a data: URL is an EXTERNAL script, so it is hoisted and executed by
+ * the renderer and by a plain document alike, with no server needed. See the
+ * long note in hic-storyboard.js. Base64, so the attribute carries no quote
+ * and no `<` that could break either parse. */
+function inlineKatex(files) {
+  const dataUrl = (f) => '<script src="data:text/javascript;base64,' +
+    fs.readFileSync(f).toString('base64') + '"></script>';
+  return {
+    css: '<style>' + fs.readFileSync(files.css, 'utf8') + '</style>',
+    scripts: [dataUrl(files.js), dataUrl(files.render)],
+  };
+}
+
 function reconcile(sb, designIn, mode) {
   const deferred = [];
   const scenes = [];
   const warnings = [];
   const unsafe = [];
   const informational = [];
+  /* Choices that ARE applied but are invisible unless printed: a non-zero axis
+     floor, most of all. The default is 0 precisely because a truncated axis
+     is a lie the reader cannot see — so a film that lifts it is making an
+     editorial decision the log should show, not a bug the log should hide. */
+  const declared = [];
   /* Declared with the other inventories rather than with the theme block
      below, because the scene loop now reports on it too: a bad `fill` is found
      while walking elements, and a lexical `const` declared further down is in
@@ -474,8 +533,11 @@ function reconcile(sb, designIn, mode) {
       warnings.push(`${sc.id}: ${sc.ambient.length} ambient layer(s) ignored — no decorative-layer concept`);
     }
     for (const e of sc.elements) {
-      if (!BUILDABLE.has(e.type)) {
-        deferred.push({ scene: sc.id, id: e.id, type: e.type, reason: DEFER_REASON[e.type] || 'no emitter case' });
+      /* Asked of the emitter's switch, not of a list here. The reason is the
+         emitter's own message, so the inventory cannot describe a refusal
+         differently from the refusal itself. */
+      if (!emitterApi().emitterSupportsType(e.type)) {
+        deferred.push({ scene: sc.id, id: e.id, type: e.type, reason: emitterApi().unknownTypeError(e.type).message });
         continue;
       }
       const el = { id: e.id, type: e.type, at_ms: e.at_ms || 0 };
@@ -557,6 +619,59 @@ function reconcile(sb, designIn, mode) {
       } else if (e.type === 'pills') {
         el.items = e.items || [];
         el.color = hex;
+      } else if (e.type === 'chart') {
+        /* The first element whose payload is DATA. Every number that reaches
+           the emitter lands in an SVG coordinate, and a coordinate that parses
+           as NaN does not throw — it removes the mark, silently, from a film
+           that still exits 0. So the values are coerced to finite numbers
+           HERE, where a wrong one can be named, rather than in the emitter
+           where it can only be swallowed.
+
+           Series colours resolve against the mode in force, which is what
+           makes a five-colour editorial palette swap with the theme instead
+           of being the one hand-picked hex that does not. */
+        el.chart = e.chart || 'columns';
+        el.title = e.title;
+        el.subtitle = e.subtitle;
+        el.kicker = e.kicker;
+        el.source = e.source;
+        el.unit = e.unit;
+        el.decimals = e.decimals;
+        el.categories = (e.categories || []).map((c) => String(c));
+        el.stacked = !!e.stacked;
+        el.area = !!e.area;
+        el.grid = e.grid;
+        el.legend = e.legend;
+        el.values = e.values;
+        el.dots = e.dots;
+        el.min = e.min;
+        el.max = e.max;
+        if (typeof e.min === 'number' && e.min > 0) {
+          declared.push(`${sc.id}/${e.id}: axis floor ${e.min} — a TRUNCATED axis, declared. ` +
+            `The default is 0 so this cannot happen by accident; the film is choosing it so its threshold is visible.`);
+        }
+        el.series = (e.series || []).map((s) => {
+          const vals = (s.values || []).map((v) => Number(v));
+          if (vals.some((v) => !isFinite(v))) {
+            warnings.push(`${sc.id}/${e.id}: a series value is not a finite number and would drop the mark silently`);
+          }
+          return {
+            name: s.name,
+            values: vals.map((v) => (isFinite(v) ? v : 0)),
+            color: resolveColor(s.color),
+          };
+        });
+        el.segments = (e.segments || []).map((g) => ({ color: resolveColor(g.color) }));
+        /* the marks are a SECOND animation on the same node, exactly like the
+           card's meter: they need their own phase, and `stagger_ms` here is
+           the per-bar delay that is the difference between a chart and a
+           block that changes size */
+        el.chart_in = {
+          type: (e.chart_in && e.chart_in.type) || 'slide',
+          dur_ms: (e.chart_in && e.chart_in.dur_ms) || 1400,
+          stagger_ms: (e.chart_in && e.chart_in.stagger_ms) || 0,
+        };
+        el.chart_at_ms = e.chart_at_ms || 0;
       } else if (e.type === 'credit') {
         el.text = e.text;
         /* `place.bottom` / `place.align` are authored but the emitter pins the
@@ -696,7 +811,18 @@ function reconcile(sb, designIn, mode) {
     if (meterHex) theme.meter = meterHex;
     const accentHex = role('accent');
     if (accentHex) theme.accent = accentHex;
-    for (const k of ['num-a', 'num-b', 'meter-track', 'slab-ink', 'fill', 'fill-ink', 'fill-tone', 'outline']) {
+    /* Filled from THEME_ROLES, not from a second hand-kept list.
+       This was `['num-a', …, 'outline']` — nine names — while THEME_ROLES had
+       twenty. A role could therefore be declared in `theme_map`, validated
+       against the schema, checked against the token table, reported as applied
+       by every diagnostic in this file, and still never reach the film: the
+       emitter would fall back to its own default and the board would show the
+       default too. That is the same defect as `baseBg` and the slab ink — a
+       list maintained beside the thing it must match. Deriving it makes the
+       two impossible to disagree, and a new role cannot be half-added. */
+    const setExplicitly = new Set(['panel', 'ink', 'meter', 'accent']);
+    for (const k of Object.keys(THEME_ROLES)) {
+      if (setExplicitly.has(k) || theme[k] !== undefined) continue;
       const v = role(k);
       if (v) theme[k] = v;
     }
@@ -753,17 +879,38 @@ function reconcile(sb, designIn, mode) {
   }
 
   /* ── MATHS RENDERER ───────────────────────────────────────────────────
-     P9. `latex` emits three CDN tags; an offline export renders raw `$$…$$`
-     with no error and a green gate. The compiler cannot prove the network
-     works, but it CAN refuse to ship a maths film that names no renderer at
-     all — which is what an offline export actually produces. */
-  const hasLatex = scenes.some((sc) => sc.elements.some((e) => e.type === 'latex' || e.type === 'answer'));
-  if (hasLatex) {
-    const src = (design && design.math && design.math.src) || 'cdn:jsdelivr katex@0.16.11';
+     P9. `latex` used to emit three jsDelivr tags; an offline export rendered
+     raw `$$…$$` with no error and a green gate. The compiler cannot prove the
+     network works, and — unlike the original version of this check — it no
+     longer has to guess: `design.math.src` defaults to the KaTeX dist that
+     lives in this repo (public/vendor/katex, written by vendor-katex.cjs), and
+     the renderer is INLINED into the clip so the clip can render with no
+     network at all.
+
+     Only `latex` counts. `answer` used to be listed here too and it is a plain
+     text takeaway with no delimiters — counting it meant the-peak, a film with
+     no formulae at all, was nagged on every compile about a maths renderer it
+     could not use. */
+  const hasMath = scenes.some((sc) => sc.elements.some((e) => e.type === 'latex'));
+  let mathBlob = null;
+  let mathInfo = null;
+  if (hasMath) {
+    const src = (design && design.math && design.math.src) || MATH_DEFAULT_SRC;
     if (typeof src !== 'string' || !src.trim()) {
-      unsafe.push('this film has latex/answer elements but design.math.src is empty — it would export raw `$$…$$`');
+      unsafe.push('this film has latex elements but design.math.src is empty — it would export raw `$$…$$`');
     } else if (/^cdn:/i.test(src)) {
-      informational.push(`design.math.src="${src}" — a network fetch; an OFFLINE export renders raw $$…$$. Point it at a vendored file to render offline.`);
+      informational.push(`design.math.src="${src}" — a network fetch; an OFFLINE export renders raw $$…$$. Point it at a vendored copy ("vendor/katex") to inline it.`);
+    } else {
+      const files = findKatexDist(src);
+      if (!files) {
+        unsafe.push(`design.math.src="${src}" names no KaTeX dist — expected katex.min.css, ` +
+          `katex.min.js and auto-render.min.js under public/${src} (or the repo root). ` +
+          `Run: node automation/studio-reel/vendor-katex.cjs`);
+      } else {
+        mathBlob = inlineKatex(files);
+        mathInfo = { src, version: files.version, bytes: mathBlob.css.length +
+          mathBlob.scripts.reduce((a, s) => a + s.length, 0) };
+      }
     }
   }
 
@@ -775,9 +922,9 @@ function reconcile(sb, designIn, mode) {
      * resolving each mode's surface and token table through the SAME
      * resolver, which is why two-queens' light and dark are provably the same
      * film rather than two lookalikes. */
-  const declared = (design && design.modes) ? Object.keys(design.modes) : [];
+  const modeNames = (design && design.modes) ? Object.keys(design.modes) : [];
   const built = {};
-  for (const name of declared) {
+  for (const name of modeNames) {
     const m = design.modes[name];
     if (!m) continue;
     const tokens = Object.assign({}, design.tokens, m.tokens || {});
@@ -804,7 +951,11 @@ function reconcile(sb, designIn, mode) {
     if (meter) t.meter = meter;
     const accent = roleOf('accent');
     if (accent) t.accent = accent;
-    for (const k of ['num-a', 'num-b', 'meter-track', 'slab-ink', 'fill', 'fill-ink', 'fill-tone', 'outline']) {
+    /* the same derivation as the base theme above, for the same reason: a mode
+       that names a role the hand-kept list forgot would render the base
+       theme's colour under a dark label. */
+    for (const k of Object.keys(THEME_ROLES)) {
+      if (t[k] !== undefined) continue;
       const v = roleOf(k);
       if (v) t[k] = v;
     }
@@ -824,13 +975,20 @@ function reconcile(sb, designIn, mode) {
       bg_image: null,
     };
   }
-  if (declared.length) {
+  if (modeNames.length) {
     top.modes = built;
-    top.mode = built[mode] ? mode : declared[0];
+    top.mode = built[mode] ? mode : modeNames[0];
     top.ui = { theme_toggle: true };
   }
 
-  return { top: Object.assign(top, { scenes, theme, fonts }), deferred, warnings, unapplied, unsafe, informational };
+  return {
+    /* `math` is null unless this film has a `latex` element, so a clip with no
+       formulae carries none of the ~700KB renderer. The emitter falls back to
+       its CDN tags when it is absent, which keeps every non-film caller of
+       compileStoryboard working exactly as before. */
+    top: Object.assign(top, { scenes, theme, fonts, math: mathBlob }),
+    mathInfo, deferred, warnings, declared, unapplied, unsafe, informational,
+  };
 }
 
 /* ── DESIGN BOARD ─────────────────────────────────────────────────────
@@ -890,11 +1048,48 @@ function designBoard(sb, mode, designIn, top, theme) {
     };
   }).filter(Boolean).sort((a, b) => (b.px || 0) - (a.px || 0));
 
+  const bg = (top.modes && top.modes[mode] && top.modes[mode].bg) || top.background || '#0e1512';
+
+  /* The ratio of every token against THIS board's stage.
+
+     Borrowed from reel-contrast rather than reimplemented: a second copy of
+     the WCAG maths is a second thing to get wrong, and it drifts in silence —
+     the same argument that makes `theme_map` a single colour resolver.
+
+     It is a SWATCH-level fact, not a gate. A token used on a panel is not
+     required to clear the stage, so nothing here fails a build; reel-contrast
+     is what fails a build. Getting these in means a reader can see that
+     `outline-var` is 2:1 on the stage and understand why it is only ever a
+     border, instead of the board promising a ratio and printing nothing —
+     which is what it did while the call passed a literal `null`. */
+  const ratioVs = {};
+  const roleRatio = {};
+  try {
+    const { parseColor, contrast } = require('./reel-contrast.cjs');
+    const bgc = parseColor(bg);
+    if (bgc) {
+      const vsBg = (v) => {
+        const c = parseColor(v);
+        return (c && c[3] >= 1) ? +contrast(c.slice(0, 3), bgc.slice(0, 3)).toFixed(2) : null;
+      };
+      for (const name of Object.keys(tokens)) { const r = vsBg(tokens[name]); if (r !== null) ratioVs[name] = r; }
+      /* the resolved roles too: a token's ratio says whether the PIGMENT is
+         legible, the role's says whether the thing the emitter actually paints
+         is. Only the second one is the pairing the film ships. */
+      for (const k of Object.keys(theme)) { const r = vsBg(theme[k]); if (r !== null) roleRatio[k] = r; }
+    }
+  } catch (e) {
+    /* a board with no ratios is worse than one with them and better than a
+       crash: this page is a preview, and the gate that matters is elsewhere */
+  }
+
   return {
     mode,
-    bg: (top.modes && top.modes[mode] && top.modes[mode].bg) || top.background || '#0e1512',
+    bg,
     theme: Object.assign({}, theme),
     palette: tokens,
+    paletteRatio: ratioVs,
+    themeRatio: roleRatio,
     roleUse,
     ramp,
     /* `declared` is the one bit the board cannot infer from empty maps: an
@@ -936,6 +1131,7 @@ function main() {
      because comparing light against dark is the whole point — two files is
      how they drift. */
   const writeDesign = argv.includes('--write-design');
+  const writeScenes = argv.includes('--write-scenes');
   const only = argv.includes('--only') ? argv[argv.indexOf('--only') + 1] : null;
   const mode = argv.includes('--mode') ? argv[argv.indexOf('--mode') + 1] : 'light';
 
@@ -946,7 +1142,7 @@ function main() {
     return 2;
   }
 
-  const { compileStoryboard, buildStandalonePage, buildDesignPage } = loadEmitter();
+  const { compileStoryboard, buildStandalonePage, buildDesignPage, buildScenesPage } = loadEmitter();
   let failed = 0;
 
   for (const film of films) {
@@ -960,7 +1156,7 @@ function main() {
       failed++;
       continue;
     }
-    const { top, deferred, warnings, unapplied, unsafe, informational } = reconcile(sb, resolved.design, mode);
+    const { top, mathInfo, deferred, warnings, declared, unapplied, unsafe, informational } = reconcile(sb, resolved.design, mode);
 
     if (resolved.modes.length) {
       const tag = resolved.swapped && resolved.swapped.length ? resolved.swapped.length : 0;
@@ -977,12 +1173,25 @@ function main() {
     const scenesEmitted = (clip.html.match(/hss-scene/g) || []).length;
     if (scenesEmitted !== top.scenes.length) structural.push(`${scenesEmitted} scenes emitted, ${top.scenes.length} authored`);
 
+    /* ── the maths renderer must actually have landed ──────────────────────
+       This is the check the old design could not make. `design.math.src`
+       could name a renderer, the gate could pass on it, and the clip could
+       still have shipped without one — the two ends of this pipeline did not
+       share a value. `top.math` is built here and spliced by the emitter, so
+       assert both halves: the blob exists AND the clip html carries it. */
+    if (top.math && !/<script src="data:text\/javascript;base64,/.test(clip.html)) {
+      structural.push('design.math.src resolved to an inlined KaTeX, but the clip html carries no data: script — the emitter did not splice sb.math');
+    }
+
     // ── gate 2: every element in the compiler's path must render ─────────
-    // Counts hss-el wrappers that are EMPTY — i.e. buildElHtml fell through its
-    // switch and produced <div class="hss-el" id="…"></div>. Counting
-    // .hss-text instead would only work while text was the only buildable
-    // type, and it silently stopped measuring anything the moment stat/card/
-    // tiles/pills/credit arrived. This asks the question directly.
+    // Counts hss-el wrappers that are EMPTY. buildElHtml now throws rather
+    // than falling out of its switch, so an empty wrapper no longer means
+    // "unknown type" — it means a type that DOES have a case and still built
+    // nothing, e.g. `cards` with an empty item list. That is a different bug
+    // and still a bug, so the count stays; step 3 is what catches the
+    // unknown-type case now. Counting .hss-text instead would only work while
+    // text was the only buildable type, and it silently stopped measuring
+    // anything the moment stat/card/tiles/pills/credit arrived.
     const inPath = top.scenes.reduce((a, s) => a + s.elements.length, 0);
     const wrappers = (clip.html.match(/<div class="hss-el[^"]*" id="[^"]+"[^>]*>/g) || []).length;
     const empty = (clip.html.match(/<div class="hss-el[^"]*" id="[^"]+"[^>]*><\/div>/g) || []).length;
@@ -1015,6 +1224,11 @@ function main() {
     console.log(`  scenes         ${scenesEmitted}/${top.scenes.length} emitted`);
     console.log(`  elements       ${wrappers - empty} rendered, ${empty} empty, ${deferred.length} deferred, ${authored} authored`);
     console.log(`  round trip     ${wrappers + deferred.length}/${authored} accounted for`);
+    if (mathInfo) {
+      const kb = (n) => (n / 1024).toFixed(0) + 'KB';
+      console.log(`  maths          katex@${mathInfo.version || '?'} inlined from "${mathInfo.src}" ` +
+        `— ${kb(mathInfo.bytes)} in this clip's html, no network`);
+    }
 
     if (structural.length) {
       console.log('  STRUCTURAL FAIL:');
@@ -1039,6 +1253,11 @@ function main() {
     if (informational.length) {
       console.log(`  authored but N/A for a film (${informational.length}):`);
       for (const w of informational) console.log(`    - ${w}`);
+    }
+
+    if (declared.length) {
+      console.log(`  DECLARED — applied, and invisible unless printed (${declared.length}):`);
+      for (const d of declared) console.log(`    - ${d}`);
     }
 
     if (warnings.length) {
@@ -1089,6 +1308,54 @@ function main() {
       });
       fs.writeFileSync(outFile, page);
       console.log(`  wrote          ${path.relative(ROOT, outFile)}  (${boards.length} mode${boards.length === 1 ? '' : 's'}: ${boards.map((b) => b.mode).join(', ')})`);
+    }
+    if (writeScenes) {
+      /* One stage per scene, settled and unplayed. The markup is the SAME
+         compiled scene the clip ships — handed over as markup, not re-rendered
+         — so a component cannot look right on this page and wrong in the film.
+         The scene list comes from `top`, the emitter-facing storyboard, because
+         that is what `clip.sceneHtml` was compiled from and the two must be
+         indexed by the same array. */
+      const stageBg = resolved.modes.length ? null : (top.background || sb.background || null);
+      const stageMode = resolved.modes.length ? mode : null;
+      const ratio = top.aspect === '9:16' ? '9 / 16' : (top.aspect === '1:1' ? '1 / 1' : '16 / 9');
+      const scenes = clip.sceneHtml.map((html, i) => {
+        const sc = top.scenes[i];
+        const types = [...new Set((sc.elements || []).map((e) => e.type))].sort();
+        return {
+          index: i + 1,
+          id: sc.id,
+          start: (sc.start_ms / 1000).toFixed(1),
+          end: (sc.end_ms / 1000).toFixed(1),
+          dur: ((sc.end_ms - sc.start_ms) / 1000).toFixed(1),
+          elements: (sc.elements || []).length,
+          kinds: types.join(' '),
+          html,
+          bg: stageBg,
+          mode: stageMode,
+          ratio,
+          note: stageMode ? `settled · not animated · ${stageMode}` : 'settled · not animated',
+        };
+      });
+      const outFile = path.join(dir, 'scenes-preview.html');
+      fs.writeFileSync(outFile, buildScenesPage({
+        title: sb.meta.title,
+        id: sb.meta.id,
+        /* the film's own stylesheet and runtime, unmodified */
+        css: clip.css,
+        js: clip.js,
+        /* the same inlined KaTeX the clip carries: this page embeds the
+           scenes' own markup, so a `$$…$$` formula here would otherwise show
+           up raw while the film shows it set — two artefacts disagreeing
+           about what a scene looks like, which is the whole defect class the
+           boards exist to close. */
+        math: top.math,
+        fonts: top.fonts,
+        scenes,
+        preview: resolved.modes.length > 1 ? `reel-preview-${mode}.html` : 'reel-preview.html',
+        board: 'design-preview.html',
+      }));
+      console.log(`  wrote          ${path.relative(ROOT, outFile)}  (${scenes.length} scene${scenes.length === 1 ? '' : 's'}, settled)`);
     }
   }
 

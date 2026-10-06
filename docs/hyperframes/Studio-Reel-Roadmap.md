@@ -265,11 +265,75 @@ tested against. **Risk if skipped:** the whole format is designed against an ima
       A film with no `design` block gets a board labelled *runtime defaults* rather than a crash.
       `reel-regression.cjs` asserts the board renders one board per mode handed in, carries the
       resolved vars, and escapes authored copy.
-- [ ] **Vendor KaTeX, or gate it.** Three CDN tags injected at compile time; an offline export
-      renders raw `$$…$$` with no error. Related: `_hssSetup` used to latch `_hssInit` *before*
-      checking the library existed, so a `<script>` that resolved after the first `onFrame` lost
-      the maths for the whole clip, silently. Fixed; `reel-regression.cjs` asserts the ordering.
-      See two-queens/NOTES.md §4 and §9 P5.
+- [x] **A chart element** — `chart: columns | bars | line | donut`, with `series`,
+      `categories`, `stacked`, `area`, `grid`, `legend`, `unit`, `decimals`, and a
+      self-contained editorial head (`kicker`/`title`/`subtitle`/`source`). SVG
+      rather than canvas, because a canvas chart is a black box to every gate the
+      pipeline has: `reel-extent` measures boxes and `reel-contrast` measures text
+      nodes, and a rasterised mark is neither. Geometry is computed once at
+      compile time and rides on each node as a `data-*` attribute; the runtime
+      owns only progress, so a chart scrubs and deep-links like the rest of the
+      film. The categorical palette (`s1…s6`) is a THEME role, not a per-chart
+      choice — five graphics that each picked their own blue are five graphics
+      that do not look like one publication. Filing a series colour as theme
+      roles is what makes them swap with `--mode`, and it exposed a real defect:
+      the compiler's theme builder copied from a hand-kept list of nine names
+      while `THEME_ROLES` had twenty, so a declared role could pass the schema,
+      pass the token check, be reported as applied, and never reach the film.
+      Both theme builders now derive from `THEME_ROLES`. `reel-contrast` grew to
+      match — its node pattern matched `<div>`/`<span>` and was blind to SVG
+      `<text>`, so the new film's chart labels alone were 124 unmeasured text
+      nodes.
+- [x] **A scenes board and a richer design board** — `--write-scenes` writes
+      `scenes-preview.html`: every scene, settled, in order, with nothing playing.
+      Each stage is a real `.hss` root carrying the film's own compiled
+      stylesheet and its own compiled scene markup, and the finished state comes
+      from `settle()` — the emitter's own inverse of `_chart`, one copy of the
+      statements shared with the clip. One stage per row at full page width,
+      because that is the only layout where the runtime's `vw` type resolves the
+      way it does in the film. The design board grew the two things it was
+      advertising and not delivering: real WCAG ratios against the stage for
+      every token and every resolved theme role (borrowed from `reel-contrast`,
+      not reimplemented), and the categorical palette drawn by the **real chart
+      renderer** inside the real runtime stylesheet — a strip of six swatches
+      proves six hexes exist, a donut proves a donut draws them.
+- [x] **Vendor KaTeX, and inline it into the clip.** Three CDN tags at compile time meant an
+      offline export rendered raw `$$…$$` with no error. `design.math.src` now defaults to
+      `vendor/katex` (`public/vendor/katex`, written by `automation/studio-reel/vendor-katex.cjs`,
+      katex@0.16.11 pinned) and the emitter splices the dist into the clip: one `<style>` carrying
+      every @font-face as a woff2 data URI, plus two `<script src="data:text/javascript;base64,…">`
+      tags — external on purpose, because `hic-frame.js` mounts clip html with `innerHTML` and an
+      inline script never executes there. Verified offline from `file://`: five of five formulas
+      typeset on the clip page and on the scenes board. A film with no `latex` element ships none
+      of the ~722KB, and `answer` no longer counts as maths. Related: `_hssSetup` used to latch
+      `_hssInit` *before* checking the library existed, so a `<script>` that resolved after the
+      first `onFrame` lost the maths for the whole clip, silently — fixed; and it now falls back
+      to `document.body` so a board with no `#hss` can typeset too. `reel-regression.cjs` asserts
+      all of it. See two-queens/NOTES.md §4 and §9 P5.
+- [x] **Give `buildElHtml` a throwing `default`, and delete `BUILDABLE`.** An unknown
+      `element.type` fell out of the switch with `inner=''` and emitted
+      `<div class="hss-el" id="x"></div>` — a reel correct minus one element, no error, no
+      warning, green gate. `reel-compile` guarded that with `BUILDABLE`, a hand-kept copy of the
+      switch's case labels that had already drifted once (`chart` arrived and nothing forced the
+      copy to follow). The switch now throws `unknownTypeError`, and `emitterSupportsType()`
+      *runs* the switch to answer the compiler's question, so there is one list and it cannot go
+      stale; the deferred inventory carries the emitter's own message. `reel-regression.cjs`'s
+      "unknown type still emits an empty wrapper" assertion was deliberately reversed — it was
+      pinning the silent loss as the contract — and the baseline is still asserted beside it so
+      the history stays legible.
+- [x] **Measure contrast in a real browser; drop the tabulated cascade.** `reel-contrast.cjs`
+      hand-read compiled markup and resolved colour through six tables (`HOST_SURFACE`,
+      `FILL_SURFACE`, `FILL_INK`, `CSS_INK`, `SVG_PX`, `TONAL_INK_MIX`, `TEXT_ALPHA`) plus
+      `assertEmitterContract()` to check them against `RUNTIME_CSS`. They enumerated what the
+      emitter *did*, so a new component was silent rather than wrong — the same failure mode as
+      `BUILDABLE`. It now opens each film's standalone page over CDP, lifts the animation, and
+      asks `getComputedStyle`: inherited custom properties, inline styles, `color-mix()`,
+      `[data-mode]` rules and the authored ramp's real `font-size` all resolve for free. The
+      WCAG maths stays in Node, because `reel-compile` borrows it for the design board's chips.
+      289 nodes measured, 28 transparent/gradient ink skipped, 0 failing. The launcher moved to
+      `cdp.cjs`, shared with `reel-extent`. What it still cannot see — a node under a
+      `background-image` — is **counted** (133 today) rather than passed: sampling the painted
+      pixel from one screenshot per film is what would close that.
 - [x] Stop reporting `design.hover` as a gate failure. A video has no hover; it is red on all
       four films forever and trains the reader to ignore the red. Moved beside
       `IGNORED_BY_EMITTER` as informational. `reel-compile.cjs` now **exits 0** on all four films.

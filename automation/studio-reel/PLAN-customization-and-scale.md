@@ -82,15 +82,29 @@ node automation/studio-reel/reel-contrast.cjs --min 7      # AAA-ish
   width — otherwise the same element passes at 1920 and fails at 512.
 - **Opacity is composited, not ignored.** `.hss-credit` is drawn at 0.75,
   `.hss-tile-body` at 0.74. A 4.6:1 pair drawn at 0.74 composites under 3:1.
-- **Host surface is resolved per class**, and an inline background wins — the
-  brutalist name-slab is an `.hss-text` with its own background, and measuring
-  it against the stage reports 1:1 for a perfectly legible heading.
+- **Host surface is resolved by the browser**, not enumerated. An inline
+  background wins, a filled variant wins over the class default, and
+  `color-mix()` resolves — because these come from `getComputedStyle` on the
+  real page rather than from a table of the emitter's rules. The brutalist
+  name-slab is an `.hss-text` with its own background, and measuring it
+  against the stage reports 1:1 for a perfectly legible heading.
 - **Gradient numerals are skipped and counted**, so an empty result can never
   pass for a pass.
-- **It validates its own assumptions.** The cascade it depends on is
-  tabulated, and `assertEmitterContract()` compares those numbers against
-  `RUNTIME_CSS` on every run. If someone changes an opacity, the gate says the
-  gate is wrong rather than quietly measuring the wrong surface.
+- **It measures in a real browser, via CDP.** The gate used to hand-read
+  compiled markup and tabulate the cascade — `HOST_SURFACE`, `FILL_SURFACE`,
+  `FILL_INK`, `CSS_INK`, `SVG_PX`, `TONAL_INK_MIX`, `TEXT_ALPHA`, plus
+  `assertEmitterContract()` to check the tables still matched `RUNTIME_CSS`.
+  Those six tables enumerated what the emitter *did*, so they were only ever as
+  true as they were written, and a new component was silent rather than wrong.
+  They are gone. `getComputedStyle` resolves the cascade that shipped —
+  inherited custom properties, inline styles, `color-mix()`, `[data-mode]`
+  rules, the authored ramp's real `font-size` — and the WCAG maths stayed in
+  Node, because `reel-compile` borrows it for the design board's chips.
+- **What it cannot see, it counts.** A `background-image` has no colour to
+  read, so nodes under a gradient are measured against the nearest opaque
+  colour beneath it and reported as `on a background-image` rather than
+  silently passed. 133 of 289 today, all of them dark washes over a dark
+  stage; sampling the painted pixel from a screenshot is what would close it.
 
 Validated against a browser at 1920 × 1080: **exact agreement** on both
 failing films before the fixes, and on both after.
@@ -226,12 +240,17 @@ not its start, where a `slide` entrance is legitimately off-stage and reporting
 that would make the gate useless. `.hss` is `overflow:hidden`, so an overflowed
 element is silently cropped, and that is the whole failure this exists for.
 
-Why a browser and not Node, when every other gate here is pure Node: colour
-resolution is a closed set, which is why `reel-contrast` can tabulate the
-cascade and run in CI. **Geometry is not** — text wraps, fonts substitute, a
-grid resolves. Tabulating layout would mean reimplementing it, and a
-reimplementation that disagrees with Chromium reports overflows that do not
-exist while missing the ones that do.
+Why a browser and not Node, when every other gate here is pure Node: **neither
+of these can be tabulated.** `reel-contrast` used to tabulate colour — six
+tables of the emitter's rules — and it has since been rewritten to drive a
+browser for exactly the reason below. Geometry was there from the start: text
+wraps, fonts substitute, a grid resolves. Tabulating layout would mean
+reimplementing it, and a reimplementation that disagrees with Chromium reports
+overflows that do not exist while missing the ones that do.
+
+Both gates now share `cdp.cjs` for finding Chrome and speaking the protocol;
+each keeps its own question, which is genuinely different: one asks where a box
+ends, the other asks what colour a glyph paints.
 
 **Zero dependencies, on purpose.** Headless Chrome over the DevTools Protocol,
 using Node 22's built-in `fetch` and `WebSocket`, launched with
@@ -328,13 +347,33 @@ and nobody asks why.
 Informational, beside `IGNORED_BY_EMITTER`. `reel-compile.cjs` now **exits 0**
 on all four films — a gate with nothing red to say should say so.
 
-### P9 — Vendor KaTeX, or gate it — **shipped (gated; vendoring not)**
-A film with `latex`/`answer` elements and an empty `design.math.src` is a hard
-failure, because that is exactly what an offline export produces: raw `$$…$$`
-with no error and a green gate. A `cdn:` src is informational — the compiler
-cannot prove the network works, and a gate that pretends otherwise is worse
-than one that says what it does not know. **Vendoring KaTeX is still open**;
-what shipped is the gate that says so.
+### P9 — Vendor KaTeX — **shipped (vendored AND inlined)**
+A film with `latex` elements and an empty `design.math.src` is a hard failure,
+because that is exactly what an offline export produces: raw `$$…$$` with no
+error and a green gate. A `cdn:` src stays informational — the compiler cannot
+prove the network works, and a gate that pretends otherwise is worse than one
+that says what it does not know.
+
+Vendoring is done, and the design changed on the way. `design.math.src`
+**defaults to `vendor/katex`** — the dist at `public/vendor/katex`, written by
+`automation/studio-reel/vendor-katex.cjs` (katex@0.16.11, pinned, with all 20
+@font-face rules rewritten to carry their woff2 face as a base64 data URI and
+the woff/ttf fallbacks dropped, because a clip is a portable fragment and has no
+`fonts/` directory to bring along).
+
+The compiler reads those three files and hands them to the emitter as `sb.math`,
+which splices **one `<style>` and two `<script src="data:text/javascript;base64,…">`
+into the clip**. Data: URLs rather than inline `<script>` bodies, and that is
+load-bearing: `hic-frame.js` mounts clip html with `innerHTML`, where an inline
+script **never executes** — only external `<script src>` tags are hoisted. A
+data: URL is external, so the same markup runs through the renderer *and* from
+`file://` with no server, which is what "offline export" has to mean to be true
+(verified in headless Chrome: all five formulas typeset on the clip page *and*
+on the scenes board, with zero network).
+
+Only `latex` triggers it. `answer` used to be counted here and has no
+delimiters, so the-peak — a film with no formulae at all — was nagged about a
+renderer it could not use. A film that has none now ships none of the ~722KB.
 
 The related latch bug is fixed: `_hssSetup` probes `renderMathInElement`
 *before* latching `_hssInit`, so a `<script>` resolving after the first
@@ -391,7 +430,8 @@ storyboard.json
   ├─ reel-compile.cjs    IR → emitter contract; modes, type scale, tokens, fills
   │    ├─ --write-clip    reel-clip[-<mode>].json   the IR the page plays
   │    ├─ --write-html    reel-preview[-<mode>].html  the film, animated
-  │    └─ --write-design  design-preview.html        the STYLE, static   ← new
+  │    ├─ --write-scenes  scenes-preview.html        every SCENE, static   ← new
+  │    └─ --write-design  design-preview.html        the STYLE, static     ← new
   ├─ reel-fidelity.cjs   every element and scene boundary survived
   ├─ reel-contrast.cjs   every text pair meets WCAG AA
   ├─ reel-extent.cjs     every element fits the stage it ships into         ← new
@@ -421,11 +461,60 @@ renders the component samples inside the real `RUNTIME_CSS` with the real
 A film with no `design` block still gets a board — labelled *runtime defaults*
 — rather than a crash, which is what the first run of this did.
 
+### The scenes board — `scenes-preview.html` (shipped)
+
+The preview answers *how does it move*, the design board answers *what is the
+design system*. This answers the third question: *what does each scene actually
+look like?* Every scene, settled, in order, with nothing playing.
+
+It is a contact sheet, not a screenshot and not a smaller preview. Each stage is
+a real `.hss` root carrying the **same compiled stylesheet** and the **same
+compiled scene markup** the film ships, and the finished state comes from
+`settle()` — the emitter's own inverse of `_chart`, sharing one copy of the
+statements. So a chart cannot be half-drawn here and full in the film, and a
+component cannot look right here and wrong there.
+
+One stage per row at full page width, which is the only layout where the
+runtime's `vw`-based type resolves the way it does in the film. Two stages side
+by side would each be half a viewport wide and every piece of type inside them
+would be twice the size it should be — a contact sheet that quietly
+misrepresents every slide on it.
+
+### The chart element — `columns` / `bars` / `line` / `donut` (shipped)
+
+The IR could carry a number but not a series, so a data story had no way to draw
+one. `chart` is a new element type; the fifth film is built almost entirely out
+of it.
+
+**SVG, not canvas.** The reference implementation is a canvas animator and
+canvas is the obvious choice. It is also a black box to every gate here:
+`reel-extent` measures boxes, `reel-contrast` measures text nodes, and a
+rasterised chart is neither. Inline SVG is DOM — and the decision paid for
+itself immediately, because `reel-contrast` then measured **124** text nodes on
+the new film instead of 13.
+
+**Geometry at compile time, progress at runtime.** Every number needed to move a
+bar rides on the bar as a `data-*` attribute the emitter wrote. The runtime knows
+only how far through the animation it is, never what the scale is. A second
+geometry model in the SB literal is two answers to one question, and they diverge
+the first time one is edited — the meter reads `data-pct` for the same reason.
+
+**The chart owns its headline.** `title` / `subtitle` / `kicker` / `source` live
+on the element, not as sibling `text` elements. As siblings they can be reordered
+or edited apart, and a number ends up under a sentence describing a different
+number. A number without its provenance is the thing a data story exists to fix.
+
+**The categorical palette is a theme role** (`s1…s6`, `chart-grid`,
+`on-variant`). Five graphics that each picked their own blue are five graphics
+that do not look like one publication — a fact about the *design*, not about any
+one `series` entry.
+
 Every gate reports what it did **not** check, and the ones that could be wrong
-about the emitter say so instead of measuring anyway: `reel-contrast` asserts
-its tabulated cascade against `RUNTIME_CSS`, `reel-schema` asserts its keyword
-coverage against the schema, `reel-extent` reports the stage colour it actually
-measured. A gate that cannot fail is indistinguishable from a gate that passed.
+about the emitter say so instead of measuring anyway: `reel-contrast` names
+every node it could not sample because it sits on a `background-image`,
+`reel-schema` asserts its keyword coverage against the schema, `reel-extent`
+reports the stage colour it actually measured. A gate that cannot fail is
+indistinguishable from a gate that passed.
 
 **The rule that makes it scale:** the emitter never guesses. If a design does
 not declare a role, the gate fails rather than falling back to a token name
@@ -435,9 +524,6 @@ declaration*. Defaults are for the first film; after that they are debt.
 
 ### Still open
 
-- **Vendor KaTeX.** Gated, not fixed; an offline export still renders raw
-  `$$…$$` if the CDN is unreachable. Point `design.math.src` at a local file
-  and the gate goes quiet.
 - **`elements[].rotate`.** Discarded, and now with the reason written down:
   the runtime *owns* `transform` on every frame, so an authored angle would be
   overwritten sixty times a second. It needs a composite, not a declaration.
@@ -453,3 +539,16 @@ declaration*. Defaults are for the first film; after that they are debt.
   by hand and its output is checked into each film directory; nothing
   regenerates it on build, so it can drift from `storyboard.json` the moment a
   token changes and nobody re-runs the compiler.
+- **`series` is uncapped.** Six chart colours are defined; a seventh series
+  wraps back to `--hss-s1` and silently repeats a colour. The schema should
+  reject a series count above the palette size rather than let a chart imply a
+  distinction it does not draw.
+- **No reference line on a chart.** "2.1 is replacement" wants a rule across the
+  plot at a value the axis can name. `min`/`max` set the scale; there is no
+  `mark_at`.
+- **The donut's legend is drawn twice** — SVG swatch rows beside the ring and
+the HTML legend above the plot. `legend: false` suppresses the second, but the
+  default is wrong for donut specifically.
+- **Fonts in the fifth film are stand-ins.** VOX's Balto and Alright Sans are
+  licences, so the film ships Archivo and Libre Franklin and says so in its
+  Design.md rather than shipping a lookalike silently.
