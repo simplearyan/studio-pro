@@ -532,6 +532,11 @@ function reconcile(sb, designIn, mode) {
     if (sc.ambient && sc.ambient.length) {
       warnings.push(`${sc.id}: ${sc.ambient.length} ambient layer(s) ignored — no decorative-layer concept`);
     }
+    /* Every id in THIS scene. A shape annotates a sibling: the overlay is
+       moved into the target's box at setup, so `of` naming a missing id or an
+       element of another scene would move the mark into a host that hides on
+       a different clock — rendered, and wrong, with nothing reporting it. */
+    const sceneIds = new Set(sc.elements.map((x) => x.id));
     for (const e of sc.elements) {
       /* Asked of the emitter's switch, not of a list here. The reason is the
          emitter's own message, so the inventory cannot describe a refusal
@@ -597,7 +602,13 @@ function reconcile(sb, designIn, mode) {
            can hold — the full two-stop ramp is still unrepresented. */
         el.value = e.value;
         el.label = e.label;
-        el.num_color = hex;
+        /* The numeral and the caption are TWO colours: the-peak authors a brand
+           numeral over a muted caption, and a single `hex` for both silently
+           painted the numeral in the caption's ink — while the schema kept
+           claiming num_color was APPLIED. Resolve it against the film's own
+           tokens, fall back to the caption colour so an unauthored stat is
+           unchanged. */
+        el.num_color = resolveColor(e.num_color) || hex;
         el.color = hex;
       } else if (e.type === 'card') {
         /* Sibling cards share a `group` so the emitter wraps them in one row.
@@ -678,6 +689,50 @@ function reconcile(sb, designIn, mode) {
            footer to bottom-centre; recorded so the loss is not silent */
         if (e.place && (e.place.bottom != null || e.place.align)) {
           warnings.push(`${e.id}: place.bottom/align ignored — the emitter pins the credit to bottom-centre`);
+        }
+      } else if (e.type === 'shape') {
+        /* The annotation marks. The KIND vocabulary lives in the emitter —
+           the CSS it can actually draw — and is asked the same way the type
+           list is, so an unknown kind defers with the emitter's own message
+           instead of rendering the default border nobody drew.
+
+           The rest of this branch exists because a mark without a target
+           draws NOTHING: the wrapper is an in-flow zero-height div, so
+           `circle` with no `of` renders an invisible box and the film looks
+           complete minus one annotation. That is the silent-loss class this
+           pipeline exists to remove, so it is `unapplied` (a failed build
+           with the id named), and the element is not passed on. */
+        const api = emitterApi();
+        const kind = e.shape || 'box';
+        if (!api.emitterSupportsShape(kind)) {
+          deferred.push({ scene: sc.id, id: e.id, type: e.type, reason: api.unknownShapeError(kind).message });
+          continue;
+        }
+        if (!e.of) {
+          unapplied.push(`${sc.id}/${e.id} — a "${kind}" mark with no of: target draws nothing (a scene is a centred column; a mark can only attach to an element)`);
+          continue;
+        }
+        if (e.of === e.id) {
+          unapplied.push(`${sc.id}/${e.id} — of points at the mark itself`);
+          continue;
+        }
+        if (!sceneIds.has(e.of)) {
+          unapplied.push(`${sc.id}/${e.id} — of "${e.of}" is not an element of this scene; an overlay moved into another scene's host hides on that scene's clock`);
+          continue;
+        }
+        el.shape = kind;
+        el.color = hex;
+        el.of = e.of;
+        if (kind === 'arrow') {
+          const sides = Object.keys(api.ARROW_SIDES);
+          const side = e.side !== undefined && e.side !== null && e.side !== '' ? e.side : 'left';
+          if (!sides.includes(side)) {
+            unapplied.push(`${sc.id}/${e.id} — ${api.unknownArrowSideError(side).message}`);
+            continue;
+          }
+          el.side = side;
+        } else if (e.side !== undefined && e.side !== null && e.side !== '') {
+          unapplied.push(`${sc.id}/${e.id} — side is only defined for an arrow mark, not "${kind}"`);
         }
       }
       /* Per-element box: a design system's radius and measure scale has to

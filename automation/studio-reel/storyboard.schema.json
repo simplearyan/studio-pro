@@ -278,10 +278,10 @@
     },
 
     "entrance": {
-      "description": "APPLIED except `ease` and `type: slot`. The runtime hardcodes three curves (ease-out, back, else fade), so every authored cubic-bezier is discarded and reported; `slot` falls through to the fade branch and loses `from_scale`. Animations are a pure function of t — never a wall clock and never a CSS transition — or scrub, deep links and the exporter disagree with each other.",
+      "description": "APPLIED except `ease` and `type: slot`. The runtime hardcodes three curves (ease-out, back, else fade), so every authored cubic-bezier is discarded and reported; `slot` falls through to the fade branch and loses `from_scale`. `draw` is the shape mark's own entrance: the host holds still at full opacity while the stroke or wipe carries the phase, so the mark draws itself on its own timing — on a non-shape it pins visible with no motion, which makes it a shape-only entrance rather than a broken one. Animations are a pure function of t — never a wall clock and never a CSS transition — or scrub, deep links and the exporter disagree with each other.",
       "type": "object",
       "properties": {
-        "type": { "enum": ["fade", "slide", "pop", "slot"] },
+        "type": { "enum": ["fade", "slide", "pop", "slot", "draw"] },
         "start_ms": { "type": "number" },
         "dur_ms": { "type": "number" },
         "from_x": { "type": "number" },
@@ -443,8 +443,16 @@
           "additionalProperties": false
         },
 
-        "shape": { "type": "string", "description": "APPLIED for shape." },
-        "of": { "type": "string", "description": "APPLIED for shape — the id this shape overlays." },
+        "shape": {
+          "type": "string",
+          "enum": ["box", "underline", "dbl-underline", "circle", "arrow", "highlight"],
+          "description": "APPLIED for shape — the mark. `box` and `underline` are CSS borders (the two legacy kinds); `dbl-underline` is the double rule that draws itself under the target; `circle` rings its target with a stroke that draws on; `arrow` is a fixed-size curved pointer coming from `side`; `highlight` is a marker swipe wiped left to right. Every kind requires `of`. The emitter's own vocabulary is the contract — an unknown kind defers the element with the emitter's message, and this enum is the authoring-side convenience, exactly like `type`."
+        },
+        "side": {
+          "enum": ["left", "right", "top", "bottom"],
+          "description": "APPLIED for shape (arrow only) — which edge the arrow comes from, default `left`. left/right reach across the scene's side margins, top/bottom across the gap above and below; on any other kind it is reported and dropped."
+        },
+        "of": { "type": "string", "description": "APPLIED for shape — the id of the element this mark annotates. Required for every kind: the mark's wrapper is moved into the target's own box at setup and positioned around it, so a shape with no target is a mark that draws nothing, which reel-compile reports rather than renders." },
         "src": { "type": "string", "description": "APPLIED for image." },
 
         "width": { "type": "number", "description": "DISCARDED. The stage is a flow layout; there is no width to set. Use max_width." },

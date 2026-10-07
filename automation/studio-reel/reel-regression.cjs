@@ -913,6 +913,178 @@ check('_hssSetup falls back to document.body, so a board can typeset',
   fs.readFileSync(path.join(ROOT, EMITTER_REL), 'utf8').indexOf(
     'document.getElementById("hss")||document.body') !== -1);
 
+console.log('\n=== annotation marks: a shape draws itself, or it does not ship ===');
+/* The annotation film's vocabulary — circle / arrow / highlight — sits on
+   top of the SAME machinery the charts use (data-anim nodes, a phase, the
+   settle pass), and the two failure modes it must not have are: a mark that
+   renders as the default border because the kind was misspelled, and a mark
+   that renders NOTHING because it has no target. Both are asserted here,
+   emitter-side AND through reel-compile's reconcile, because the emitter can
+   refuse while the compiler still passes the element on. */
+const ANNO = {
+  title: 'Anno', aspect: '16:9', total_duration_ms: 3000,
+  scenes: [{ start_ms: 0, end_ms: 3000, elements: [
+    { id: 't1', type: 'text', size: 'title', color: '#131720', text: 'Ring me', at_ms: 0, in: { type: 'fade', dur_ms: 400 } },
+    { id: 'c1', type: 'shape', shape: 'circle', of: 't1', color: '#2563eb', at_ms: 500, in: { type: 'draw', dur_ms: 800 } },
+    { id: 'a1', type: 'shape', shape: 'arrow', of: 't1', color: '#f43f5e', side: 'right', at_ms: 700, in: { type: 'draw', dur_ms: 900 } },
+    { id: 'h1', type: 'shape', shape: 'highlight', of: 't1', color: '#fde68a', at_ms: 900, in: { type: 'draw', dur_ms: 700 } },
+  ] }],
+};
+const an = after.compileStoryboard(JSON.parse(JSON.stringify(ANNO)));
+check('an overlay mark carries the class that positions it around its target',
+  /hss-shape-host hss-overlay hss-overlay-ring" id="c1"/.test(an.html));
+check('the circle is an SVG ring normalised to pathLength 1, ready to draw',
+  /<ellipse[^>]*pathLength="1"[^>]*data-k="draw"/.test(an.html));
+check('the arrow keeps its side as a class and draws from one path',
+  /hss-arrow-svg hss-arrow-right/.test(an.html) &&
+  /hss-arrow-path[^>]*data-k="draw"/.test(an.html));
+/* The FIRST version of this shipped with CSS rules for svg.hss-arrow-l/r/t/b
+   while the markup said hss-arrow-left/right/top/bottom — so the horizontal
+   anchor never matched and the arrow drew ACROSS the words it pointed at,
+   with every other gate green. A styled class and an emitted class are one
+   contract; assert both halves together. */
+check('every arrow side the emitter emits has a matching anchor rule',
+  ['left', 'right', 'top', 'bottom'].every((s) =>
+    after.RUNTIME_CSS.indexOf('svg.hss-arrow-' + s + '{') !== -1),
+  ['left', 'right', 'top', 'bottom'].filter((s) =>
+    after.RUNTIME_CSS.indexOf('svg.hss-arrow-' + s + '{') === -1).join(','));
+check('the highlight is a width wipe, not a transform',
+  /<i class="hss-hl" data-anim="1" data-k="hl"><\/i>/.test(an.html));
+/* The double rule: a BOTTOM strip of two rules, each its own draw node —
+   horizontal lines tolerate the x-stretch the way the circle does, and the
+   fixed 12px height keeps them on the baseline instead of scaling with the
+   text box. */
+const dbl = after.compileStoryboard({ title: 'D', aspect: '16:9', total_duration_ms: 2000,
+  scenes: [{ start_ms: 0, end_ms: 2000, elements: [
+    { id: 't', type: 'text', size: 'title', color: '#123456', text: 'Rule me', at_ms: 0, in: { type: 'fade', dur_ms: 400 } },
+    { id: 'd1', type: 'shape', shape: 'dbl-underline', of: 't', color: '#f59e0b', at_ms: 500, in: { type: 'draw', dur_ms: 800 } },
+  ] }],
+});
+check('the double underline is two draw-on rules in a fixed-height bottom strip',
+  (dbl.html.match(/class="hss-dbl"[^>]*>[\s\S]*?data-k="draw"/g) || []).length === 1 &&
+  (dbl.html.match(/data-k="draw"/g) || []).length === 2 &&
+  /<line x1="1" y1="3" x2="99" y2="3"/.test(dbl.html) &&
+  /<line x1="1" y1="9" x2="99" y2="9"/.test(dbl.html) &&
+  after.RUNTIME_CSS.indexOf('.hss-dbl{position:absolute') !== -1,
+  `${(dbl.html.match(/data-k="draw"/g) || []).length} draw node(s)`);
+/* An abs-positioned SVG is a REPLACED element: with left+right and no
+   width, it sizes to its viewBox (100px!) and right is ignored — the strip
+   measured 100px under a 260px headline until width:100% was written. The
+   rule is asserted WITH its width, because the position half alone looks
+   complete and measures wrong. */
+check('the double-rule strip has an explicit width (a viewBox is not a width)',
+  /\.hss-dbl\{[^}]*width:100%/.test(after.RUNTIME_CSS));
+check('the mark draws on its own phase — the shape entrance — and settle() finishes it',
+  /function _draw\(e,t\)/.test(an.js) && /_draw\(e,tL\)/.test(an.js) &&
+  /type==="draw"/.test(an.js) && /m==="draw"/.test(an.js) && /m==="hl"/.test(an.js));
+check('each overlay is moved into its target box at setup, once',
+  (an.js.match(/appendChild/g) || []).length === 3,
+  `${(an.js.match(/appendChild/g) || []).length} appendChild patch(es), want 3`);
+let kindErr = null;
+try { after.compileStoryboard({ title: 'x', aspect: '16:9', total_duration_ms: 1,
+  scenes: [{ start_ms: 0, end_ms: 1, elements: [{ id: 'z', type: 'shape', shape: 'sparkle', of: 't1' }] }] }); }
+catch (e) { kindErr = e; }
+check('an unknown shape KIND throws from the switch, flagged like the type default',
+  !!kindErr && kindErr.unknownShape === true && /"sparkle"/.test(kindErr.message),
+  kindErr ? kindErr.message : 'compiled without throwing');
+let sideErr = null;
+try { after.compileStoryboard({ title: 'x', aspect: '16:9', total_duration_ms: 1,
+  scenes: [{ start_ms: 0, end_ms: 1, elements: [
+    { id: 't', type: 'text', size: 'title', text: 'x', at_ms: 0 },
+    { id: 'z', type: 'shape', shape: 'arrow', of: 't', side: 'diagonal' }] }] }); }
+catch (e) { sideErr = e; }
+check('an unknown arrow SIDE throws too — a silently-defaulted arrow is a wrong arrow',
+  !!sideErr && sideErr.unknownSide === true && /"diagonal"/.test(sideErr.message),
+  sideErr ? sideErr.message : 'compiled without throwing');
+check('emitterSupportsShape answers from the builder, like emitterSupportsType',
+  ['box', 'underline', 'dbl-underline', 'circle', 'arrow', 'highlight'].every((k) => after.emitterSupportsShape(k) === true) &&
+  after.emitterSupportsShape('sparkle') === false &&
+  after.emitterSupportsType('shape') === true && after.emitterSupportsType('hologram') === false);
+/* The legacy border kinds must not have gained a class: the byte-identity
+   section above is the real proof for box/underline-without-target, and this
+   is the same fact stated where a future reader looks for it. */
+const bareShape = after.compileStoryboard({ title: 'B', aspect: '16:9', total_duration_ms: 1,
+  scenes: [{ start_ms: 0, end_ms: 1, elements: [{ id: 's1', type: 'shape', shape: 'underline', color: '#6ed9b1' }] }] }).html;
+check('a legacy shape with no target keeps its exact old markup',
+  bareShape.indexOf('hss-overlay') === -1 &&
+  /<div class="hss-el hss-shape-host" id="s1"><div class="hss-shape hss-shape-underline" style="color:#6ed9b1"><\/div>/.test(bareShape));
+
+console.log('\n=== reconcile refuses marks that would draw nothing ===');
+/* The emitter can refuse a KIND, but only the compiler knows the film: an
+   overlay aimed at a missing id or an element of another scene renders a
+   real mark on the wrong clock. These go through the real reconcile(). */
+const annoFilm = (scenes) => ({
+  meta: { title: 'Anno', id: 'anno', aspect: '16:9', fps: 30, duration: 3, design: 'test' },
+  design: { tokens: { brand: '#2563eb', 'on-variant': '#565f6e' } },
+  frame: {},
+  scenes,
+});
+const annoOk = rc.reconcile(annoFilm([{
+  id: 's1', start: 0, dur: 3, tone: 'normal',
+  elements: [
+    { id: 't1', type: 'text', role: 'title', text: 'Ring me', at_ms: 0, in: { type: 'fade', dur_ms: 400 } },
+    { id: 'c1', type: 'shape', shape: 'circle', of: 't1', color: 'brand', at_ms: 500, in: { type: 'draw', dur_ms: 800 } },
+    { id: 'a1', type: 'shape', shape: 'arrow', of: 't1', side: 'left', at_ms: 700, in: { type: 'draw', dur_ms: 900 } },
+    { id: 'st1', type: 'stat', value: '6', label: 'patterns', color: 'on-variant', num_color: 'brand', at_ms: 0 },
+  ],
+}]), annoFilm.__design || undefined, 'light');
+check('a well-formed mark reconciles with nothing to report',
+  annoOk.unapplied.length === 0 && annoOk.deferred.length === 0,
+  JSON.stringify(annoOk.unapplied.concat(annoOk.deferred)));
+const c1el = annoOk.top.scenes[0].elements.find((x) => x.id === 'c1');
+check('the kind, the target and the resolved colour all reach the emitter IR',
+  !!c1el && c1el.shape === 'circle' && c1el.of === 't1' && c1el.color === '#2563eb',
+  JSON.stringify(c1el));
+/* The stat branch used to set BOTH colours from the caption, so the-peak's
+   brand numeral shipped in the caption's muted ink while the schema kept
+   claiming num_color was APPLIED. Two roles, two resolutions. */
+const st1el = annoOk.top.scenes[0].elements.find((x) => x.id === 'st1');
+check('a stat resolves its numeral colour SEPARATELY from its caption',
+  !!st1el && st1el.num_color === '#2563eb' && st1el.color === '#565f6e',
+  JSON.stringify(st1el));
+const annoBad = rc.reconcile(annoFilm([
+  { id: 's1', start: 0, dur: 2, tone: 'normal', elements: [
+    { id: 't1', type: 'text', role: 'title', text: 'x', at_ms: 0, in: { type: 'fade', dur_ms: 400 } },
+    { id: 'b1', type: 'shape', shape: 'circle', at_ms: 0 },
+    { id: 'b2', type: 'shape', shape: 'circle', of: 'ghost', at_ms: 0 },
+    { id: 'b3', type: 'shape', shape: 'circle', of: 't2', at_ms: 0 },
+    { id: 'b4', type: 'shape', shape: 'arrow', of: 't1', side: 'diagonal', at_ms: 0 },
+    { id: 'b5', type: 'shape', shape: 'circle', of: 't1', side: 'left', at_ms: 0 },
+    { id: 'b6', type: 'shape', shape: 'sparkle', of: 't1', at_ms: 0 },
+  ] },
+  { id: 's2', start: 2, dur: 1, tone: 'normal', elements: [
+    { id: 't2', type: 'text', role: 'body', text: 'y', at_ms: 0, in: { type: 'fade', dur_ms: 400 } },
+  ] },
+]), undefined, 'light');
+check('a mark with no target, a ghost target and a cross-scene target are all refused',
+  annoBad.unapplied.filter((u) => /no of:|not an element of this scene/.test(u)).length >= 3,
+  JSON.stringify(annoBad.unapplied));
+check('a bad arrow side and a side on a non-arrow are reported, not defaulted',
+  annoBad.unapplied.some((u) => u.includes('b4') && /diagonal/.test(u)) &&
+  annoBad.unapplied.some((u) => u.includes('b5') && /only defined for an arrow/.test(u)),
+  JSON.stringify(annoBad.unapplied));
+check('an unknown kind DEFERS with the emitter own message, so the film cannot look complete',
+  annoBad.deferred.length === 1 && annoBad.deferred[0].id === 'b6' &&
+  /unknown shape kind "sparkle"/.test(annoBad.deferred[0].reason),
+  JSON.stringify(annoBad.deferred));
+/* And the schema polices the same names at a JSON POINTER, for authoring. */
+const annoSb = JSON.parse(fs.readFileSync(path.join(FILMS_DIR, 'the-peak', 'storyboard.json'), 'utf8'));
+annoSb.scenes[0].elements.push(
+  { id: 'x-circle', type: 'shape', shape: 'circle', of: 's1-title', color: 'brand', at_ms: 0, in: { type: 'draw', dur_ms: 800 } },
+  { id: 'x-arrow', type: 'shape', shape: 'arrow', of: 's1-title', side: 'top', at_ms: 0, in: { type: 'draw', dur_ms: 800 } });
+check('the schema accepts the new kinds, sides and the draw entrance',
+  validate(annoSb, schema).length === 0, JSON.stringify(validate(annoSb, schema).slice(0, 2)));
+const badShape = JSON.parse(JSON.stringify(annoSb));
+badShape.scenes[0].elements[4].shape = 'sparkle';
+check('an invented shape kind is caught at a JSON POINTER',
+  validate(badShape, schema).some((e) => e.pointer === '/scenes/0/elements/4/shape'),
+  JSON.stringify(validate(badShape, schema)));
+const badSide = JSON.parse(JSON.stringify(annoSb));
+badSide.scenes[0].elements[5].side = 'diagonal';
+check('an invented arrow side is caught too',
+  validate(badSide, schema).some((e) => e.pointer === '/scenes/0/elements/5/side'),
+  JSON.stringify(validate(badSide, schema)));
+
 console.log('');
 if (failures) {
   console.error(`reel-regression: FAILED (${failures})`);

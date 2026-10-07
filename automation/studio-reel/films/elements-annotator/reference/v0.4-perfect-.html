@@ -1,0 +1,1283 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Vox Emphasis Animator</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: { 
+                extend: { 
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                } 
+            }
+        }
+    </script>
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- Gifshot for GIF Export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gifshot/0.3.2/gifshot.min.js"></script>
+
+    <style>
+        :root { color-scheme: light dark; }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f4f4f5; 
+            color: #18181b; 
+            overflow: hidden;
+            touch-action: none;
+            -webkit-font-smoothing: antialiased;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        html.dark body {
+            background-color: #09090b; 
+            color: #ececf1;
+        }
+
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.15); border-radius: 10px; }
+        html.dark ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.3); }
+        html.dark ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.3); }
+
+        .checker-bg {
+            background-color: #e5e5e5;
+            background-image: 
+                linear-gradient(45deg, #d4d4d8 25%, transparent 25%), 
+                linear-gradient(-45deg, #d4d4d8 25%, transparent 25%), 
+                linear-gradient(45deg, transparent 75%, #d4d4d8 75%), 
+                linear-gradient(-45deg, transparent 75%, #d4d4d8 75%);
+            background-size: 24px 24px;
+            background-position: 0 0, 0 12px, 12px -12px, -12px 0px;
+        }
+
+        html.dark .checker-bg {
+            background-color: #121212;
+            background-image: 
+                linear-gradient(45deg, #1e1e1e 25%, transparent 25%), 
+                linear-gradient(-45deg, #1e1e1e 25%, transparent 25%), 
+                linear-gradient(45deg, transparent 75%, #1e1e1e 75%), 
+                linear-gradient(-45deg, transparent 75%, #1e1e1e 75%);
+        }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            height: 4px;
+            background: rgba(0, 0, 0, 0.1);
+            border-radius: 2px;
+            outline: none;
+        }
+        html.dark input[type="range"] { background: rgba(255, 255, 255, 0.1); }
+        
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: #fff;
+            border: 1px solid rgba(0,0,0,0.15);
+            box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+        html.dark input[type="range"]::-webkit-slider-thumb {
+            border: 1px solid rgba(0,0,0,0.1);
+            box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+        }
+        input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.15); }
+
+        input[type="color"] {
+            -webkit-appearance: none;
+            border: none;
+            width: 100%;
+            height: 100%;
+            padding: 0;
+            cursor: pointer;
+            background: transparent;
+        }
+        input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+        input[type="color"]::-webkit-color-swatch { 
+            border: 1px solid rgba(0,0,0,0.1); 
+            border-radius: 4px; 
+            box-shadow: inset 0 0 0 1px rgba(0,0,0,0.05); 
+        }
+        html.dark input[type="color"]::-webkit-color-swatch { 
+            border: none; 
+            box-shadow: inset 0 0 0 1px rgba(255,255,255,0.15); 
+        }
+
+        .mac-btn { transition: all 0.2s ease; }
+        .mac-btn:hover { transform: scale(1.02); }
+        .mac-btn:active { transform: scale(0.98); }
+
+        .element-card {
+            transition: all 0.2s ease;
+            cursor: grab;
+        }
+        .element-card:hover {
+            background-color: rgba(0, 0, 0, 0.04);
+            border-color: rgba(0, 0, 0, 0.1);
+            transform: translateY(-1px);
+        }
+        html.dark .element-card:hover {
+            background-color: rgba(255, 255, 255, 0.05);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+        .element-card:active { cursor: grabbing; }
+
+        #scale-wrapper {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            padding: 20px; 
+        }
+
+        #draw-canvas {
+            box-shadow: 0 0 0 1px rgba(0,0,0,0.05), 0 30px 60px -12px rgba(0,0,0,0.3);
+            transform-origin: center center;
+            will-change: transform;
+            border-radius: 4px;
+        }
+        html.dark #draw-canvas {
+            box-shadow: 0 0 0 1px rgba(255,255,255,0.05), 0 30px 60px -12px rgba(0,0,0,0.8);
+        }
+        
+        details > summary { list-style: none; }
+        details > summary::-webkit-details-marker { display: none; }
+    </style>
+</head>
+<body class="flex flex-col h-screen text-sm">
+
+    <!-- Header -->
+    <header class="absolute top-0 w-full h-14 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-2xl border-b border-zinc-200 dark:border-white/5 flex items-center justify-between px-3 sm:px-6 z-40 transition-colors">
+        <div class="flex items-center gap-3">
+            <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-rose-500 to-orange-500 flex items-center justify-center shadow-inner shadow-white/30">
+                <i data-lucide="edit-3" class="w-4 h-4 text-white"></i>
+            </div>
+            <h1 class="font-semibold tracking-tight whitespace-nowrap hidden sm:block text-zinc-900 dark:text-zinc-100">Vox <span class="text-zinc-500 font-normal">Emphasis Animator</span></h1>
+        </div>
+
+        <div class="flex items-center gap-2 shrink-0">
+            <button onclick="undoLast()" class="mac-btn px-3 py-1.5 rounded-lg text-zinc-500 hover:text-zinc-900 hover:bg-white dark:text-zinc-400 dark:hover:text-white dark:hover:bg-white/10 transition-colors flex items-center gap-2 text-xs font-medium shadow-sm dark:shadow-none bg-zinc-100/80 dark:bg-black/40 ring-1 ring-zinc-200 dark:ring-white/10">
+                <i data-lucide="undo" class="w-3.5 h-3.5"></i> <span class="hidden md:inline">Undo</span>
+            </button>
+            <button onclick="clearCanvas()" class="mac-btn px-3 py-1.5 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-white dark:text-rose-400 dark:hover:text-rose-300 dark:hover:bg-rose-500/10 transition-colors flex items-center gap-2 text-xs font-medium shadow-sm dark:shadow-none bg-zinc-100/80 dark:bg-black/40 ring-1 ring-zinc-200 dark:ring-white/10">
+                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> <span class="hidden md:inline">Clear</span>
+            </button>
+            
+            <div class="w-px h-4 bg-zinc-300 dark:bg-white/10 mx-1"></div>
+
+            <button onclick="toggleTheme()" class="mac-btn flex items-center justify-center w-8 h-8 bg-white dark:bg-white/5 hover:bg-zinc-50 dark:hover:bg-white/10 text-zinc-600 dark:text-zinc-300 rounded-lg transition-colors ring-1 ring-zinc-200 dark:ring-white/5 shadow-sm dark:shadow-none">
+                <i data-lucide="moon" id="theme-icon" class="w-4 h-4"></i>
+            </button>
+
+            <button onclick="togglePreview()" id="btn-play" class="mac-btn flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-white/5 hover:bg-zinc-50 dark:hover:bg-white/10 text-zinc-700 dark:text-white rounded-lg font-medium transition-colors ring-1 ring-zinc-200 dark:ring-white/10 shadow-sm dark:shadow-none text-xs sm:text-sm">
+                <i data-lucide="play" class="w-4 h-4" id="icon-play"></i>
+                <span id="text-play" class="hidden sm:inline">Preview</span>
+            </button>
+            
+            <div class="flex bg-rose-500 rounded-lg shadow-lg shadow-rose-500/20 ring-1 ring-inset ring-black/5 dark:ring-white/20 transition-all hover:bg-rose-400">
+                <select id="export-fmt" class="bg-transparent text-white font-semibold pl-2 pr-1 py-1.5 outline-none cursor-pointer appearance-none text-xs border-r border-rose-600/30 hidden sm:block">
+                    <option value="webm">WebM Video</option>
+                    <option value="gif">GIF Anim</option>
+                    <option value="png">PNG Snap</option>
+                </select>
+                <button onclick="exportMedia()" id="btn-export" class="flex items-center gap-2 px-3 py-1.5 text-white font-semibold transition-all rounded-r-lg text-xs sm:text-sm">
+                    <i data-lucide="download" class="w-4 h-4"></i>
+                    <span class="hidden sm:inline">Export</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Layout -->
+    <div class="flex flex-1 pt-14 relative overflow-hidden flex-col md:flex-row transition-colors duration-300">
+        
+        <!-- Left Sidebar: Elements Library -->
+        <aside class="w-full md:w-[280px] flex-shrink-0 bg-white/80 dark:bg-zinc-900/60 backdrop-blur-3xl border-r border-zinc-200 dark:border-white/5 z-30 h-[30%] md:h-full flex flex-col shadow-[20px_0_40px_rgba(0,0,0,0.05)] dark:shadow-[20px_0_40px_rgba(0,0,0,0.3)] order-2 md:order-1 transition-colors duration-300">
+            <div class="p-4 border-b border-zinc-200 dark:border-white/5 bg-zinc-50 dark:bg-white/[0.02]">
+                <label class="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <i data-lucide="library" class="w-3.5 h-3.5"></i> Library
+                </label>
+                <p class="text-[10px] text-zinc-400 mt-1">Drag elements onto the canvas.</p>
+            </div>
+            
+            <div class="flex-1 overflow-y-auto p-3 space-y-5 custom-scrollbar">
+                
+                <!-- Category: Pen Stroke Circles -->
+                <div>
+                    <h3 class="text-[10px] font-bold text-zinc-400 dark:text-zinc-500 mb-2 px-1">THE CIRCLE</h3>
+                    <div class="grid grid-cols-1 gap-2">
+                        <!-- Single Pen -->
+                        <div class="element-card bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/5 rounded-lg p-2.5 flex items-center gap-3 shadow-sm dark:shadow-none" draggable="true" data-preset="circle_pen_single">
+                            <div class="w-8 h-6 border-2 border-[#ef4444] rounded-[50%] opacity-90 transform -rotate-6"></div>
+                            <div class="flex flex-col">
+                                <span class="text-xs text-zinc-700 dark:text-zinc-300 font-semibold">Single Overlap</span>
+                                <span class="text-[9px] text-zinc-500">Look at this!</span>
+                            </div>
+                        </div>
+                        <!-- Double Pen -->
+                        <div class="element-card bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/5 rounded-lg p-2.5 flex items-center gap-3 shadow-sm dark:shadow-none" draggable="true" data-preset="circle_pen_double">
+                            <div class="relative w-8 h-6 flex items-center justify-center">
+                                <div class="absolute w-8 h-6 border-[2px] border-[#3b82f6] rounded-[50%] transform rotate-3"></div>
+                                <div class="absolute w-7 h-5 border-[2px] border-[#3b82f6] rounded-[50%] transform -rotate-3"></div>
+                            </div>
+                            <div class="flex flex-col">
+                                <span class="text-xs text-zinc-700 dark:text-zinc-300 font-semibold">Double Loop</span>
+                                <span class="text-[9px] text-zinc-500">Extra importance</span>
+                            </div>
+                        </div>
+                        <!-- Scribble Pen -->
+                        <div class="element-card bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/5 rounded-lg p-2.5 flex items-center gap-3 shadow-sm dark:shadow-none" draggable="true" data-preset="circle_pen_messy">
+                            <div class="relative w-8 h-6 flex items-center justify-center">
+                                <div class="absolute w-8 h-6 border-[2px] border-[#a855f7] rounded-[50%] transform -rotate-6 translate-x-0.5"></div>
+                                <div class="absolute w-7 h-6 border-[2px] border-[#a855f7] rounded-[50%] transform rotate-6 -translate-y-0.5"></div>
+                                <div class="absolute w-8 h-5 border-[2px] border-[#a855f7] rounded-[50%] transform rotate-12"></div>
+                            </div>
+                            <div class="flex flex-col">
+                                <span class="text-xs text-zinc-700 dark:text-zinc-300 font-semibold">Messy Scribble</span>
+                                <span class="text-[9px] text-zinc-500">Chaotic highlight</span>
+                            </div>
+                        </div>
+                        <!-- Perfect Geometric -->
+                        <div class="element-card bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/5 rounded-lg p-2.5 flex items-center gap-3 shadow-sm dark:shadow-none" draggable="true" data-preset="circle_clean">
+                            <div class="w-8 h-6 border-[2px] border-[#10b981] rounded-[50%]"></div>
+                            <div class="flex flex-col">
+                                <span class="text-xs text-zinc-700 dark:text-zinc-300 font-semibold">Perfect Oval</span>
+                                <span class="text-[9px] text-zinc-500">Clean & Geometric</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Category: Highlighters -->
+                <div>
+                    <h3 class="text-[10px] font-bold text-zinc-400 dark:text-zinc-500 mb-2 px-1">THE HIGHLIGHTER</h3>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div class="element-card bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/5 rounded-lg p-2 flex flex-col items-center gap-1.5 shadow-sm dark:shadow-none" draggable="true" data-preset="hl_yellow">
+                            <div class="w-full h-3 bg-[#fef08a] rounded-sm opacity-90"></div>
+                            <span class="text-[9px] text-zinc-500 font-medium">Standard Yellow</span>
+                        </div>
+                        <div class="element-card bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/5 rounded-lg p-2 flex flex-col items-center gap-1.5 shadow-sm dark:shadow-none" draggable="true" data-preset="hl_pink">
+                            <div class="w-full h-3 bg-[#fbcfe8] rounded-sm opacity-90"></div>
+                            <span class="text-[9px] text-zinc-500 font-medium">Neon Pink</span>
+                        </div>
+                        <div class="element-card bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/5 rounded-lg p-2 flex flex-col items-center gap-1.5 shadow-sm dark:shadow-none" draggable="true" data-preset="hl_cyan">
+                            <div class="w-full h-3 bg-[#67e8f9] rounded-sm opacity-90"></div>
+                            <span class="text-[9px] text-zinc-500 font-medium">Electric Cyan</span>
+                        </div>
+                        <div class="element-card bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/5 rounded-lg p-2 flex flex-col items-center gap-1.5 shadow-sm dark:shadow-none" draggable="true" data-preset="hl_green">
+                            <div class="w-full h-3 bg-[#86efac] rounded-sm opacity-90"></div>
+                            <span class="text-[9px] text-zinc-500 font-medium">Bright Green</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Category: Strokes -->
+                <div>
+                    <h3 class="text-[10px] font-bold text-zinc-400 dark:text-zinc-500 mb-2 px-1">THE STROKE SCALE</h3>
+                    <div class="grid grid-cols-1 gap-2">
+                        <div class="element-card bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/5 rounded-lg p-2.5 flex items-center gap-3 shadow-sm dark:shadow-none" draggable="true" data-preset="stroke_thin">
+                            <div class="w-8 h-px bg-zinc-400"></div>
+                            <div class="flex flex-col">
+                                <span class="text-xs text-zinc-700 dark:text-zinc-300 font-semibold">Thin</span>
+                                <span class="text-[9px] text-zinc-500">A delicate note</span>
+                            </div>
+                        </div>
+                        <div class="element-card bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/5 rounded-lg p-2.5 flex items-center gap-3 shadow-sm dark:shadow-none" draggable="true" data-preset="stroke_thick">
+                            <div class="w-8 h-2 bg-[#fbbf24] rounded-full"></div>
+                            <div class="flex flex-col">
+                                <span class="text-xs text-zinc-700 dark:text-zinc-300 font-semibold">Thick</span>
+                                <span class="text-[9px] text-zinc-500">A bold claim!</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </aside>
+
+        <!-- Center: Canvas Area -->
+        <main class="flex-1 relative bg-zinc-100 dark:bg-zinc-950 overflow-hidden order-1 md:order-2 flex items-center justify-center transition-colors duration-300">
+            <div id="scale-wrapper" class="checker-bg w-full h-full">
+                <!-- Drop Target Overlay -->
+                <div id="drop-overlay" class="absolute inset-0 z-20 bg-rose-500/10 border-2 border-rose-500/50 border-dashed rounded-lg opacity-0 pointer-events-none transition-opacity flex items-center justify-center backdrop-blur-sm">
+                    <span class="text-rose-600 dark:text-rose-400 font-bold tracking-widest uppercase bg-white/90 dark:bg-zinc-900/90 shadow-lg px-6 py-3 rounded-full">Drop to Place</span>
+                </div>
+                <!-- Drawing Canvas -->
+                <canvas id="draw-canvas" width="1920" height="1080" class="cursor-pointer relative z-10"></canvas>
+            </div>
+            
+            <div id="status-indicator" class="absolute top-6 right-6 flex items-center gap-2 bg-rose-500/10 border border-rose-500/50 text-rose-600 dark:text-rose-400 px-4 py-2 rounded-full shadow-lg opacity-0 transition-opacity duration-300 pointer-events-none backdrop-blur-md z-50">
+                <div class="w-2 h-2 rounded-full bg-rose-500 animate-pulse" id="status-dot"></div>
+                <span class="text-xs font-bold tracking-wide uppercase" id="status-text">Animating</span>
+            </div>
+        </main>
+
+        <!-- Right Sidebar: Properties Inspector -->
+        <aside class="w-full md:w-[280px] flex-shrink-0 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-3xl border-l border-zinc-200 dark:border-white/5 z-30 h-[25%] md:h-full flex flex-col order-3 shadow-[-20px_0_40px_rgba(0,0,0,0.05)] dark:shadow-[-20px_0_40px_rgba(0,0,0,0.3)] transition-colors duration-300">
+            
+            <div class="p-4 border-b border-zinc-200 dark:border-white/5 bg-zinc-50 dark:bg-white/[0.02] flex justify-between items-center">
+                <label class="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <i data-lucide="sliders-horizontal" class="w-3.5 h-3.5"></i> Inspector
+                </label>
+                <span id="selection-badge" class="text-[8px] font-bold uppercase tracking-widest text-rose-500 dark:text-rose-400 bg-rose-500/10 border border-rose-500/20 px-2 py-0.5 rounded-full hidden">Selected</span>
+            </div>
+
+            <!-- Empty State -->
+            <div id="empty-state" class="flex-1 flex flex-col items-center justify-center p-6 text-center opacity-60">
+                <i data-lucide="mouse-pointer-click" class="w-8 h-8 mb-3 text-zinc-400 dark:text-zinc-500"></i>
+                <p class="text-xs text-zinc-500 dark:text-zinc-400">Select an element on the canvas to inspect its properties.</p>
+            </div>
+
+            <!-- Active Properties Panel -->
+            <div id="properties-panel" class="flex-1 overflow-y-auto p-4 space-y-5 hidden custom-scrollbar">
+                
+                <!-- Dimensions -->
+                <div class="space-y-3">
+                    <h4 class="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Dimensions</h4>
+                    <div>
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="text-xs text-zinc-600 dark:text-zinc-400">Width</span>
+                            <span id="dim-w-val" class="text-[10px] text-zinc-500 font-mono">0px</span>
+                        </div>
+                        <input type="range" id="prop-dim-w" min="10" max="1000" class="w-full accent-rose-500" oninput="updateDim('w', parseInt(this.value))">
+                    </div>
+                    <div>
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="text-xs text-zinc-600 dark:text-zinc-400">Height</span>
+                            <span id="dim-h-val" class="text-[10px] text-zinc-500 font-mono">0px</span>
+                        </div>
+                        <input type="range" id="prop-dim-h" min="0" max="1000" class="w-full accent-rose-500" oninput="updateDim('h', parseInt(this.value))">
+                    </div>
+                </div>
+
+                <div class="w-full h-px bg-zinc-200 dark:bg-white/5"></div>
+
+                <!-- Appearance -->
+                <div class="space-y-3">
+                    <h4 class="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Appearance</h4>
+                    
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs text-zinc-600 dark:text-zinc-400">Color</span>
+                        <div class="relative w-6 h-6 rounded-md ring-1 ring-zinc-200 dark:ring-white/10 overflow-hidden cursor-pointer hover:scale-105 transition-transform">
+                            <input type="color" id="prop-color" onchange="updateProp('color', this.value)" oninput="updateProp('color', this.value)">
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="text-xs text-zinc-600 dark:text-zinc-400">Thickness</span>
+                            <span id="width-val" class="text-[10px] text-zinc-500 font-mono">6px</span>
+                        </div>
+                        <input type="range" id="prop-width" min="1" max="80" class="w-full accent-zinc-500 dark:accent-zinc-400" oninput="updateProp('width', parseInt(this.value))">
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="text-xs text-zinc-600 dark:text-zinc-400">Opacity</span>
+                            <span id="opacity-val" class="text-[10px] text-zinc-500 font-mono">100%</span>
+                        </div>
+                        <input type="range" id="prop-opacity" min="0.1" max="1.0" step="0.05" class="w-full accent-zinc-500 dark:accent-zinc-400" oninput="updateProp('opacity', parseFloat(this.value))">
+                    </div>
+                </div>
+
+                <div class="w-full h-px bg-zinc-200 dark:bg-white/5"></div>
+
+                <!-- Handdrawn Stroke Styles (Procedural Magic) -->
+                <div id="panel-pen-style" class="space-y-3">
+                    <h4 class="text-[10px] font-bold text-rose-500 dark:text-rose-400 uppercase tracking-widest">Pen Stroke Style</h4>
+                    
+                    <div>
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="text-xs text-zinc-600 dark:text-zinc-400" title="How many times the pen loops around">Loops / Passes</span>
+                            <span id="passes-val" class="text-[10px] text-zinc-500 font-mono">1.1x</span>
+                        </div>
+                        <input type="range" id="prop-passes" min="0.5" max="4.0" step="0.1" class="w-full accent-rose-500" oninput="updateProp('passes', parseFloat(this.value)); setValueText('passes-val', parseFloat(this.value).toFixed(1) + 'x');">
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="text-xs text-zinc-600 dark:text-zinc-400" title="How sketchy and organic the stroke looks">Organic Wobble</span>
+                            <span id="wobble-val" class="text-[10px] text-zinc-500 font-mono">10%</span>
+                        </div>
+                        <input type="range" id="prop-wobble" min="0" max="0.5" step="0.05" class="w-full accent-rose-500" oninput="updateProp('wobble', parseFloat(this.value)); setValueText('wobble-val', Math.round(parseFloat(this.value)*100) + '%');">
+                    </div>
+                </div>
+
+                <div class="w-full h-px bg-zinc-200 dark:bg-white/5" id="sep-animation"></div>
+
+                <!-- Animation Engine -->
+                <div class="space-y-3">
+                    <h4 class="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Animation</h4>
+                    <div>
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-xs text-zinc-600 dark:text-zinc-400">Draw Duration</span>
+                            <span id="dur-val" class="text-[10px] text-zinc-500 font-mono">0.8s</span>
+                        </div>
+                        <input type="range" id="prop-duration" min="0.2" max="3.0" step="0.1" class="w-full accent-zinc-400" oninput="updateProp('duration', parseFloat(this.value))">
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs text-zinc-600 dark:text-zinc-400">Draw Backwards</span>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="prop-reverse" class="sr-only peer" onchange="updateProp('reverseDraw', this.checked)">
+                            <div class="w-7 h-4 bg-zinc-300 dark:bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-rose-500"></div>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="w-full h-px bg-zinc-200 dark:bg-white/5"></div>
+                
+                <button onclick="deleteSelected()" class="w-full py-2 bg-red-100 dark:bg-red-500/10 hover:bg-red-200 dark:hover:bg-red-500/20 text-red-600 dark:text-red-400 rounded-lg text-xs font-semibold transition-colors border border-red-200 dark:border-red-500/20 flex items-center justify-center gap-2">
+                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Delete Element
+                </button>
+            </div>
+            
+            <!-- Document/Canvas Global Settings (shows when nothing is selected) -->
+            <div id="document-panel" class="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+                <div class="space-y-3">
+                    <h4 class="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Document Settings</h4>
+                    <div class="flex items-center justify-between border-b border-zinc-200 dark:border-white/5 pb-3">
+                        <span class="text-xs text-zinc-600 dark:text-zinc-400">Canvas Size</span>
+                        <select class="bg-white dark:bg-black/40 border border-zinc-200 dark:border-white/10 rounded px-2 py-1 text-xs text-zinc-700 dark:text-zinc-300 outline-none w-24" onchange="setCanvasRatio(this.value)">
+                            <option value="1920x1080" selected>16:9 (HD)</option>
+                            <option value="1080x1920">9:16 (Shorts)</option>
+                            <option value="1080x1080">1:1 (Square)</option>
+                        </select>
+                    </div>
+                    <div class="flex items-center justify-between border-b border-zinc-200 dark:border-white/5 pb-3">
+                        <span class="text-xs text-zinc-600 dark:text-zinc-400">Background</span>
+                        <div class="flex gap-1.5 items-center">
+                            <button class="w-5 h-5 rounded-full border border-zinc-200 dark:border-white/20 bg-[url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAAXNSR0IArs4c6QAAACVJREFUKFNjZCASMDKgAnv37v3/n0QciwZkR+BThM8wUshwQxgAYeAU/6+E4wYAAAAASUVORK5CYII=')] hover:scale-110 transition-transform" onclick="updateBgColor('transparent')" title="Transparent"></button>
+                            <button class="w-5 h-5 rounded-full border border-zinc-200 dark:border-white/20 bg-[#121212] hover:scale-110 transition-transform" onclick="updateBgColor('#121212')" title="Dark"></button>
+                            <button class="w-5 h-5 rounded-full border border-zinc-200 dark:border-white/20 bg-[#ffffff] hover:scale-110 transition-transform" onclick="updateBgColor('#ffffff')" title="Light"></button>
+                        </div>
+                    </div>
+                    <button onclick="document.getElementById('bg-upload').click()" class="w-full py-2 bg-white dark:bg-white/5 hover:bg-zinc-50 dark:hover:bg-white/10 text-zinc-700 dark:text-zinc-300 rounded-lg text-xs font-medium transition-colors border border-zinc-200 dark:border-transparent flex items-center justify-center gap-2 shadow-sm dark:shadow-none">
+                        <i data-lucide="upload-cloud" class="w-3.5 h-3.5"></i> Upload Image
+                    </button>
+                    <input type="file" id="bg-upload" accept="image/*" class="hidden" onchange="handleBgUpload(event)">
+                    <button onclick="clearBg()" class="w-full py-1.5 bg-transparent hover:bg-zinc-100 dark:hover:bg-white/5 text-zinc-400 rounded-lg text-[10px] font-medium transition-colors border border-dashed border-zinc-300 dark:border-white/10">Remove Image</button>
+                </div>
+            </div>
+            
+        </aside>
+    </div>
+
+    <!-- Export Loading Overlay -->
+    <div id="export-loader" class="fixed inset-0 z-50 bg-white/90 dark:bg-black/80 hidden flex flex-col items-center justify-center transition-opacity opacity-0 backdrop-blur-sm">
+        <div class="w-12 h-12 border-4 border-zinc-200 dark:border-white/10 border-t-rose-500 rounded-full animate-spin mb-4"></div>
+        <h2 class="text-xl font-bold text-zinc-900 dark:text-white mb-2" id="export-title">Processing</h2>
+        <p class="text-sm text-zinc-500 dark:text-zinc-400 font-mono font-medium" id="rec-time">0%</p>
+    </div>
+
+    <!-- Toasts -->
+    <div id="toast-container" class="fixed top-20 left-1/2 transform -translate-x-1/2 z-[60] flex flex-col gap-2 pointer-events-none"></div>
+
+    <script>
+        lucide.createIcons();
+
+        // --- Theme Engine ---
+        function toggleTheme() {
+            const html = document.documentElement;
+            html.classList.toggle('dark');
+            const isDark = html.classList.contains('dark');
+            const icon = document.getElementById('theme-icon');
+            if(icon) {
+                icon.setAttribute('data-lucide', isDark ? 'moon' : 'sun');
+                lucide.createIcons();
+            }
+            renderScene();
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const isDark = document.documentElement.classList.contains('dark');
+            const icon = document.getElementById('theme-icon');
+            if(icon) {
+                icon.setAttribute('data-lucide', isDark ? 'moon' : 'sun');
+                lucide.createIcons();
+            }
+        });
+
+        // --- Defensive DOM Helpers to prevent Null errors ---
+        function setInputValue(id, val) {
+            const el = document.getElementById(id);
+            if (el) el.value = val;
+        }
+        function setValueText(id, text) {
+            const el = document.getElementById(id);
+            if (el) el.innerText = text;
+        }
+        function setChecked(id, checked) {
+            const el = document.getElementById(id);
+            if (el) el.checked = checked;
+        }
+
+        // --- Presets Dictionary based on Uploaded Image ---
+        const PRESETS = {
+            // New Procedural Pen Stroke Circles
+            'circle_pen_single': { type: 'ellipse', color: '#ef4444', width: 4, opacity: 1, passes: 1.2, wobble: 0.1, defaultW: 200, defaultH: 140 },
+            'circle_pen_double': { type: 'ellipse', color: '#3b82f6', width: 4, opacity: 1, passes: 2.2, wobble: 0.15, defaultW: 200, defaultH: 140 },
+            'circle_clean': { type: 'ellipse', color: '#10b981', width: 4, opacity: 1, passes: 1.0, wobble: 0.0, defaultW: 200, defaultH: 140 },
+            'circle_pen_messy': { type: 'ellipse', color: '#a855f7', width: 3, opacity: 0.8, passes: 3.5, wobble: 0.25, defaultW: 200, defaultH: 140 },
+            
+            // Straight highlights
+            'hl_yellow': { type: 'straight_highlight', color: '#fef08a', width: 30, opacity: 0.7, defaultW: 250, defaultH: 0 },
+            'hl_pink': { type: 'straight_highlight', color: '#fbcfe8', width: 30, opacity: 0.7, defaultW: 250, defaultH: 0 },
+            'hl_cyan': { type: 'straight_highlight', color: '#67e8f9', width: 30, opacity: 0.7, defaultW: 250, defaultH: 0 },
+            'hl_green': { type: 'straight_highlight', color: '#86efac', width: 30, opacity: 0.7, defaultW: 250, defaultH: 0 },
+            
+            // Straight lines
+            'stroke_thin': { type: 'straight_line', color: '#a1a1aa', width: 2, opacity: 1, defaultW: 200, defaultH: 0 },
+            'stroke_thick': { type: 'straight_line', color: '#fbbf24', width: 12, opacity: 1, defaultW: 200, defaultH: 0 }
+        };
+
+        // --- Application State ---
+        const state = {
+            canvasWidth: 1920,
+            canvasHeight: 1080,
+            bgColor: 'transparent',
+            bgImage: null,
+            
+            selectedShapeId: null,
+            isDragging: false,
+            lastDragPos: {x: 0, y: 0},
+            shapes: [], 
+            timelineCursor: 0, 
+            
+            isPlaying: false,
+            isExporting: false,
+            playbackStartTime: 0,
+        };
+
+        const canvas = document.getElementById('draw-canvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+        // --- Procedural Generation & Math ---
+        function easeInOutCubic(x) { return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; }
+
+        // Seeded PRNG for consistent wobble per shape
+        function seededRandom(seed) {
+            let t = seed += 0x6D2B79F5;
+            t = Math.imul(t ^ t >>> 15, t | 1);
+            t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+            return ((t ^ t >>> 14) >>> 0) / 4294967296;
+        }
+
+        function smoothPolyline(points, iterations) {
+            if (points.length < 3 || iterations === 0) return points;
+            let smoothed = [...points];
+            for (let it = 0; it < iterations; it++) {
+                let newPts = [smoothed[0]];
+                for (let i = 0; i < smoothed.length - 1; i++) {
+                    let p0 = smoothed[i], p1 = smoothed[i + 1];
+                    newPts.push({ x: 0.75 * p0.x + 0.25 * p1.x, y: 0.75 * p0.y + 0.25 * p1.y });
+                    newPts.push({ x: 0.25 * p0.x + 0.75 * p1.x, y: 0.25 * p0.y + 0.75 * p1.y });
+                }
+                newPts.push(smoothed[smoothed.length - 1]);
+                smoothed = newPts;
+            }
+            return smoothed;
+        }
+
+        function calculatePathMetrics(points) {
+            let total = 0;
+            let segments = [];
+            for (let i = 0; i < points.length - 1; i++) {
+                let dist = Math.hypot(points[i+1].x - points[i].x, points[i+1].y - points[i].y);
+                total += dist;
+                segments.push(dist);
+            }
+            return { total, segments };
+        }
+
+        // Custom Algorithm to simulate multi-pass hand-drawn pen loops!
+        function generateHanddrawnEllipse(cx, cy, rx, ry, passes, seed, wobbleBase) {
+            const pts = [];
+            const stepsPerPass = 60;
+            const totalSteps = Math.floor(stepsPerPass * passes);
+            
+            let sC = seed;
+            let rnd = () => seededRandom(sC++);
+
+            // Randomize the starting point so they don't all look identical
+            let startAngle = rnd() * Math.PI * 2;
+            
+            // Drift factors (simulating imperfect human hand tracing)
+            let driftX = (rnd() - 0.5) * rx * wobbleBase;
+            let driftY = (rnd() - 0.5) * ry * wobbleBase;
+            let scaleDrift = (rnd() - 0.5) * wobbleBase * 0.5; 
+            
+            for (let i = 0; i <= totalSteps; i++) {
+                let p = i / stepsPerPass; 
+                let t = startAngle + p * 2 * Math.PI;
+                
+                // Gradually shift the center over the passes
+                let curCx = cx + driftX * p;
+                let curCy = cy + driftY * p;
+                
+                // Add wave-like noise to radius to simulate wobble
+                let rWobbleX = rx * (1 + scaleDrift * p) + Math.sin(t * 3) * (rx * wobbleBase * 0.3);
+                let rWobbleY = ry * (1 + scaleDrift * p) + Math.cos(t * 2) * (ry * wobbleBase * 0.3);
+                
+                let x = curCx + Math.cos(t) * rWobbleX;
+                let y = curCy + Math.sin(t) * rWobbleY;
+                pts.push({x, y});
+            }
+            
+            // Light smoothing binds the generated points into a natural flowing stroke
+            return smoothPolyline(pts, 2);
+        }
+
+        // Core data generator - run whenever shape changes dimensions or style
+        function regenerateShapeData(shape) {
+            if (shape.type === 'ellipse') {
+                const cx = (shape.startX + shape.endX) / 2;
+                const cy = (shape.startY + shape.endY) / 2;
+                const rx = Math.max(1, Math.abs(shape.endX - shape.startX) / 2);
+                const ry = Math.max(1, Math.abs(shape.endY - shape.startY) / 2);
+                
+                // Default to 1.1 passes if undefined (for safety)
+                let passes = shape.passes !== undefined ? shape.passes : 1.1;
+                let wobble = shape.wobble !== undefined ? shape.wobble : 0.1;
+                
+                shape.points = generateHanddrawnEllipse(cx, cy, rx, ry, passes, shape.seed, wobble);
+                shape.metrics = calculatePathMetrics(shape.points);
+            } 
+            else if (shape.type === 'straight_highlight' || shape.type === 'straight_line') {
+                shape.points = [
+                    { x: shape.startX, y: shape.startY },
+                    { x: shape.endX, y: shape.endY }
+                ];
+                shape.metrics = calculatePathMetrics(shape.points);
+            }
+            // Add other path generators here if needed (e.g., custom arrows)
+        }
+
+
+        // --- Layout & Canvas Setup ---
+        function updateLayoutScale() {
+            const wrapper = document.getElementById('scale-wrapper');
+            const availW = wrapper.clientWidth - 40;
+            const availH = wrapper.clientHeight - 40;
+            const scale = Math.min(availW / state.canvasWidth, availH / state.canvasHeight, 1.0);
+            canvas.style.transform = `scale(${scale})`;
+        }
+        window.addEventListener('resize', updateLayoutScale);
+        updateLayoutScale();
+
+        // --- Drag and Drop Logic ---
+        const draggables = document.querySelectorAll('.element-card');
+        const dropOverlay = document.getElementById('drop-overlay');
+        const scaleWrapper = document.getElementById('scale-wrapper');
+
+        draggables.forEach(card => {
+            card.addEventListener('dragstart', (e) => {
+                e.dataTransfer.setData('preset', card.dataset.preset);
+                e.dataTransfer.effectAllowed = 'copy';
+                dropOverlay.classList.remove('opacity-0');
+            });
+            card.addEventListener('dragend', () => {
+                dropOverlay.classList.add('opacity-0');
+            });
+        });
+
+        scaleWrapper.addEventListener('dragover', (e) => {
+            e.preventDefault(); 
+            e.dataTransfer.dropEffect = 'copy';
+        });
+
+        scaleWrapper.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropOverlay.classList.add('opacity-0');
+            const presetId = e.dataTransfer.getData('preset');
+            if (!presetId || !PRESETS[presetId]) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const dropX = (e.clientX - rect.left) * scaleX;
+            const dropY = (e.clientY - rect.top) * scaleY;
+
+            instantiatePreset(presetId, dropX, dropY);
+        });
+
+        function instantiatePreset(presetId, cx, cy) {
+            const data = PRESETS[presetId];
+            const hw = data.defaultW / 2;
+            const hh = data.defaultH / 2;
+
+            const shape = {
+                id: Date.now() + Math.random(),
+                type: data.type,
+                color: data.color,
+                width: data.width,
+                opacity: data.opacity,
+                passes: data.passes,
+                wobble: data.wobble,
+                reverseDraw: false,
+                duration: 0.8,
+                startTime: state.timelineCursor,
+                seed: Math.floor(Math.random() * 2147483648),
+                
+                startX: cx - hw,
+                endX: cx + hw,
+                startY: cy - hh,
+                endY: cy + hh
+            };
+            
+            // Build the mathematical path geometry immediately
+            regenerateShapeData(shape);
+
+            state.shapes.push(shape);
+            state.timelineCursor += shape.duration;
+            state.selectedShapeId = shape.id;
+            
+            syncUI();
+            renderScene();
+            showToast('Element placed', 'success');
+        }
+
+        // --- Properties Updaters ---
+        function updateProp(prop, val) {
+            if (state.selectedShapeId) {
+                const shape = state.shapes.find(s => s.id === state.selectedShapeId);
+                if (shape) {
+                    shape[prop] = val;
+                    // If visual geometry properties change, regenerate the mathematical path
+                    if (prop === 'passes' || prop === 'wobble') {
+                        regenerateShapeData(shape);
+                    }
+                }
+            }
+            syncUI(); 
+            renderScene();
+        }
+
+        function updateDim(axis, value) {
+            if(!state.selectedShapeId) return;
+            const shape = state.shapes.find(s => s.id === state.selectedShapeId);
+            if(shape) {
+                let v = parseFloat(value);
+                if (isNaN(v)) return;
+                
+                const cx = (shape.startX + shape.endX) / 2;
+                const cy = (shape.startY + shape.endY) / 2;
+
+                if(axis === 'w') {
+                    shape.startX = cx - (v/2);
+                    shape.endX = cx + (v/2);
+                } else {
+                    shape.startY = cy - (v/2);
+                    shape.endY = cy + (v/2);
+                }
+                
+                regenerateShapeData(shape); // Apply new dimensions to procedural path
+                syncUI();
+                renderScene();
+            }
+        }
+
+        function deleteSelected() {
+            if (state.selectedShapeId) {
+                state.shapes = state.shapes.filter(s => s.id !== state.selectedShapeId);
+                state.selectedShapeId = null;
+                state.timelineCursor = 0;
+                state.shapes.forEach(s => { s.startTime = state.timelineCursor; state.timelineCursor += s.duration; });
+                syncUI();
+                renderScene();
+            }
+        }
+
+        function clearCanvas() {
+            state.shapes = []; state.timelineCursor = 0; state.selectedShapeId = null;
+            syncUI(); renderScene();
+        }
+
+        function undoLast() {
+            if (state.shapes.length > 0) {
+                const removed = state.shapes.pop();
+                state.timelineCursor = Math.max(0, state.timelineCursor - removed.duration);
+                if (state.selectedShapeId === removed.id) { state.selectedShapeId = null; syncUI(); }
+                renderScene();
+            }
+        }
+
+        function setCanvasRatio(val) {
+            const [w, h] = val.split('x').map(Number);
+            state.canvasWidth = w;
+            state.canvasHeight = h;
+            canvas.width = w;
+            canvas.height = h;
+            updateLayoutScale();
+            renderScene();
+        }
+
+        function updateBgColor(color) {
+            state.bgColor = color;
+            renderScene();
+        }
+
+        function handleBgUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    state.bgImage = img;
+                    renderScene();
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+        function clearBg() { state.bgImage = null; renderScene(); }
+
+        function syncUI() {
+            const shape = state.selectedShapeId ? state.shapes.find(s => s.id === state.selectedShapeId) : null;
+            
+            const pnlProps = document.getElementById('properties-panel');
+            const pnlEmpty = document.getElementById('empty-state');
+            const docPnl = document.getElementById('document-panel');
+            const badge = document.getElementById('selection-badge');
+
+            if (shape) {
+                if(pnlProps) pnlProps.classList.remove('hidden');
+                if(pnlEmpty) pnlEmpty.classList.add('hidden');
+                if(docPnl) docPnl.classList.add('hidden');
+                if(badge) badge.classList.remove('hidden');
+
+                const w = Math.abs(shape.endX - shape.startX);
+                const h = Math.abs(shape.endY - shape.startY);
+                
+                setInputValue('prop-dim-w', Math.round(w));
+                setInputValue('prop-dim-h', Math.round(h));
+                setValueText('dim-w-val', Math.round(w) + 'px');
+                setValueText('dim-h-val', Math.round(h) + 'px');
+
+                setInputValue('prop-color', shape.color);
+                setInputValue('prop-width', shape.width);
+                setValueText('width-val', shape.width + 'px');
+                
+                setInputValue('prop-opacity', shape.opacity);
+                setValueText('opacity-val', Math.round(shape.opacity * 100) + '%');
+                
+                setInputValue('prop-duration', shape.duration);
+                setValueText('dur-val', shape.duration.toFixed(1) + 's');
+                
+                setChecked('prop-reverse', shape.reverseDraw);
+                
+                const penStylePnl = document.getElementById('panel-pen-style');
+                if(penStylePnl) {
+                    if(shape.type === 'ellipse') penStylePnl.style.display = 'block';
+                    else penStylePnl.style.display = 'none';
+                }
+                
+                if(shape.type === 'ellipse') {
+                    setInputValue('prop-passes', shape.passes || 1.1);
+                    setValueText('passes-val', parseFloat(shape.passes || 1.1).toFixed(1) + 'x');
+                    setInputValue('prop-wobble', shape.wobble || 0.1);
+                    setValueText('wobble-val', Math.round((shape.wobble || 0.1) * 100) + '%');
+                }
+                
+            } else {
+                if(pnlProps) pnlProps.classList.add('hidden');
+                if(pnlEmpty) pnlEmpty.classList.remove('hidden');
+                if(docPnl) docPnl.classList.remove('hidden');
+                if(badge) badge.classList.add('hidden');
+            }
+        }
+
+        // --- Rendering Logic ---
+        function getShapeBounds(shape) {
+            const pad = shape.width * 2 + 10;
+            let minX = Math.min(shape.startX, shape.endX); 
+            let maxX = Math.max(shape.startX, shape.endX);
+            let minY = Math.min(shape.startY, shape.endY); 
+            let maxY = Math.max(shape.startY, shape.endY);
+            
+            if (shape.points) {
+                shape.points.forEach(p => {
+                    if(p.x < minX) minX = p.x; if(p.x > maxX) maxX = p.x;
+                    if(p.y < minY) minY = p.y; if(p.y > maxY) maxY = p.y;
+                });
+            }
+
+            return { minX: minX-pad, minY: minY-pad, maxX: maxX+pad, maxY: maxY+pad };
+        }
+
+        function drawShape(ctx, shape, progress) {
+            if (progress <= 0) return;
+            const p = progress < 1 ? (1 - Math.pow(1 - progress, 3)) : 1; 
+            const rev = shape.reverseDraw;
+
+            ctx.save();
+            ctx.strokeStyle = shape.color;
+            ctx.lineWidth = shape.width;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.globalAlpha = shape.opacity;
+
+            // Highlight blending
+            if (shape.type === 'straight_highlight') {
+                ctx.globalCompositeOperation = 'source-over'; 
+                ctx.lineCap = 'butt'; 
+            }
+
+            // Universal Path Tracing for all shapes that generate a 'points' array
+            if (shape.points && shape.points.length > 1) {
+                const targetLen = shape.metrics.total * p;
+                let drawn = 0;
+                
+                ctx.beginPath();
+                
+                if (rev) {
+                    ctx.moveTo(shape.points[shape.points.length-1].x, shape.points[shape.points.length-1].y);
+                    for (let i = shape.points.length - 2; i >= 0; i--) {
+                        let seg = shape.metrics.segments[i];
+                        if (drawn + seg > targetLen) {
+                            let ratio = (targetLen - drawn) / seg;
+                            let p0 = shape.points[i+1], p1 = shape.points[i];
+                            ctx.lineTo(p0.x + (p1.x - p0.x) * ratio, p0.y + (p1.y - p0.y) * ratio);
+                            break;
+                        }
+                        ctx.lineTo(shape.points[i].x, shape.points[i].y);
+                        drawn += seg;
+                    }
+                } else {
+                    ctx.moveTo(shape.points[0].x, shape.points[0].y);
+                    for (let i = 0; i < shape.points.length - 1; i++) {
+                        let seg = shape.metrics.segments[i];
+                        if (drawn + seg > targetLen) {
+                            let ratio = (targetLen - drawn) / seg;
+                            let p0 = shape.points[i], p1 = shape.points[i+1];
+                            ctx.lineTo(p0.x + (p1.x - p0.x) * ratio, p0.y + (p1.y - p0.y) * ratio);
+                            break;
+                        }
+                        ctx.lineTo(shape.points[i+1].x, shape.points[i+1].y);
+                        drawn += seg;
+                    }
+                }
+                ctx.stroke();
+            }
+
+            // Selection Outline
+            if (state.selectedShapeId === shape.id && !state.isPlaying && !state.isExporting) {
+                ctx.globalAlpha = 1.0;
+                ctx.globalCompositeOperation = 'source-over';
+                const b = getShapeBounds(shape);
+                const isDark = document.documentElement.classList.contains('dark');
+                ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.8)';
+                ctx.lineWidth = 1;
+                ctx.setLineDash([6, 6]);
+                ctx.strokeRect(b.minX, b.minY, b.maxX - b.minX, b.maxY - b.minY);
+                ctx.setLineDash([]);
+            }
+            ctx.restore();
+        }
+
+        function renderScene(forcedTime = null) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            if (state.bgColor && state.bgColor !== 'transparent') {
+                ctx.fillStyle = state.bgColor;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+
+            if (state.bgImage) {
+                const imgRatio = state.bgImage.width / state.bgImage.height;
+                const canvasRatio = canvas.width / canvas.height;
+                let drawW = canvas.width, drawH = canvas.height, drawX = 0, drawY = 0;
+                if (imgRatio > canvasRatio) {
+                    drawH = canvas.height; drawW = state.bgImage.width * (canvas.height / state.bgImage.height); drawX = (canvas.width - drawW) / 2;
+                } else {
+                    drawW = canvas.width; drawH = state.bgImage.height * (canvas.width / state.bgImage.width); drawY = (canvas.height - drawH) / 2;
+                }
+                ctx.drawImage(state.bgImage, drawX, drawY, drawW, drawH);
+            }
+
+            let currentElapsed = forcedTime !== null ? forcedTime : (performance.now() / 1000);
+
+            state.shapes.forEach(shape => {
+                let progress = 1; 
+                if (state.isPlaying && forcedTime !== null) {
+                    progress = (forcedTime - shape.startTime) / shape.duration;
+                }
+                drawShape(ctx, shape, progress);
+            });
+        }
+
+        // --- Interaction ---
+        function getMousePos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
+        }
+
+        canvas.addEventListener('pointerdown', (e) => {
+            if (state.isPlaying || state.isExporting) return;
+            e.preventDefault();
+            const pos = getMousePos(e);
+            
+            let hitId = null;
+            for (let i = state.shapes.length - 1; i >= 0; i--) {
+                const b = getShapeBounds(state.shapes[i]);
+                if (pos.x >= b.minX && pos.x <= b.maxX && pos.y >= b.minY && pos.y <= b.maxY) { hitId = state.shapes[i].id; break; }
+            }
+            state.selectedShapeId = hitId;
+            syncUI();
+            renderScene();
+            
+            if (hitId) {
+                state.isDragging = true;
+                state.lastDragPos = pos;
+                canvas.setPointerCapture(e.pointerId);
+            }
+        });
+
+        canvas.addEventListener('pointermove', (e) => {
+            if (!state.isDragging || state.isPlaying || !state.selectedShapeId) return;
+            e.preventDefault();
+            const pos = getMousePos(e);
+            const shape = state.shapes.find(s => s.id === state.selectedShapeId);
+            if (shape) {
+                const dx = pos.x - state.lastDragPos.x, dy = pos.y - state.lastDragPos.y;
+                
+                // Offset geometric bounds
+                shape.startX += dx; shape.endX += dx; shape.startY += dy; shape.endY += dy;
+                
+                // If it's a procedural path, translate all generated points so it moves smoothly
+                if (shape.points) {
+                    shape.points.forEach(p => { p.x += dx; p.y += dy; });
+                }
+                
+                state.lastDragPos = pos;
+                renderScene();
+            }
+        });
+
+        canvas.addEventListener('pointerup', (e) => {
+            if (!state.isDragging || state.isPlaying) return;
+            state.isDragging = false;
+            canvas.releasePointerCapture(e.pointerId);
+            renderScene();
+        });
+
+        // --- Playback & Export ---
+        function setPlayUI(playing) {
+            const btnPlay = document.getElementById('btn-play');
+            const ind = document.getElementById('status-indicator');
+            document.querySelectorAll('button:not(#btn-play):not(#btn-export), input, select').forEach(b => b.disabled = playing);
+            
+            if (playing) {
+                ind.classList.remove('opacity-0');
+                btnPlay.innerHTML = `<i data-lucide="square" class="w-4 h-4"></i><span class="hidden sm:inline">Stop</span>`;
+                setValueText('status-text', state.isExporting ? 'Exporting...' : 'Playing');
+            } else {
+                ind.classList.add('opacity-0');
+                btnPlay.innerHTML = `<i data-lucide="play" class="w-4 h-4"></i><span class="hidden sm:inline">Preview</span>`;
+            }
+            lucide.createIcons();
+        }
+
+        function togglePreview() {
+            if (state.isPlaying) { stopPlayback(); return; }
+            if (state.shapes.length === 0) return showToast('Drop elements first!', 'error');
+            
+            state.selectedShapeId = null; syncUI(); 
+            state.isPlaying = true;
+            setPlayUI(true);
+            requestAnimationFrame((timestamp) => { state.playbackStartTime = timestamp; playbackLoop(timestamp); });
+        }
+
+        function playbackLoop(timestamp) {
+            if (!state.isPlaying) return;
+            let elapsed = (timestamp - state.playbackStartTime) / 1000; 
+            let totalTime = state.timelineCursor + 1.0; 
+            renderScene(elapsed);
+
+            if (state.isExporting) {
+                let pct = Math.min(100, Math.round((elapsed / totalTime) * 100));
+                setValueText('rec-time', `${pct}%`);
+            }
+            if (elapsed >= totalTime) {
+                if (state.isExporting) setValueText('rec-time', `Finalizing...`);
+                else stopPlayback(); 
+                return;
+            }
+            requestAnimationFrame(playbackLoop);
+        }
+
+        function stopPlayback() {
+            state.isPlaying = false;
+            if (state.isExporting && state.mediaRecorder) {
+                if (state.mediaRecorder.state !== 'inactive') state.mediaRecorder.stop();
+                state.isExporting = false;
+                document.getElementById('export-loader').classList.add('opacity-0');
+                setTimeout(() => document.getElementById('export-loader').classList.add('hidden'), 300);
+            }
+            setPlayUI(false); renderScene(); 
+        }
+
+        function exportMedia() {
+            if (state.shapes.length === 0) return showToast('Drop elements first!', 'error');
+            if (state.isPlaying || state.isExporting) return;
+            
+            state.selectedShapeId = null; syncUI(); 
+            const format = document.getElementById('export-fmt').value;
+
+            if (format === 'png') {
+                renderScene();
+                const link = document.createElement('a');
+                link.download = `vox-emphasis-${Date.now()}.png`;
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+                showToast('Snapshot saved!', 'success');
+            } else if (format === 'webm') exportVideo();
+            else if (format === 'gif') exportGif();
+        }
+
+        function exportVideo() {
+            try {
+                const stream = canvas.captureStream(60); 
+                state.recordedChunks = [];
+                state.mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp9', videoBitsPerSecond: 20000000 });
+                state.mediaRecorder.ondataavailable = e => { if (e.data.size > 0) state.recordedChunks.push(e.data); };
+                state.mediaRecorder.onstop = () => {
+                    const blob = new Blob(state.recordedChunks, { type: 'video/webm' });
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url; link.download = `vox-emphasis-${Date.now()}.webm`; link.click();
+                    URL.revokeObjectURL(url);
+                    showToast('Video exported!', 'success');
+                };
+
+                state.mediaRecorder.start();
+                state.isPlaying = true; state.isExporting = true;
+                setPlayUI(true);
+                
+                const loader = document.getElementById('export-loader');
+                setValueText('export-title', "Rendering Video");
+                loader.classList.remove('hidden');
+                requestAnimationFrame(() => loader.classList.remove('opacity-0'));
+
+                const totalTime = state.timelineCursor + 1.0;
+                let exportStartTime = performance.now();
+                
+                function exportRenderLoop(now) {
+                    let elapsed = (now - exportStartTime) / 1000;
+                    renderScene(elapsed);
+                    let pct = Math.min(100, Math.round((elapsed / totalTime) * 100));
+                    setValueText('rec-time', `${pct}%`);
+                    if (elapsed < totalTime) requestAnimationFrame(exportRenderLoop);
+                    else { setValueText('rec-time', `Finalizing...`); setTimeout(stopPlayback, 500); }
+                }
+                requestAnimationFrame(exportRenderLoop);
+            } catch (err) { console.error(err); showToast('Export failed.', 'error'); stopPlayback(); }
+        }
+
+        function exportGif() {
+            try {
+                const scale = Math.min(800 / canvas.width, 1.0);
+                const gW = canvas.width * scale; const gH = canvas.height * scale;
+                const gCnv = document.createElement('canvas'); gCnv.width = gW; gCnv.height = gH;
+                const gCtx = gCnv.getContext('2d');
+
+                state.isPlaying = true; state.isExporting = true;
+                setPlayUI(true);
+                
+                const loader = document.getElementById('export-loader');
+                setValueText('export-title', "Capturing Frames");
+                loader.classList.remove('hidden');
+                requestAnimationFrame(() => loader.classList.remove('opacity-0'));
+
+                const totalTime = state.timelineCursor + 1.0;
+                const fps = 15; 
+                const totalFrames = Math.ceil(totalTime * fps);
+                let currentFrame = 0;
+                let framesData = [];
+                
+                const isDark = document.documentElement.classList.contains('dark');
+                const defaultBgColor = isDark ? '#121212' : '#f4f4f5';
+
+                function captureFrame() {
+                    let elapsed = currentFrame / fps;
+                    
+                    gCtx.fillStyle = state.bgColor && state.bgColor !== 'transparent' ? state.bgColor : defaultBgColor;
+                    gCtx.fillRect(0,0,gW,gH);
+                    
+                    gCtx.save();
+                    gCtx.scale(scale, scale);
+                    state.shapes.forEach(shape => {
+                        let progress = 1;
+                        if (elapsed < shape.startTime + shape.duration) progress = Math.max(0, (elapsed - shape.startTime) / shape.duration);
+                        drawShape(gCtx, shape, progress);
+                    });
+                    gCtx.restore();
+                    
+                    renderScene(elapsed); // Sync UI
+                    framesData.push(gCnv.toDataURL('image/png', 0.8));
+
+                    currentFrame++;
+                    let pct = Math.min(100, Math.round((currentFrame / totalFrames) * 100));
+                    setValueText('rec-time', `${pct}%`);
+
+                    if (currentFrame < totalFrames) {
+                        setTimeout(captureFrame, 2); 
+                    } else {
+                        setValueText('export-title', "Encoding GIF");
+                        setValueText('rec-time', `Please wait...`);
+                        setTimeout(() => {
+                            gifshot.createGIF({
+                                gifWidth: gW, gifHeight: gH, images: framesData, interval: 1 / fps, numFrames: framesData.length, sampleInterval: 10
+                            }, function (obj) {
+                                if (!obj.error) {
+                                    const link = document.createElement('a'); link.download = `vox-emphasis-${Date.now()}.gif`; link.href = obj.image; link.click();
+                                    showToast('GIF exported!', 'success');
+                                } else showToast('GIF Encoding failed.', 'error');
+                                
+                                state.isExporting = false;
+                                document.getElementById('export-loader').classList.add('opacity-0');
+                                setTimeout(() => document.getElementById('export-loader').classList.add('hidden'), 300);
+                                stopPlayback();
+                            });
+                        }, 50);
+                    }
+                }
+                captureFrame();
+            } catch (err) { console.error(err); showToast('GIF Export failed.', 'error'); stopPlayback(); }
+        }
+
+        function showToast(msg, type) {
+            const c = document.getElementById('toast-container');
+            const t = document.createElement('div');
+            t.className = `bg-zinc-800/95 dark:bg-white/95 backdrop-blur-md text-white dark:text-zinc-900 px-4 py-3 rounded-xl shadow-2xl ring-1 ring-white/10 dark:ring-black/10 flex items-center gap-3 transform transition-all -translate-y-4 opacity-0 z-50`;
+            const icon = type === 'success' ? 'check-circle' : 'info';
+            const color = type === 'success' ? 'text-emerald-400 dark:text-emerald-600' : 'text-rose-500 dark:text-rose-400';
+            t.innerHTML = `<i data-lucide="${icon}" class="w-4 h-4 ${color}"></i> <span class="text-sm font-medium">${msg}</span>`;
+            c.appendChild(t); lucide.createIcons();
+            requestAnimationFrame(() => t.classList.remove('-translate-y-4', 'opacity-0'));
+            setTimeout(() => { t.classList.add('-translate-y-4', 'opacity-0'); setTimeout(() => t.remove(), 300); }, 3000);
+        }
+
+        syncUI(); renderScene();
+    </script>
+</body>
+</html>

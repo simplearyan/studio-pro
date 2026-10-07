@@ -103,6 +103,46 @@
     '.hss-shape{position:absolute;inset:0;pointer-events:none;border:3px solid currentColor;border-radius:8px}' +
     '.hss-shape-underline{border:none;height:4px;border-radius:2px;top:auto;bottom:-4px;left:0;right:0;width:auto}' +
     '.hss-overlay{position:absolute!important;left:-6px!important;top:-6px!important;width:calc(100% + 12px)!important;height:calc(100% + 12px)!important}' +
+    /* ── annotation marks: the circle / arrow / highlight shape kinds ────
+       The vocabulary is the annotation film's, but the rules live here
+       because the EMITTER draws them. Everything below is appended after the
+       legacy shape rules (same specificity, later in the sheet → wins
+       wherever a new kind is authored, changes nothing for box/underline).
+
+       .hss-overlay-ring is a SECOND overlay geometry: a ring six pixels from
+       the glyph box hugs the text like a bracket, so `circle` gets its own
+       padding class, added by buildElHtml beside .hss-overlay.
+
+       The arrow is a FIXED-pixel svg, not a stretched viewBox. A host-relative
+       box would squeeze the arrowhead by whatever ratio the target's aspect
+       happens to be — an annotation arrow whose head collapses into a sliver
+       stopped reading as an arrow — and a fixed size also means the mark's
+       geometry never scales with anything, so it cannot drift from what was
+       designed. reel-extent skips absolutely-positioned children when it
+       measures a host, so the stem reaching outside the overlay box is not a
+       hidden overflow either; it is measured on the mark's own row instead. */
+    '.hss-overlay-ring{left:-18px!important;top:-14px!important;width:calc(100% + 36px)!important;height:calc(100% + 28px)!important}' +
+    '.hss-shape-circle,.hss-shape-highlight,.hss-shape-arrow,.hss-shape-dbl-underline{border:none}' +
+    '.hss-draw{position:absolute;inset:0;width:100%;height:100%;overflow:visible}' +
+    /* non-scaling-stroke is load-bearing: the circle's viewBox stretches to
+       the target's box, and without it the ring's stroke would be scaled by
+       sx on the sides and sy on the top — 38px on a 1280px-wide title. */
+    '.hss-shape-circle ellipse{fill:none;stroke:currentColor;stroke-width:3;vector-effect:non-scaling-stroke}' +
+    '.hss-arrow-svg{position:absolute;top:50%;margin-top:-28px;width:160px;height:56px}' +
+    '.hss-shape-arrow svg.hss-arrow-left{right:calc(100% - 16px)}' +
+    '.hss-shape-arrow svg.hss-arrow-right{left:calc(100% - 16px);transform:scaleX(-1)}' +
+    '.hss-shape-arrow svg.hss-arrow-top{left:50%;top:auto;bottom:calc(100% - 18px);width:56px;height:160px;margin:0 0 0 -28px}' +
+    '.hss-shape-arrow svg.hss-arrow-bottom{left:50%;top:calc(100% - 18px);width:56px;height:160px;margin:0 0 0 -28px;transform:scaleY(-1)}' +
+    '.hss-arrow-path{fill:none;stroke:currentColor;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}' +
+    /* alpha, not mix-blend-mode: the mark sits inside an overlay that carries
+       will-change:opacity, which makes it a stacking context, and a stacking
+       context ISOLATES blending — a multiply child would blend against an
+       empty group and paint an opaque block over the words. Plain alpha
+       composites against the text the old-fashioned way, at an opacity low
+       enough that ink underneath still clears AA large-text on the tint. */
+    '.hss-hl{position:absolute;inset:0;background:currentColor;border-radius:4px;opacity:.4}' +
+    '.hss-dbl{position:absolute;left:0;right:0;bottom:-9px;height:12px;width:100%;overflow:visible}' +
+    '.hss-dbl line{stroke:currentColor;stroke-width:3;stroke-linecap:round;vector-effect:non-scaling-stroke}' +
     /* ── component variants, per-type radius, alignment ───────────────────
        `design.style` named a component language and was reported "not
        implemented" on every film, because there was no way to say which of
@@ -268,6 +308,12 @@
     '  else if(m==="area"){el.setAttribute("width",el.getAttribute("data-w"));}',
     '  else if(m==="arc"){el.setAttribute("stroke-dasharray",el.getAttribute("data-frac")+" 1");}',
     '  else if(m==="value"){el.setAttribute("opacity","1");}',
+    /* annotation marks (shape circle/arrow): the finished state is fully       * drawn, so the dashoffset goes to 0 — same line shape as `line`, kept
+       * as its own branch because `line` lives in _chart's key table and this
+       * loop must keep answering for marks _chart never sees. */
+    '  else if(m==="draw"){el.setAttribute("stroke-dashoffset","0");}',
+    /* the highlight wipe is a WIDTH function of t, like the meter */
+    '  else if(m==="hl"){el.style.width="100%";}',
     '}',
   ].join('\n');
 
@@ -355,6 +401,7 @@
     '    n.style.opacity=String(_c1(p*2));n.style.transform="scale("+(0.8+0.2*v).toFixed(4)+")";}',
     '  else if(type==="slide"){var fx=(a&&a.fx!==undefined)?a.fx:0,fy=(a&&a.fy!==undefined)?a.fy:0;var k=_eo(p);',
     '    n.style.opacity=String(k);n.style.transform="translate("+((1-k)*fx).toFixed(2)+"px,"+((1-k)*fy).toFixed(2)+"px)";}',
+    '  else if(type==="draw"){n.style.opacity="1";n.style.transform="none";}',
     '  else {n.style.opacity=String(_eo(p));n.style.transform="none";}',
     '}',
     'function _hidden(n){n.style.opacity="0";n.style.transform="none";}',
@@ -407,8 +454,24 @@
 '    else if(m==="arc"){var f=Number(el.getAttribute("data-frac"));el.setAttribute("stroke-dasharray",(f*k).toFixed(5)+" 1");}',
 '    else if(m==="value"){el.setAttribute("opacity",String(_c1((k-0.55)/0.45)));}',
 '  }}',
+// annotation marks: the SAME contract as _chart, for shape elements. Every
+// animated node inside the mark carries its own kind, and progress is the
+// only runtime state — a stroke drawn by dashoffset and a highlight wiped by
+// width are both functions of t, never CSS animations (a transition reads the
+// wall clock, and scrub / deep links / the frame-diff gate would disagree).
+// The phase is the shape's OWN entrance: the mark draws itself while it
+// appears, so a film delays a ring with at_ms and gives it duration with
+// in.dur_ms — no second phase field, because the mark has nothing to
+// coordinate with but its own arrival.
+'function _draw(e,t){',
+'  var ns=e._dn||(e._dn=e._n.querySelectorAll("[data-anim]"));',
+'  var p=_ph(e.in,t);var k=p===null?0:_eo(p);',
+'  for(var i=0;i<ns.length;i++){var el=ns[i];var m=el.getAttribute("data-k");',
+'    if(m==="draw"){el.setAttribute("stroke-dashoffset",(1-k).toFixed(4));}',
+'    else if(m==="hl"){el.style.width=(k*100).toFixed(2)+"%";}',
+'  }}',
 // The finished state, from the single copy above. See SETTLE_JS.
-'function settle(root){',
+'function settle(root){',,
 SETTLE_JS,
 '}',
 // main onFrame
@@ -440,6 +503,9 @@ SETTLE_JS,
       '      if(e.type==="card"){_meter(e,e.mt===undefined?tL:tL-e.mt);}',
       '      /* the chart has its OWN phase too, so the head can settle while the\n         bars are still growing - and a per-node stagger rides on the phase */',
       '      if(e.type==="chart"){_chart(e,e.mt===undefined?tL:tL-e.mt);}',
+      '      /* the mark draws on its OWN phase: the entrance of the shape,',
+      '         so a ring can land after the words it circles have settled */',
+      '      if(e.type==="shape"){_draw(e,tL);}',
       '      continue;',
     '      var pin=_ph(e.in,tL);if(pin===null){_hidden(eN);continue;}var ty=(e.in&&e.in.t)||"fade";_ap(eN,ty,pin,e.in);',
     '    }',
@@ -886,6 +952,97 @@ SETTLE_JS,
     catch (err) { if (err && err.unknownType) return false; throw err; }
   }
 
+  /* ── the shape vocabulary, asked the same way the type list is ──────────
+     box and underline are the two CSS-border kinds that predate this; circle
+     rings its target, arrow points at it from one edge, highlight is a marker
+     swipe. The list lives HERE because the emitter is the thing that can draw
+     them — reel-compile asks emitterSupportsShape() for the same reason it
+     asks emitterSupportsType(): two lists describing one implementation
+     drift, and they drift in the direction of a mark that renders as a bare
+     border nobody drew. */
+  var SHAPE_KINDS = { box: 1, underline: 1, 'dbl-underline': 1, circle: 1, arrow: 1, highlight: 1 };
+  /* Which edge an arrow comes from. Four, because the stage is a centred
+     column: left and right are the two side margins, top and bottom are the
+     gap above and below. */
+  var ARROW_SIDES = { left: 1, right: 1, top: 1, bottom: 1 };
+
+  function unknownShapeError(s) {
+    var err = new Error('hic-storyboard: unknown shape kind ' +
+      JSON.stringify(String(s == null ? '' : s)) +
+      ' — buildElHtml has no case for it (known: ' + Object.keys(SHAPE_KINDS).join(', ') + ')');
+    err.unknownShape = true;
+    return err;
+  }
+
+  function unknownArrowSideError(s) {
+    var err = new Error('hic-storyboard: unknown arrow side ' +
+      JSON.stringify(String(s == null ? '' : s)) +
+      ' — an arrow comes from ' + Object.keys(ARROW_SIDES).join(', '));
+    err.unknownSide = true;
+    return err;
+  }
+
+  /* Does the shape vocabulary contain this kind? Asked by running the same
+     code that builds one, never by a list beside it — see emitterSupportsType. */
+  function emitterSupportsShape(s) {
+    try { buildElHtml({ id: '__probe__', type: 'shape', shape: s }); return true; }
+    catch (err) { if (err && err.unknownShape) return false; throw err; }
+  }
+
+  /* What one shape kind renders INSIDE its wrapper. Empty for the legacy CSS
+     kinds so their markup stays byte-identical (reel-regression asserts it).
+     Every animated node carries data-anim/data-k — the contract _chart,
+     _draw and settle() already share — so a mark cannot become invisible to
+     the settle pass by having its own animation vocabulary. */
+  function shapeInner(kind, e) {
+    if (kind === 'circle') {
+      /* A stretched viewBox on purpose: an ellipse that hugs the target's
+         box at any aspect. pathLength=1 normalises the dash to the whole
+         ring, so the runtime never needs the length of a scaled ellipse —
+         the compile-time-geometry rule from the charts, for a shape whose
+         geometry is the host's own box. */
+      return '<svg class="hss-draw" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">' +
+        '<ellipse cx="50" cy="50" rx="48" ry="48" pathLength="1" stroke-dasharray="1"' +
+        ' stroke-dashoffset="1" data-anim="1" data-k="draw"></ellipse></svg>';
+    }
+    if (kind === 'arrow') {
+      if (e.side !== undefined && e.side !== null && e.side !== '' && !ARROW_SIDES[e.side]) throw unknownArrowSideError(e.side);
+      var side = (e.side && ARROW_SIDES[e.side]) ? e.side : 'left';
+      var vert = side === 'top' || side === 'bottom';
+      var vb = vert ? '0 0 56 160' : '0 0 160 56';
+      /* A curved stem, not a straight one: the mock draws every tool stroke
+         with Rough.js, and a slight bow is what says "drawn" without needing
+         a hand-drawn filter. Tip first, then the two barbs — ONE path, so one
+         dash draws stem and head in a single stroke. */
+      var d = vert
+        ? 'M6 8 C 14 52 10 106 28 152 M28 152 L 21 128 M28 152 L 46 137'
+        : 'M8 46 C 52 54 106 46 152 22 M152 22 L 128 16 M152 22 L 134 46';
+      return '<svg class="hss-arrow-svg hss-arrow-' + side + '" viewBox="' + vb + '" aria-hidden="true">' +
+        '<path class="hss-arrow-path" d="' + d + '" pathLength="1" stroke-dasharray="1"' +
+        ' stroke-dashoffset="1" data-anim="1" data-k="draw"></path></svg>';
+    }
+    if (kind === 'highlight') {
+      /* a WIDTH wipe, not a transform: the runtime owns transform on hosts,
+         and a width function of t is exactly what the meter already does. */
+      return '<i class="hss-hl" data-anim="1" data-k="hl"></i>';
+    }
+    if (kind === 'dbl-underline') {
+      /* Two rules under the target, drawn by ONE dash each — the Emphasis
+         Animator's "double pen". Horizontal lines only, so a stretched
+         viewBox is harmless the way it is for the circle: x stretches with
+         the words, y is a fixed 12px strip, and non-scaling-stroke keeps both
+         rules 3px. It sits as a bottom strip (left/right/bottom, height 12)
+         rather than filling the box: a double underline that scaled with the
+         text's height would drift away from the baseline it is under. */
+      return '<svg class="hss-dbl" viewBox="0 0 100 12" preserveAspectRatio="none" aria-hidden="true">' +
+        '<line x1="1" y1="3" x2="99" y2="3" pathLength="1" stroke-dasharray="1"' +
+        ' stroke-dashoffset="1" data-anim="1" data-k="draw"></line>' +
+        '<line x1="1" y1="9" x2="99" y2="9" pathLength="1" stroke-dasharray="1"' +
+        ' stroke-dashoffset="1" data-anim="1" data-k="draw"></line></svg>';
+    }
+    return '';
+  }
+
   function buildElHtml(e) {
     var inner = '';
     var cls = 'hss-el';
@@ -958,7 +1115,18 @@ SETTLE_JS,
       case 'shape':
         cls += ' hss-shape-host';
         var kind = e.shape || 'box';
-        inner = '<div class="hss-shape hss-shape-' + kind + '" style="color:' + (e.color || '#6ed9b1') + '"></div>';
+        /* An unknown KIND used to reach the stylesheet as a class nobody
+           wrote (hss-shape-sparkle) and render the default border — the same
+           silent loss as the missing default case, one level down. Now a
+           throw, from the one place that knows, flagged so
+           emitterSupportsShape can answer from the code, not a list. */
+        if (!SHAPE_KINDS[kind]) throw unknownShapeError(kind);
+        /* `of` is what makes the mark ANNOTATION instead of decoration: the
+           wrapper is moved into the target's own box at setup and positioned
+           around it by .hss-overlay (or .hss-overlay-ring). Without it the
+           legacy border kinds keep their in-flow behaviour, unchanged. */
+        if (e.of) cls += ' hss-overlay' + (kind === 'circle' ? ' hss-overlay-ring' : '');
+        inner = '<div class="hss-shape hss-shape-' + kind + '" style="color:' + (e.color || '#6ed9b1') + '">' + shapeInner(kind, e) + '</div>';
         break;
       case 'chart':
         /* A chart is a first-class element, not a decoration: it carries
@@ -1169,15 +1337,26 @@ SETTLE_JS,
       }),
     };
 
-    /* Move overlay wraps into their host wraps at setup time — done in the
-       clip's first onFrame via a one-time DOM patch (see _hssSetup). */
+    /* Move overlay wraps into their host wraps — a one-time DOM patch inside
+       _hssSetup itself, NOT spliced beside its call in onFrame. The first
+       version lived in onFrame, and the scenes preview — which settles
+       WITHOUT ever calling onFrame — drew every ring at full stage size and
+       every highlight across the whole scene: the mark was real, but aimed at
+       nothing, because the container never moved. _hssSetup is the one hook
+       every consumer already runs (clip, scenes page, board), so the patch
+       lands wherever a mark can be seen.
+
+       parentNode makes it genuinely once-only: appendChild reinserts even
+       when the node is already there, and a reinsert per overlay per frame
+       would invalidate layout sixty times a second for a move that only ever
+       needs to happen once. */
     var overlayJs = overlays.map(function (o) {
-      return 'try{var _o=document.getElementById(' + JSON.stringify(o.id) + ');var _h=document.getElementById(' + JSON.stringify(o.of) + ');if(_o&&_h)_h.appendChild(_o);}catch(e){}';
+      return 'try{var _o=document.getElementById(' + JSON.stringify(o.id) + ');var _h=document.getElementById(' + JSON.stringify(o.of) + ');if(_o&&_h&&_o.parentNode!==_h)_h.appendChild(_o);}catch(e){}';
     }).join('\n');
 
     var js = CLIP_JS_TEMPLATE
       .replace('__SB__', JSON.stringify(sbLit))
-      .replace('  _hssSetup();', '  _hssSetup();\n' + overlayJs); // run once per frame; _hssInit guard makes it cheap
+      .replace('  if(_hssInit) return;', '  if(_hssInit) return;\n' + overlayJs);
 
     /* KaTeX loader goes FIRST in the html so HicRenderer's external-script
        hoisting runs before anything renders */
@@ -1823,6 +2002,11 @@ SETTLE_JS,
        its own copy of the switch. See emitterSupportsType above. */
     emitterSupportsType: emitterSupportsType,
     unknownTypeError: unknownTypeError,
+    /* the shape vocabulary under the same contract: asked, not copied. */
+    emitterSupportsShape: emitterSupportsShape,
+    unknownShapeError: unknownShapeError,
+    unknownArrowSideError: unknownArrowSideError,
+    ARROW_SIDES: ARROW_SIDES,
     SCENES_CSS: SCENES_CSS,
     RUNTIME_CSS: RUNTIME_CSS,
     DESIGN_CSS: DESIGN_CSS,
