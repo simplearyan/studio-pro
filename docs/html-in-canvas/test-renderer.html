@@ -30,6 +30,8 @@ body{background:var(--md-surface, #0f1117);color:var(--md-on-surface, #e4e1ec);f
 .header-links{margin-top:12px;display:flex;gap:8px;flex-wrap:wrap}
 .header-links a{display:inline-flex;align-items:center;gap:5px;background:#141a26;border:1px solid #232b3d;border-radius:18px;padding:5px 13px;font-size:11.5px;font-weight:600;color:#a5b4c8;text-decoration:none;transition:all .15s}
 .header-links a:hover{border-color:var(--md-primary, #cfbcff);color:var(--md-on-surface, #e4e1ec);background:#1a2233}
+.header-links button.hlink{display:inline-flex;align-items:center;gap:5px;background:#141a26;border:1px solid #232b3d;border-radius:18px;padding:5px 13px;font-size:11.5px;font-weight:600;color:#a5b4c8;font-family:inherit;cursor:pointer;transition:all .15s}
+.header-links button.hlink:hover{border-color:var(--md-primary, #cfbcff);color:var(--md-on-surface, #e4e1ec);background:#1a2233}
 
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;padding:16px 32px 32px}
 
@@ -368,8 +370,10 @@ body{background:var(--md-surface, #0f1117);color:var(--md-on-surface, #e4e1ec);f
     <div class="header-links">
         <a href="designs.html">🎨 Designs Gallery</a>
         <a href="prompts-engineer.html">🪄 Prompt Engineer</a>
+        <button class="hlink" type="button" id="importFilmBtn" title="Import a whole .html file — e.g. automation/studio-reel/films/*/reel-preview.html — and open it as its own stage">⬇ Import HTML</button>
         <button class="hic-theme-toggle" type="button" aria-label="Switch theme"><span class="msr" aria-hidden="true"></span></button>
     </div>
+    <input type="file" id="importFilmInput" accept=".html,.htm,.json,.txt" style="display:none">
 </div>
 
 <div class="grid" id="presetGrid"></div>
@@ -509,7 +513,7 @@ body{background:var(--md-surface, #0f1117);color:var(--md-on-surface, #e4e1ec);f
                             <div class="gal-list" id="galList"></div>
                         </div>
                     </div>
-                    <button class="btn btn-code-io" id="importCodeBtn" title="Import code from a .json file (or any code file) into the panes">
+                    <button class="btn btn-code-io" id="importCodeBtn" title="Import a code .json — or a whole .html page, e.g. a reel-preview.html film — into the panes">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                         Import
                     </button>
@@ -1566,60 +1570,116 @@ exportCodeMenu.addEventListener('click', function(e) {
 });
 
 /* Import: prefers our .json payload; falls back to the AI reply parser so
- * plain .txt/.html code files (or an AI reply saved to disk) also load */
+ * plain .txt/.html code files — including whole standalone documents such as
+ * a studio-reel reel-preview.html film — also load, split across the panes. */
+function parseImportedFile(file, text) {
+    let html = '', css = '', js = '';
+    if (/\.json$/i.test(file.name) || /^\s*\{/.test(text)) {
+        try {
+            const data = JSON.parse(text);
+            if (data && typeof data === 'object') {
+                html = String(data.html || '');
+                css = String(data.css || '');
+                js = String(data.js || '');
+                if (html || css || js) {
+                    /* exportJson writes duration in ms; the shared HIC modal writes dur in seconds */
+                    const dur = data.duration > 0 ? data.duration / 1000 : (data.dur > 0 ? data.dur : 0);
+                    return { html, css, js, title: String(data.name || ''), dur };
+                }
+            }
+        } catch (e) { /* fall through to parser */ }
+    }
+    /* Standalone .html export: pull the embedded JSON payload for a byte-exact
+       round-trip. Done BEFORE the AI-parser fallback — the naive parser would
+       sweep the page's own runtime script into the JS pane. */
+    const tagStart = text.indexOf('<script type="application/json" id="hic-code">');
+    if (tagStart !== -1) {
+        const payloadStart = tagStart + '<script type="application/json" id="hic-code">'.length;
+        const tagEnd = text.indexOf('</' + 'script>', payloadStart);
+        if (tagEnd > payloadStart) {
+            try {
+                const data = JSON.parse(text.slice(payloadStart, tagEnd));
+                if (data && typeof data === 'object' && (data.html || data.css || data.js)) {
+                    return { html: String(data.html || ''), css: String(data.css || ''), js: String(data.js || ''), title: String(data.name || ''), dur: 0 };
+                }
+            } catch (e) { /* fall through to parser */ }
+        }
+    }
+    const parsed = aiParseReply(text);
+    if (!(parsed.html || parsed.css || parsed.js)) return null;
+    let title = parsed.title || '';
+    let dur = parsed.dur || 0;
+    if (!dur) {
+        /* Films carry their own length — var SB = {"total":ms…} — so a 74s reel
+           isn't clipped to the 5s host timeline. */
+        const _sb = text.match(/var SB\s*=\s*\{[^{}]*?"total":\s*(\d+)/);
+        if (_sb) dur = Math.max(1, Math.min(600, parseInt(_sb[1], 10) / 1000));
+    }
+    html = parsed.html;
+    /* Put <title> back into the HTML pane — refreshClipTitle reads it from
+       there for the modal title and the export filename after Apply. */
+    if (title && !/<title/i.test(html)) html = '<title>' + title.replace(/[<>]/g, '') + '</title>' + (html ? '\n' + html : '');
+    return { html, css: parsed.css || '', js: parsed.js || '', title, dur };
+}
+
+function fillPanesFromImport(code, openAsStage) {
+    const panes = { html: prettifyHtml(code.html), css: prettifyCss(code.css), js: prettifyJs(code.js) };
+    if (openAsStage || !currentPresetKey) {
+        /* Header import (or no preset behind the panes): land the file as its
+           own preset so Reset / Apply / Export behave like any preset, and put
+           it on the stage immediately — the import IS the preview. */
+        PRESETS.__import = { name: code.title || 'Imported', dur: code.dur || 5, html: code.html, css: code.css, js: code.js };
+        openModal('__import');
+        cmHtml.setValue(panes.html); cmCss.setValue(panes.css); cmJs.setValue(panes.js);
+        _lastAppliedCode = { html: cmHtml.getValue(), css: cmCss.getValue(), js: cmJs.getValue() };
+        updateUnsavedBadge();
+        resetSync();
+        setTimeout(function() { cmHtml.refresh(); cmCss.refresh(); cmJs.refresh(); }, 30);
+        return;
+    }
+    /* In-modal import: fill the panes, adopt duration/title, then apply to the
+       stage right away (the AI-paste flow does the same). Applying matters
+       twice: the film starts playing, and _lastAppliedCode becomes the
+       imported code, so the Code tab's refill-on-switch restores THIS code
+       instead of overwriting the panes with the old preset. */
+    cmHtml.setValue(panes.html); cmCss.setValue(panes.css); cmJs.setValue(panes.js);
+    if (code.dur) {
+        PRESETS[currentPresetKey].dur = code.dur;
+        modalSlider.max = code.dur * 1000;
+        ovTotal.textContent = fmtTime(code.dur * 1000);
+    }
+    refreshClipTitle();
+    applyCode.click();
+    setTimeout(function() { cmHtml.refresh(); cmCss.refresh(); cmJs.refresh(); }, 30);
+}
+
 document.getElementById('importCodeBtn').addEventListener('click', function() { codeFileInput.click(); });
 codeFileInput.addEventListener('change', function() {
     const file = codeFileInput.files && codeFileInput.files[0];
     codeFileInput.value = '';
-    if (!file || !currentPresetKey) return;
+    if (!file) return;
     const reader = new FileReader();
     reader.onload = function() {
-        const text = String(reader.result || '');
-        let html = '', css = '', js = '';
-        let imported = false;
-        if (/\.json$/i.test(file.name) || /^\s*\{/.test(text)) {
-            try {
-                const data = JSON.parse(text);
-                if (data && typeof data === 'object') {
-                    html = String(data.html || '');
-                    css = String(data.css || '');
-                    js = String(data.js || '');
-                    imported = !!(html || css || js);
-                }
-            } catch (e) { /* fall through to parser */ }
-        }
-        /* Standalone .html export: pull the embedded JSON payload for a byte-exact
-           round-trip. Done BEFORE the AI-parser fallback — the naive parser would
-           sweep the page's own runtime script into the JS pane. */
-        if (!imported) {
-            const tagStart = text.indexOf('<script type="application/json" id="hic-code">');
-            if (tagStart !== -1) {
-                const payloadStart = tagStart + '<script type="application/json" id="hic-code">'.length;
-                const tagEnd = text.indexOf('</' + 'script>', payloadStart);
-                if (tagEnd > payloadStart) {
-                    try {
-                        const data = JSON.parse(text.slice(payloadStart, tagEnd));
-                        if (data && typeof data === 'object') {
-                            html = String(data.html || '');
-                            css = String(data.css || '');
-                            js = String(data.js || '');
-                            imported = !!(html || css || js);
-                        }
-                    } catch (e) { /* fall through to parser */ }
-                }
-            }
-        }
-        if (!imported) {
-            const parsed = aiParseReply(text);
-            html = parsed.html; css = parsed.css; js = parsed.js;
-            imported = !!(html || css || js);
-        }
+        const imported = parseImportedFile(file, String(reader.result || ''));
         if (!imported) { alert('Could not find any code in "' + file.name + '".'); return; }
-        cmHtml.setValue(prettifyHtml(html));
-        cmCss.setValue(prettifyCss(css));
-        cmJs.setValue(prettifyJs(js));
-        updateUnsavedBadge();
-        setTimeout(function() { cmHtml.refresh(); cmCss.refresh(); cmJs.refresh(); }, 30);
+        fillPanesFromImport(imported, false);
+    };
+    reader.readAsText(file);
+});
+
+/* Header import: load a whole standalone file (e.g. a studio-reel
+ * reel-preview.html film) from the grid, without picking a preset first. */
+document.getElementById('importFilmBtn').addEventListener('click', function() { document.getElementById('importFilmInput').click(); });
+document.getElementById('importFilmInput').addEventListener('change', function() {
+    const input = document.getElementById('importFilmInput');
+    const file = input.files && input.files[0];
+    input.value = '';
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function() {
+        const imported = parseImportedFile(file, String(reader.result || ''));
+        if (!imported) { alert('Could not find any code in "' + file.name + '".'); return; }
+        fillPanesFromImport(imported, true);
     };
     reader.readAsText(file);
 });

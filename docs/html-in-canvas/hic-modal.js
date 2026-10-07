@@ -787,6 +787,21 @@ function createHicModal(opts) {
         return '<!DOCTYPE html>\n<html>\n<head>\n<meta charset="utf-8">\n<title>' + el.title.textContent + '</title>\n<link rel="icon" href="data:image/svg+xml,<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 100 100\'><text y=\'.9em\' font-size=\'90\'>' + emoji + '</text></svg>">\n<style>html,body{margin:0;height:100%;overflow:hidden}' + code.css + '</style>\n</head>\n<body>\n' + code.html + '\n<script>\n' + code.js + '\n;(function(){var t0=performance.now();function loop(){var t=performance.now()-t0;try{onFrame(t)}catch(e){}requestAnimationFrame(loop)}loop();})();\n<\/script>\n</body>\n</html>';
     }
 
+    /* Adopt a new clip length (imported film / JSON payload) — slider, clock
+       and meta follow, and tick() reads clip.dur live so playback loops the
+       whole imported timeline instead of the host clip's old length. */
+    function setClipDur(sec) {
+        if (!clip || !sec || !(sec > 0)) return;
+        sec = Math.max(1, Math.min(600, Math.round(sec)));
+        clip.dur = sec;
+        var maxMs = sec * 1000;
+        el.slider.max = String(maxMs);
+        if (parseInt(el.slider.value, 10) > maxMs) el.slider.value = '0';
+        el.total.textContent = fmtTime(maxMs);
+        var d = dsDims(curFrame.clipDS);
+        el.meta.textContent = sec + 's · ' + d.w + '×' + d.h;
+    }
+
     /* import */
     if (feats.import) {
         el.impBtn.addEventListener('click', function() { el.impFile.click(); });
@@ -795,15 +810,46 @@ function createHicModal(opts) {
             var rd = new FileReader();
             rd.onload = function() {
                 try {
-                    var code = null;
-                    try { var j = JSON.parse(rd.result); if (j && j.hicCode && j.html) code = { html: j.html, css: j.css || '', js: j.js || '' }; } catch(e) {}
+                    var code = null, title = '', dur = 0;
+                    try { var j = JSON.parse(rd.result); if (j && j.hicCode && j.html) { code = { html: j.html, css: j.css || '', js: j.js || '' }; title = j.name || ''; dur = j.dur > 0 ? j.dur : 0; } } catch(e) {}
                     if (!code) {
+                        /* Anything else — a whole standalone document (a studio-reel
+                           reel-preview.html film, an exported page), a fenced AI reply,
+                           bare markup — goes through the tolerant parser so <style> and
+                           inline <script> land in their own panes. The old fallback
+                           dumped the ENTIRE document (doctype, head, runtime script)
+                           into the HTML pane, which nothing could render. */
                         var txt = String(rd.result);
-                        var h = txt.match(/```html\n([\s\S]*?)```/), c = txt.match(/```css\n([\s\S]*?)```/), j2 = txt.match(/```js\n([\s\S]*?)```/);
-                        code = h ? { html: h[1], css: c ? c[1] : '', js: j2 ? j2[1] : '' } : { html: txt, css: '', js: '' };
+                        var parsed = opts.parseReply ? opts.parseReply(txt) : defaultParseReply(txt);
+                        if (!parsed || (!parsed.html && !parsed.css && !parsed.js)) throw new Error('no code found in ' + f.name);
+                        code = { html: parsed.html || '', css: parsed.css || '', js: parsed.js || '' };
+                        title = parsed.title || '';
+                        dur = parsed.dur || 0;
+                        /* Put <title> back into the HTML pane — hosts read the title
+                           from there (clipTitle / refreshClipTitle) for the modal title
+                           and the export filename after Apply. */
+                        if (title && !/<title/i.test(code.html)) code.html = '<title>' + title.replace(/[<>]/g, '') + '</title>' + (code.html ? '\n' + code.html : '');
+                        /* Films carry their own length — var SB = {"total":ms…} — so a
+                           74s reel doesn't inherit the host clip's 5s timeline. */
+                        if (!dur) {
+                            var _sb = txt.match(/var SB\s*=\s*\{[^{}]*?"total":\s*(\d+)/);
+                            if (_sb) dur = Math.max(1, Math.min(600, parseInt(_sb[1], 10) / 1000));
+                        }
                     }
                     cm.html.setValue(code.html); cm.css.setValue(code.css); cm.js.setValue(code.js);
-                    setStatus('Imported — review and Apply');
+                    if (title) el.title.textContent = title;
+                    if (dur) setClipDur(dur);
+                    if (opts.onImport) opts.onImport(code, { title: title, dur: dur });
+                    /* Land the import on the stage immediately, exactly like a parsed
+                       AI reply. Two reasons: importing a film is pointless until it
+                       plays, and the Code tab's fillEditors() restores panes from
+                           `applied` — imported-but-not-applied code would be silently
+                           overwritten (with stale clip code) by the next tab switch. */
+                    applied = code;
+                    if (opts.applyCode) opts.applyCode(code, 'import');
+                    updateBadge();
+                    applyCodeToStage(code, function() { showTab('preview'); setPlayState(true); start = performance.now(); tick(); });
+                    setStatus('Imported' + (title ? ' "' + title + '"' : '') + ' — applied to stage');
                 } catch(e) { setStatus('Import failed: ' + e.message); }
             };
             rd.readAsText(f); el.impFile.value = '';

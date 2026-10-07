@@ -953,6 +953,16 @@ function _bootstrapModal() {
             if (d) d.duration = parsed.dur;
         }
     },
+    /* File Import (Code tab): a studio-reel reel-preview.html arrives with its
+       own length in seconds — record it on the design so reopening the card,
+       thumbnails and submit all use the film's real duration, not the 5s
+       default. The modal's own slider/meta follow via its setClipDur. */
+    onImport: function(code, parsed) {
+        if (parsed && parsed.dur) {
+            const d = byId[currentDesignId];
+            if (d) d.duration = Math.round(parsed.dur * 1000);
+        }
+    },
 
     /* header buttons — copy prompt / copy code / submit (submit injected below) */
     headerButtons: [
