@@ -39,21 +39,60 @@ try{var _o=document.getElementById("s6-hl");var _h=document.getElementById("s6-c
 function _eo(x){return 1-Math.pow(1-x,3);}
 function _eb(x,s){s=(s===undefined)?1.7:s;var p=x-1;return (s+1)*p*p*p+s*p*p+1;}
 function _c1(x){return Math.max(0,Math.min(1,x));}
+function _io3(x){return x<0.5?4*x*x*x:1-Math.pow(-2*x+2,3)/2;}
+function _el(x){if(x<=0)return 0;if(x>=1)return 1;return Math.pow(2,-10*x)*Math.sin((10*x-0.75)*2.0943951023931953)+1;}
+function _bo(x){if(x<=0)return 0;if(x>=1)return 1;var n=7.5625,d=2.75;if(x<1/d)return n*x*x;if(x<2/d){x-=1.5/d;return n*x*x+0.75;}if(x<2.5/d){x-=2.25/d;return n*x*x+0.9375;}x-=2.625/d;return n*x*x+0.984375;}
+function _bz(x1,y1,x2,y2,p){
+  if(p<=0)return 0;if(p>=1)return 1;
+  function B(t,a,b){var u=1-t;return 3*u*u*t*a+3*u*t*t*b+t*t*t;}
+  var lo=0,hi=1;
+  for(var i=0;i<24;i++){var m=(lo+hi)*0.5;if(B(m,x1,x2)<p)lo=m;else hi=m;}
+  return B((lo+hi)*0.5,y1,y2);}
+function _ez(a,p){var e=a&&a.e;if(!e)return _eo(p);
+  if(e.indexOf("cubic-bezier(")===0){var f=a._f;if(!f){var v=e.replace(/\s/g,"").slice(13,-1).split(",");if(v.length===4&&!isNaN(+v[0])&&!isNaN(+v[1])&&!isNaN(+v[2])&&!isNaN(+v[3])){var q=[+v[0],+v[1],+v[2],+v[3]];f=function(pp){return _bz(q[0],q[1],q[2],q[3],pp);};}else{f=_eo;}a._f=f;}return f(p);}
+  if(e==="linear")return _c1(p);
+  if(e==="out")return _eo(p);
+  if(e==="out-cubic")return _eo(p);
+  if(e==="ease-out")return _eo(p);
+  if(e==="in")return p*p*p;
+  if(e==="in-cubic")return p*p*p;
+  if(e==="ease-in")return p*p*p;
+  if(e==="inout")return _io3(p);
+  if(e==="inout-cubic")return _io3(p);
+  if(e==="ease-in-out")return _io3(p);
+  if(e==="ease")return _bz(.25,.1,.25,1,p);
+  if(e==="back")return _eb(p,(a.o!==undefined)?a.o:1.7);
+  if(e==="elastic")return _el(p);
+  if(e==="bounce")return _bo(p);
+  if(e==="in-quad")return p*p;
+  if(e==="out-quad")return 1-(1-p)*(1-p);
+  if(e==="inout-quad")return p<0.5?2*p*p:1-Math.pow(-2*p+2,2)/2;
+  if(e==="in-quart")return p*p*p*p;
+  if(e==="out-quart")return 1-Math.pow(1-p,4);
+  if(e==="inout-quart")return p<0.5?8*p*p*p*p:1-Math.pow(-2*p+2,4)/2;
+  if(e==="in-expo")return p<=0?0:Math.pow(2,10*p-10);
+  if(e==="out-expo")return p>=1?1:1-Math.pow(2,-10*p);
+  if(e==="inout-expo")return p<=0?0:p>=1?1:p<0.5?Math.pow(2,20*p-10)/2:(2-Math.pow(2,-20*p+10))/2;
+  return _eo(p);}
 function _ph(a,t){if(!a)return null;var s=a.s||0;if(t<s)return null;return _c1((t-s)/((a.d||600)));}
 function _ap(n,type,p,a){
-  if(type==="pop"){var s=(a&&a.o!==undefined)?a.o:1.7;var v=_eb(p,s);
+  if(type==="pop"){var s=(a&&a.o!==undefined)?a.o:1.7;var v=(a&&a.e)?_ez(a,p):_eb(p,s);
     n.style.opacity=String(_c1(p*2));n.style.transform="scale("+(0.8+0.2*v).toFixed(4)+")";}
-  else if(type==="slide"){var fx=(a&&a.fx!==undefined)?a.fx:0,fy=(a&&a.fy!==undefined)?a.fy:0;var k=_eo(p);
+  else if(type==="slide"){var fx=(a&&a.fx!==undefined)?a.fx:0,fy=(a&&a.fy!==undefined)?a.fy:0;var k=_ez(a,p);
     n.style.opacity=String(k);n.style.transform="translate("+((1-k)*fx).toFixed(2)+"px,"+((1-k)*fy).toFixed(2)+"px)";}
+  else if(type==="slot"){var fx=(a&&a.fx!==undefined)?a.fx:0,fy=(a&&a.fy!==undefined)?a.fy:0,k=_ez(a,p);
+    var tf="translate("+((1-k)*fx).toFixed(2)+"px,"+((1-k)*fy).toFixed(2)+"px)";
+    if(a&&a.fs!==undefined)tf+=" scale("+(a.fs+(1-a.fs)*k).toFixed(4)+")";
+    n.style.opacity=String(k);n.style.transform=tf;}
   else if(type==="draw"){n.style.opacity="1";n.style.transform="none";}
-  else {n.style.opacity=String(_eo(p));n.style.transform="none";}
+  else {n.style.opacity=String(_ez(a,p));n.style.transform="none";}
 }
 function _hidden(n){n.style.opacity="0";n.style.transform="none";}
 function _cards(e,t){
   var a=e.in||{t:"slide",fy:50,d:600};var ws=e._ws||(e._ws=Array.prototype.slice.call(e._n.querySelectorAll(".hss-cardwrap")));
   for(var i=0;i<ws.length;i++){var ti=t-i*((e.st||0));var p=_ph(a,ti);
     if(p===null){ws[i].style.opacity="0";ws[i].style.transform="translateY("+((a.fy!==undefined)?a.fy:50)+"px)";continue;}
-    var k=_eo(p);var fy=(a.fy!==undefined)?a.fy:50;ws[i].style.opacity=String(k);ws[i].style.transform="translateY("+((1-k)*fy).toFixed(2)+"px)";}
+    var k=_ez(a,p);var fy=(a.fy!==undefined)?a.fy:50,tf="translateY("+((1-k)*fy).toFixed(2)+"px)";if(a.fs!==undefined)tf+=" scale("+(a.fs+(1-a.fs)*k).toFixed(4)+")";ws[i].style.opacity=String(k);ws[i].style.transform=tf;}
   return ws;
 }
 function _group(e,t){
@@ -62,21 +101,21 @@ function _group(e,t){
   var fy=(a.fy!==undefined)?a.fy:50;
   for(var i=0;i<ws.length;i++){var ti=t-i*((e.st||0));var p=_ph(a,ti);
     if(p===null){ws[i].style.opacity="0";ws[i].style.transform="translateY("+fy+"px)";continue;}
-    var k=_eo(p);ws[i].style.opacity=String(k);ws[i].style.transform="translateY("+((1-k)*fy).toFixed(2)+"px)";}
+    var k=_ez(a,p);var tf="translateY("+((1-k)*fy).toFixed(2)+"px)";if(a.fs!==undefined)tf+=" scale("+(a.fs+(1-a.fs)*k).toFixed(4)+")";ws[i].style.opacity=String(k);ws[i].style.transform=tf;}
   return ws;}
 function _meter(e,t){
   var f=e._mf||(e._mf=e._n.querySelector(".hss-meter-fill"));if(!f)return;
   var pct=Number(f.getAttribute("data-pct"))||0;
   var a=e.min||{t:"slide",d:900};var p=_ph(a,t);
   if(p===null){f.style.width="0%";return;}
-  f.style.width=(_eo(p)*pct).toFixed(3)+"%";}
+  f.style.width=(_ez(a,p)*pct).toFixed(3)+"%";}
 var _CK={col:1,row:1,line:1,area:1,arc:1,value:1};
 function _chart(e,t){
   var ns=e._cn||(e._cn=e._n.querySelectorAll("[data-anim]"));
   var a=e.min||{t:"slide",d:1400};var st=e.st||0;
   for(var i=0;i<ns.length;i++){var el=ns[i];var m=el.getAttribute("data-k");if(!_CK[m])continue;
     var ii=Number(el.getAttribute("data-i"))||0;
-    var p=_ph(a,t-ii*st);var k=p===null?0:_eo(p);
+    var p=_ph(a,t-ii*st);var k=p===null?0:_ez(a,p);
     if(m==="col"){var by=Number(el.getAttribute("data-by")),ty=Number(el.getAttribute("data-ty"));
       el.setAttribute("y",(by-(by-ty)*k).toFixed(2));el.setAttribute("height",((by-ty)*k).toFixed(2));}
     else if(m==="row"){var bx=Number(el.getAttribute("data-bx")),tx=Number(el.getAttribute("data-tx"));
@@ -88,7 +127,7 @@ function _chart(e,t){
   }}
 function _draw(e,t){
   var ns=e._dn||(e._dn=e._n.querySelectorAll("[data-anim]"));
-  var p=_ph(e.in,t);var k=p===null?0:_eo(p);
+  var p=_ph(e.in,t);var k=p===null?0:_ez(e.in,p);
   for(var i=0;i<ns.length;i++){var el=ns[i];var m=el.getAttribute("data-k");
     if(m==="draw"){el.setAttribute("stroke-dashoffset",(1-k).toFixed(4));}
     else if(m==="hl"){el.style.width=(k*100).toFixed(2)+"%";}

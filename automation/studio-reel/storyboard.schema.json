@@ -278,7 +278,7 @@
     },
 
     "entrance": {
-      "description": "APPLIED except `ease` and `type: slot`. The runtime hardcodes three curves (ease-out, back, else fade), so every authored cubic-bezier is discarded and reported; `slot` falls through to the fade branch and loses `from_scale`. `draw` is the shape mark's own entrance: the host holds still at full opacity while the stroke or wipe carries the phase, so the mark draws itself on its own timing — on a non-shape it pins visible with no motion, which makes it a shape-only entrance rather than a broken one. Animations are a pure function of t — never a wall clock and never a CSS transition — or scrub, deep links and the exporter disagree with each other.",
+      "description": "APPLIED — every field, `ease` and `type: slot` included (the first DISCARDED fields to go APPLIED; see entrance.ease and entrance.from_scale for what changed). `draw` is the shape mark's own entrance: the host holds still at full opacity while the stroke or wipe carries the phase, so the mark draws itself on its own timing — on a non-shape it pins visible with no motion, which makes it a shape-only entrance rather than a broken one. Animations are a pure function of t — never a wall clock and never a CSS transition — or scrub, deep links and the exporter disagree with each other.",
       "type": "object",
       "properties": {
         "type": { "enum": ["fade", "slide", "pop", "slot", "draw"] },
@@ -286,10 +286,14 @@
         "dur_ms": { "type": "number" },
         "from_x": { "type": "number" },
         "from_y": { "type": "number" },
-        "from_scale": { "type": "number" },
+        "from_scale": { "type": "number", "description": "APPLIED for `slot` (and by the group entrances cards/tiles/pills, whatever their entrance type): the scale the element starts at — 1 means no scale-in — eased to 1 as the entrance runs, which is the half of slot that used to fall through to the fade branch and vanish. On a single-element fade/slide/pop/draw it is not applied; this description says so rather than dropping the field silently." },
         "overshoot": { "type": "number" },
         "stagger_ms": { "type": "number" },
-        "ease": { "type": "string", "description": "DISCARDED — see above." }
+        "ease": {
+          "type": "string",
+          "pattern": "^(linear|back|elastic|bounce|in|out|inout|ease|ease-in|ease-out|ease-in-out|(in|out|inout)-(quad|cubic|quart|expo)|cubic-bezier\\(\\s*-?(?:\\d+\\.?\\d*|\\.\\d+)\\s*,\\s*-?(?:\\d+\\.?\\d*|\\.\\d+)\\s*,\\s*-?(?:\\d+\\.?\\d*|\\.\\d+)\\s*,\\s*-?(?:\\d+\\.?\\d*|\\.\\d+)\\s*\\))$",
+          "description": "APPLIED — the curve the entrance follows, taken from the emitter's own table: `linear, out, in, inout, back, elastic, bounce`; the CSS spellings `ease, ease-in, ease-out, ease-in-out`; the named family `in-|out-|inout-` × `quad|cubic|quart|expo`; or a verbatim `cubic-bezier(x1,y1,x2,y2)`. A pattern rather than an enum because the bezier form is open-ended — and reel-compile checks the value against the emitter's EASE_EXPR table (the one that GENERATES the runtime resolver), reporting an unknown name with the emitter's own message, so this pattern and what the clip can actually run cannot drift. Unauthored keeps the legacy curve: fade/slide ease-out, pop back."
+        }
       },
       "patternProperties": { "^x_[A-Za-z0-9_]*$": { "$ref": "#/$defs/note" } },
       "additionalProperties": false
@@ -425,7 +429,7 @@
           "properties": {
             "pct": { "type": "number" },
             "dur_ms": { "type": "number" },
-            "ease": { "type": "string", "description": "DISCARDED — see entrance.ease." }
+            "ease": { "type": "string", "pattern": "^(linear|back|elastic|bounce|in|out|inout|ease|ease-in|ease-out|ease-in-out|(in|out|inout)-(quad|cubic|quart|expo)|cubic-bezier\\(\\s*-?(?:\\d+\\.?\\d*|\\.\\d+)\\s*,\\s*-?(?:\\d+\\.?\\d*|\\.\\d+)\\s*,\\s*-?(?:\\d+\\.?\\d*|\\.\\d+)\\s*,\\s*-?(?:\\d+\\.?\\d*|\\.\\d+)\\s*\\))$", "description": "APPLIED — the meter fill's curve, from the same vocabulary as $defs/entrance.ease and checked by reel-compile the same way. Unauthored: ease-out, as always." }
           },
           "patternProperties": { "^x_[A-Za-z0-9_]*$": { "$ref": "#/$defs/note" } },
           "additionalProperties": false

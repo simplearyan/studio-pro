@@ -155,7 +155,15 @@ if (a.err || b.err) {
           <script> resolved after the first onFrame rendered raw `$$…$$` for
           the entire reel with no error.
      6.    _hssSetup falls back to document.body, so a BOARD can typeset —
-          the scenes preview has several stages and no #hss. */
+          the scenes preview has several stages and no #hss.
+     7-10. the easing pass (P0) rewires pop/slide/fade and the cards group
+          through _ez. With no `ease` authored _ez returns the old curve, so
+          the transform each legacy film sees is unchanged — that is asserted
+          as an A/B on the emitted runtime below; these four entries only
+          declare the edited lines so the superset check stays strict for
+          every OTHER line. The resolver itself, the slot branch and
+          _group/_meter/_chart/_draw are ADDITIONS: a superset check needs
+          no entry for text that never existed in the baseline. */
   const RUNTIME_EDITS = [
     ['if(e.type!=="cards")_hidden(eN);', 'if(!isGroupT(e.type))_hidden(eN);'],
     ['var ws2=e._ws||_cards(e,-1);', 'var ws2=(e.type==="cards"?_cards(e,-1):_group(e,-1));'],
@@ -167,6 +175,18 @@ if (a.err || b.err) {
        showed raw $$…$$ while the film beside it set it. The clip still finds
        #hss, so this changes a no-op into a no-op for every existing caller. */
     ['var root=document.getElementById("hss");', 'var root=document.getElementById("hss")||document.body;'],
+    /* P0 easing: the four baseline call sites now route through _ez, each
+       guarded so an unauthored ease takes the exact old expression. The
+       `from` texts are the baseline lines verbatim (absent `from` is a FAIL
+       in this loop); the `to` texts are the current lines verbatim. */
+    ['  if(type==="pop"){var s=(a&&a.o!==undefined)?a.o:1.7;var v=_eb(p,s);',
+     '  if(type==="pop"){var s=(a&&a.o!==undefined)?a.o:1.7;var v=(a&&a.e)?_ez(a,p):_eb(p,s);'],
+    ['  else if(type==="slide"){var fx=(a&&a.fx!==undefined)?a.fx:0,fy=(a&&a.fy!==undefined)?a.fy:0;var k=_eo(p);',
+     '  else if(type==="slide"){var fx=(a&&a.fx!==undefined)?a.fx:0,fy=(a&&a.fy!==undefined)?a.fy:0;var k=_ez(a,p);'],
+    ['  else {n.style.opacity=String(_eo(p));n.style.transform="none";}',
+     '  else {n.style.opacity=String(_ez(a,p));n.style.transform="none";}'],
+    ['    var k=_eo(p);var fy=(a.fy!==undefined)?a.fy:50;ws[i].style.opacity=String(k);ws[i].style.transform="translateY("+((1-k)*fy).toFixed(2)+"px)";}',
+     '    var k=_ez(a,p);var fy=(a.fy!==undefined)?a.fy:50,tf="translateY("+((1-k)*fy).toFixed(2)+"px)";if(a.fs!==undefined)tf+=" scale("+(a.fs+(1-a.fs)*k).toFixed(4)+")";ws[i].style.opacity=String(k);ws[i].style.transform=tf;}'],
   ];
   let jsLegacy = a.js;
   for (const [from, to] of RUNTIME_EDITS) {
@@ -1084,6 +1104,147 @@ badSide.scenes[0].elements[5].side = 'diagonal';
 check('an invented arrow side is caught too',
   validate(badSide, schema).some((e) => e.pointer === '/scenes/0/elements/5/side'),
   JSON.stringify(validate(badSide, schema)));
+
+console.log('\n=== P0: an authored ease selects a curve, and a slot scales in ===');
+/* The resolver and the slot branch were added by the easing pass, and the
+   four rewired call sites are declared in RUNTIME_EDITS above. What follows
+   pins the two behaviours P0 exists for, on the EMITTED runtime evaluated in
+   a vm — grepping the source can find a function that never runs. */
+function evalClip(js) {
+  const sb = { console, window: {}, document: {} };
+  vm.runInNewContext(
+    js + '\n;this.__x={_ap:_ap,_ez:(typeof _ez==="function"?_ez:null),_eo:_eo};',
+    sb, { filename: 'clip.js' });
+  return sb.__x;
+}
+const cur = evalClip(b.js);
+const base = evalClip(a.js);
+check('the clip runtime exposes the easing resolver beside the entrance writer',
+  typeof cur._ap === 'function' && typeof cur._ez === 'function');
+/* THE legacy contract as an A/B on the same input: with no `ease` authored,
+   pop at the same overshoot must produce the identical style as the pinned
+   baseline. This is what makes the four rewired sites safe for every film
+   that already ships. */
+const popN = { style: {} }, popBase = { style: {} };
+cur._ap(popN, 'pop', 0.3, { o: 1.7 });
+base._ap(popBase, 'pop', 0.3, { o: 1.7 });
+check('pop with no authored ease is byte-identical to the baseline runtime',
+  JSON.stringify(popN.style) === JSON.stringify(popBase.style),
+  `${JSON.stringify(popN.style)} vs ${JSON.stringify(popBase.style)}`);
+check('an unauthored ease falls back to the legacy curve, byte-for-byte',
+  cur._ez({}, 0.5) === cur._eo(0.5) && cur._ez({ e: 'ease-out' }, 0.5) === cur._eo(0.5));
+check('an authored ease selects a DIFFERENT curve (linear names its own midpoint)',
+  cur._ez({ e: 'linear' }, 0.5) === 0.5 && cur._ez({ e: 'in' }, 0.5) !== cur._eo(0.5));
+check('a cubic-bezier spelling evaluates to a finite number at runtime',
+  isFinite(cur._ez({ e: 'cubic-bezier(.2,.9,.3,1.2)' }, 0.5)));
+check('_eo itself is unchanged from the baseline, so the fallback is the old curve',
+  a.js.split('\n').find((l) => l.indexOf('function _eo') === 0) ===
+  b.js.split('\n').find((l) => l.indexOf('function _eo') === 0));
+/* The slot: the half of the entrance that used to fall through to the fade
+   branch and vanish. Assert the branch exists, the fields reach the literal
+   the runtime reads, and the TRANSFORM it then writes. */
+const SLOT = {
+  title: 'S', aspect: '16:9', total_duration_ms: 1000,
+  scenes: [{ start_ms: 0, end_ms: 1000, elements: [
+    { id: 't1', type: 'text', size: 'title', color: '#fff', text: 'x', at_ms: 0,
+      in: { type: 'slot', from_y: 40, from_scale: 0.96, ease: 'ease-out', dur_ms: 500 } },
+  ] }],
+};
+const slotClip = after.compileStoryboard(JSON.parse(JSON.stringify(SLOT)));
+check('the slot branch is in the emitted runtime',
+  slotClip.js.indexOf('type==="slot"') !== -1);
+check('from_scale and ease reach the sb literal the runtime reads',
+  slotClip.js.indexOf('"fs":0.96') !== -1 && slotClip.js.indexOf('"e":"ease-out"') !== -1,
+  `fs=${slotClip.js.indexOf('"fs":0.96') >= 0} e=${slotClip.js.indexOf('"e":"ease-out"') >= 0}`);
+const sx = evalClip(slotClip.js);
+const slotNode = { style: {} };
+sx._ap(slotNode, 'slot', 0.5, { fy: 40, fs: 0.96, e: 'ease-out' });
+check('a slot eases from its from_scale to 1 as the entrance runs (the P0 fix)',
+  slotNode.style.transform.indexOf('translate(') !== -1 &&
+  slotNode.style.transform.indexOf('scale(0.9950)') !== -1,
+  JSON.stringify(slotNode.style));
+const slotBare = { style: {} };
+sx._ap(slotBare, 'slot', 0.5, { fy: 40 });
+check('a slot that authors no from_scale gets no scale() at all',
+  slotBare.style.transform.indexOf('translate(') !== -1 &&
+  slotBare.style.transform.indexOf('scale(') === -1,
+  JSON.stringify(slotBare.style));
+/* The vocabulary, asked not copied — the same contract as the type and
+   shape lists above. The schema pattern and this table are two halves of
+   one gate: the pattern catches the typo at a JSON pointer, the table
+   catches it against what the clip can actually RUN. */
+const EASE_NAMES = ['linear', 'out', 'out-cubic', 'ease-out', 'in', 'in-cubic', 'ease-in',
+  'inout', 'inout-cubic', 'ease-in-out', 'ease', 'back', 'elastic', 'bounce',
+  'in-quad', 'out-quad', 'inout-quad', 'in-cubic', 'out-cubic', 'inout-cubic',
+  'in-quart', 'out-quart', 'inout-quart', 'in-expo', 'out-expo', 'inout-expo'];
+check('emitterSupportsEase says yes to every curve in the vocabulary',
+  EASE_NAMES.every((e) => after.emitterSupportsEase(e) === true) &&
+  after.emitterSupportsEase('cubic-bezier(.2,.9,.3,1.2)') === true &&
+  after.emitterSupportsEase('cubic-bezier(0.1, 0.1, 0.1, 0.1)') === true,
+  EASE_NAMES.filter((e) => !after.emitterSupportsEase(e)).join(','));
+check('and no to an invented curve or an absent one',
+  after.emitterSupportsEase('wobble') === false &&
+  after.emitterSupportsEase(undefined) === false);
+check('unknownEaseError carries the unknownEase flag like the type and shape refusals',
+  after.unknownEaseError('wobble').unknownEase === true &&
+  /unknown ease "wobble"/.test(after.unknownEaseError('wobble').message));
+/* And both gates that stand between the author and the clip refuse an
+   unknown curve: the schema at a JSON pointer, reconcile as `unapplied` —
+   which the CLI turns into exit 1, like an unknown fill. */
+const easeSb = {
+  title: 'E', aspect: '16:9', total_duration_ms: 1000,
+  scenes: [{ start_ms: 0, end_ms: 1000, elements: [
+    { id: 't1', type: 'text', color: '#fff', text: 'x', at_ms: 0,
+      in: { type: 'fade', ease: 'wobble' } },
+  ] }],
+};
+check('the schema pattern catches an unknown ease at a JSON pointer',
+  validate(easeSb, schema).some((e) => e.pointer === '/scenes/0/elements/0/in/ease'),
+  JSON.stringify(validate(easeSb, schema)));
+const easeMeterSb = JSON.parse(JSON.stringify(easeSb));
+delete easeMeterSb.scenes[0].elements[0].in.ease;
+easeMeterSb.scenes[0].elements[0] = { id: 'm1', type: 'card', color: '#fff', at_ms: 0,
+  meter: { pct: 60, ease: 'wobble' } };
+check('the schema catches an unknown METER ease at its own pointer',
+  validate(easeMeterSb, schema).some((e) => e.pointer === '/scenes/0/elements/0/meter/ease'),
+  JSON.stringify(validate(easeMeterSb, schema)));
+const easeFilm = (elements) => ({
+  meta: { title: 'E', id: 'e', aspect: '16:9', fps: 30, duration: 3, design: 'test' },
+  design: { tokens: { brand: '#2563eb' } },
+  frame: {},
+  scenes: [{ id: 's1', start: 0, dur: 3, tone: 'normal', elements }],
+});
+const badEntrance = rc.reconcile(easeFilm([
+  { id: 't1', type: 'text', role: 'title', text: 'x', at_ms: 0, in: { type: 'fade', ease: 'wobble' } },
+]), undefined, 'light');
+check('reconcile reports an unknown entrance ease as unapplied, with the emitter own words',
+  badEntrance.unapplied.some((u) => u.includes('t1') && /unknown ease "wobble"/.test(u)),
+  JSON.stringify(badEntrance.unapplied));
+const badMeter = rc.reconcile(easeFilm([
+  { id: 'm1', type: 'card', color: 'brand', meter: { pct: 60, ease: 'wobble' }, at_ms: 0 },
+]), undefined, 'light');
+check('reconcile reports an unknown METER ease as unapplied',
+  badMeter.unapplied.some((u) => u.includes('m1') && /meter ease/.test(u) && /unknown ease "wobble"/.test(u)),
+  JSON.stringify(badMeter.unapplied));
+const badChart = rc.reconcile(easeFilm([
+  { id: 'g1', type: 'chart', categories: ['a'], values: [1],
+    chart_in: { type: 'slide', ease: 'wobble' }, at_ms: 0 },
+]), undefined, 'light');
+check('reconcile reports an unknown chart_in ease as unapplied',
+  badChart.unapplied.some((u) => u.includes('g1') && /chart_in ease/.test(u) && /unknown ease "wobble"/.test(u)),
+  JSON.stringify(badChart.unapplied));
+/* The positive path: a known curve and a from_scale cross reconcile into
+   the emitter IR with nothing to report — carried, not just tolerated. */
+const goodEaseF = easeFilm([
+  { id: 't1', type: 'text', role: 'title', text: 'x', at_ms: 0,
+    in: { type: 'slide', ease: 'inout-cubic', from_scale: 0.9, dur_ms: 400 } },
+]);
+const goodEase = rc.reconcile(goodEaseF, goodEaseF.design, 'light');
+const goodEl = goodEase.top.scenes[0].elements[0];
+check('a known ease and a from_scale reach the emitter IR with nothing reported',
+  goodEase.unapplied.length === 0 && goodEl.in.ease === 'inout-cubic' &&
+  goodEl.in.from_scale === 0.9,
+  JSON.stringify({ unapplied: goodEase.unapplied, in: goodEl.in }));
 
 console.log('');
 if (failures) {

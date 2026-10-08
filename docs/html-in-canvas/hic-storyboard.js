@@ -366,6 +366,91 @@
    * is portable — it runs inside HicRenderer's `new Function('time', js)`
    * and in the standalone page, with no access to the outer page's code).
    * Everything it needs is carried in the STORYBOARD literal below. */
+  /* ── the easing vocabulary ─────────────────────────────────────────────
+   * ONE table, two consumers — and the reason it is one: two lists
+   * describing one implementation drift, and they drift in the direction of
+   * an authored curve rendering as the default one with nothing reporting it
+   * (the same argument that put the type and shape vocabularies here).
+   *
+   * `EASE_EXPR` maps an authored ease NAME to the runtime expression it
+   * evaluates to, with `p` the 0..1 phase and `a` the entrance record (so
+   * `back` can read the authored overshoot). The emitted `_ez` is GENERATED
+   * from this table — see EZ_JS below — and emitterSupportsEase() reads the
+   * same object, so what reel-compile refuses is exactly what the clip cannot
+   * run. A name that is here works; a name that is not is reported with this
+   * table's contents, never guessed at.
+   *
+   * The DEFAULT curves are deliberately absent from the table: an
+   * unauthored entrance keeps the curves the runtime always used
+   * (fade/slide ease-out, pop back), decided at the call sites that already
+   * had them. Only an authored name reaches _ez, so every pre-P0 clip
+   * animates exactly as before.
+   *
+   * `cubic-bezier(x1,y1,x2,y2)` cannot be enumerated — it is a PATTERN
+   * (CB_RE), parsed once per element inside the clip and cached on the
+   * entrance record. The schema polices the same grammar with the same shape
+   * of pattern, so a value that passes the schema passes here. */
+  var EASE_EXPR = {
+    linear: '_c1(p)',
+    out: '_eo(p)', 'out-cubic': '_eo(p)', 'ease-out': '_eo(p)',
+    in: 'p*p*p', 'in-cubic': 'p*p*p', 'ease-in': 'p*p*p',
+    inout: '_io3(p)', 'inout-cubic': '_io3(p)', 'ease-in-out': '_io3(p)',
+    ease: '_bz(.25,.1,.25,1,p)',
+    back: '_eb(p,(a.o!==undefined)?a.o:1.7)',
+    elastic: '_el(p)',
+    bounce: '_bo(p)',
+    'in-quad': 'p*p',
+    'out-quad': '1-(1-p)*(1-p)',
+    'inout-quad': 'p<0.5?2*p*p:1-Math.pow(-2*p+2,2)/2',
+    'in-quart': 'p*p*p*p',
+    'out-quart': '1-Math.pow(1-p,4)',
+    'inout-quart': 'p<0.5?8*p*p*p*p:1-Math.pow(-2*p+2,4)/2',
+    'in-expo': 'p<=0?0:Math.pow(2,10*p-10)',
+    'out-expo': 'p>=1?1:1-Math.pow(2,-10*p)',
+    'inout-expo': 'p<=0?0:p>=1?1:p<0.5?Math.pow(2,20*p-10)/2:(2-Math.pow(2,-20*p+10))/2',
+  };
+  /* The cubic-bezier grammar, in exactly the shape the schema's `pattern`
+     uses — one number per control coordinate, leading dot or not, optional
+     sign, whitespace tolerated. Anything else is an unknown ease, not a
+     best-effort parse of `+v[0]` feeding NaN into a style write. */
+  var CB_RE = /^cubic-bezier\(\s*(?:-?(?:\d+\.?\d*|\.\d+))\s*,\s*(?:-?(?:\d+\.?\d*|\.\d+))\s*,\s*(?:-?(?:\d+\.?\d*|\.\d+))\s*,\s*(?:-?(?:\d+\.?\d*|\.\d+))\s*\)$/;
+
+  /* The _ez source: the curve helpers plus one generated `if` per table
+     entry. Built once at load and spliced into CLIP_JS_TEMPLATE as ONE
+     element (the template joins with newlines, so an element may hold them). */
+  var EZ_JS = [
+    /* cubic in-out, shared by inout / inout-cubic / ease-in-out */
+    'function _io3(x){return x<0.5?4*x*x*x:1-Math.pow(-2*x+2,3)/2;}',
+    'function _el(x){if(x<=0)return 0;if(x>=1)return 1;return Math.pow(2,-10*x)*Math.sin((10*x-0.75)*2.0943951023931953)+1;}',
+    'function _bo(x){if(x<=0)return 0;if(x>=1)return 1;var n=7.5625,d=2.75;if(x<1/d)return n*x*x;if(x<2/d){x-=1.5/d;return n*x*x+0.75;}if(x<2.5/d){x-=2.25/d;return n*x*x+0.9375;}x-=2.625/d;return n*x*x+0.984375;}',
+    /* A cubic-bezier solved by BISECTION, not Newton: 24 halvings are
+       deterministic to 6e-8, cannot run away on a steep control polygon,
+       and cost nothing next to the style write they feed. An UNPARSEABLE
+       cubic-bezier (a hand-built clip that bypassed the schema) falls back
+       to _eo rather than caching NaN — a bad name must not become a bad
+       STYLE value, which CSS drops silently mid-film. */
+    'function _bz(x1,y1,x2,y2,p){',
+    '  if(p<=0)return 0;if(p>=1)return 1;',
+    '  function B(t,a,b){var u=1-t;return 3*u*u*t*a+3*u*t*t*b+t*t*t;}',
+    '  var lo=0,hi=1;',
+    '  for(var i=0;i<24;i++){var m=(lo+hi)*0.5;if(B(m,x1,x2)<p)lo=m;else hi=m;}',
+    '  return B((lo+hi)*0.5,y1,y2);}',
+    /* One resolver for every call site: the authored curve when there is
+       one, the legacy ease-out when there is not. Pop's default (back)
+       stays in _ap, where the overshoot parameter already lived. */
+    'function _ez(a,p){var e=a&&a.e;if(!e)return _eo(p);',
+    /* The bezier branch caches the curve FUNCTION on the anim object, not
+       its value at one p: _bz solves for a p it is GIVEN, so calling it at
+       parse time would cache the number it returns (0, for the missing p)
+       and throw on the next frame. Parse once, wrap once, evaluate per
+       frame — and keep _eo as the fallback for an unparseable spelling. */
+    '  if(e.indexOf("cubic-bezier(")===0){var f=a._f;if(!f){var v=e.replace(/\\s/g,"").slice(13,-1).split(",");if(v.length===4&&!isNaN(+v[0])&&!isNaN(+v[1])&&!isNaN(+v[2])&&!isNaN(+v[3])){var q=[+v[0],+v[1],+v[2],+v[3]];f=function(pp){return _bz(q[0],q[1],q[2],q[3],pp);};}else{f=_eo;}a._f=f;}return f(p);}',
+  ].concat(Object.keys(EASE_EXPR).map(function (name) {
+    return '  if(e===' + JSON.stringify(name) + ')return ' + EASE_EXPR[name] + ';';
+  }), [
+    '  return _eo(p);}',
+  ]).join('\n');
+
   var CLIP_JS_TEMPLATE = [
     '/* generated by hic-storyboard.js — deterministic from t */',
     'var SB = __SB__;',
@@ -393,16 +478,28 @@
     'function _eo(x){return 1-Math.pow(1-x,3);}',
     'function _eb(x,s){s=(s===undefined)?1.7:s;var p=x-1;return (s+1)*p*p*p+s*p*p+1;}',
     'function _c1(x){return Math.max(0,Math.min(1,x));}',
+    // the easing resolver, GENERATED from EASE_EXPR — see the note there
+    EZ_JS,
     // anim phase: null before start, 0..1 during, 1 after
     'function _ph(a,t){if(!a)return null;var s=a.s||0;if(t<s)return null;return _c1((t-s)/((a.d||600)));}',
     // apply one phase to a node
     'function _ap(n,type,p,a){',
-    '  if(type==="pop"){var s=(a&&a.o!==undefined)?a.o:1.7;var v=_eb(p,s);',
+    '  if(type==="pop"){var s=(a&&a.o!==undefined)?a.o:1.7;var v=(a&&a.e)?_ez(a,p):_eb(p,s);',
     '    n.style.opacity=String(_c1(p*2));n.style.transform="scale("+(0.8+0.2*v).toFixed(4)+")";}',
-    '  else if(type==="slide"){var fx=(a&&a.fx!==undefined)?a.fx:0,fy=(a&&a.fy!==undefined)?a.fy:0;var k=_eo(p);',
+    '  else if(type==="slide"){var fx=(a&&a.fx!==undefined)?a.fx:0,fy=(a&&a.fy!==undefined)?a.fy:0;var k=_ez(a,p);',
     '    n.style.opacity=String(k);n.style.transform="translate("+((1-k)*fx).toFixed(2)+"px,"+((1-k)*fy).toFixed(2)+"px)";}',
+    /* slot: the scale-in entrance, and the branch that did not exist — it
+       fell through to the fade case and lost from_y AND from_scale, so an
+       authored slot rendered as a plain fade with nothing reporting it.
+       translate then scale, so the offset is not multiplied by the scale; the
+       scale append is conditional, so a slot that authors no from_scale does
+       not gain a no-op `scale(1.0000)` it never asked for. */
+    '  else if(type==="slot"){var fx=(a&&a.fx!==undefined)?a.fx:0,fy=(a&&a.fy!==undefined)?a.fy:0,k=_ez(a,p);',
+    '    var tf="translate("+((1-k)*fx).toFixed(2)+"px,"+((1-k)*fy).toFixed(2)+"px)";',
+    '    if(a&&a.fs!==undefined)tf+=" scale("+(a.fs+(1-a.fs)*k).toFixed(4)+")";',
+    '    n.style.opacity=String(k);n.style.transform=tf;}',
     '  else if(type==="draw"){n.style.opacity="1";n.style.transform="none";}',
-    '  else {n.style.opacity=String(_eo(p));n.style.transform="none";}',
+    '  else {n.style.opacity=String(_ez(a,p));n.style.transform="none";}',
     '}',
     'function _hidden(n){n.style.opacity="0";n.style.transform="none";}',
     // cards: per-item stagger
@@ -410,7 +507,7 @@
     '  var a=e.in||{t:"slide",fy:50,d:600};var ws=e._ws||(e._ws=Array.prototype.slice.call(e._n.querySelectorAll(".hss-cardwrap")));',
     '  for(var i=0;i<ws.length;i++){var ti=t-i*((e.st||0));var p=_ph(a,ti);',
     '    if(p===null){ws[i].style.opacity="0";ws[i].style.transform="translateY("+((a.fy!==undefined)?a.fy:50)+"px)";continue;}',
-    '    var k=_eo(p);var fy=(a.fy!==undefined)?a.fy:50;ws[i].style.opacity=String(k);ws[i].style.transform="translateY("+((1-k)*fy).toFixed(2)+"px)";}',
+    '    var k=_ez(a,p);var fy=(a.fy!==undefined)?a.fy:50,tf="translateY("+((1-k)*fy).toFixed(2)+"px)";if(a.fs!==undefined)tf+=" scale("+(a.fs+(1-a.fs)*k).toFixed(4)+")";ws[i].style.opacity=String(k);ws[i].style.transform=tf;}',
     '  return ws;',
     '}',
     // R1 group types: same per-item stagger contract as cards, generalised so
@@ -422,7 +519,7 @@
 '  var fy=(a.fy!==undefined)?a.fy:50;',
 '  for(var i=0;i<ws.length;i++){var ti=t-i*((e.st||0));var p=_ph(a,ti);',
 '    if(p===null){ws[i].style.opacity="0";ws[i].style.transform="translateY("+fy+"px)";continue;}',
-'    var k=_eo(p);ws[i].style.opacity=String(k);ws[i].style.transform="translateY("+((1-k)*fy).toFixed(2)+"px)";}',
+'    var k=_ez(a,p);var tf="translateY("+((1-k)*fy).toFixed(2)+"px)";if(a.fs!==undefined)tf+=" scale("+(a.fs+(1-a.fs)*k).toFixed(4)+")";ws[i].style.opacity=String(k);ws[i].style.transform=tf;}',
 '  return ws;}',
 // R1 card meter: width is a FUNCTION OF t, never a CSS transition. A
 // transition reads the wall clock, which would make scrub, deep links and
@@ -432,7 +529,7 @@
 '  var pct=Number(f.getAttribute("data-pct"))||0;',
 '  var a=e.min||{t:"slide",d:900};var p=_ph(a,t);',
 '  if(p===null){f.style.width="0%";return;}',
-'  f.style.width=(_eo(p)*pct).toFixed(3)+"%";}',
+'  f.style.width=(_ez(a,p)*pct).toFixed(3)+"%";}',
 // R1 charts: the meter contract, generalised. Every animated node carries the
 // geometry the emitter computed at compile time and this applies progress to
 // it, so the runtime never owns a scale. Same reason as _meter: a CSS
@@ -444,7 +541,7 @@
 '  var a=e.min||{t:"slide",d:1400};var st=e.st||0;',
 '  for(var i=0;i<ns.length;i++){var el=ns[i];var m=el.getAttribute("data-k");if(!_CK[m])continue;',
 '    var ii=Number(el.getAttribute("data-i"))||0;',
-'    var p=_ph(a,t-ii*st);var k=p===null?0:_eo(p);',
+'    var p=_ph(a,t-ii*st);var k=p===null?0:_ez(a,p);',
 '    if(m==="col"){var by=Number(el.getAttribute("data-by")),ty=Number(el.getAttribute("data-ty"));',
 '      el.setAttribute("y",(by-(by-ty)*k).toFixed(2));el.setAttribute("height",((by-ty)*k).toFixed(2));}',
 '    else if(m==="row"){var bx=Number(el.getAttribute("data-bx")),tx=Number(el.getAttribute("data-tx"));',
@@ -465,7 +562,7 @@
 // coordinate with but its own arrival.
 'function _draw(e,t){',
 '  var ns=e._dn||(e._dn=e._n.querySelectorAll("[data-anim]"));',
-'  var p=_ph(e.in,t);var k=p===null?0:_eo(p);',
+'  var p=_ph(e.in,t);var k=p===null?0:_ez(e.in,p);',
 '  for(var i=0;i<ns.length;i++){var el=ns[i];var m=el.getAttribute("data-k");',
 '    if(m==="draw"){el.setAttribute("stroke-dashoffset",(1-k).toFixed(4));}',
 '    else if(m==="hl"){el.style.width=(k*100).toFixed(2)+"%";}',
@@ -966,6 +1063,27 @@ SETTLE_JS,
      gap above and below. */
   var ARROW_SIDES = { left: 1, right: 1, top: 1, bottom: 1 };
 
+  /* ── the easing vocabulary, asked the same way types and shapes are ────
+     `_ez` is GENERATED from EASE_EXPR (see EZ_JS above), so this is not a
+     list beside the implementation — it IS the runtime's table, read. The
+     stakes are the same as for a type: an eased entrance whose curve nobody
+     has heard of falls back to ease-out and renders, correct-looking and
+     wrong, behind a green gate. reel-compile asks here and reports this
+     error's own message, so the refusal and the reason cannot disagree. */
+  function emitterSupportsEase(e) {
+    if (typeof e !== 'string' || !e) return false;
+    return Object.prototype.hasOwnProperty.call(EASE_EXPR, e) || CB_RE.test(e);
+  }
+
+  function unknownEaseError(e) {
+    var err = new Error('hic-storyboard: unknown ease ' +
+      JSON.stringify(String(e == null ? '' : e)) +
+      ' — _ez has no curve for it (known: ' + Object.keys(EASE_EXPR).join(', ') +
+      ', or cubic-bezier(x1,y1,x2,y2))');
+    err.unknownEase = true;
+    return err;
+  }
+
   function unknownShapeError(s) {
     var err = new Error('hic-storyboard: unknown shape kind ' +
       JSON.stringify(String(s == null ? '' : s)) +
@@ -1312,7 +1430,11 @@ SETTLE_JS,
           els: sc.elements.map(function (e) {
             function anim(a) {
               if (!a) return undefined;
-              return { t: a.type, s: a.start_ms || 0, d: a.dur_ms || 600, fx: a.from_x, fy: a.from_y, o: a.overshoot, st: a.stagger_ms };
+              /* e/fs were added with the easing pass: `ease` selects a curve
+                 from EASE_EXPR and `from_scale` is the slot's scale-in. Both
+                 are omitted by JSON.stringify when unauthored, so a clip
+                 that authors neither keeps its exact old literal. */
+              return { t: a.type, s: a.start_ms || 0, d: a.dur_ms || 600, fx: a.from_x, fy: a.from_y, fs: a.from_scale, o: a.overshoot, st: a.stagger_ms, e: a.ease };
             }
             var el = {
               id: e.id, type: e.type, at: e.at_ms || 0,
@@ -2006,6 +2128,9 @@ SETTLE_JS,
     emitterSupportsShape: emitterSupportsShape,
     unknownShapeError: unknownShapeError,
     unknownArrowSideError: unknownArrowSideError,
+    /* the easing vocabulary under the same contract: asked, not copied. */
+    emitterSupportsEase: emitterSupportsEase,
+    unknownEaseError: unknownEaseError,
     ARROW_SIDES: ARROW_SIDES,
     SCENES_CSS: SCENES_CSS,
     RUNTIME_CSS: RUNTIME_CSS,

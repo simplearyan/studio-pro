@@ -198,8 +198,6 @@ const IGNORED_BY_EMITTER = [
   'scenes[].background (now APPLIED per scene — flat, dots and gradient recipes; an unknown type is still reported)',
   'scenes[].ambient (no decorative-layer concept at all — 3 layers in this film)',
   'scenes[].exit, scenes[].tone, scenes[].frame',
-  'elements[].in.ease (the runtime hardcodes three curves: _eo ease-out, _eb back, else fade. Every cubic-bezier in the IR is discarded)',
-  'elements[].in.type "slot" (falls through to the fade branch, losing from_scale)',
   'elements[].role, .place, .value, .small, .items, .width (role drives the ramp and the font; columns now reach a grid group)',
   'elements[].rotate (a static rotation cannot be applied: the runtime OWNS transform on every frame — _ap writes scale()/translate() — so any authored angle would be overwritten 60 times a second. It needs a composite, not a declaration.)',
 ];
@@ -623,6 +621,15 @@ function reconcile(sb, designIn, mode) {
         el.meter_pct = e.meter ? e.meter.pct : 0;
         el.meter_color = e.meter_color || hex;
         el.meter_in = e.meter ? { type: 'slide', dur_ms: e.meter.dur_ms || 900 } : { type: 'slide', dur_ms: 900 };
+        /* The meter's curve comes from the emitter's EASE_EXPR table — the
+           same table that GENERATES the runtime resolver — so an unknown
+           name is reported with the emitter's own message instead of
+           silently running the fallback curve. */
+        if (e.meter && e.meter.ease !== undefined) {
+          const easeApi = emitterApi();
+          if (easeApi.emitterSupportsEase(e.meter.ease)) el.meter_in.ease = e.meter.ease;
+          else unapplied.push(`${sc.id}/${e.id} — meter ease: ${easeApi.unknownEaseError(e.meter.ease).message}`);
+        }
         el.meter_at_ms = e.meter_at_ms || 0;
       } else if (e.type === 'tiles') {
         el.columns = e.columns || 1;
@@ -682,6 +689,13 @@ function reconcile(sb, designIn, mode) {
           dur_ms: (e.chart_in && e.chart_in.dur_ms) || 1400,
           stagger_ms: (e.chart_in && e.chart_in.stagger_ms) || 0,
         };
+        /* Same contract as the meter's curve: asked of EASE_EXPR, reported
+           with the emitter's own words when unknown. */
+        if (e.chart_in && e.chart_in.ease !== undefined) {
+          const easeApi = emitterApi();
+          if (easeApi.emitterSupportsEase(e.chart_in.ease)) el.chart_in.ease = e.chart_in.ease;
+          else unapplied.push(`${sc.id}/${e.id} — chart_in ease: ${easeApi.unknownEaseError(e.chart_in.ease).message}`);
+        }
         el.chart_at_ms = e.chart_at_ms || 0;
       } else if (e.type === 'credit') {
         el.text = e.text;
@@ -799,11 +813,44 @@ function reconcile(sb, designIn, mode) {
         el.in = { type: e.in.type };
         if (e.in.from_x !== undefined) el.in.from_x = e.in.from_x;
         if (e.in.from_y !== undefined) el.in.from_y = e.in.from_y;
+        /* from_scale is the slot's scale-in and the group entrances' scale
+           half — carrying it is what stops the slot from rendering at full
+           size for the whole entrance. On a single fade/slide/pop the
+           emitter ignores it, and the schema says so. */
+        if (e.in.from_scale !== undefined) el.in.from_scale = e.in.from_scale;
         if (e.in.overshoot !== undefined) el.in.overshoot = e.in.overshoot;
         if (e.in.stagger_ms !== undefined) el.in.stagger_ms = e.in.stagger_ms;
+        /* The curve vocabulary lives in the emitter's EASE_EXPR table — the
+           one that GENERATES the runtime resolver — so this pattern and what
+           the clip can actually run cannot drift. Unknown name: reported
+           with the emitter's own message (unapplied fails the build), like
+           an unknown fill. */
+        if (e.in.ease !== undefined) {
+          const easeApi = emitterApi();
+          if (easeApi.emitterSupportsEase(e.in.ease)) el.in.ease = e.in.ease;
+          else unapplied.push(`${sc.id}/${e.id} — ${easeApi.unknownEaseError(e.in.ease).message}`);
+        }
         el.in.start_ms = e.in.start_ms || 0;
         el.in.dur_ms = e.in.dur_ms || 600;
       }
+
+      /* A scene shorter than its own choreography hides content — with dur
+         defaulting to 3s this is the trap the default creates: an entrance
+         that would land at 5s never plays inside a 3s scene. Every element of
+         every shipped film ends at or before its scene's edge (checked across
+         all 7 films / 220 elements), so this warning only ever fires for
+         genuinely broken timing, never as noise on legacy films. */
+      const sceneMs = sc.dur * 1000;
+      const lastBeat = Math.max(
+        el.in ? el.in.start_ms + el.in.dur_ms : 0,
+        el.at_ms || 0,
+        el.meter_at_ms || 0,
+        el.chart_at_ms || 0
+      );
+      if (lastBeat > sceneMs) {
+        warnings.push(`${sc.id}/${el.id}: choreography runs to ${lastBeat}ms but the scene is ${sceneMs}ms — the tail never plays (raise dur or pull the timing in)`);
+      }
+
       out.elements.push(el);
     }
     scenes.push(out);
