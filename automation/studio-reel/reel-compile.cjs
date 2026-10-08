@@ -1170,6 +1170,75 @@ function designBoard(sb, mode, designIn, top, theme) {
     },
   };
 }
+/* The timeline is a chain of durations — this is what makes "set one scene's
+ * duration" a single-field edit. Before it, every scene carried hand-computed
+ * `start` seconds and meta carried a hand-computed `duration`, so lengthening
+ * scene 3 meant rewriting the start of every later scene and the meta total,
+ * and one stale number either overlapped a scene (gate 3 fails) or left dead
+ * air (a black gap on export). It runs on the raw IR right after parse, so
+ * reconcile, every gate and every page writer see one consistent timeline.
+ *
+ * THE RULE, stated the way the schema states it: durations are the source of
+ * truth. Omitted fields are DERIVED (dur defaults to DEFAULT_SCENE_DUR, start
+ * chains from the previous scene, duration is the chain's end). Authored fields
+ * that AGREE with the chain change nothing — all seven shipped films chain
+ * exactly, so this function is a no-op on every committed storyboard and the
+ * regression gate stays byte-identical. Authored fields that DISAGREE are
+ * reported as losses and the chain wins: the alternative is freezing retimed
+ * films behind hand-recomputed numbers, which is the defect this removes. */
+const DEFAULT_SCENE_DUR = 3;
+function normalizeTimeline(sb) {
+  const notes = [];
+  const discards = [];
+  if (!sb || !Array.isArray(sb.scenes)) return { notes, discards };
+  const TOL = 1e-6;
+  let cursor = 0;
+  let noDur = 0;
+  let noStart = 0;
+  sb.scenes.forEach((sc, i) => {
+    const id = sc.id || `scene ${i + 1}`;
+
+    const durOK = typeof sc.dur === 'number' && Number.isFinite(sc.dur) && sc.dur > 0;
+    if (!durOK) {
+      if (sc.dur !== undefined) discards.push(`${id}: dur=${JSON.stringify(sc.dur)} is not a positive number of seconds — defaulted to ${DEFAULT_SCENE_DUR}s`);
+      else noDur++;
+      sc.dur = DEFAULT_SCENE_DUR;
+    }
+
+    const startOK = typeof sc.start === 'number' && Number.isFinite(sc.start);
+    if (startOK) {
+      if (Math.abs(sc.start - cursor) > TOL) {
+        discards.push(`${id}: authored start=${sc.start}s but the previous scenes chain to ${cursor}s — chain wins (omit start to stop reporting)`);
+        sc.start = cursor;
+      }
+    } else {
+      if (sc.start !== undefined) discards.push(`${id}: start=${JSON.stringify(sc.start)} is not a number of seconds — derived ${cursor}s from the chain`);
+      else noStart++;
+      sc.start = cursor;
+    }
+
+    cursor += sc.dur;
+  });
+
+  if (sb.meta) {
+    const durOK = typeof sb.meta.duration === 'number' && Number.isFinite(sb.meta.duration);
+    if (durOK) {
+      if (Math.abs(sb.meta.duration - cursor) > TOL) {
+        discards.push(`meta.duration=${sb.meta.duration}s but the scenes chain to ${cursor}s — chain wins (omit duration to stop reporting)`);
+        sb.meta.duration = cursor;
+      }
+    } else {
+      if (sb.meta.duration !== undefined) discards.push(`meta.duration=${JSON.stringify(sb.meta.duration)} is not a number of seconds — derived ${cursor}s from the chain`);
+      sb.meta.duration = cursor;
+    }
+  }
+
+  if (noDur) notes.push(`${noDur} scene(s) without dur — default ${DEFAULT_SCENE_DUR}s each`);
+  if (noStart) notes.push(`${noStart} scene(s) without start — chained from the previous scene`);
+  if (notes.length) notes.push(`timeline ${sb.scenes.length} scene(s), ${cursor}s`);
+  return { notes, discards };
+}
+
 function loadEmitter() {
   const src = fs.readFileSync(EMITTER, 'utf8');
   const shim = { exports: {} };
@@ -1205,6 +1274,10 @@ function main() {
     const sb = JSON.parse(fs.readFileSync(path.join(dir, 'storyboard.json'), 'utf8'));
     console.log(`\n=== ${film} ===`);
 
+    /* Chain the timeline before anything reads it — reconcile, the gates and
+       the page writers all see the same normalized start/dur/duration. */
+    const timeline = normalizeTimeline(sb);
+
     const resolved = resolveMode(sb, mode);
     if (resolved.error) {
       console.error(`  MODE: ${resolved.error}`);
@@ -1212,6 +1285,11 @@ function main() {
       continue;
     }
     const { top, mathInfo, deferred, warnings, declared, unapplied, unsafe, informational } = reconcile(sb, resolved.design, mode);
+    /* A chain-wins override is a discarded authored value — it belongs in the
+       same report every other loss prints in. Derived-only films get the quiet
+       `timeline` line instead: a documented default is not a loss. */
+    for (const d of timeline.discards) warnings.push(d);
+    if (timeline.notes.length) console.log(`  timeline         ${timeline.notes.join(' · ')}`);
 
     if (resolved.modes.length) {
       const tag = resolved.swapped && resolved.swapped.length ? resolved.swapped.length : 0;
@@ -1428,7 +1506,10 @@ function main() {
  * different palette than the one that actually ships is worse than no gate at
  * all. Exported for exactly that reason, and nothing else. */
 module.exports = {
-  __test: { resolveMode, reconcile, designBoard },
+  /* normalizeTimeline joins the test surface for the same reason reconcile
+     did: the timeline chain is logic the gates must agree with, and a second
+     copy of it in a test would only prove the copy. */
+  __test: { resolveMode, reconcile, designBoard, normalizeTimeline, DEFAULT_SCENE_DUR },
   main,
 };
 

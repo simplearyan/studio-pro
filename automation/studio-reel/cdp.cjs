@@ -85,6 +85,12 @@ class Cdp {
     this.ws = ws;
     this.id = 0;
     this.pending = new Map();
+    /* Optional sink for server-pushed events (Runtime.exceptionThrown, download
+       progress, …). Nothing in the gates sets it — they are strict
+       request/response — so a null onEvent is the default and the two lines
+       below change nothing until a caller opts in. export-films.cjs uses it to
+       make a failed job diagnosable instead of just "stalled". */
+    this.onEvent = null;
     ws.onmessage = (m) => {
       const d = JSON.parse(m.data);
       if (d.id && this.pending.has(d.id)) {
@@ -92,6 +98,8 @@ class Cdp {
         this.pending.delete(d.id);
         if (d.error) p.reject(new Error(`${d.error.message} (${JSON.stringify(d.error.data || '')})`));
         else p.resolve(d.result);
+      } else if (this.onEvent && d.method) {
+        this.onEvent(d);
       }
     };
   }

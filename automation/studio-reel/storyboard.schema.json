@@ -506,11 +506,11 @@
 
     "scene": {
       "type": "object",
-      "required": ["id", "start", "dur", "elements"],
+      "required": ["id", "elements"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
-        "start": { "type": "number", "description": "APPLIED — seconds from the start of the clip." },
-        "dur": { "type": "number", "description": "APPLIED — seconds." },
+        "start": { "type": "number", "description": "APPLIED when it equals the timeline chain. OPTIONAL: when omitted the scene starts where the previous scene ends (0 for the first). Durations are the source of truth — when an authored start disagrees with the chain, the chain wins and the disagreement is reported, so retiming one scene reflows every later scene instead of demanding hand-computed starts." },
+        "dur": { "type": "number", "description": "APPLIED — seconds. OPTIONAL: defaults to 3, short enough that a new scene is engaging by default and long enough for one idea." },
         "tone": { "type": "string", "description": "DISCARDED as a colour source: it resolved nothing the compiler could read. It is still accepted and reported; use `color` per element instead." },
         "frame": { "type": "string", "description": "DISCARDED — a narrative label for the beat, not layout." },
         "exit": { "type": "string", "description": "DISCARDED — the emitter cross-fades scenes on a fixed curve." },
@@ -529,12 +529,12 @@
       "properties": {
         "meta": {
           "type": "object",
-          "required": ["id", "title", "aspect", "duration"],
+          "required": ["id", "title", "aspect"],
           "properties": {
             "id": { "type": "string", "minLength": 1 },
             "title": { "type": "string", "minLength": 1 },
             "aspect": { "enum": ["16:9", "9:16", "1:1", "4:5"] },
-            "duration": { "type": "number", "exclusiveMinimum": 0, "description": "SECONDS, not ms. The whole reason reel-compile.cjs exists: the IR uses seconds and the emitter uses ms, and feeding one to the other silently yields dur=NaN — a clip with no length." },
+            "duration": { "type": "number", "exclusiveMinimum": 0, "description": "SECONDS, not ms. The whole reason reel-compile.cjs exists: the IR uses seconds and the emitter uses ms, and feeding one to the other silently yields dur=NaN — a clip with no length. OPTIONAL: when omitted the scene chain decides — the clip is exactly as long as its scenes. When present it is checked against the chain; a disagreement is reported and the chain wins, same rule as scene.start." },
             "fps": { "type": "number", "exclusiveMinimum": 0 },
             "design": { "type": "string", "description": "DISCARDED — a free-text design statement, kept for the record." },
             "source_mock": { "type": "string", "description": "DISCARDED — where the mock came from." }

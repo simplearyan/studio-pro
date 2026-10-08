@@ -70,8 +70,30 @@ vendor-katex --check, `npm run build` (89 precache, 7550.89 KiB).
 - `num_color` resolved separately from the caption colour — it was silently
   dropped while the schema claimed APPLIED (film 6 surfaced it; the-peak's
   brand numeral was the visible casualty).
+- **The timeline is a chain of durations** — `scene.dur` defaults to 3s and
+  `scene.start` / `meta.duration` derive from the chain when omitted, so
+  retiming ONE scene reflows every later scene instead of demanding
+  hand-computed starts. Authored values that AGREE with the chain change
+  nothing (all seven films chain exactly — stripping `start`/`duration` from
+  every storyboard recompiles byte-identical); values that DISAGREE are
+  reported in `warnings` and the chain wins. A companion guard warns when an
+  element's choreography runs past its scene's edge — the trap the 3s default
+  creates, caught live on 6 elements across two films if anyone re-cuts them.
 
 ### Infrastructure
+- **MP4 export of every film — CDP + MediaBunny, through the test renderer**
+  (`node automation/studio-reel/export-films.cjs`, `npm run reel:export`):
+  drives a real `test-renderer.html` over the shared `cdp.cjs`, imports each
+  `reel-preview*.html` through the page's own import path, renders frame `i/fps`
+  from the pure `f(t)` onFrame, and muxes with the vendored MediaBunny
+  (`public/vendor/mediabunny` — same `Output`/`VideoSampleSource` calls as
+  `src/workers/export-worker.js`). No wall clock anywhere, so the file is
+  frame-exact by construction. Every output is read back with MediaBunny in
+  Node and checked for duration, dimensions and packet count; the first canary
+  failed that gate — `VideoSample` timestamps are SECONDS (26,000,000 "seconds"
+  for a 26s film) — which is exactly what a verification pass is for. The
+  test-renderer export menu gained a format picker: MP4 (frame-exact) vs the
+  legacy wall-clock WebM recorder.
 - KaTeX vendored at `public/vendor/katex` (katex@0.16.11, sha256 manifest),
   fonts as inlined data-URI, scripts as `data:` URLs, `design.math.src`
   defaulting local — a clip renders maths with no network.

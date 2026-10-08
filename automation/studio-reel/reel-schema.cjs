@@ -262,13 +262,16 @@ function main() {
     scenes: [{
       id: 's1', start: 0, dur: 4,
       elements: [{ id: 'e1', type: 'text', text: 'x', labl_bg: '#FDCB0B' }],
-    }, { id: 's2', start: 4, elements: [] }],
+    }, { start: 4, dur: 4, elements: [] }],
     labl: true,
   }, schema);
   const want = [
     ['/scenes/0/elements/0/labl_bg', /unknown field "labl_bg"/, 'an invented field name'],
     ['/meta/duration', /expected number, got string/, 'a wrong type'],
-    ['/scenes/1', /missing required field "dur"/, 'a missing required field'],
+    /* scene.id (not dur): start/dur became OPTIONAL when the timeline turned
+       into a chain of durations — dur defaults to 3s, start derives — so the
+       missing-required probe now targets a field that is still required. */
+    ['/scenes/1', /missing required field "id"/, 'a missing required field'],
     ['/scenes/1/elements', /expected at least 1 item/, 'an empty element list'],
     ['/labl', /unknown field "labl"/, 'an invented top-level field'],
   ];

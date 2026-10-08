@@ -486,6 +486,15 @@ body{background:var(--md-surface, #0f1117);color:var(--md-on-surface, #e4e1ec);f
                                     <svg class="fmt-check" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
                                     60 fps<em>smoother</em>
                                 </button>
+                                <div class="export-menu-label" style="margin-top:2px">Video format</div>
+                                <button class="export-item vfmt-opt selected" data-vfmt="webm">
+                                    <svg class="fmt-check" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                                    WebM<em>wall-clock</em>
+                                </button>
+                                <button class="export-item vfmt-opt" data-vfmt="mp4">
+                                    <svg class="fmt-check" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                                    MP4 — MediaBunny<em>frame-exact</em>
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -2115,15 +2124,16 @@ const FMT_META = { png: { ext: 'png', mime: 'image/png', label: 'PNG' }, jpeg: {
 
 /* Persisted preferences — frame geometry (aspect/bg) rides along with the
    export prefs so a reload restores the exact preview composition. */
-let lastFrameFmt = 'png', lastFps = 30;
+let lastFrameFmt = 'png', lastFps = 30, lastVideoFmt = 'webm';
 try {
     const saved = readExpPrefs();
     if (FMT_META[saved.fmt]) lastFrameFmt = saved.fmt;
     if (saved.fps === 30 || saved.fps === 60) lastFps = saved.fps;
+    if (saved.vfmt === 'mp4' || saved.vfmt === 'webm') lastVideoFmt = saved.vfmt;
     if (RESOLUTIONS[saved.res]) setRes(saved.res);
 } catch (e) { /* corrupted prefs — use defaults */ }
 function saveExpPrefs() {
-    writeExpPrefs({ fmt: lastFrameFmt, fps: lastFps, res: resState.value });
+    writeExpPrefs({ fmt: lastFrameFmt, fps: lastFps, res: resState.value, vfmt: lastVideoFmt });
 }
 
 /* Frame geometry UI + state → canvas. Called on aspect/bg change and on
@@ -2220,8 +2230,14 @@ function refreshExportUI() {
     videoMenu.querySelectorAll('.fps-opt').forEach(function(el) {
         el.classList.toggle('selected', parseInt(el.getAttribute('data-fps')) === lastFps);
     });
+    videoMenu.querySelectorAll('.vfmt-opt').forEach(function(el) {
+        el.classList.toggle('selected', el.getAttribute('data-vfmt') === lastVideoFmt);
+    });
     frameBtn.title = 'Save current frame (' + FMT_META[lastFrameFmt].label + ')';
-    exportBtn.title = 'Record video (WebM ' + lastFps + 'fps)';
+    exportBtn.querySelector('span').textContent = lastVideoFmt === 'mp4' ? 'Export MP4' : 'Export WebM';
+    exportBtn.title = lastVideoFmt === 'mp4'
+        ? 'Export MP4 (frame-exact, MediaBunny) ' + lastFps + 'fps'
+        : 'Record video (WebM ' + lastFps + 'fps)';
 }
 
 /* Shared frame-render core: rasterizes the current playhead frame at
@@ -2309,6 +2325,17 @@ videoMenu.querySelectorAll('.fps-opt').forEach(function(item) {
         refreshExportUI();
     });
 });
+/* Menu: video format — WebM is the legacy wall-clock MediaRecorder path,
+ * MP4 is the frame-exact MediaBunny path (startMp4Export below). The pick
+ * becomes the main button's action, same pattern as the frame format. */
+videoMenu.querySelectorAll('.vfmt-opt').forEach(function(item) {
+    item.addEventListener('click', function() {
+        lastVideoFmt = item.getAttribute('data-vfmt');
+        saveExpPrefs();
+        refreshExportUI();
+        closeMenus();
+    });
+});
 
 /* Restore persisted prefs into the UI on load */
 refreshExportUI();
@@ -2316,7 +2343,10 @@ refreshExportUI();
 /* ═══════════════════════════════════════════════════════════════WEBM EXPORT — MediaRecorder API
  * ═══════════════════════════════════════════════════════════════ */
 /* WebM trigger: main button */
-exportBtn.addEventListener('click', startWebMExport);
+exportBtn.addEventListener('click', function() {
+    if (lastVideoFmt === 'mp4') startMp4Export();
+    else startWebMExport();
+});
 
 async function startWebMExport() {
     if (exporting) return;
@@ -2444,6 +2474,209 @@ async function startWebMExport() {
     await modalRenderer.setClip(code.html, code.css, code.js);
     const ok = await modalRenderer.renderFrame(0);
     if (ok) modalRenderer.drawFrame(modalCtx, fdOut.w, fdOut.h);
+}
+
+/* ══════════════════════════════════════════════════════════════MP4 EXPORT — MediaBunny, frame-exact
+ * ══════════════════════════════════════════════════════════════
+ * Why this exists beside the WebM path: MediaRecorder stamps frames with the
+ * time the canvas CHANGED, so the wall-clock loop above trades frame-exactness
+ * for timeline correctness. This path has nothing to trade — renderFrame is a
+ * pure function of t, so frame i is rendered at t = i/fps on a computed grid
+ * and handed to MediaBunny with an exact microsecond timestamp. The output is
+ * deterministic: same code, same pixels, same duration, every run.
+ *
+ * MediaBunny is the repo's own export dependency (see src/workers/
+ * export-worker.js — same Output/VideoSampleSource/VideoSample calls), loaded
+ * lazily from the vendored copy in public/vendor/mediabunny/ so the page makes
+ * no network request of its own. Module import requires HTTP — file:// pages
+ * are origin-blocked, which the error below says out loud.
+ *
+ * The batch consumer (automation/studio-reel/export-films.cjs) calls this with
+ * {download:false, store:true} and polls window.__hicExportProgress, then
+ * pulls window.__hicExportResult.chunks (3MB base64 slices of the MP4). */
+let _mbModule = null;
+async function loadMediaBunny() {
+    if (_mbModule) return _mbModule;
+    /* Site base derived from this page's own URL — same rule hic-frame.js
+       uses for the vendored Tailwind runtime: '/studio-pro/' on GitHub Pages,
+       '/' locally. */
+    var _slashDocs = location.pathname.indexOf('/docs/');
+    var _siteBase = _slashDocs > 0 ? location.pathname.slice(0, _slashDocs + 1) : '/';
+    const url = _siteBase + 'vendor/mediabunny/mediabunny.min.js';
+    try {
+        _mbModule = await import(url);
+    } catch (e) {
+        /* Carry the real failure through: "blocked on file://" and "404" look
+           identical from the outside and are opposite problems. */
+        throw new Error('could not load the vendored MediaBunny module from ' + url +
+            ' — serve this page over HTTP (npm run dev); browsers block module imports on file://' +
+            ' [' + ((e && e.message) || e) + ']');
+    }
+    return _mbModule;
+}
+
+function b64Chunks(buf, size) {
+    const u8 = new Uint8Array(buf);
+    let bin = '';
+    const STEP = 0x8000;
+    for (let i = 0; i < u8.length; i += STEP) {
+        bin += String.fromCharCode.apply(null, u8.subarray(i, Math.min(i + STEP, u8.length)));
+    }
+    const b64 = btoa(bin);
+    const chunks = [];
+    for (let i = 0; i < b64.length; i += size) chunks.push(b64.slice(i, i + size));
+    return chunks;
+}
+
+window.__hicExportProgress = null;
+window.__hicExportResult = null;
+
+async function startMp4Export(opts) {
+    opts = opts || {};
+    const download = opts.download !== false;
+    const store = opts.store !== false;
+    if (exporting) return { error: 'an export is already running' };
+    if (!currentPresetKey || !PRESETS[currentPresetKey]) return { error: 'no clip on the stage' };
+    const code = effectiveExportCode();
+    const p = PRESETS[currentPresetKey];
+    const dur = p.dur || 5;
+    const fps = opts.fps || lastFps;
+    const res = RESOLUTIONS[String(opts.res || resState.value)] || RESOLUTIONS['1080'];
+    const fd = frameDims(res.n);
+    const expW = fd.w, expH = fd.h;
+    const durMs = Math.round(dur * 1000);
+    const nFrames = Math.max(1, Math.round(dur * fps));
+
+    exporting = true;
+    exportSplit.classList.add('recording');
+    closeMenus();
+    [frameBtn, frameCaret, exportBtn, videoCaret, resBtn].forEach(function(el) { el.disabled = true; });
+    exportBtn.querySelector('span').textContent = 'Encoding\u2026';
+    modalPlaying = false;
+    setPlayState(false);
+    /* tickModal may be awaiting its own renderFrame; a beat lets that settle
+       so two renderers never write styles into the same sandbox at once. */
+    await new Promise(function(r) { setTimeout(r, 60); });
+
+    window.__hicExportProgress = { phase: 'prepare', done: 0, total: nFrames, error: null };
+    window.__hicExportResult = null;
+
+    let output = null;
+    const t0 = performance.now();
+    try {
+        const mb = await loadMediaBunny();
+        window.__hicExportProgress.phase = 'renderer';
+
+        /* Same renderer geometry as the WebM path: raster at export size when
+           the frame matches the clip's design space, at design size otherwise
+           (drawFrame contain-fits). */
+        modalCanvas.width = expW;
+        modalCanvas.height = expH;
+        const ds = dsDims(curFrame.clipDS);
+        const sameAspect = Math.abs((expW / expH) - (ds.w / ds.h)) < 0.004;
+        if (modalRenderer) { modalRenderer.sandbox.remove(); }
+        modalRenderer = makeHicRenderer(sameAspect ? expW : ds.w, sameAspect ? expH : ds.h, ds.w, ds.h);
+        await modalRenderer.setClip(code.html, code.css, code.js);
+
+        /* Codec: MP4 prefers H.264 (plays everywhere), then whatever the
+           container and this machine's encoders actually support — a missing
+           system encoder degrades to the next codec instead of failing. */
+        const mp4Fmt = new mb.Mp4OutputFormat();
+        const supported = mp4Fmt.getSupportedVideoCodecs();
+        const want = ['avc', 'vp9', 'av1'].filter(function(c) { return supported.indexOf(c) !== -1; });
+        let codec = null;
+        for (let i = 0; i < want.length; i++) {
+            try {
+                if (await mb.canEncodeVideo(want[i], { width: expW, height: expH, bitrate: 8e6 })) { codec = want[i]; break; }
+            } catch (e) { /* try the next codec */ }
+        }
+        if (!codec) throw new Error('no encodable MP4 video codec here (tried ' + (want.join(', ') || 'none') + ')');
+        const bitrate = opts.bitrate || (expW * expH <= 1920 * 1080 ? 8e6 : 16e6);
+
+        output = new mb.Output({ format: mp4Fmt, target: new mb.BufferTarget() });
+        const src = new mb.VideoSampleSource({ codec: codec, width: expW, height: expH, bitrate: bitrate });
+        /* frameRate metadata snaps every timestamp onto the fps grid — the
+           same grid renderFrame already steps by, so snapping cannot move a
+           frame off its own tick. */
+        output.addVideoTrack(src, { frameRate: fps });
+        await output.start();
+
+        window.__hicExportProgress.phase = 'encode';
+        /* UNITS, the trap that produced an 826-year film on the first canary:
+           VideoSample timestamps are SECONDS (WebCodecs' VideoFrame and
+           EncodedVideoChunk are microseconds — one screen away, opposite
+           unit). seconds = i / fps, not i * 1e6 / fps. */
+        const frameDurSec = 1 / fps;
+        for (let i = 0; i < nFrames; i++) {
+            const t = Math.min(Math.round(i * 1000 / fps), durMs - 1);
+            const ok = await modalRenderer.renderFrame(t);
+            if (ok) modalRenderer.drawFrame(modalCtx, expW, expH);
+            modalSlider.value = t;
+            modalTime.textContent = (t / 1000).toFixed(1) + 's';
+            const bitmap = await createImageBitmap(modalCanvas);
+            const sample = new mb.VideoSample(bitmap, {
+                timestamp: i / fps,
+                duration: frameDurSec,
+            });
+            await src.add(sample); /* backpressure: resolves when the encoder wants more */
+            sample.close();
+            bitmap.close();
+            window.__hicExportProgress.done = i + 1;
+            await new Promise(function(r) { setTimeout(r, 0); }); /* keep the page alive */
+        }
+
+        window.__hicExportProgress.phase = 'finalize';
+        await output.finalize();
+        const buffer = output.target.buffer;
+        const blob = new Blob([buffer], { type: 'video/mp4' });
+        if (blob.size < 1024) throw new Error('encoder produced ' + blob.size + ' bytes');
+        const name = exportFileStem() + '_' + expW + 'x' + expH + '_' + String(curFrame.aspect).replace(':', '') + '.mp4';
+        const result = {
+            name: name, mime: 'video/mp4', size: blob.size, frames: nFrames,
+            duration: dur, width: expW, height: expH, codec: codec,
+            elapsedMs: Math.round(performance.now() - t0),
+        };
+        if (store) result.chunks = b64Chunks(buffer, 3 * 1024 * 1024);
+        window.__hicExportResult = result;
+        window.__hicExportProgress.phase = 'done';
+
+        if (download) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = name;
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
+        }
+        return result;
+    } catch (e) {
+        const msg = (e && (e.message || String(e))) || 'unknown error';
+        if (window.__hicExportProgress) {
+            window.__hicExportProgress.phase = 'error';
+            window.__hicExportProgress.error = msg;
+        }
+        window.__hicExportResult = { error: msg };
+        console.error('[Mp4Export]', e);
+        if (download) alert('MP4 export failed \u2014 ' + msg);
+        return { error: msg };
+    } finally {
+        try { if (output) await output.cancel(); } catch (e) { /* already finalized */ }
+        exporting = false;
+        exportSplit.classList.remove('recording');
+        [frameBtn, frameCaret, exportBtn, videoCaret, resBtn].forEach(function(el) { el.disabled = false; });
+        /* Rebuild the preview renderer with the applied code — the same tail
+           the WebM path has, so the stage is live again after exporting. */
+        try {
+            if (modalRenderer) { modalRenderer.sandbox.remove(); modalRenderer = null; }
+            const fdOut = frameDims(parseInt(resState.value) || 1080);
+            const dsOut = dsDims(curFrame.clipDS);
+            const sameOut = Math.abs((fdOut.w / fdOut.h) - (dsOut.w / dsOut.h)) < 0.004;
+            modalRenderer = makeHicRenderer(sameOut ? fdOut.w : dsOut.w, sameOut ? fdOut.h : dsOut.h, dsOut.w, dsOut.h);
+            await modalRenderer.setClip(code.html, code.css, code.js);
+            const ok = await modalRenderer.renderFrame(0);
+            if (ok) modalRenderer.drawFrame(modalCtx, fdOut.w, fdOut.h);
+        } catch (e) { console.warn('[Mp4Export] preview restore failed:', e); }
+        refreshExportUI();
+    }
 }
 
 </script>
