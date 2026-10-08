@@ -1327,16 +1327,27 @@ check('a known ease and a from_scale reach the emitter IR with nothing reported'
   /* Legacy films: class attributes are all the emitter's own hss-* vocabulary,
      so there are no candidates and NO block — proven on every real film's
      storyboard rather than asserted, which is what makes byte-identity true
-     by construction instead of by promise. The filter returns before the
-     compiler is even loaded, so this costs nothing. */
+     by construction instead of by promise. The condition is the film NOT
+     authoring `html` elements: opting into the feature is how a film gains a
+     block (reel-site does), and that branch is asserted positively below, so
+     a film that should compile utilities failing to get them fails here too.
+     The filter returns before the compiler is even loaded for legacy films,
+     so this costs nothing. */
   for (const film of fs.readdirSync(FILMS_DIR).filter((d) => fs.existsSync(path.join(FILMS_DIR, d, 'storyboard.json')))) {
     const doc = JSON.parse(fs.readFileSync(path.join(FILMS_DIR, film, 'storyboard.json'), 'utf8'));
     const rm = rc.resolveMode(doc, 'light');
     if (rm.error) continue;
     const rec = rc.reconcile(doc, rm.design, 'light');
+    const usesHtml = rec.top.scenes.some((s) => (s.elements || []).some((e) => e.type === 'html'));
     const legacyTw = await rc.attachUtilities(rec.top);
-    check(`${film} has no utility candidates — attachUtilities returns zero bytes`,
-      legacyTw.block === '', JSON.stringify(legacyTw.unrecognized));
+    if (usesHtml) {
+      check(`${film} authors html elements — utilities compile to one stamped block`,
+        !!legacyTw.block && /compiled at build time/.test(legacyTw.block),
+        JSON.stringify({ block: legacyTw.block && legacyTw.block.slice(0, 80), unrecognized: legacyTw.unrecognized }));
+    } else {
+      check(`${film} has no utility candidates — attachUtilities returns zero bytes`,
+        legacyTw.block === '', JSON.stringify(legacyTw.unrecognized));
+    }
   }
 
   /* "Utilities are compiled, never loaded." A runtime Tailwind string in ANY

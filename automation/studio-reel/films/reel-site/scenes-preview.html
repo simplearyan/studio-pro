@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Reel — edit video, mark it up — scenes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&amp;family=Kalam:wght@400;700&amp;family=JetBrains+Mono:wght@400;500;700&amp;display=swap"><style>.hss{position:relative;width:100%;height:100%;overflow:hidden;font-family:Inter,-apple-system,sans-serif}.hss *{box-sizing:border-box}.hss{color:var(--hss-ink,#f8fafc)}.hss-scene{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:26px;padding:0 8%;opacity:0;will-change:opacity}.hss-el{position:relative;opacity:0;will-change:opacity,transform}.hss-text{font-family:var(--hss-font-mono,'JetBrains Mono',monospace);font-weight:600;text-align:center}.hss-title{font-family:var(--hss-font-display,inherit);font-size:22px;letter-spacing:3px;margin-bottom:10px}.hss-sub{font-family:var(--hss-font-body,inherit);font-size:13px;font-weight:500}.hss-body{font-family:var(--hss-font-body,inherit);font-size:18px}.hss-latex{text-align:center}.hss-latex .katex-display{margin:.35em 0}.hss-answer{font-family:var(--hss-font-display,Literata,Georgia,serif);font-weight:700;font-size:34px;text-align:center}.hss-cards{display:flex;gap:14px}.hss-card{width:56px;height:78px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:bold;box-shadow:0 10px 25px rgba(0,0,0,.5)}.hss-cardwrap{position:relative;opacity:0;will-change:opacity,transform}.hss-stat{display:flex;flex-direction:column;align-items:center;gap:4px}.hss-stat-num{font-size:5.2vw;font-weight:800;letter-spacing:-0.02em;line-height:1;background:linear-gradient(180deg,var(--hss-num-a,#f8fafc),var(--hss-num-b,#a78bfa));-webkit-background-clip:text;background-clip:text;color:transparent}.hss-stat-label{font-size:1.25vw;font-weight:400;opacity:.78;max-width:22ch;text-align:center;line-height:1.35}.hss-panels{display:flex;gap:1.4vw;align-items:stretch}.hss-panel{position:relative;display:flex;flex-direction:column;gap:.5vh;min-width:15vw;padding:1.6vh 1.4vw;border-radius:var(--hss-radius,1.1vw);background:var(--hss-panel,#121a26);border:var(--hss-border,1px solid rgba(255,255,255,.09));box-shadow:var(--hss-shadow,0 1.4vh 3vh rgba(0,0,0,.45))}.hss-panel-num{font-size:3.1vw;font-weight:800;letter-spacing:-.02em;line-height:1}.hss-panel-label{font-size:1.05vw;font-weight:400;opacity:.75;line-height:1.35}.hss-meter{margin-top:.6vh;height:.55vh;border-radius:1vh;background:var(--hss-meter-track,rgba(255,255,255,.10));overflow:hidden}.hss-meter-fill{height:100%;width:0;border-radius:var(--hss-radius,1vh);background:var(--hss-meter,#38bdf8)}.hss-tiles{display:grid;gap:1.1vw 1.4vw}.hss-tile{display:flex;flex-direction:column;gap:.5vh;padding:1.4vh 1.2vw;border-radius:var(--hss-radius,1vw);background:var(--hss-panel,#121a26);border:var(--hss-border,1px solid rgba(255,255,255,.07));box-shadow:var(--hss-shadow,0 1.4vh 3vh rgba(0,0,0,.45))}.hss-tile-icon{font-size:2.1vw;line-height:1}.hss-tile-head{font-size:1.3vw;font-weight:700;letter-spacing:.01em}.hss-tile-body{font-size:.98vw;font-weight:400;opacity:.74;line-height:1.4}.hss-pills{display:flex;gap:.9vw;flex-wrap:wrap;justify-content:center}.hss-pill{font-size:1.25vw;font-weight:600;padding:.7vh 1.5vw;border-radius:var(--hss-radius,6vw);border:var(--hss-border,1px solid var(--hss-pill,#38bdf8));color:var(--hss-pill,#38bdf8);white-space:nowrap}.hss-credit{position:absolute;left:0;right:0;bottom:3.2vh;text-align:center;font-family:var(--hss-font-mono,'JetBrains Mono',monospace);font-size:.95vw;font-weight:700;opacity:.75;letter-spacing:.12em;text-transform:uppercase;color:var(--hss-ink,#f8fafc)}.hss-slot{position:relative;opacity:0;will-change:opacity,transform}.hss-shape{position:absolute;inset:0;pointer-events:none;border:3px solid currentColor;border-radius:8px}.hss-shape-underline{border:none;height:4px;border-radius:2px;top:auto;bottom:-4px;left:0;right:0;width:auto}.hss-overlay{position:absolute!important;left:-6px!important;top:-6px!important;width:calc(100% + 12px)!important;height:calc(100% + 12px)!important}.hss-overlay-ring{left:-18px!important;top:-14px!important;width:calc(100% + 36px)!important;height:calc(100% + 28px)!important}.hss-shape-circle,.hss-shape-highlight,.hss-shape-arrow,.hss-shape-dbl-underline{border:none}.hss-draw{position:absolute;inset:0;width:100%;height:100%;overflow:visible}.hss-shape-circle ellipse{fill:none;stroke:currentColor;stroke-width:3;vector-effect:non-scaling-stroke}.hss-arrow-svg{position:absolute;top:50%;margin-top:-28px;width:160px;height:56px}.hss-shape-arrow svg.hss-arrow-left{right:calc(100% - 16px)}.hss-shape-arrow svg.hss-arrow-right{left:calc(100% - 16px);transform:scaleX(-1)}.hss-shape-arrow svg.hss-arrow-top{left:50%;top:auto;bottom:calc(100% - 18px);width:56px;height:160px;margin:0 0 0 -28px}.hss-shape-arrow svg.hss-arrow-bottom{left:50%;top:calc(100% - 18px);width:56px;height:160px;margin:0 0 0 -28px;transform:scaleY(-1)}.hss-arrow-path{fill:none;stroke:currentColor;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}.hss-hl{position:absolute;inset:0;background:currentColor;border-radius:4px;opacity:.4}.hss-dbl{position:absolute;left:0;right:0;bottom:-9px;height:12px;width:100%;overflow:visible}.hss-dbl line{stroke:currentColor;stroke-width:3;stroke-linecap:round;vector-effect:non-scaling-stroke}.hss-groups{display:grid;gap:1.4vw 1.4vw;align-items:stretch}.hss-fill-filled{background:var(--hss-fill,var(--hss-panel,#121a26));color:var(--hss-fill-ink,var(--hss-slab-ink,#151217));border-color:transparent}.hss-fill-tonal{background:var(--hss-fill-tone,color-mix(in srgb,var(--hss-ink,#f8fafc) 14%,transparent));border-color:transparent}.hss-fill-outlined{background:none}.hss-fill-text{background:none;border:none;box-shadow:none}.hss-pill.hss-fill-filled{--hss-fill:var(--hss-pill,#38bdf8);--hss-fill-ink:var(--hss-slab-ink,#151217)}.hss-answer.hss-fill-outlined{border:var(--hss-border,1px solid var(--hss-outline,var(--hss-ink,#f8fafc)));padding:.08em .3em}.hss-pill{border-radius:var(--hss-radius-pill,var(--hss-radius,6vw))}.hss-panel{border-radius:var(--hss-radius-card,var(--hss-radius,1.1vw))}.hss-tile{border-radius:var(--hss-radius-tile,var(--hss-radius,1vw))}.hss-answer{border-radius:var(--hss-radius-answer,var(--hss-radius,0))}.hss .hss-align-start,.hss .hss-align-start *{text-align:left}.hss .hss-align-center,.hss .hss-align-center *{text-align:center}.hss .hss-align-end,.hss .hss-align-end *{text-align:right}.hss .hss-align-start{align-self:flex-start}.hss .hss-align-end{align-self:flex-end}.hss-chart{width:100%;display:flex;flex-direction:column;gap:1vh}.hss-chart-head{display:flex;flex-direction:column;gap:.35vh}.hss-chart-kicker{font-family:var(--hss-font-mono,'JetBrains Mono',monospace);font-size:.9vw;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--hss-accent,#ffeb00)}.hss-chart-title{font-size:2vw;font-weight:800;letter-spacing:-.015em;line-height:1.14;color:var(--hss-ink,#f1f3f2)}.hss-chart-sub{font-size:1vw;font-weight:400;line-height:1.4;opacity:.72}.hss-chart-svg{width:100%;height:auto;overflow:visible;display:block}.hss-chart-svg text{font-family:var(--hss-font-mono,'JetBrains Mono',monospace);fill:var(--hss-on-variant,var(--hss-ink,#a8aba6))}.hss-chart-grid line{stroke:var(--hss-chart-grid,rgba(255,255,255,.13));stroke-width:1}.hss-chart-axis line{stroke:var(--hss-outline,rgba(255,255,255,.28));stroke-width:2}.hss-chart-ref{stroke:var(--hss-accent,var(--hss-ink,#f1f3f2));stroke-width:4;stroke-dasharray:18 12;stroke-linecap:round}.hss-chart-svg .hss-chart-ref-label{font-size:23px;font-weight:700;fill:var(--hss-accent,var(--hss-ink,#f1f3f2))}.hss-chart-cat{font-size:21px;font-weight:500}.hss-chart-tick{font-size:19px;font-weight:400;opacity:.8}.hss-chart-svg .hss-chart-value{font-size:22px;font-weight:700;fill:var(--hss-ink,#f1f3f2)}.hss-chart-legend{display:flex;gap:1.1vw;flex-wrap:wrap;font-family:var(--hss-font-mono,'JetBrains Mono',monospace);font-size:.88vw}.hss-chart-legend span{display:inline-flex;align-items:center;gap:.55em;color:var(--hss-on-variant,var(--hss-ink,#a8aba6))}.hss-chart-legend i{width:.8em;height:.8em;border-radius:.18em;display:inline-block;flex:none}.hss-chart-foot{display:flex;justify-content:space-between;gap:1vw;align-items:baseline}.hss-chart-source{font-family:var(--hss-font-mono,'JetBrains Mono',monospace);font-size:.75vw;letter-spacing:.08em;text-transform:uppercase;opacity:.5}.hss-chart-unit{font-family:var(--hss-font-mono,'JetBrains Mono',monospace);font-size:.75vw;letter-spacing:.08em;text-transform:uppercase;opacity:.5}.hss-chart-empty{height:12vh;border:1px dashed var(--hss-outline,#444745);border-radius:1vw;display:flex;align-items:center;justify-content:center;font-size:1vw;opacity:.6}.hss{--hss-font-display:'Bricolage Grotesque',sans-serif;--hss-font-mono:'JetBrains Mono',monospace;--hss-radius:16;--hss-border:1px solid #E6E8F0;--hss-panel:#FFFFFF;--hss-meter:#6965DB;--hss-meter-track:#E6E8F0;--hss-num-a:#6965DB;--hss-num-b:#4B47B5;--hss-ink:#14161F;--hss-accent:#6965DB;--hss-slab-ink:#FFFFFF;--hss-radius-pill:999px;--hss-radius-card:16px;--hss-radius-tile:16px;--hss-radius-answer:0;--hss-fill:#4B47B5;--hss-fill-ink:#FFFFFF;--hss-fill-tone:#E6E5FA;--hss-outline:#E6E8F0;--hss-on-variant:#636879;}
+/*! reel: utilities compiled at build time — 23 candidate token(s), inlined as CSS; no Tailwind runtime, no CDN, no network */
+/*! tailwindcss v4.3.3 | MIT License | https://tailwindcss.com */
+@layer properties;
+@layer theme, utilities;
+@layer theme {
+  :root, :host {
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+    monospace;
+    --color-white: #fff;
+    --spacing: 0.25rem;
+    --font-weight-semibold: 600;
+    --radius-3xl: 1.5rem;
+  }
+}
+@layer utilities {
+  .m-0 {
+    margin: 0px;
+  }
+  .flex {
+    display: flex;
+  }
+  .w-\[980px\] {
+    width: 980px;
+  }
+  .justify-center {
+    justify-content: center;
+  }
+  .gap-5 {
+    gap: calc(var(--spacing) * 5);
+  }
+  .rounded-3xl {
+    border-radius: var(--radius-3xl);
+  }
+  .rounded-full {
+    border-radius: calc(infinity * 1px);
+  }
+  .border-2 {
+    border-style: var(--tw-border-style);
+    border-width: 2px;
+  }
+  .border-\[\#14161F\] {
+    border-color: #14161F;
+  }
+  .bg-\[\#6965DB\] {
+    background-color: #6965DB;
+  }
+  .bg-\[\#14161F\] {
+    background-color: #14161F;
+  }
+  .p-8 {
+    padding: calc(var(--spacing) * 8);
+  }
+  .px-7 {
+    padding-inline: calc(var(--spacing) * 7);
+  }
+  .py-3 {
+    padding-block: calc(var(--spacing) * 3);
+  }
+  .text-left {
+    text-align: left;
+  }
+  .font-mono {
+    font-family: var(--font-mono);
+  }
+  .text-\[26px\] {
+    font-size: 26px;
+  }
+  .leading-\[1\.5\] {
+    --tw-leading: 1.5;
+    line-height: 1.5;
+  }
+  .font-semibold {
+    --tw-font-weight: var(--font-weight-semibold);
+    font-weight: var(--font-weight-semibold);
+  }
+  .text-\[\#14161F\] {
+    color: #14161F;
+  }
+  .text-\[\#E8EAF2\] {
+    color: #E8EAF2;
+  }
+  .text-white {
+    color: var(--color-white);
+  }
+  .shadow-2xl {
+    --tw-shadow: 0 25px 50px -12px var(--tw-shadow-color, rgb(0 0 0 / 0.25));
+    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
+  }
+}
+@property --tw-border-style {
+  syntax: "*";
+  inherits: false;
+  initial-value: solid;
+}
+@property --tw-leading {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-font-weight {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-shadow {
+  syntax: "*";
+  inherits: false;
+  initial-value: 0 0 #0000;
+}
+@property --tw-shadow-color {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-shadow-alpha {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 100%;
+}
+@property --tw-inset-shadow {
+  syntax: "*";
+  inherits: false;
+  initial-value: 0 0 #0000;
+}
+@property --tw-inset-shadow-color {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-inset-shadow-alpha {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 100%;
+}
+@property --tw-ring-color {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-ring-shadow {
+  syntax: "*";
+  inherits: false;
+  initial-value: 0 0 #0000;
+}
+@property --tw-inset-ring-color {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-inset-ring-shadow {
+  syntax: "*";
+  inherits: false;
+  initial-value: 0 0 #0000;
+}
+@property --tw-ring-inset {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-ring-offset-width {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@property --tw-ring-offset-color {
+  syntax: "*";
+  inherits: false;
+  initial-value: #fff;
+}
+@property --tw-ring-offset-shadow {
+  syntax: "*";
+  inherits: false;
+  initial-value: 0 0 #0000;
+}
+@layer properties {
+  @supports ((-webkit-hyphens: none) and (not (margin-trim: inline))) or ((-moz-orient: inline) and (not (color:rgb(from red r g b)))) {
+    *, ::before, ::after, ::backdrop {
+      --tw-border-style: solid;
+      --tw-leading: initial;
+      --tw-font-weight: initial;
+      --tw-shadow: 0 0 #0000;
+      --tw-shadow-color: initial;
+      --tw-shadow-alpha: 100%;
+      --tw-inset-shadow: 0 0 #0000;
+      --tw-inset-shadow-color: initial;
+      --tw-inset-shadow-alpha: 100%;
+      --tw-ring-color: initial;
+      --tw-ring-shadow: 0 0 #0000;
+      --tw-inset-ring-color: initial;
+      --tw-inset-ring-shadow: 0 0 #0000;
+      --tw-ring-inset: initial;
+      --tw-ring-offset-width: 0px;
+      --tw-ring-offset-color: #fff;
+      --tw-ring-offset-shadow: 0 0 #0000;
+    }
+  }
+}
+body.scn{margin:0;background:#0b0c0d;color:#e8eae9;font:14px/1.5 Inter,-apple-system,system-ui,sans-serif;-webkit-font-smoothing:antialiased}.scn-wrap{margin:0 auto;padding:26px 0 90px}.scn-head{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;padding:0 22px 16px}.scn-head h1{font-size:22px;font-weight:700;letter-spacing:-.01em;margin:0}.scn-head .scn-sub{color:#8d9499;font-size:13px}.scn-head a{margin-left:auto;color:#ffeb00;text-decoration:none;font-size:13px;font-weight:600}.scn-head a:hover{text-decoration:underline}.scn-nav{display:flex;gap:7px;flex-wrap:wrap;padding:0 22px 20px}.scn-nav a{font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.08em;text-decoration:none;color:#afb6ba;background:#171a1c;border:1px solid #24282b;padding:7px 10px;border-radius:999px}.scn-nav a:hover{color:#0b0c0d;background:#ffeb00;border-color:#ffeb00}.scn-list{display:flex;flex-direction:column;gap:30px}.scn-card{margin:0}.scn-frame{position:relative;width:100%;overflow:hidden;background:#000}.scn-frame>.hss{position:absolute;inset:0}.scn-bar{display:flex;gap:16px;align-items:baseline;flex-wrap:wrap;padding:11px 22px;font:500 12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:#8d9499;background:#131517;border-top:1px solid #1e2225}.scn-bar b{color:#e8eae9;font-weight:700;letter-spacing:.06em}.scn-bar .scn-n{color:#ffeb00;font-weight:700}.scn-bar span{margin-left:auto}</style>
+</head>
+<body class="scn">
+<div class="scn-wrap">
+<div class="scn-head"><h1>Reel — edit video, mark it up</h1><span class="scn-sub">11 scenes · settled, not animated</span><a href="reel-preview.html">play the film →</a><a href="design-preview.html" style="margin-left:14px">design →</a></div>
+<div class="scn-nav"><a href="#scene-s1">1 s1</a><a href="#scene-s2">2 s2</a><a href="#scene-s3">3 s3</a><a href="#scene-s4">4 s4</a><a href="#scene-s5">5 s5</a><a href="#scene-s6">6 s6</a><a href="#scene-s7">7 s7</a><a href="#scene-s8">8 s8</a><a href="#scene-s9">9 s9</a><a href="#scene-s10">10 s10</a><a href="#scene-s11">11 s11</a></div>
+<div class="scn-list"><section class="scn-card" id="scene-s1"><div class="scn-frame" style="aspect-ratio:16 / 9;background:#FBFBFD"><div class="hss" style="background:#FBFBFD"><div class="hss-scene"><div class="hss-el" id="s1-over"><div class="hss-text hss-body" style="color:#4B47B5;font-family:&#39;JetBrains Mono&#39;,sans-serif;font-size:1.042vw;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;">REEL · VIDEO EDITOR</div></div><div class="hss-el" id="s1-title"><div class="hss-text hss-title" style="color:#14161F;font-family:&#39;Bricolage Grotesque&#39;,sans-serif;font-size:5.000vw;font-weight:800;letter-spacing:-0.03em;">Edit video, mark it up.</div></div><div class="hss-el hss-shape-host hss-overlay hss-overlay-ring" id="s1-ring"><div class="hss-shape hss-shape-circle" style="color:#FF4D8D"><svg class="hss-draw" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><ellipse cx="50" cy="50" rx="48" ry="48" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1" data-anim="1" data-k="draw"></ellipse></svg></div></div></div></div></div><div class="scn-bar"><b>1 · s1</b><span style="margin-left:0">0.0s – 2.6s · 2.6s</span><span style="margin-left:0">3 elements · shape text</span><span>settled · not animated</span></div></section><section class="scn-card" id="scene-s2"><div class="scn-frame" style="aspect-ratio:16 / 9;background:#FBFBFD"><div class="hss" style="background:#FBFBFD"><div class="hss-scene"><div class="hss-el" id="s2-a"><div class="hss-text hss-body" style="color:#14161F;font-size:3.333vw;font-weight:800;letter-spacing:-0.025em;">Cut your video.</div></div><div class="hss-el" id="s2-b"><div class="hss-text hss-body" style="color:#14161F;font-size:3.333vw;font-weight:800;letter-spacing:-0.025em;">Then draw on it.</div></div><div class="hss-el hss-shape-host hss-overlay" id="s2-ul"><div class="hss-shape hss-shape-underline" style="color:#6965DB"></div></div><div class="hss-el" id="s2-body" style="max-width:1240px;"><div class="hss-text hss-body" style="color:#636879;font-family:&#39;Bricolage Grotesque&#39;,sans-serif;font-size:1.250vw;font-weight:400;">Edit on the timeline, mark up the frame — all in one place.</div></div></div></div></div><div class="scn-bar"><b>2 · s2</b><span style="margin-left:0">2.6s – 5.6s · 3.0s</span><span style="margin-left:0">4 elements · shape text</span><span>settled · not animated</span></div></section><section class="scn-card" id="scene-s3"><div class="scn-frame" style="aspect-ratio:16 / 9;background:#FBFBFD"><div class="hss" style="background:#FBFBFD"><div class="hss-scene"><div class="hss-el" id="s3-over"><div class="hss-text hss-body" style="color:#4B47B5;font-family:&#39;JetBrains Mono&#39;,sans-serif;font-size:1.042vw;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;">THE MARKUP TOOLKIT</div></div><div class="hss-el" id="s3-title"><div class="hss-text hss-body" style="color:#14161F;font-size:3.333vw;font-weight:800;letter-spacing:-0.025em;">Four marks. One timeline.</div></div><div class="hss-el hss-pills-host" id="s3-pills" style="opacity:1;"><div class="hss-pills" style="--hss-pill:#6965DB"><span class="hss-slot"><span class="hss-pill hss-fill-outlined">Underline</span></span><span class="hss-slot"><span class="hss-pill hss-fill-outlined">Circle</span></span><span class="hss-slot"><span class="hss-pill hss-fill-outlined">Box</span></span><span class="hss-slot"><span class="hss-pill hss-fill-outlined">Highlight</span></span></div></div><div class="hss-el hss-shape-host hss-overlay" id="s3-box"><div class="hss-shape hss-shape-box" style="color:#4B47B5"></div></div><div class="hss-el" id="s3-body" style="max-width:1240px;"><div class="hss-text hss-body" style="color:#636879;font-family:&#39;Bricolage Grotesque&#39;,sans-serif;font-size:1.250vw;font-weight:400;">Every mark pins to the moment you made it.</div></div></div></div></div><div class="scn-bar"><b>3 · s3</b><span style="margin-left:0">5.6s – 8.6s · 3.0s</span><span style="margin-left:0">5 elements · pills shape text</span><span>settled · not animated</span></div></section><section class="scn-card" id="scene-s4"><div class="scn-frame" style="aspect-ratio:16 / 9;background:#FBFBFD"><div class="hss" style="background:#FBFBFD"><div class="hss-scene"><div class="hss-el" id="s4-over"><div class="hss-text hss-body" style="color:#4B47B5;font-family:&#39;JetBrains Mono&#39;,sans-serif;font-size:1.042vw;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;">FEEDBACK, ON THE FRAME</div></div><div class="hss-el" id="s4-title"><div class="hss-text hss-body" style="color:#14161F;font-size:3.333vw;font-weight:800;letter-spacing:-0.025em;">Feedback goes on the frame.</div></div><div class="hss-el hss-shape-host hss-overlay" id="s4-hl"><div class="hss-shape hss-shape-highlight" style="color:#FFD84D"><i class="hss-hl" data-anim="1" data-k="hl"></i></div></div><div class="hss-el" id="s4-hand"><div class="hss-text hss-body" style="color:#6965DB;font-family:&#39;Kalam&#39;,sans-serif;font-size:2.292vw;font-weight:400;">warmer sky here</div></div><div class="hss-el hss-shape-host hss-overlay" id="s4-arr"><div class="hss-shape hss-shape-arrow" style="color:#FF4D8D"><svg class="hss-arrow-svg hss-arrow-left" viewBox="0 0 160 56" aria-hidden="true"><path class="hss-arrow-path" d="M8 46 C 52 54 106 46 152 22 M152 22 L 128 16 M152 22 L 134 46" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1" data-anim="1" data-k="draw"></path></svg></div></div><div class="hss-el" id="s4-body" style="max-width:1240px;"><div class="hss-text hss-body" style="color:#636879;font-family:&#39;Bricolage Grotesque&#39;,sans-serif;font-size:1.250vw;font-weight:400;">Marks never burn into your export.</div></div></div></div></div><div class="scn-bar"><b>4 · s4</b><span style="margin-left:0">8.6s – 11.6s · 3.0s</span><span style="margin-left:0">6 elements · shape text</span><span>settled · not animated</span></div></section><section class="scn-card" id="scene-s5"><div class="scn-frame" style="aspect-ratio:16 / 9;background:#FBFBFD"><div class="hss" style="background:#FBFBFD"><div class="hss-scene"><div class="hss-el" id="s5-over"><div class="hss-text hss-body" style="color:#4B47B5;font-family:&#39;JetBrains Mono&#39;,sans-serif;font-size:1.042vw;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;">THE EDITOR</div></div><div class="hss-el" id="s5-title"><div class="hss-text hss-body" style="color:#14161F;font-size:3.333vw;font-weight:800;letter-spacing:-0.025em;">A real editor, kept simple.</div></div><div class="hss-el hss-tiles-host" id="s5-tiles" style="opacity:1;"><div class="hss-tiles" style="grid-template-columns:repeat(3,1fr)"><div class="hss-slot"><div class="hss-tile hss-fill-tonal"><div class="hss-tile-icon">✂</div><div class="hss-tile-head">Trim by touch</div><div class="hss-tile-body">Ripple delete, snap to beat</div></div></div><div class="hss-slot"><div class="hss-tile hss-fill-tonal"><div class="hss-tile-icon">◐</div><div class="hss-tile-head">Color that sticks</div><div class="hss-tile-body">One-click looks, then curves</div></div></div><div class="hss-slot"><div class="hss-tile hss-fill-tonal"><div class="hss-tile-icon">♪</div><div class="hss-tile-head">Clean audio</div><div class="hss-tile-body">Duck music under voice</div></div></div></div></div><div class="hss-el" id="s5-body" style="max-width:1240px;"><div class="hss-text hss-body" style="color:#636879;font-family:&#39;Bricolage Grotesque&#39;,sans-serif;font-size:1.250vw;font-weight:400;">Plus captions, speed ramps and transitions you can retime.</div></div><div class="hss-el hss-shape-host hss-overlay" id="s5-ul"><div class="hss-shape hss-shape-underline" style="color:#6965DB"></div></div></div></div></div><div class="scn-bar"><b>5 · s5</b><span style="margin-left:0">11.6s – 14.6s · 3.0s</span><span style="margin-left:0">5 elements · shape text tiles</span><span>settled · not animated</span></div></section><section class="scn-card" id="scene-s6"><div class="scn-frame" style="aspect-ratio:16 / 9;background:#FBFBFD"><div class="hss" style="background:#FBFBFD"><div class="hss-scene"><div class="hss-el" id="s6-over"><div class="hss-text hss-body" style="color:#4B47B5;font-family:&#39;JetBrains Mono&#39;,sans-serif;font-size:1.042vw;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;">AND THEN SOME</div></div><div class="hss-el" id="s6-title"><div class="hss-text hss-body" style="color:#14161F;font-size:3.333vw;font-weight:800;letter-spacing:-0.025em;">Speed ramps. Keyframes. Export.</div></div><div class="hss-panels"><div class="hss-el hss-panel-host" id="s6-card-a" style="opacity:1;"><div class="hss-panel hss-fill-tonal"><div class="hss-panel-num" style="color:#14161F">2×</div><div class="hss-panel-label">Speed ramps</div><div class="hss-meter"><div class="hss-meter-fill" data-pct="60" style="--hss-meter:blue"></div></div></div></div><div class="hss-el hss-panel-host" id="s6-card-b" style="opacity:1;"><div class="hss-panel hss-fill-tonal"><div class="hss-panel-num" style="color:#14161F">1-click</div><div class="hss-panel-label">Keyframes</div><div class="hss-meter"><div class="hss-meter-fill" data-pct="75" style="--hss-meter:blue"></div></div></div></div><div class="hss-el hss-panel-host" id="s6-card-c" style="opacity:1;"><div class="hss-panel hss-fill-tonal"><div class="hss-panel-num" style="color:#14161F">4K</div><div class="hss-panel-label">Background export</div><div class="hss-meter"><div class="hss-meter-fill" data-pct="100" style="--hss-meter:blue"></div></div></div></div></div><div class="hss-el hss-shape-host hss-overlay" id="s6-box"><div class="hss-shape hss-shape-box" style="color:#FF4D8D"></div></div><div class="hss-el" id="s6-body" style="max-width:1240px;"><div class="hss-text hss-body" style="color:#636879;font-family:&#39;Bricolage Grotesque&#39;,sans-serif;font-size:1.250vw;font-weight:400;">Render in 4K while you keep editing.</div></div></div></div></div><div class="scn-bar"><b>6 · s6</b><span style="margin-left:0">14.6s – 17.6s · 3.0s</span><span style="margin-left:0">7 elements · card shape text</span><span>settled · not animated</span></div></section><section class="scn-card" id="scene-s7"><div class="scn-frame" style="aspect-ratio:16 / 9;background:#FBFBFD"><div class="hss" style="background:#FBFBFD"><div class="hss-scene"><div class="hss-el" id="s7-over"><div class="hss-text hss-body" style="color:#4B47B5;font-family:&#39;JetBrains Mono&#39;,sans-serif;font-size:1.042vw;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;">GRADE</div></div><div class="hss-el" id="s7-title"><div class="hss-text hss-body" style="color:#14161F;font-size:3.333vw;font-weight:800;letter-spacing:-0.025em;">One click, a whole new look.</div></div><div class="hss-el hss-shape-host hss-overlay" id="s7-ul"><div class="hss-shape hss-shape-underline" style="color:#FF4D8D"></div></div><div class="hss-el" id="s7-body" style="max-width:1240px;"><div class="hss-text hss-body" style="color:#636879;font-family:&#39;Bricolage Grotesque&#39;,sans-serif;font-size:1.250vw;font-weight:400;">Exposure, contrast, saturation, temperature — live on every frame.</div></div><div class="hss-el hss-pills-host" id="s7-pills" style="opacity:1;"><div class="hss-pills" style="--hss-pill:#6965DB"><span class="hss-slot"><span class="hss-pill hss-fill-outlined">Original</span></span><span class="hss-slot"><span class="hss-pill hss-fill-outlined">Warm</span></span><span class="hss-slot"><span class="hss-pill hss-fill-outlined">Cool</span></span><span class="hss-slot"><span class="hss-pill hss-fill-outlined">Vivid</span></span><span class="hss-slot"><span class="hss-pill hss-fill-outlined">Mono</span></span></div></div></div></div></div><div class="scn-bar"><b>7 · s7</b><span style="margin-left:0">17.6s – 20.6s · 3.0s</span><span style="margin-left:0">5 elements · pills shape text</span><span>settled · not animated</span></div></section><section class="scn-card" id="scene-s8"><div class="scn-frame" style="aspect-ratio:16 / 9;background:#FBFBFD"><div class="hss" style="background:#FBFBFD"><div class="hss-scene"><div class="hss-el" id="s8-over"><div class="hss-text hss-body" style="color:#4B47B5;font-family:&#39;JetBrains Mono&#39;,sans-serif;font-size:1.042vw;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;">AI ANIMATION</div></div><div class="hss-el" id="s8-title"><div class="hss-text hss-body" style="color:#14161F;font-size:3.333vw;font-weight:800;letter-spacing:-0.025em;">Animate with a sentence.</div></div><div class="hss-el" id="s8-code"><pre class="bg-[#14161F] text-[#E8EAF2] font-mono text-[26px] leading-[1.5] p-8 rounded-3xl w-[980px] shadow-2xl m-0 text-left">title.animate([
+  { transform: 'translateY(-120%)', opacity: 0 },
+  { transform: 'translateY(0)', opacity: 1, offset: 0.6 }
+], {
+  duration: 900, easing: 'ease-out'
+})</pre></div><div class="hss-el hss-shape-host hss-overlay hss-overlay-ring" id="s8-ring"><div class="hss-shape hss-shape-circle" style="color:#6965DB"><svg class="hss-draw" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><ellipse cx="50" cy="50" rx="48" ry="48" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1" data-anim="1" data-k="draw"></ellipse></svg></div></div></div></div></div><div class="scn-bar"><b>8 · s8</b><span style="margin-left:0">20.6s – 23.6s · 3.0s</span><span style="margin-left:0">4 elements · html shape text</span><span>settled · not animated</span></div></section><section class="scn-card" id="scene-s9"><div class="scn-frame" style="aspect-ratio:16 / 9;background:#FBFBFD"><div class="hss" style="background:#FBFBFD"><div class="hss-scene"><div class="hss-el" id="s9-over"><div class="hss-text hss-body" style="color:#4B47B5;font-family:&#39;JetBrains Mono&#39;,sans-serif;font-size:1.042vw;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;">UNDER THE HOOD</div></div><div class="hss-el" id="s9-title"><div class="hss-text hss-body" style="color:#14161F;font-size:3.333vw;font-weight:800;letter-spacing:-0.025em;">HTML, CSS, JS — and Tailwind.</div></div><div class="hss-el" id="s9-chips"><div class="flex gap-5 justify-center"><span class="px-7 py-3 rounded-full border-2 border-[#14161F] text-[26px] font-semibold text-[#14161F]">HTML</span><span class="px-7 py-3 rounded-full border-2 border-[#14161F] text-[26px] font-semibold text-[#14161F]">CSS</span><span class="px-7 py-3 rounded-full border-2 border-[#14161F] text-[26px] font-semibold text-[#14161F]">JavaScript</span><span class="px-7 py-3 rounded-full bg-[#6965DB] text-[26px] font-semibold text-white">Tailwind CSS</span></div></div><div class="hss-el" id="s9-body" style="max-width:1240px;"><div class="hss-text hss-body" style="color:#636879;font-family:&#39;Bricolage Grotesque&#39;,sans-serif;font-size:1.250vw;font-weight:400;">Utilities compiled at build time — no CDN, no runtime, no fetch.</div></div><div class="hss-el hss-shape-host hss-overlay" id="s9-hl"><div class="hss-shape hss-shape-highlight" style="color:#FFD84D"><i class="hss-hl" data-anim="1" data-k="hl"></i></div></div></div></div></div><div class="scn-bar"><b>9 · s9</b><span style="margin-left:0">23.6s – 26.6s · 3.0s</span><span style="margin-left:0">5 elements · html shape text</span><span>settled · not animated</span></div></section><section class="scn-card" id="scene-s10"><div class="scn-frame" style="aspect-ratio:16 / 9;background:#FBFBFD"><div class="hss" style="background:#FBFBFD"><div class="hss-scene"><div class="hss-el" id="s10-over"><div class="hss-text hss-body" style="color:#4B47B5;font-family:&#39;JetBrains Mono&#39;,sans-serif;font-size:1.042vw;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;">SHORTCUTS</div></div><div class="hss-el" id="s10-title"><div class="hss-text hss-body" style="color:#14161F;font-size:3.333vw;font-weight:800;letter-spacing:-0.025em;">Built for your keyboard.</div></div><div class="hss-el hss-pills-host" id="s10-keys" style="opacity:1;"><div class="hss-pills" style="--hss-pill:#6965DB"><span class="hss-slot"><span class="hss-pill hss-fill-outlined">J</span></span><span class="hss-slot"><span class="hss-pill hss-fill-outlined">K</span></span><span class="hss-slot"><span class="hss-pill hss-fill-outlined">L</span></span><span class="hss-slot"><span class="hss-pill hss-fill-outlined">I</span></span><span class="hss-slot"><span class="hss-pill hss-fill-outlined">O</span></span><span class="hss-slot"><span class="hss-pill hss-fill-outlined">M</span></span></div></div><div class="hss-el" id="s10-body" style="max-width:1240px;"><div class="hss-text hss-body" style="color:#636879;font-family:&#39;Bricolage Grotesque&#39;,sans-serif;font-size:1.250vw;font-weight:400;">Cut, mark and move without leaving the home row.</div></div><div class="hss-el hss-shape-host hss-overlay" id="s10-ul"><div class="hss-shape hss-shape-underline" style="color:#6965DB"></div></div></div></div></div><div class="scn-bar"><b>10 · s10</b><span style="margin-left:0">26.6s – 29.6s · 3.0s</span><span style="margin-left:0">5 elements · pills shape text</span><span>settled · not animated</span></div></section><section class="scn-card" id="scene-s11"><div class="scn-frame" style="aspect-ratio:16 / 9;background:#FBFBFD"><div class="hss" style="background:#FBFBFD"><div class="hss-scene"><div class="hss-el" id="s11-answer"><div class="hss-answer hss-fill-text" style="color:#14161F">Make your next cut in Reel.</div></div><div class="hss-el hss-shape-host hss-overlay hss-overlay-ring" id="s11-ring"><div class="hss-shape hss-shape-circle" style="color:#FF4D8D"><svg class="hss-draw" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><ellipse cx="50" cy="50" rx="48" ry="48" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1" data-anim="1" data-k="draw"></ellipse></svg></div></div><div class="hss-el" id="s11-body" style="max-width:1240px;"><div class="hss-text hss-body" style="color:#636879;font-family:&#39;Bricolage Grotesque&#39;,sans-serif;font-size:1.250vw;font-weight:400;">Free on Mac, Windows and Linux.</div></div><div class="hss-el hss-credit" id="s11-credit">Reel · edit video, mark it up · 2026</div></div></div></div><div class="scn-bar"><b>11 · s11</b><span style="margin-left:0">29.6s – 32.5s · 2.9s</span><span style="margin-left:0">4 elements · answer credit shape text</span><span>settled · not animated</span></div></section></div>
+</div>
+<script>/* generated by hic-storyboard.js — deterministic from t */
+var SB = {"total":32500,"scenes":[{"s":0,"e":2600,"fo":0,"els":[{"id":"s1-over","type":"text","at":100,"in":{"t":"fade","s":0,"d":400},"st":0},{"id":"s1-title","type":"text","at":350,"in":{"t":"slide","s":0,"d":700,"fy":30,"e":"cubic-bezier(.2,0,0,1)"},"st":0},{"id":"s1-ring","type":"shape","at":1300,"in":{"t":"draw","s":0,"d":900},"st":0}]},{"s":2600,"e":5600,"fo":0,"els":[{"id":"s2-a","type":"text","at":100,"in":{"t":"slide","s":0,"d":600,"fy":24,"e":"cubic-bezier(.2,0,0,1)"},"st":0},{"id":"s2-b","type":"text","at":700,"in":{"t":"slide","s":0,"d":600,"fy":24,"e":"cubic-bezier(.2,0,0,1)"},"st":0},{"id":"s2-ul","type":"shape","at":1500,"in":{"t":"draw","s":0,"d":800},"st":0},{"id":"s2-body","type":"text","at":1900,"in":{"t":"fade","s":0,"d":600},"st":0}]},{"s":5600,"e":8600,"fo":0,"els":[{"id":"s3-over","type":"text","at":100,"in":{"t":"fade","s":0,"d":400},"st":0},{"id":"s3-title","type":"text","at":350,"in":{"t":"slide","s":0,"d":600,"fy":24,"e":"cubic-bezier(.2,0,0,1)"},"st":0},{"id":"s3-pills","type":"pills","at":800,"in":{"t":"slide","s":0,"d":500,"fy":20,"st":80},"st":80},{"id":"s3-box","type":"shape","at":1800,"in":{"t":"fade","s":0,"d":500},"st":0},{"id":"s3-body","type":"text","at":2100,"in":{"t":"fade","s":0,"d":500},"st":0}]},{"s":8600,"e":11600,"fo":0,"els":[{"id":"s4-over","type":"text","at":100,"in":{"t":"fade","s":0,"d":400},"st":0},{"id":"s4-title","type":"text","at":350,"in":{"t":"slide","s":0,"d":600,"fy":24,"e":"cubic-bezier(.2,0,0,1)"},"st":0},{"id":"s4-hl","type":"shape","at":1200,"in":{"t":"draw","s":0,"d":700},"st":0},{"id":"s4-hand","type":"text","at":1550,"in":{"t":"fade","s":0,"d":450},"st":0},{"id":"s4-arr","type":"shape","at":2050,"in":{"t":"draw","s":0,"d":750},"st":0},{"id":"s4-body","type":"text","at":2150,"in":{"t":"fade","s":0,"d":500},"st":0}]},{"s":11600,"e":14600,"fo":0,"els":[{"id":"s5-over","type":"text","at":100,"in":{"t":"fade","s":0,"d":400},"st":0},{"id":"s5-title","type":"text","at":350,"in":{"t":"slide","s":0,"d":600,"fy":24,"e":"cubic-bezier(.2,0,0,1)"},"st":0},{"id":"s5-tiles","type":"tiles","at":800,"in":{"t":"slide","s":0,"d":600,"fy":30,"st":100},"st":100},{"id":"s5-body","type":"text","at":1850,"in":{"t":"fade","s":0,"d":600},"st":0},{"id":"s5-ul","type":"shape","at":2150,"in":{"t":"draw","s":0,"d":600},"st":0}]},{"s":14600,"e":17600,"fo":0,"els":[{"id":"s6-over","type":"text","at":100,"in":{"t":"fade","s":0,"d":400},"st":0},{"id":"s6-title","type":"text","at":350,"in":{"t":"slide","s":0,"d":600,"fy":24,"e":"cubic-bezier(.2,0,0,1)"},"st":0},{"id":"s6-card-a","type":"card","at":700,"in":{"t":"slide","s":0,"d":700,"fy":30},"st":0,"min":{"t":"slide","s":0,"d":800},"mt":0,"grp":"panels","mc":"blue"},{"id":"s6-card-b","type":"card","at":850,"in":{"t":"slide","s":0,"d":700,"fy":30},"st":0,"min":{"t":"slide","s":0,"d":800},"mt":0,"grp":"panels","mc":"blue"},{"id":"s6-card-c","type":"card","at":1000,"in":{"t":"slide","s":0,"d":700,"fy":30},"st":0,"min":{"t":"slide","s":0,"d":800},"mt":0,"grp":"panels","mc":"blue"},{"id":"s6-box","type":"shape","at":1950,"in":{"t":"fade","s":0,"d":500},"st":0},{"id":"s6-body","type":"text","at":2300,"in":{"t":"fade","s":0,"d":500},"st":0}]},{"s":17600,"e":20600,"fo":0,"els":[{"id":"s7-over","type":"text","at":100,"in":{"t":"fade","s":0,"d":400},"st":0},{"id":"s7-title","type":"text","at":350,"in":{"t":"slide","s":0,"d":600,"fy":24,"e":"cubic-bezier(.2,0,0,1)"},"st":0},{"id":"s7-ul","type":"shape","at":1200,"in":{"t":"draw","s":0,"d":700},"st":0},{"id":"s7-body","type":"text","at":1550,"in":{"t":"fade","s":0,"d":550},"st":0},{"id":"s7-pills","type":"pills","at":1800,"in":{"t":"slide","s":0,"d":500,"fy":20,"st":60},"st":60}]},{"s":20600,"e":23600,"fo":0,"els":[{"id":"s8-over","type":"text","at":100,"in":{"t":"fade","s":0,"d":400},"st":0},{"id":"s8-title","type":"text","at":350,"in":{"t":"slide","s":0,"d":600,"fy":24,"e":"cubic-bezier(.2,0,0,1)"},"st":0},{"id":"s8-code","type":"html","at":750,"in":{"t":"slide","s":0,"d":700,"fy":30},"st":0},{"id":"s8-ring","type":"shape","at":1700,"in":{"t":"draw","s":0,"d":800},"st":0}]},{"s":23600,"e":26600,"fo":0,"els":[{"id":"s9-over","type":"text","at":100,"in":{"t":"fade","s":0,"d":400},"st":0},{"id":"s9-title","type":"text","at":350,"in":{"t":"slide","s":0,"d":600,"fy":24,"e":"cubic-bezier(.2,0,0,1)"},"st":0},{"id":"s9-chips","type":"html","at":800,"in":{"t":"slide","s":0,"d":600,"fy":24},"st":0},{"id":"s9-body","type":"text","at":1500,"in":{"t":"fade","s":0,"d":600},"st":0},{"id":"s9-hl","type":"shape","at":2150,"in":{"t":"draw","s":0,"d":650},"st":0}]},{"s":26600,"e":29600,"fo":0,"els":[{"id":"s10-over","type":"text","at":100,"in":{"t":"fade","s":0,"d":400},"st":0},{"id":"s10-title","type":"text","at":350,"in":{"t":"slide","s":0,"d":600,"fy":24,"e":"cubic-bezier(.2,0,0,1)"},"st":0},{"id":"s10-keys","type":"pills","at":800,"in":{"t":"pop","s":0,"d":500,"o":1.06,"st":60},"st":60},{"id":"s10-body","type":"text","at":1450,"in":{"t":"fade","s":0,"d":600},"st":0},{"id":"s10-ul","type":"shape","at":2200,"in":{"t":"fade","s":0,"d":400},"st":0}]},{"s":29600,"e":32500,"fo":0,"els":[{"id":"s11-answer","type":"answer","at":350,"in":{"t":"slide","s":0,"d":700,"fy":24,"e":"cubic-bezier(.2,0,0,1)"},"st":0},{"id":"s11-ring","type":"shape","at":1300,"in":{"t":"draw","s":0,"d":850},"st":0},{"id":"s11-body","type":"text","at":1750,"in":{"t":"fade","s":0,"d":600},"st":0},{"id":"s11-credit","type":"credit","at":2100,"in":{"t":"fade","s":0,"d":600},"st":0}]}]};
+var _hssInit=false;
+function _hssSetup(){
+  if(_hssInit) return;
+try{var _o=document.getElementById("s1-ring");var _h=document.getElementById("s1-title");if(_o&&_h&&_o.parentNode!==_h)_h.appendChild(_o);}catch(e){}
+try{var _o=document.getElementById("s2-ul");var _h=document.getElementById("s2-b");if(_o&&_h&&_o.parentNode!==_h)_h.appendChild(_o);}catch(e){}
+try{var _o=document.getElementById("s3-box");var _h=document.getElementById("s3-pills");if(_o&&_h&&_o.parentNode!==_h)_h.appendChild(_o);}catch(e){}
+try{var _o=document.getElementById("s4-hl");var _h=document.getElementById("s4-title");if(_o&&_h&&_o.parentNode!==_h)_h.appendChild(_o);}catch(e){}
+try{var _o=document.getElementById("s4-arr");var _h=document.getElementById("s4-hand");if(_o&&_h&&_o.parentNode!==_h)_h.appendChild(_o);}catch(e){}
+try{var _o=document.getElementById("s5-ul");var _h=document.getElementById("s5-body");if(_o&&_h&&_o.parentNode!==_h)_h.appendChild(_o);}catch(e){}
+try{var _o=document.getElementById("s6-box");var _h=document.getElementById("s6-card-b");if(_o&&_h&&_o.parentNode!==_h)_h.appendChild(_o);}catch(e){}
+try{var _o=document.getElementById("s7-ul");var _h=document.getElementById("s7-title");if(_o&&_h&&_o.parentNode!==_h)_h.appendChild(_o);}catch(e){}
+try{var _o=document.getElementById("s8-ring");var _h=document.getElementById("s8-code");if(_o&&_h&&_o.parentNode!==_h)_h.appendChild(_o);}catch(e){}
+try{var _o=document.getElementById("s9-hl");var _h=document.getElementById("s9-body");if(_o&&_h&&_o.parentNode!==_h)_h.appendChild(_o);}catch(e){}
+try{var _o=document.getElementById("s10-ul");var _h=document.getElementById("s10-keys");if(_o&&_h&&_o.parentNode!==_h)_h.appendChild(_o);}catch(e){}
+try{var _o=document.getElementById("s11-ring");var _h=document.getElementById("s11-answer");if(_o&&_h&&_o.parentNode!==_h)_h.appendChild(_o);}catch(e){}
+  var root=document.getElementById("hss")||document.body;
+  if(!(root&&window.renderMathInElement)) return;
+  _hssInit=true;
+  try{renderMathInElement(root,{delimiters:[{left:"$$",right:"$$",display:true},{left:"$",right:"$",display:false}],throwOnError:false});}catch(e){}
+}
+function _eo(x){return 1-Math.pow(1-x,3);}
+function _eb(x,s){s=(s===undefined)?1.7:s;var p=x-1;return (s+1)*p*p*p+s*p*p+1;}
+function _c1(x){return Math.max(0,Math.min(1,x));}
+function _io3(x){return x<0.5?4*x*x*x:1-Math.pow(-2*x+2,3)/2;}
+function _el(x){if(x<=0)return 0;if(x>=1)return 1;return Math.pow(2,-10*x)*Math.sin((10*x-0.75)*2.0943951023931953)+1;}
+function _bo(x){if(x<=0)return 0;if(x>=1)return 1;var n=7.5625,d=2.75;if(x<1/d)return n*x*x;if(x<2/d){x-=1.5/d;return n*x*x+0.75;}if(x<2.5/d){x-=2.25/d;return n*x*x+0.9375;}x-=2.625/d;return n*x*x+0.984375;}
+function _bz(x1,y1,x2,y2,p){
+  if(p<=0)return 0;if(p>=1)return 1;
+  function B(t,a,b){var u=1-t;return 3*u*u*t*a+3*u*t*t*b+t*t*t;}
+  var lo=0,hi=1;
+  for(var i=0;i<24;i++){var m=(lo+hi)*0.5;if(B(m,x1,x2)<p)lo=m;else hi=m;}
+  return B((lo+hi)*0.5,y1,y2);}
+function _ez(a,p){var e=a&&a.e;if(!e)return _eo(p);
+  if(e.indexOf("cubic-bezier(")===0){var f=a._f;if(!f){var v=e.replace(/\s/g,"").slice(13,-1).split(",");if(v.length===4&&!isNaN(+v[0])&&!isNaN(+v[1])&&!isNaN(+v[2])&&!isNaN(+v[3])){var q=[+v[0],+v[1],+v[2],+v[3]];f=function(pp){return _bz(q[0],q[1],q[2],q[3],pp);};}else{f=_eo;}a._f=f;}return f(p);}
+  if(e==="linear")return _c1(p);
+  if(e==="out")return _eo(p);
+  if(e==="out-cubic")return _eo(p);
+  if(e==="ease-out")return _eo(p);
+  if(e==="in")return p*p*p;
+  if(e==="in-cubic")return p*p*p;
+  if(e==="ease-in")return p*p*p;
+  if(e==="inout")return _io3(p);
+  if(e==="inout-cubic")return _io3(p);
+  if(e==="ease-in-out")return _io3(p);
+  if(e==="ease")return _bz(.25,.1,.25,1,p);
+  if(e==="back")return _eb(p,(a.o!==undefined)?a.o:1.7);
+  if(e==="elastic")return _el(p);
+  if(e==="bounce")return _bo(p);
+  if(e==="in-quad")return p*p;
+  if(e==="out-quad")return 1-(1-p)*(1-p);
+  if(e==="inout-quad")return p<0.5?2*p*p:1-Math.pow(-2*p+2,2)/2;
+  if(e==="in-quart")return p*p*p*p;
+  if(e==="out-quart")return 1-Math.pow(1-p,4);
+  if(e==="inout-quart")return p<0.5?8*p*p*p*p:1-Math.pow(-2*p+2,4)/2;
+  if(e==="in-expo")return p<=0?0:Math.pow(2,10*p-10);
+  if(e==="out-expo")return p>=1?1:1-Math.pow(2,-10*p);
+  if(e==="inout-expo")return p<=0?0:p>=1?1:p<0.5?Math.pow(2,20*p-10)/2:(2-Math.pow(2,-20*p+10))/2;
+  return _eo(p);}
+function _ph(a,t){if(!a)return null;var s=a.s||0;if(t<s)return null;return _c1((t-s)/((a.d||600)));}
+function _ap(n,type,p,a){
+  if(type==="pop"){var s=(a&&a.o!==undefined)?a.o:1.7;var v=(a&&a.e)?_ez(a,p):_eb(p,s);
+    n.style.opacity=String(_c1(p*2));n.style.transform="scale("+(0.8+0.2*v).toFixed(4)+")";}
+  else if(type==="slide"){var fx=(a&&a.fx!==undefined)?a.fx:0,fy=(a&&a.fy!==undefined)?a.fy:0;var k=_ez(a,p);
+    n.style.opacity=String(k);n.style.transform="translate("+((1-k)*fx).toFixed(2)+"px,"+((1-k)*fy).toFixed(2)+"px)";}
+  else if(type==="slot"){var fx=(a&&a.fx!==undefined)?a.fx:0,fy=(a&&a.fy!==undefined)?a.fy:0,k=_ez(a,p);
+    var tf="translate("+((1-k)*fx).toFixed(2)+"px,"+((1-k)*fy).toFixed(2)+"px)";
+    if(a&&a.fs!==undefined)tf+=" scale("+(a.fs+(1-a.fs)*k).toFixed(4)+")";
+    n.style.opacity=String(k);n.style.transform=tf;}
+  else if(type==="draw"){n.style.opacity="1";n.style.transform="none";}
+  else {n.style.opacity=String(_ez(a,p));n.style.transform="none";}
+}
+function _hidden(n){n.style.opacity="0";n.style.transform="none";}
+function _cards(e,t){
+  var a=e.in||{t:"slide",fy:50,d:600};var ws=e._ws||(e._ws=Array.prototype.slice.call(e._n.querySelectorAll(".hss-cardwrap")));
+  for(var i=0;i<ws.length;i++){var ti=t-i*((e.st||0));var p=_ph(a,ti);
+    if(p===null){ws[i].style.opacity="0";ws[i].style.transform="translateY("+((a.fy!==undefined)?a.fy:50)+"px)";continue;}
+    var k=_ez(a,p);var fy=(a.fy!==undefined)?a.fy:50,tf="translateY("+((1-k)*fy).toFixed(2)+"px)";if(a.fs!==undefined)tf+=" scale("+(a.fs+(1-a.fs)*k).toFixed(4)+")";ws[i].style.opacity=String(k);ws[i].style.transform=tf;}
+  return ws;
+}
+function _group(e,t){
+  var a=e.in||{t:"slide",fy:50,d:600};
+  var ws=e._ws||(e._ws=Array.prototype.slice.call(e._n.querySelectorAll(".hss-slot,.hss-cardwrap")));
+  if(!ws.length)ws=[e._n];
+  var fy=(a.fy!==undefined)?a.fy:50;
+  for(var i=0;i<ws.length;i++){var ti=t-i*((e.st||0));var p=_ph(a,ti);
+    if(p===null){ws[i].style.opacity="0";ws[i].style.transform="translateY("+fy+"px)";continue;}
+    var k=_ez(a,p);var tf="translateY("+((1-k)*fy).toFixed(2)+"px)";if(a.fs!==undefined)tf+=" scale("+(a.fs+(1-a.fs)*k).toFixed(4)+")";ws[i].style.opacity=String(k);ws[i].style.transform=tf;}
+  return ws;}
+function _meter(e,t){
+  var f=e._mf||(e._mf=e._n.querySelector(".hss-meter-fill"));if(!f)return;
+  var pct=Number(f.getAttribute("data-pct"))||0;
+  var a=e.min||{t:"slide",d:900};var p=_ph(a,t);
+  if(p===null){f.style.width="0%";return;}
+  f.style.width=(_ez(a,p)*pct).toFixed(3)+"%";}
+var _CK={col:1,row:1,line:1,area:1,arc:1,value:1};
+function _chart(e,t){
+  var ns=e._cn||(e._cn=e._n.querySelectorAll("[data-anim]"));
+  var a=e.min||{t:"slide",d:1400};var st=e.st||0;
+  for(var i=0;i<ns.length;i++){var el=ns[i];var m=el.getAttribute("data-k");if(!_CK[m])continue;
+    var ii=Number(el.getAttribute("data-i"))||0;
+    var p=_ph(a,t-ii*st);var k=p===null?0:_ez(a,p);
+    if(m==="col"){var by=Number(el.getAttribute("data-by")),ty=Number(el.getAttribute("data-ty"));
+      el.setAttribute("y",(by-(by-ty)*k).toFixed(2));el.setAttribute("height",((by-ty)*k).toFixed(2));}
+    else if(m==="row"){var bx=Number(el.getAttribute("data-bx")),tx=Number(el.getAttribute("data-tx"));
+      el.setAttribute("width",((tx-bx)*k).toFixed(2));}
+    else if(m==="line"){el.setAttribute("stroke-dashoffset",(1-k).toFixed(4));}
+    else if(m==="area"){el.setAttribute("width",(Number(el.getAttribute("data-w"))*k).toFixed(2));}
+    else if(m==="arc"){var f=Number(el.getAttribute("data-frac"));el.setAttribute("stroke-dasharray",(f*k).toFixed(5)+" 1");}
+    else if(m==="value"){el.setAttribute("opacity",String(_c1((k-0.55)/0.45)));}
+  }}
+function _draw(e,t){
+  var ns=e._dn||(e._dn=e._n.querySelectorAll("[data-anim]"));
+  var p=_ph(e.in,t);var k=p===null?0:_ez(e.in,p);
+  for(var i=0;i<ns.length;i++){var el=ns[i];var m=el.getAttribute("data-k");
+    if(m==="draw"){el.setAttribute("stroke-dashoffset",(1-k).toFixed(4));}
+    else if(m==="hl"){el.style.width=(k*100).toFixed(2)+"%";}
+  }}
+function settle(root){
+
+root=root||document;
+var i,ns=root.querySelectorAll(".hss-scene");
+for(i=0;i<ns.length;i++){ns[i].style.display="";ns[i].style.opacity="1";}
+ns=root.querySelectorAll(".hss-el,.hss-slot,.hss-cardwrap");
+for(i=0;i<ns.length;i++){ns[i].style.opacity="1";ns[i].style.transform="none";}
+ns=root.querySelectorAll(".hss-meter-fill");
+for(i=0;i<ns.length;i++){ns[i].style.width=(Number(ns[i].getAttribute("data-pct"))||0)+"%";}
+ns=root.querySelectorAll("[data-anim]");
+for(i=0;i<ns.length;i++){var el=ns[i],m=el.getAttribute("data-k");
+  if(m==="col"){el.setAttribute("y",el.getAttribute("data-ty"));
+    el.setAttribute("height",(Number(el.getAttribute("data-by"))-Number(el.getAttribute("data-ty"))).toFixed(2));}
+  else if(m==="row"){el.setAttribute("width",(Number(el.getAttribute("data-tx"))-Number(el.getAttribute("data-bx"))).toFixed(2));}
+  else if(m==="line"){el.setAttribute("stroke-dashoffset","0");}
+  else if(m==="area"){el.setAttribute("width",el.getAttribute("data-w"));}
+  else if(m==="arc"){el.setAttribute("stroke-dasharray",el.getAttribute("data-frac")+" 1");}
+  else if(m==="value"){el.setAttribute("opacity","1");}
+  else if(m==="draw"){el.setAttribute("stroke-dashoffset","0");}
+  else if(m==="hl"){el.style.width="100%";}
+}
+}
+function isGroupT(t){return t==="cards"||t==="tiles"||t==="pills"||t==="card";}
+function onFrame(t){
+  _hssSetup();
+  var total=SB.total;
+  var fScene=(t>=total)?total-1:t;
+  for(var si=0;si<SB.scenes.length;si++){
+    var sc=SB.scenes[si];var scN=sc._n||(sc._n=document.querySelectorAll("#hss .hss-scene")[si]);
+    var vis;
+    if(fScene<sc.s||fScene>=sc.e)vis=0;
+    else if(sc.fo&&fScene>=sc.e-sc.fo)vis=_c1((sc.e-fScene)/sc.fo);
+    else vis=1;
+    /* display:none for fully-hidden scenes keeps their DOM out of the SVG
+       raster entirely — per-frame cost scales with VISIBLE content only */
+    if(vis<=0){scN.style.display="none";}
+    else{scN.style.display="";scN.style.opacity=String(vis);}
+  }
+  for(var si=0;si<SB.scenes.length;si++){var sc=SB.scenes[si];
+    for(var ei=0;ei<sc.els.length;ei++){var e=sc.els[ei];var eN=e._n||(e._n=sc._n.querySelector("#"+e.id));
+      var tL=fScene-sc.s-(e.at||0);
+if(fScene<sc.s||fScene>=sc.e){if(!isGroupT(e.type))_hidden(eN);else{var ws2=(e.type==="cards"?_cards(e,-1):_group(e,-1));for(var q=0;q<ws2.length;q++){ws2[q].style.opacity="0";}}continue;}
+      if(e.type==="cards"){_cards(e,tL);}
+      else if(isGroupT(e.type)){_group(e,tL);}
+      else{var pin0=_ph(e.in,tL);if(pin0===null){_hidden(eN);continue;}var ty0=(e.in&&e.in.t)||"fade";_ap(eN,ty0,pin0,e.in);}
+      /* the meter runs on its OWN phase, off the at_ms of the element, */
+      /* so a card can settle while its bar is still filling */
+      if(e.type==="card"){_meter(e,e.mt===undefined?tL:tL-e.mt);}
+      /* the chart has its OWN phase too, so the head can settle while the
+         bars are still growing - and a per-node stagger rides on the phase */
+      if(e.type==="chart"){_chart(e,e.mt===undefined?tL:tL-e.mt);}
+      /* the mark draws on its OWN phase: the entrance of the shape,
+         so a ring can land after the words it circles have settled */
+      if(e.type==="shape"){_draw(e,tL);}
+      continue;
+      var pin=_ph(e.in,tL);if(pin===null){_hidden(eN);continue;}var ty=(e.in&&e.in.t)||"fade";_ap(eN,ty,pin,e.in);
+    }
+  }
+}
+try{_hssSetup();settle(document);}catch(e){}
+</script>
+</body>
+</html>
