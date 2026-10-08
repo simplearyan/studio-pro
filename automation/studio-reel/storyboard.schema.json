@@ -344,7 +344,7 @@
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "type": {
-          "enum": ["text", "latex", "answer", "cards", "image", "shape", "stat", "card", "tiles", "pills", "credit", "chart"],
+          "enum": ["text", "latex", "answer", "cards", "image", "shape", "stat", "card", "tiles", "pills", "credit", "chart", "html"],
 
           "description": "Anything else is a HARD FAILURE at the emitter: buildElHtml throws, and reel-compile reports the element as deferred with the emitter's own message. It used to fall out of the switch and emit an EMPTY <div class=\"hss-el\"> with no warning — the exact silent failure this pipeline was built to remove, and the reason the emitter now has a throwing `default`. This enum is a convenience for the authoring side only; the emitter's switch is the contract."
         },
@@ -458,6 +458,10 @@
         },
         "of": { "type": "string", "description": "APPLIED for shape — the id of the element this mark annotates. Required for every kind: the mark's wrapper is moved into the target's own box at setup and positioned around it, so a shape with no target is a mark that draws nothing, which reel-compile reports rather than renders." },
         "src": { "type": "string", "description": "APPLIED for image." },
+
+        "html": {
+          "type": "string",
+          "description": "APPLIED for html — a raw markup block, emitted VERBATIM (it is markup, not copy, so nothing is escaped). The escape hatch for tables, code cards and one-off compositions the structured types cannot express. Two rules, both hard failures rather than warnings: no `<script>` (reported as unsafe and not passed on — a preview that executes authored script is the runtime defect class build-time compilation exists to keep out), and it must not be empty (an empty block renders an empty wrapper — the same silent loss an unknown type used to produce). Utility classes in the markup are compiled INTO the clip's stylesheet at build time by reel-compile (offline, deterministic, one stamped block); no Tailwind runtime or CDN is ever loaded. A scoped `<style>` block ships verbatim. Sized like any element: align, max_width, radius, gap and layout reach the host." },
 
         "width": { "type": "number", "description": "DISCARDED. The stage is a flow layout; there is no width to set. Use max_width." },
         "rotate": {

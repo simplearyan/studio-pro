@@ -50,6 +50,13 @@ function reconcile(sb) {
       elements: [],
     };
     for (const e of sc.elements) {
+      if (e.type === 'html') {
+        /* Passthrough: the payload IS the element, so it is carried exactly
+           as authored — nothing maps, sizes or colours it. Proved below by
+           a verbatim substring match against the emitted clip. */
+        o.elements.push({ id: e.id, type: 'html', html: e.html, at_ms: e.at_ms || 0 });
+        continue;
+      }
       if (e.type !== 'text') continue;
       o.elements.push({
         id: e.id, type: 'text',
@@ -91,6 +98,17 @@ let checked = 0;
       }
       const start = clip.html.lastIndexOf('<div', i);
       const win = clip.html.slice(start, i + 600);
+      /* `html` is the one type with no mapping to prove: passthrough means
+         the authored bytes arrive VERBATIM inside the same id'd wrapper, so
+         that is the whole assertion. Checked before the text probes below,
+         which would look for size/colour classes an html block never has. */
+      if (el.type === 'html') {
+        if (el.html == null || clip.html.indexOf(String(el.html)) === -1) {
+          failures++;
+          console.log(`  HTML NOT PASSTHROUGH ${el.id}: authored markup not found verbatim in the clip`);
+        }
+        continue;
+      }
       const problems = [];
       if (win.indexOf(`hss-text hss-${el.size}`) === -1) problems.push(`size class hss-${el.size}`);
       if (win.indexOf(`color:${el.color};`) === -1) problems.push(`colour ${el.color}`);

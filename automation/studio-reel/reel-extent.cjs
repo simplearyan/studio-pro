@@ -189,7 +189,7 @@ function measureExpression(scenes, mode, expectBg) {
   })()`;
 }
 
-function main() {
+async function main() {
   const argv = process.argv.slice(2);
   const only = argv.includes('--only') ? argv[argv.indexOf('--only') + 1] : null;
   const mode = argv.includes('--mode') ? argv[argv.indexOf('--mode') + 1] : 'light';
@@ -219,7 +219,7 @@ function main() {
   }
 
   const emitter = loadEmitter();
-  const { resolveMode, reconcile } = require('./reel-compile.cjs').__test;
+  const { resolveMode, reconcile, attachUtilities } = require('./reel-compile.cjs').__test;
 
   /* Compile every film up front so a compile failure is reported before a
      browser is even started. */
@@ -230,6 +230,10 @@ function main() {
     if (resolved.error) { console.error(`\n=== ${film} ===\n  ${resolved.error}`); return 1; }
     const { top, unsafe } = reconcile(sb, resolved.design, mode);
     if (unsafe.length) { console.error(`\n=== ${film} ===\n  UNSAFE: ${unsafe.join('; ')}`); return 1; }
+    /* Build-time utilities are attached BEFORE the page is cloned, so the
+       page this gate measures carries the same stylesheet the file will
+       always ship (plan §2). No candidates → no block → nothing moves. */
+    await attachUtilities(top);
     const clip = emitter.compileStoryboard(JSON.parse(JSON.stringify(top)));
     /* the standalone page is the artefact the user actually looks at, so it is
        the artefact measured — not a reconstruction of it */

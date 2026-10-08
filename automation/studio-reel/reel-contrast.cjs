@@ -277,7 +277,7 @@ async function main() {
    * keeping a second copy: a second resolver would drift, and a contrast
    * gate that measures a different palette than the one that ships is worse
    * than no gate at all. */
-  const { resolveMode, reconcile } = require('./reel-compile.cjs').__test;
+  const { resolveMode, reconcile, attachUtilities } = require('./reel-compile.cjs').__test;
 
   const jobs = [];
   for (const film of films) {
@@ -286,6 +286,10 @@ async function main() {
     const resolved = resolveMode(sb, mode);
     if (resolved.error) { console.error(`\n=== ${film} ===\n  ${resolved.error}`); return 1; }
     const { top } = reconcile(sb, resolved.design, mode);
+    /* Build-time utilities are attached BEFORE the page is cloned, so the
+       page this gate measures carries the same stylesheet the file will
+       always ship (plan §2). No candidates → no block → nothing moves. */
+    await attachUtilities(top);
     const clip = emitter.compileStoryboard(JSON.parse(JSON.stringify(top)));
     const page = emitter.buildStandalonePage(JSON.parse(JSON.stringify(top)));
     const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reel-contrast-')), 'reel.html');

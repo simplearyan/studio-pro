@@ -19,6 +19,10 @@
  *     note at that assertion — this one is a deliberate reversal, not a
  *     regression), and emitterSupportsType() answers from the switch
  *   - the five new types now produce non-empty markup
+ *   - an `html` block reaches the page VERBATIM, both hard failures (script,
+ *     empty) are refused at either end of the pipeline, and utility classes
+ *     are compiled INTO the stylesheet here — never loaded from a CDN at
+ *     runtime, in any committed preview
  *
  * Usage: node automation/studio-reel/reel-regression.cjs
  */
@@ -240,12 +244,12 @@ check('the throw names the offending type and is flagged as unknownType',
  * If a case were ever added without this agreeing, deferral would silently
  * mis-classify it in one direction or the other. */
 const KNOWN_TYPES = ['text', 'latex', 'answer', 'cards', 'image', 'shape',
-  'stat', 'card', 'tiles', 'pills', 'credit', 'chart'];
-check('emitterSupportsType says yes to all 12 case labels and no to the unknown one',
+  'stat', 'card', 'tiles', 'pills', 'credit', 'chart', 'html'];
+check('emitterSupportsType says yes to all 13 case labels and no to the unknown one',
   KNOWN_TYPES.every((t) => after.emitterSupportsType(t) === true) &&
   after.emitterSupportsType('hologram') === false &&
   after.emitterSupportsType(undefined) === false,
-  KNOWN_TYPES.filter((t) => after.emitterSupportsType(t) !== true).join(',') || 'all 12 ok');
+  KNOWN_TYPES.filter((t) => after.emitterSupportsType(t) !== true).join(',') || 'all 13 ok');
 check('the probed emitter agrees with the switch for every legacy+buildable type',
   (() => {
     // a probe must not throw for a TYPE reason on any real case, and must not
@@ -1246,9 +1250,120 @@ check('a known ease and a from_scale reach the emitter IR with nothing reported'
   goodEl.in.from_scale === 0.9,
   JSON.stringify({ unapplied: goodEase.unapplied, in: goodEl.in }));
 
-console.log('');
-if (failures) {
-  console.error(`reel-regression: FAILED (${failures})`);
+/* ── the html element + build-time utilities (plan §2, T1) ────────────────
+   Two claims to catch, and the section runs ASYNC because talking to oxide
+   is a promise: (1) the raw markup block reaches the page VERBATIM — the
+   baseline dropped it silently like every other unhandled type, and both
+   hard failures (script, empty) are refused at BOTH ends of the pipeline;
+   (2) utility classes compile INTO the stylesheet, while a runtime/CDN
+   string in any committed preview fails the build — Route B's whole defect
+   class is paint that depends on a fetch the gates never wait for. */
+(async () => {
+  console.log('\n=== html element + build-time utilities ===');
+
+  const HTML_RAW = '<div class="flex gap-2 p-4"><b class="text-white">raw</b></div>';
+  /* authoring shape for the schema, emitter shape for the compile — the two
+     documents a piece of markup has to be legal in. */
+  const HTML_DOC = {
+    meta: { title: 'H', id: 'h', aspect: '16:9', fps: 30, duration: 2, design: 'test' },
+    scenes: [{ id: 's1', start: 0, dur: 2, elements: [{ id: 'h1', type: 'html', html: HTML_RAW }] }],
+  };
+  const HTML_EMITTER_DOC = {
+    title: 'H', aspect: '16:9', total_duration_ms: 2000,
+    scenes: [{ start_ms: 0, end_ms: 2000, elements: [{ id: 'h1', type: 'html', html: HTML_RAW, at_ms: 0 }] }],
+  };
+  check('the schema accepts type "html" carrying its markup',
+    validate(HTML_DOC, schema).length === 0,
+    JSON.stringify(validate(HTML_DOC, schema).slice(0, 2)));
+
+  const hBefore = before.compileStoryboard(JSON.parse(JSON.stringify(HTML_EMITTER_DOC)));
+  const hAfter = after.compileStoryboard(JSON.parse(JSON.stringify(HTML_EMITTER_DOC)));
+  check('the baseline rendered an html element EMPTY (the silent loss being closed)',
+    /<div class="hss-el" id="h1"><\/div>/.test(hBefore.html), hBefore.html.slice(0, 200));
+  check('the current emitter renders the markup VERBATIM inside the id wrapper',
+    hAfter.html.indexOf(HTML_RAW) !== -1);
+
+  /* The script refusal, at the emitter (callers that bypass reel-compile)… */
+  const scriptDoc = JSON.parse(JSON.stringify(HTML_EMITTER_DOC));
+  scriptDoc.scenes[0].elements[0].html = '<script>alert(1)</script>';
+  let scriptErr = null;
+  try { after.compileStoryboard(scriptDoc); } catch (err) { scriptErr = err; }
+  check('the emitter refuses a <script> in an html block (unsafeHtml flag)',
+    !!scriptErr && scriptErr.unsafeHtml === true,
+    scriptErr ? `flag=${scriptErr.unsafeHtml} msg=${scriptErr.message}` : 'compiled without throwing');
+
+  /* …and at reconcile, where it is reported with the id named and the
+     element is NOT passed on — a failed build, not a shipped one. */
+  const scriptRec = rc.reconcile(easeFilm([
+    { id: 'hs', type: 'html', html: '<script>alert(1)</script>', at_ms: 0 },
+  ]), undefined, 'light');
+  check('reconcile reports the <script> as unsafe with the id named, and drops it',
+    scriptRec.unsafe.some((u) => u.includes('hs') && u.includes('<script')) &&
+    scriptRec.top.scenes[0].elements.length === 0,
+    JSON.stringify({ unsafe: scriptRec.unsafe, els: scriptRec.top.scenes[0].elements.length }));
+  const emptyRec = rc.reconcile(easeFilm([
+    { id: 'he', type: 'html', html: '   ', at_ms: 0 },
+  ]), undefined, 'light');
+  check('empty markup is unapplied and not passed on (no empty wrapper can ship)',
+    emptyRec.unapplied.some((u) => u.includes('he') && u.includes('empty')) &&
+    emptyRec.top.scenes[0].elements.length === 0,
+    JSON.stringify(emptyRec.unapplied));
+
+  /* The compile itself: candidates → ONE stamped block hung on the top that
+     every consumer re-compiles from. */
+  const twFilm = easeFilm([{ id: 'h1', type: 'html', html: HTML_RAW, at_ms: 0 }]);
+  const twRec = rc.reconcile(twFilm, twFilm.design, 'light');
+  const tw = await rc.attachUtilities(twRec.top);
+  check('utility candidates compile to ONE stamped block, hung on the top',
+    !!tw.block && /compiled at build time/.test(tw.block) &&
+    /\.flex\b/.test(tw.block) && /\.p-4\b/.test(tw.block) && /\.text-white\b/.test(tw.block) &&
+    twRec.top._tw === tw.block,
+    JSON.stringify({ block: tw.block && tw.block.slice(0, 140), unrecognized: tw.unrecognized }));
+  const twPage = after.buildStandalonePage(JSON.parse(JSON.stringify(twRec.top)));
+  check('the standalone page inlines that block in its <style>',
+    /compiled at build time[\s\S]*\.flex\s*\{/.test(twPage),
+    twPage.includes('compiled at build time') ? 'block present but no .flex rule after it' : 'block missing from the page');
+
+  /* Legacy films: class attributes are all the emitter's own hss-* vocabulary,
+     so there are no candidates and NO block — proven on every real film's
+     storyboard rather than asserted, which is what makes byte-identity true
+     by construction instead of by promise. The filter returns before the
+     compiler is even loaded, so this costs nothing. */
+  for (const film of fs.readdirSync(FILMS_DIR).filter((d) => fs.existsSync(path.join(FILMS_DIR, d, 'storyboard.json')))) {
+    const doc = JSON.parse(fs.readFileSync(path.join(FILMS_DIR, film, 'storyboard.json'), 'utf8'));
+    const rm = rc.resolveMode(doc, 'light');
+    if (rm.error) continue;
+    const rec = rc.reconcile(doc, rm.design, 'light');
+    const legacyTw = await rc.attachUtilities(rec.top);
+    check(`${film} has no utility candidates — attachUtilities returns zero bytes`,
+      legacyTw.block === '', JSON.stringify(legacyTw.unrecognized));
+  }
+
+  /* "Utilities are compiled, never loaded." A runtime Tailwind string in ANY
+     committed preview fails. The compiled block's own banner may legitimately
+     name tailwindcss — it is CSS, shipped; scripts and CDNs may not, because
+     those move paint behind a fetch no gate waits for. */
+  const RUNTIME_TW = /<script[^>]*tailwind|cdn\.tailwindcss\.com|@tailwindcss\/browser|tailwind-browser\//i;
+  const twHits = [];
+  for (const film of fs.readdirSync(FILMS_DIR).filter((d) => fs.existsSync(path.join(FILMS_DIR, d, 'storyboard.json')))) {
+    const dir = path.join(FILMS_DIR, film);
+    for (const f of fs.readdirSync(dir)) {
+      if (!/^(reel-preview.*|scenes-preview|design-preview)\.html$/.test(f)) continue;
+      if (RUNTIME_TW.test(fs.readFileSync(path.join(dir, f), 'utf8'))) twHits.push(`${film}/${f}`);
+    }
+  }
+  check('no committed preview loads Tailwind at runtime (no script/CDN string)',
+    twHits.length === 0, twHits.join(', '));
+  check('a page WITH compiled utilities still loads no Tailwind runtime',
+    !RUNTIME_TW.test(twPage));
+
+  console.log('');
+  if (failures) {
+    console.error(`reel-regression: FAILED (${failures})`);
+    process.exit(1);
+  }
+  console.log('reel-regression: OK — existing consumers are unaffected, the five new types work, the design board renders from resolved values, copy is escaped, html renders verbatim and its utilities compile at build time.');
+})().catch((err) => {
+  console.error('reel-regression: FAILED — ' + ((err && err.stack) || err));
   process.exit(1);
-}
-console.log('reel-regression: OK — existing consumers are unaffected, the five new types work, the design board renders from resolved values, copy is escaped.');
+});

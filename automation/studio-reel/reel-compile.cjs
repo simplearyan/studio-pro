@@ -637,6 +637,25 @@ function reconcile(sb, designIn, mode) {
       } else if (e.type === 'pills') {
         el.items = e.items || [];
         el.color = hex;
+      } else if (e.type === 'cards') {
+        /* The one element type reconcile had NO branch for. The emitter
+           renders `(e.items || [])`, so items stopped existing right here
+           and the row shipped EMPTY — three authored cards as an empty div,
+           green through every gate, until reel-motion's motion-occurs probe
+           asked what the entrance was moving and the answer was nothing.
+           label/accent/muted are exactly the fields the emitter's case
+           reads; accent resolves against the palette like every other
+           colour in this function. An empty cards row is the same silent
+           loss as a mark with no target, so it fails the build rather than
+           rendering a hole. */
+        el.items = (e.items || []).map((c) => ({
+          label: c.label,
+          accent: resolveColor(c.accent) || c.accent,
+          muted: c.muted,
+        }));
+        if (!el.items.length) {
+          unapplied.push(`${sc.id}/${e.id} — cards with no items renders an empty row (the emitter draws nothing without them)`);
+        }
       } else if (e.type === 'chart') {
         /* The first element whose payload is DATA. Every number that reaches
            the emitter lands in an SVG coordinate, and a coordinate that parses
@@ -704,6 +723,28 @@ function reconcile(sb, designIn, mode) {
         if (e.place && (e.place.bottom != null || e.place.align)) {
           warnings.push(`${e.id}: place.bottom/align ignored — the emitter pins the credit to bottom-centre`);
         }
+      } else if (e.type === 'html') {
+        /* The raw markup block. Unlike `text`, nothing rescues a mistake in
+           it: the payload IS the element, so it is carried verbatim and the
+           two ways it can be wrong are hard failures with the id named
+           rather than warnings. A <script> would make every committed
+           preview a program rather than a document — the runtime defect
+           class Route B was rejected for — so it is `unsafe` and not passed
+           on; empty markup renders an empty wrapper, the exact silent loss
+           the throwing default exists to prevent, so it is `unapplied` and
+           not passed on either. Utility classes inside are compiled into
+           the clip's stylesheet later, by attachUtilities(), never loaded
+           at runtime. */
+        const rawHtml = e.html == null ? '' : String(e.html);
+        if (/<script/i.test(rawHtml)) {
+          unsafe.push(`${sc.id}/${e.id} — html markup contains <script and is emitted verbatim`);
+          continue;
+        }
+        if (!rawHtml.trim()) {
+          unapplied.push(`${sc.id}/${e.id} — html markup is empty (renders an empty wrapper; a block must carry markup)`);
+          continue;
+        }
+        el.html = rawHtml;
       } else if (e.type === 'shape') {
         /* The annotation marks. The KIND vocabulary lives in the emitter —
            the CSS it can actually draw — and is asked the same way the type
@@ -1293,7 +1334,95 @@ function loadEmitter() {
   return shim.exports;
 }
 
-function main() {
+/* ── build-time utilities (plan §2, Route A) ─────────────────────────────
+ * The pipeline compiles Tailwind utilities ONCE, here, from the generated
+ * document: every `class="…"` attribute in clip html is scanned, handed to
+ * oxide (via @tailwindcss/node), and whatever actually compiles ships as ONE
+ * stamped CSS block appended to the clip's stylesheet (`top._tw`, spliced by
+ * compileStoryboard next to the emitter's own .hss-* rules). Offline and
+ * deterministic — no network, no CDN, no @tailwindcss/browser at runtime
+ * (Route B, rejected: it makes every preview's paint depend on a script
+ * fetching and JIT-compiling at load, which is precisely what the gates
+ * cannot measure).
+ *
+ * The no-candidates path returns zero bytes WITHOUT loading the compiler:
+ * legacy films' class attributes are all `hss-*` (the emitter's own
+ * vocabulary, never a utility), so they never touch the toolchain and their
+ * artifacts stay byte-identical. Everything that survives that filter is
+ * still decided by oxide, not by a hand-kept utility regex beside it — the
+ * same doctrine the switch and the shape vocabulary follow: ask the thing
+ * that implements it.
+ *
+ * The block rides on `top`, not on a local string, because every consumer
+ * re-compiles from `top` internally (buildStandalonePage among them) — a
+ * block held only in main() would leave the standalone page and the clip json
+ * disagreeing about the stylesheet, and a gate that measures a page the file
+ * will not ship is worse than no gate.
+ *
+ * Returns { block, unrecognized, tokens }. `unrecognized` is non-empty only
+ * when candidates existed but NOTHING compiled — a whole block of classes
+ * that silently did nothing — reported as informational (not a failure:
+ * custom classes living in a scoped <style> are legitimate there, and a
+ * mistyped utility is indistinguishable from one by design). */
+async function attachUtilities(top) {
+  const doc = emitterApi().compileStoryboard(top);
+  const seen = new Set();
+  const tokens = [];
+  /* three attribute spellings: double-quoted, single-quoted, unquoted —
+     authored markup can use any of them. An escaped quote inside the value
+     (&quot;) cannot terminate the match, so copy that merely mentions
+     class=" never contributes a token. */
+  const re = /class\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/g;
+  let m;
+  while ((m = re.exec(doc.html))) {
+    const raw = m[1] !== undefined ? m[1] : (m[2] !== undefined ? m[2] : m[3]);
+    for (const t of String(raw).split(/\s+/)) {
+      if (!t || seen.has(t)) continue;
+      seen.add(t);
+      if (!/^hss(?:-|$)/.test(t)) tokens.push(t);
+    }
+  }
+  if (!tokens.length) return { block: '', unrecognized: [], tokens: 0 };
+
+  const css = await compileUtilities(tokens);
+  if (!css) return { block: '', unrecognized: tokens, tokens: tokens.length };
+
+  const block = '/*! reel: utilities compiled at build time — ' + tokens.length
+    + ' candidate token(s), inlined as CSS; no Tailwind runtime, no CDN, no network */\n' + css;
+  top._tw = block;
+  return { block, unrecognized: [], tokens: tokens.length };
+}
+
+/* Theme + utilities ONLY — deliberately no preflight. Preflight would reset
+ * margins, line-height and font-size document-wide, which is a fine default
+ * for a page Tailwind owns and a surprise for a stage the emitter owns: one
+ * html element would change the paint of every OTHER element in the film, and
+ * the gates would be measuring a side effect of a stylesheet layer nobody
+ * authored. The theme half is not optional — utilities compile against
+ * --color-*, --spacing and the font scale, so a compile without it silently
+ * loses every theme-referencing utility. Layer declarations first, matching
+ * what Tailwind itself emits, so utilities cascade over theme vars and the
+ * emitter's unlayered .hss-* rules always win on their own elements.
+ * Probed live before writing this: one FRESH compiler per document (build()
+ * accumulates candidates across calls on the same compiler), one build(). */
+async function compileUtilities(tokens) {
+  const { compile } = require('@tailwindcss/node');
+  const SOURCE = [
+    '@layer theme, utilities;',
+    '@import "tailwindcss/theme.css" layer(theme);',
+    '@import "tailwindcss/utilities.css" layer(utilities);',
+  ].join('\n');
+  const fresh = () => compile(SOURCE, { base: ROOT, onDependency() {} });
+  const none = (await fresh()).build([]);
+  const css = (await fresh()).build(tokens.slice().sort());
+  /* Oxide's verdict on tokens that compile to nothing (junk, hss-*, custom
+     classes) is that they equal a build with zero candidates — the byte-
+     identical comparison that keeps "no candidates" true in every case, not
+     just the empty-scan one. */
+  return css === none || !css.trim() ? '' : css;
+}
+
+async function main() {
   const argv = process.argv.slice(2);
   const writeClip = argv.includes('--write-clip');
   const writeHtml = argv.includes('--write-html');
@@ -1342,6 +1471,19 @@ function main() {
       const tag = resolved.swapped && resolved.swapped.length ? resolved.swapped.length : 0;
       console.log(`  mode           ${mode} (of ${resolved.modes.join(', ')})${tag ? ` — ${tag} token${tag === 1 ? '' : 's'} overridden` : ''}`);
       console.log(`  background     ${top.background || '(emitter default #0e1512)'}`);
+    }
+
+    /* ── build-time utilities (plan §2, Route A) ──────────────────────────
+       Scanned from the GENERATED document, after reconcile, so only elements
+       that actually ship contribute candidates — and BEFORE the clip
+       compiles, so clip json, the standalone page and the scenes preview all
+       inline the same stylesheet the gates will measure. No candidates → no
+       block → zero bytes: legacy films do not move. */
+    const tw = await attachUtilities(top);
+    if (tw.block) {
+      console.log(`  utilities      ${(tw.block.length / 1024).toFixed(1)}KB compiled at build time (${tw.tokens} candidate token${tw.tokens === 1 ? '' : 's'}, no runtime)`);
+    } else if (tw.unrecognized.length) {
+      informational.push(`class tokens compiled to no utility rule: ${tw.unrecognized.join(', ')} — custom classes in a scoped <style> are expected here; a mistyped utility lands in this list too`);
     }
 
     // ── gate 1: the clip must have a real duration and name ──────────────
@@ -1556,8 +1698,21 @@ module.exports = {
   /* normalizeTimeline joins the test surface for the same reason reconcile
      did: the timeline chain is logic the gates must agree with, and a second
      copy of it in a test would only prove the copy. */
-  __test: { resolveMode, reconcile, designBoard, normalizeTimeline, DEFAULT_SCENE_DUR },
+  __test: { resolveMode, reconcile, designBoard, normalizeTimeline, DEFAULT_SCENE_DUR, attachUtilities },
   main,
 };
 
-if (require.main === module) process.exit(main());
+/* main() awaits attachUtilities(), so it hands back a promise — exiting
+ * synchronously here would print OK and exit 0 before a single film compiled
+ * (and an unhandled rejection would be a silent nonzero at best). The two
+ * outcomes are the same ones the sync script had: an exit code, or a loud
+ * failure with the reason. */
+if (require.main === module) {
+  main().then(
+    (code) => process.exit(code),
+    (err) => {
+      console.error('reel-compile: FAILED — ' + ((err && err.stack) || err));
+      process.exit(1);
+    },
+  );
+}

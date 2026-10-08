@@ -516,6 +516,13 @@
 'function _group(e,t){',
 '  var a=e.in||{t:"slide",fy:50,d:600};',
 '  var ws=e._ws||(e._ws=Array.prototype.slice.call(e._n.querySelectorAll(".hss-slot,.hss-cardwrap")));',
+/* A group of ZERO wraps is a lone `card`: its panel renders with no slot
+   wrapper, so the loop below had nothing to move and the authored entrance
+   was a no-op — the film stayed static with a green gate (found by
+   reel-motion's motion-occurs probe). When there are no wrappers the HOST is
+   the single child, animated on the same contract: parked before the phase,
+   eased through it, opacity 1 at settle (SETTLE_JS already covers .hss-el). */
+'  if(!ws.length)ws=[e._n];',
 '  var fy=(a.fy!==undefined)?a.fy:50;',
 '  for(var i=0;i<ws.length;i++){var ti=t-i*((e.st||0));var p=_ph(a,ti);',
 '    if(p===null){ws[i].style.opacity="0";ws[i].style.transform="translateY("+fy+"px)";continue;}',
@@ -1039,6 +1046,19 @@ SETTLE_JS,
     return err;
   }
 
+  /* A `html` element carries a raw markup block, emitted verbatim — so a
+     <script> inside it would execute in every preview. Flagged rather than
+     message-matched for the same reason `unknownType` is: reel-compile
+     reports it under its own id-named message and needs to tell "this block
+     is unsafe" apart from "this case has a bug" without parsing prose. */
+  function unsafeHtmlError(id) {
+    var err = new Error('hic-storyboard: html element ' +
+      JSON.stringify(String(id == null ? '' : id)) +
+      ' carries a <script> — html blocks are markup and styles only');
+    err.unsafeHtml = true;
+    return err;
+  }
+
   /* Does the switch have a `case` for this type? Answered by running the
      switch, never by a list beside it. The probe is a bare element with no
      data: every case tolerates that by construction (`esc` coerces null to
@@ -1297,6 +1317,28 @@ SETTLE_JS,
            scene's centred flex column, so it escapes it with position:absolute */
         cls += ' hss-credit';
         inner = esc(e.text);
+        break;
+      case 'html':
+        /* The raw markup block — the escape hatch for tables, code cards and
+           one-off compositions the structured types cannot express (plan §2).
+           Rendered VERBATIM: it IS markup, not copy, so esc() would defeat
+           the point. Sized like every other type by the generic box/align
+           code below, and entered like every other non-group type (host
+           starts hidden, the generic entrance fades it in).
+
+           The one thing it may not carry is <script>. reel-compile reports
+           that as unsafe and drops the element before we ever see it; this
+           throw keeps the same rule true for callers that reach the emitter
+           directly, so no path can ship a preview that executes authored
+           script — that is the runtime-JIT defect class this pipeline exists
+           to keep out. A missing/empty payload renders an empty wrapper
+           without throwing (the emitterSupportsType probe relies on that
+           tolerance by construction); reel-compile reports empty markup as
+           unapplied so it can never ship silently. */
+        if (/<script/i.test(e.html == null ? '' : String(e.html))) {
+          throw unsafeHtmlError(e.id);
+        }
+        inner = e.html == null ? '' : String(e.html);
         break;
       /* ── the switch is the ONLY list of supported types ──────────────────
          There used to be no `default`: an unknown `type` fell out of the
@@ -1633,6 +1675,20 @@ SETTLE_JS,
         + 'cursor:pointer;display:grid;place-items:center;line-height:1}';
       cssOut += modeCss;
     }
+
+    /* Build-time utilities (plan §2, Route A): reel-compile scans the
+       generated document, compiles any utility candidates with
+       @tailwindcss/node, and hangs the stamped result here as `sb._tw`.
+       Appended at the END so it lands next to the emitter's own .hss-* rules
+       in the one stylesheet every consumer inlines — clip json, standalone
+       page, scenes preview — so every gate measures the paint the file will
+       always have. Utilities live in an @layer while the emitter's rules are
+       unlayered, so .hss-* always wins on its own elements regardless of
+       order here; the utilities only ever style markup the author owns.
+       Unauthored → zero bytes, which is what keeps legacy films
+       byte-identical. Nothing in this file imports Tailwind: the emitter runs
+       in the browser, compilation happens once in reel-compile. */
+    if (sb._tw) cssOut += '\n' + sb._tw;
 
     var toggleHtml = '';
     var toggleJs = '';
