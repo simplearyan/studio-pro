@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * export-films.cjs — batch-export every studio-reel film to MP4.
+ * export-films.cjs — batch-export every studio-reel film to MP4 / WebM.
  *
  * THREE PIECES, ONE JOB. The ask: "export all our films with CDP and
  * MediaBunny, through the test renderer" — so all three are used literally:
@@ -12,7 +12,8 @@
  *   2. The test renderer imports the film exactly the way ⬇ Import HTML does
  *      (parseImportedFile + fillPanesFromImport) and renders frame i at
  *      t = i/fps with its pure f(t) onFrame — deterministic by construction.
- *   3. MediaBunny (vendored, in-page) muxes those frames into MP4 via WebCodecs
+ *   3. MediaBunny (vendored, in-page) muxes those frames into MP4 or WebM
+ *      via WebCodecs (T1.3: WebM is VP9 frame-exact, never MediaRecorder)
  *      — the same Output/VideoSampleSource calls the editor's export worker
  *      makes (src/workers/export-worker.js).
  *
@@ -31,33 +32,26 @@
  *
  * Flags: --film <id> (repeatable)  --mode dark|light   --res 480|720|1080|1440
  *        --fps 30|60               --bitrate <bps>     --out <dir>
+ *        --format mp4|webm|both (default mp4)   --changed-since <git-ref>
  *        --dry-run (list jobs, no browser)
+ *
+ * Shared harness (Track T1.1): serve/verify/doctor live in
+ * automation/shared/export/ — the same modules render.js consumes.
  */
 'use strict';
 
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
+const { execSync } = require('child_process');
 const { findBrowser, launchBrowser } = require('./cdp.cjs');
+const { serveRepo } = require('../shared/export/serve.cjs');
+const { verify } = require('../shared/export/verify.cjs');
+const { runDoctor, printChecks } = require('../shared/export/doctor.cjs');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const FILMS_DIR = path.join(__dirname, 'films');
 const PAGE_PATH = '/docs/html-in-canvas/test-renderer.html';
-
-const MIME = {
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.mjs': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.svg': 'image/svg+xml',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.woff2': 'font/woff2',
-  '.woff': 'font/woff',
-  '.ttf': 'font/ttf',
-  '.map': 'application/json',
-};
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -66,6 +60,7 @@ function parseArgs(argv) {
   const opts = {
     films: [], mode: null, res: '1080', fps: 30, bitrate: 0,
     out: path.join('_exports', 'reel'), dryRun: false,
+    format: 'mp4', changedSince: null,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -75,23 +70,50 @@ function parseArgs(argv) {
     else if (a === '--fps') opts.fps = parseInt(argv[++i], 10);
     else if (a === '--bitrate') opts.bitrate = parseInt(argv[++i], 10);
     else if (a === '--out') opts.out = argv[++i];
+    else if (a === '--format') opts.format = argv[++i];
+    else if (a === '--changed-since') opts.changedSince = argv[++i];
     else if (a === '--dry-run') opts.dryRun = true;
     else { console.error(`unknown flag: ${a}`); process.exit(2); }
   }
   if (opts.mode && !['dark', 'light'].includes(opts.mode)) {
     console.error(`--mode must be dark or light, got ${opts.mode}`); process.exit(2);
   }
+  if (!['mp4', 'webm', 'both'].includes(opts.format)) {
+    console.error(`--format must be mp4, webm or both, got ${opts.format}`); process.exit(2);
+  }
   if (!Number.isFinite(opts.fps) || opts.fps <= 0) { console.error('bad --fps'); process.exit(2); }
   return opts;
+}
+
+/* --changed-since <ref> (T1.6): only films whose storyboard/preview/design
+ * changed since <ref> — the common "I edited one film" loop stops costing a
+ * full batch. git exit is fatal: a wrong ref must not silently export all. */
+function changedFilmSet(ref) {
+  let out;
+  try {
+    out = execSync(`git diff --name-only ${JSON.stringify(ref)} -- automation/studio-reel/films`,
+      { cwd: ROOT, encoding: 'utf8' });
+  } catch (e) {
+    console.error(`--changed-since: git diff failed: ${String(e.message).split('\n')[0]}`);
+    process.exit(2);
+  }
+  const set = new Set();
+  for (const line of out.split('\n')) {
+    const m = line.match(/^automation\/studio-reel\/films\/([^/]+)\//);
+    if (m) set.add(m[1]);
+  }
+  return set;
 }
 
 /* Jobs = every committed reel-preview a film has. Single-mode films ship
  * reel-preview.html; two-queens ships reel-preview-{dark,light}.html. */
 function listJobs(opts) {
   const jobs = [];
+  const changed = opts.changedSince ? changedFilmSet(opts.changedSince) : null;
   const films = fs.readdirSync(FILMS_DIR)
     .filter((d) => fs.existsSync(path.join(FILMS_DIR, d, 'storyboard.json')))
-    .filter((d) => !opts.films.length || opts.films.includes(d));
+    .filter((d) => !opts.films.length || opts.films.includes(d))
+    .filter((d) => !changed || changed.has(d));
   for (const film of films) {
     const dir = path.join(FILMS_DIR, film);
     const previews = fs.readdirSync(dir).filter((f) => /^reel-preview(-dark|-light)?\.html$/.test(f)).sort();
@@ -114,36 +136,9 @@ function listJobs(opts) {
   return jobs;
 }
 
-/* ── a tiny static server, so the page runs under a real http origin ────
- * Modules (the vendored MediaBunny) and fonts are origin-bound: file:// is
- * opaque-origin and blocks import(). Root is the repo; 404 stays a 404. */
-function serveRepo() {
-  return new Promise((resolve, reject) => {
-    const server = http.createServer((req, res) => {
-      try {
-        const urlPath = decodeURIComponent(String(req.url || '/').split('?')[0]);
-        let file = path.normalize(path.join(ROOT, urlPath));
-        if (file !== ROOT && !file.startsWith(ROOT + path.sep)) { res.writeHead(403); res.end(); return; }
-        /* Mirror Vite's public/ mapping: /vendor/... is ROOT/public/vendor/...,
-           while /docs/... is ROOT/docs/... — same two locations one dev server
-           resolves, or the vendored MediaBunny 404s and every export dies. */
-        if (!fs.existsSync(file)) {
-          const pub = path.normalize(path.join(ROOT, 'public', urlPath));
-          if (pub.startsWith(ROOT + path.sep) && fs.existsSync(pub)) file = pub;
-        }
-        if (fs.existsSync(file) && fs.statSync(file).isDirectory()) file = path.join(file, 'index.html');
-        const data = fs.readFileSync(file);
-        res.writeHead(200, {
-          'Content-Type': MIME[path.extname(file).toLowerCase()] || 'application/octet-stream',
-          'Cache-Control': 'no-store',
-        });
-        res.end(data);
-      } catch (e) { res.writeHead(404); res.end('not found'); }
-    });
-    server.once('error', reject);
-    server.listen(0, '127.0.0.1', () => resolve(server));
-  });
-}
+/* The static server moved to automation/shared/export/serve.cjs (T1.1) —
+ * same origin rules: a real http origin so vendored modules and fonts load;
+ * file:// is opaque-origin and blocks import(). */
 
 /* ── page driving ─────────────────────────────────────────────────────── */
 async function makePage(cdp, url) {
@@ -208,8 +203,9 @@ async function runExport(cdp, sid, job, opts) {
   const kick =
     'window.__hicExportResult = null;\n' +
     'window.__hicExportProgress = { phase: "kick", done: 0, total: 0, error: null };\n' +
-    'startMp4Export({ download: false, store: true, ' +
-      `fps: ${opts.fps}, res: ${JSON.stringify(String(opts.res))}` +
+    'startVideoExport({ download: false, store: true, ' +
+      `fps: ${opts.fps}, res: ${JSON.stringify(String(opts.res))}, ` +
+      `format: ${JSON.stringify(opts.format || 'mp4')}` +
       (opts.bitrate ? `, bitrate: ${opts.bitrate}` : '') +
     ' }).then(\n' +
     '  function (r) { window.__hicExportResult = r || { error: "null result" }; },\n' +
@@ -265,37 +261,18 @@ async function pageDuration(cdp, sid) {
   return JSON.parse(raw).dur;
 }
 
-/* ── verification: read the file back with MediaBunny in Node ───────────
- * Demuxing needs no WebCodecs, so this runs anywhere. An MP4 that is the
- * wrong length, the wrong size, or short a frame count is a failed export,
- * not a warning — the batch already spent minutes rendering it. */
-async function verify(file, expect) {
-  const mb = require('mediabunny');
-  const buf = fs.readFileSync(file);
-  const input = new mb.Input({ formats: [mb.MP4], source: new mb.BufferSource(buf) });
-  /* No input.dispose(): it races the demuxer's own metadata reads and turns a
-     late read into an unhandled InputDisposedError that kills the process —
-     this script exits via process.exit right after anyway. */
-  const track = await input.getPrimaryVideoTrack();
-  if (!track) return { ok: false, why: 'no video track' };
-  const dur = await input.computeDuration();
-  let packets = null;
-  try { packets = (await track.computePacketStats()).packetCount; } catch (e) { /* optional */ }
-  const errs = [];
-  if (track.codedWidth !== expect.width || track.codedHeight !== expect.height) {
-    errs.push(`size ${track.codedWidth}x${track.codedHeight} != ${expect.width}x${expect.height}`);
-  }
-  if (Math.abs(dur - expect.duration) > 0.15) errs.push(`duration ${dur.toFixed(3)}s != ${expect.duration}s`);
-  if (packets !== null && packets !== expect.frames) errs.push(`packet count ${packets} != ${expect.frames}`);
-  if (buf.length < 4096) errs.push(`only ${buf.length} bytes`);
-  return { ok: !errs.length, why: errs.join('; '), dur, packets, codec: track.codec, bytes: buf.length };
-}
+/* verify() moved to automation/shared/export/verify.cjs (T1.1) — same
+ * MediaBunny re-read in Node, now covering MP4 AND WebM (T1.3). */
 
 /* ── main ─────────────────────────────────────────────────────────────── */
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
   const jobs = listJobs(opts);
   if (!jobs.length) {
+    if (opts.changedSince) {
+      console.log(`export-films: no films changed since ${opts.changedSince} — nothing to do`);
+      return 0;
+    }
     console.error('export-films: no reel-preview files matched');
     return 2;
   }
@@ -303,6 +280,16 @@ async function main() {
   console.log(`export-films: ${jobs.length} job(s), ${opts.res}p @ ${opts.fps}fps → ${opts.out}`);
   for (const j of jobs) console.log(`  ${j.id.padEnd(24)} ${path.relative(ROOT, j.file)}`);
   if (opts.dryRun) return 0;
+
+  /* Preflight (T1.4): every historical failure mode is a named line before
+     Chrome ever launches — a dead run is discovered in milliseconds, not
+     minutes. */
+  const doctor = await runDoctor({ needDevServer: false });
+  printChecks(doctor.checks);
+  if (!doctor.ok) {
+    console.error('export-films: export-doctor failed — fix the FAIL line(s) above');
+    return 2;
+  }
 
   const bin = findBrowser();
   if (!bin) { console.error('export-films: no Chrome found (set CHROME_PATH)'); return 2; }
@@ -340,19 +327,37 @@ async function main() {
         await waitUntil(browser.cdp, sessionId, RENDERER_READY_EXPR, 'clip renderer', 60000);
         await sleep(300); /* fonts settle beyond setClip's own fonts.ready */
 
-        const out = await runExport(browser.cdp, sessionId, job, opts);
-        const outFile = path.join(opts.out, `${job.id}.mp4`);
-        fs.writeFileSync(outFile, out.bytes);
+        /* One import, every requested container (T1.3): MP4 and WebM come
+           from the same frame-exact pump — WebM is VP9 via WebCodecs, never
+           the wall-clock MediaRecorder path. */
+        const formats = opts.format === 'both' ? ['mp4', 'webm'] : [opts.format];
+        const outs = [];
+        for (const fmt of formats) {
+          if (outs.length) {
+            /* A previous export rebuilt the preview renderer in its finally;
+               wait for that stage before exporting into it again. */
+            await waitUntil(browser.cdp, sessionId, RENDERER_READY_EXPR, 'clip renderer (next format)', 60000);
+            await sleep(300);
+          }
+          const tFmt = Date.now();
+          const out = await runExport(browser.cdp, sessionId, job, { ...opts, format: fmt });
+          const outFile = path.join(opts.out, `${job.id}.${fmt}`);
+          fs.writeFileSync(outFile, out.bytes);
 
-        const v = await verify(outFile, {
-          width: out.width, height: out.height, duration: out.duration, frames: out.frames,
-        });
-        if (!v.ok) throw new Error(`verification failed: ${v.why}`);
+          const v = await verify(outFile, {
+            width: out.width, height: out.height, duration: out.duration, frames: out.frames,
+          });
+          if (!v.ok) throw new Error(`verification failed (${fmt}): ${v.why}`);
+
+          const elapsedFmt = ((Date.now() - tFmt) / 1000).toFixed(1);
+          console.log(`    ok   ${path.relative(ROOT, outFile)} — ${out.frames} frames, ${out.duration}s, ` +
+            `${out.codec}, ${(out.bytes.length / 1e6).toFixed(1)}MB, verify ok (${elapsedFmt}s)`);
+          outs.push({ fmt, out, v, outFile });
+        }
 
         const elapsed = ((Date.now() - started) / 1000).toFixed(1);
-        console.log(`    ok   ${path.relative(ROOT, outFile)} — ${out.frames} frames, ${out.duration}s, ` +
-          `${out.codec}, ${(out.bytes.length / 1e6).toFixed(1)}MB, verify ok (${elapsed}s)\n`);
-        results.push({ id: job.id, ok: true, out, v, elapsed: +elapsed });
+        console.log('');
+        results.push({ id: job.id, ok: true, outs, elapsed: +elapsed });
       } catch (e) {
         const msg = String((e && e.message) || e);
         console.log(`    FAIL ${msg}`);
@@ -381,13 +386,21 @@ async function main() {
 
   console.log('─────────────────────────────────────────────');
   const bad = results.filter((r) => !r.ok);
-  const mb = results.filter((r) => r.ok).reduce((a, r) => a + r.out.bytes.length, 0);
+  const mb = results.filter((r) => r.ok)
+    .reduce((a, r) => a + r.outs.reduce((s, o) => s + o.out.bytes.length, 0), 0);
   console.log(`export-films: ${results.length - bad.length}/${results.length} exported, ${(mb / 1e6).toFixed(0)}MB total, ${opts.out}`);
   for (const r of bad) console.log(`  FAILED ${r.id}: ${r.error}`);
   return bad.length ? 1 : 0;
 }
 
-main().then(
-  (code) => process.exit(code || 0),
-  (e) => { console.error('export-films: crashed —', e && e.stack || e); process.exit(1); }
-);
+module.exports = {
+  parseArgs, listJobs, makePage, ev, waitUntil, importFilm, runExport, pageDuration,
+  READY_EXPR, RENDERER_READY_EXPR, ROOT, FILMS_DIR,
+};
+
+if (require.main === module) {
+  main().then(
+    (code) => process.exit(code || 0),
+    (e) => { console.error('export-films: crashed —', e && e.stack || e); process.exit(1); }
+  );
+}

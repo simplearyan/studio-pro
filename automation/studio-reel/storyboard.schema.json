@@ -352,6 +352,7 @@
         "in": { "$ref": "#/$defs/entrance" },
 
         "text": { "type": "string", "description": "APPLIED for text/latex/answer/credit. latex and answer are spliced UNESCAPED so backslashes and bare `&` alignment markers survive, so an angle bracket in one of those is a hard failure, not a warning." },
+        "md": { "type": "boolean", "description": "APPLIED for text and html (T1.9): the payload (`text` / `html`) is MARKDOWN, preprocessed to static markup inside reel-compile before the emitter runs — no runtime parser, no CDN, no <script> (the renderer escapes first, so authored HTML lands as visible text, not markup). On any other type it is reported as not applied and fails the build rather than being silently ignored." },
         "value": { "type": "string", "description": "APPLIED for stat. The numeral; its gradient is one authored colour plus a CSS stop." },
         "label": { "type": "string", "description": "APPLIED for stat. The caption under the numeral." },
         "big": { "type": "string", "description": "APPLIED for card." },
@@ -403,6 +404,11 @@
         "group": {
           "type": "string",
           "description": "APPLIED. Consecutive elements sharing a name go inside one row wrapper. It is a layout instruction, not an element type: each element keeps its own id and its own phase."
+        },
+        "col": {
+          "type": "number",
+          "enum": [1, 2],
+          "description": "APPLIED inside a scene with layout: \"split\" — which column the element sits in: 1 = left (the default), 2 = the right 'evidence' column. On a scene without a split layout it is reported and ignored, because a column of one column is just the stack that was already there."
         },
         "layout": {
           "enum": ["row", "grid"],
@@ -524,6 +530,11 @@
         "exit": { "type": "string", "description": "DISCARDED — the emitter cross-fades scenes on a fixed curve." },
         "background": { "$ref": "#/$defs/surface" },
         "gap": { "type": ["string", "number"], "description": "APPLIED — the scene's flex column gap." },
+        "layout": {
+          "type": "string",
+          "enum": ["stack", "split"],
+          "description": "APPLIED — the scene's composition grammar. stack (the default, and what every unmarked scene gets): today's centred column. split: two columns side by side — statement left, evidence right — with each element choosing its side via `col`. This is the first scene-level layout beyond the centred stack; grid/fullbleed/frame follow the same pattern (plan §5.2 V2)."
+        },
         "ambient": { "type": "array", "items": { "$ref": "#/$defs/ambient" }, "description": "DISCARDED — see $defs/ambient." },
         "elements": { "type": "array", "items": { "$ref": "#/$defs/element" }, "minItems": 1 }
       },
@@ -551,6 +562,11 @@
           "additionalProperties": false
         },
         "design": { "$ref": "#/$defs/design" },
+        "pack": {
+          "type": "string",
+          "minLength": 1,
+          "description": "APPLIED — the design pack this film is dressed from (automation/studio-reel/packs/<name>/pack.json). The pack supplies DEFAULTS the film may override key by key: design (tokens/theme_map/fonts/fills/background), frame ramp roles, and motion.default_ease for entrances that author no ease of their own. Omit it and the film compiles exactly as today (the studio-white default is a starting point, not a gate). Packs are named, versioned directories in git — the same look is repeatable because the recipe is a file, not a memory."
+        },
         "frame": { "$ref": "#/$defs/frame" },
         "tokens": { "$ref": "#/$defs/tokenTable", "description": "LEGACY — the pre-`design` palette, used by breath-of-air which predates the design block. Superseded by design.tokens." },
         "scenes": { "type": "array", "items": { "$ref": "#/$defs/scene" }, "minItems": 1 },

@@ -42,6 +42,13 @@
        (reel-regression compares CSS rule-by-rule). */
     '.hss{color:var(--hss-ink,#f8fafc)}' +
     '.hss-scene{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:26px;padding:0 8%;opacity:0;will-change:opacity}' +
+    /* Scene-level split layout (V2): the first composition grammar beside the
+       centred stack. Each column is a mini-scene — same centering, same gap —
+       so an element behaves the same whether it is stacked or split; only the
+       stage geometry changes. Emitted ONLY for scenes authored
+       layout:"split", so every existing film's markup is byte-identical. */
+    '.hss-scene.hss-split{flex-direction:row;gap:4%}' +
+    '.hss-splitc{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:26px;flex:1 1 0;min-width:0;max-width:50%}' +
     '.hss-el{position:relative;opacity:0;will-change:opacity,transform}' +
     '.hss-text{font-family:var(--hss-font-mono,\'JetBrains Mono\',monospace);font-weight:600;text-align:center}' +
     '.hss-title{font-family:var(--hss-font-display,inherit);font-size:22px;letter-spacing:3px;margin-bottom:10px}' +
@@ -1215,7 +1222,11 @@ SETTLE_JS,
           (e.font_weight ? 'font-weight:' + esc(e.font_weight) + ';' : '') +
           (e.letter_spacing ? 'letter-spacing:' + esc(e.letter_spacing) + ';' : '') +
           (e.upper ? 'text-transform:uppercase;' : '') +
-          '">' + esc(e.text) + '</div>';
+          /* T1.9: an md element's text was preprocessed to markup by
+             reel-compile (escape-first THERE), so escaping again would show
+             the author a literal &lt;strong&gt; instead of the strong. The marker
+             is set only by that preprocessing — every other path keeps esc(). */
+          '">' + (e.md_html ? e.text : esc(e.text)) + '</div>';
         break;
       case 'latex':
         /* e.font_size: the runtime sets no size on .hss-latex, so display
@@ -1408,19 +1419,26 @@ SETTLE_JS,
          than letting it look applied. `panels`/`row` keep their old class so
          every existing group is byte-identical. */
       var GROUP_LAYOUT = { row: 'hss-panels', grid: 'hss-groups' };
-      var out = '', buf = [], bufGroup = null, bufLayout = null, bufCols = 0;
+      var isSplit = sc.layout === 'split';
+      var out = '', out2 = '', buf = [], bufGroup = null, bufLayout = null, bufCols = 0, bufCol = 1;
       function flush() {
         if (!buf.length) return;
         var wrap = (bufLayout && GROUP_LAYOUT[bufLayout]) || (bufGroup && GROUP_WRAPPER[bufGroup]);
-        if (!wrap) { out += buf.join(''); buf = []; return; }
-        var wrapStyle = (wrap === 'hss-groups' && bufCols > 1)
-          ? ' style="grid-template-columns:repeat(' + num(bufCols, 1, 12) + ',1fr)"' : '';
-        out += '<div class="' + wrap + '"' + wrapStyle + '>' + buf.join('') + '</div>';
+        var chunk = wrap
+          ? '<div class="' + wrap + '"' + ((wrap === 'hss-groups' && bufCols > 1)
+            ? ' style="grid-template-columns:repeat(' + num(bufCols, 1, 12) + ',1fr)"' : '') + '>' + buf.join('') + '</div>'
+          : buf.join('');
+        if (isSplit && bufCol === 2) out2 += chunk; else out += chunk;
         buf = [];
       }
       sc.elements.forEach(function (e) {
         var g = e.group || null;
-        if (g !== bufGroup) { flush(); bufGroup = g; bufLayout = e.layout || null; bufCols = e.columns || 0; }
+        /* `col` changes the buffer exactly like `group` does: a group never
+           straddles the divider (reconcile reports col outside a split scene,
+           and a mixed group is authored as two groups anyway). Non-split
+           scenes have c always 1 === bufCol, so their walk is untouched. */
+        var c = (isSplit && e.col === 2) ? 2 : 1;
+        if (g !== bufGroup || c !== bufCol) { flush(); bufGroup = g; bufCol = c; bufLayout = e.layout || null; bufCols = e.columns || 0; }
         buf.push(buildElHtml(e));
       });
       flush();
@@ -1438,7 +1456,18 @@ SETTLE_JS,
        * scene rendered nothing and nothing reported it. */
       if (sc.bg) scStyle += esc(sc.bg) + ';';
       if (sc.gap !== undefined && sc.gap !== null) scStyle += 'gap:' + num(sc.gap, 0, 400) + 'px;';
-      return '<div class="hss-scene"' + (scStyle ? ' style="' + scStyle + '"' : '') + '>' + out + '</div>';
+      var scClass = 'hss-scene' + (isSplit ? ' hss-split' : '');
+      if (isSplit) {
+        /* The two columns are the scene's DIRECT children — that is what
+           `.hss-scene.hss-split{flex-direction:row}` + `.hss-splitc{flex:1}`
+           are written for. A wrapper div between them had no CSS rule at all:
+           the columns stacked vertically inside a block and the split scene
+           rendered identical to a stacked one (found by the first film to
+           actually author layout:"split"). */
+        out = '<div class="hss-splitc">' + out + '</div>' +
+          '<div class="hss-splitc">' + out2 + '</div>';
+      }
+      return '<div class="' + scClass + '"' + (scStyle ? ' style="' + scStyle + '"' : '') + '>' + out + '</div>';
     });
     /* kept as an ARRAY as well as joined: the scenes preview needs one scene's
        markup at a time, and re-splitting the joined string on a tag boundary

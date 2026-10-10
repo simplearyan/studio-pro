@@ -14,16 +14,20 @@
  *   1. Launch single Chrome instance (reused across all clips)
  *   2. Preload Google Fonts into Chrome's font cache (once)
  *   3. For each clip: generate standalone HTML → load in new tab → capture frames
- *   4. Feed PNGs to FFmpeg for encoding
+ *   4. Frames go to the in-page MediaBunny encoder as they are rendered
+ *      (T1.2 — no ffmpeg, nothing on disk), or to a PNG sequence when the
+ *      caller wants legacy file output
  * 
  * Key optimization: Font preloading. Instead of each clip loading fonts from
  * Google CDN (3.7 fps), we preload all fonts once into Chrome's cache (11+ fps).
  * 
  * Usage:
- *   import { launchBrowser, preloadFonts, captureClipFrames, encodeFrames } from './cdp-capture.js';
+ *   import { launchBrowser, preloadFonts, captureClipFrames } from './cdp-capture.js';
  *   const browser = await launchBrowser(chromePath);
  *   await preloadFonts(browser, ['Inter', 'Space Grotesk']);
- *   for (const clip of clips) { await captureClipFrames(clip, { browser }); }
+ *   for (const clip of clips) {
+ *     await captureClipFrames(clip, { browser, onFrame: (png) => enc.push(png) });
+ *   }
  *   await browser.close();
  */
 
@@ -64,9 +68,13 @@ function findChrome() {
 // css) by the editor's WAAPI→HIC adapter, so the compiled function is the only
 // thing that can position a frame.
 //
-// The `document.getAnimations()` branch that used to run first was removed in
-// P4 of docs/automation/HTML-IN-CANVAS-PIPELINE-PLAN.md — no clip in the repo
-// can hold a live-keyframes animation any more, so it had nothing to drive.
+// PLUS (T1.7): every live CSS/WAAPI animation is paused and seeked to the
+// same ms. Standalone pages screenshot the LIVE DOM (unlike the test-renderer
+// raster, which serializes a clone), so pause+currentTime is all it takes for
+// preset-style CSS animation to be frame-exact here. Clips whose @keyframes
+// were compiled away simply have no animations to seek — this costs nothing
+// and restores the branch removed in P4 of
+// docs/automation/HTML-IN-CANVAS-PIPELINE-PLAN.md for the new capability.
 
 const SEEK_ADAPTER = `
 <script>
@@ -77,6 +85,17 @@ const SEEK_ADAPTER = `
         var ms = (frame / fps) * 1000;
         try {
             if (typeof window.onFrame === 'function') window.onFrame(ms);
+        } catch(e) {}
+        try {
+            if (typeof document.getAnimations === 'function') {
+                var anims = document.getAnimations();
+                for (var i = 0; i < anims.length; i++) {
+                    try {
+                        if (anims[i].playState !== 'paused') anims[i].pause();
+                        anims[i].currentTime = ms;
+                    } catch(e) {}
+                }
+            }
         } catch(e) {}
         try {
             document.documentElement.style.setProperty('--frame', frame);
@@ -221,7 +240,11 @@ function generateStandalonePage(clip, options = {}) {
  * Capture all frames of a HTML-in-Canvas clip using CDP screenshots.
  * 
  * @param {Object} clip - Clip data with html, css, js, fonts, duration
- * @param {Object} options - { fps, width, height, outputDir, browser, verbose }
+ * @param {Object} options - { fps, width, height, outputDir, browser, verbose,
+ *                             onFrame }
+ * @param {Function} [options.onFrame] - streaming mode (T1.2): called with
+ *        (pngBuffer, frameIndex, totalFrames) per frame; nothing is written
+ *        to disk. Without it, frames land as a PNG sequence (legacy output).
  * @returns {Promise<{ frames: string[], fps: number, width: number, height: number }>}
  */
 export async function captureClipFrames(clip, options = {}) {
@@ -237,10 +260,12 @@ export async function captureClipFrames(clip, options = {}) {
     const totalFrames = Math.ceil(clip.duration * fps);
     const timeStep = 1 / fps;
     
-    // Create output directory
+    // Create output directory (streaming mode keeps nothing on disk)
     const frameDir = outputDir || path.join(__dirname, '.frames', clip.id || 'temp');
-    if (existsSync(frameDir)) rmSync(frameDir, { recursive: true });
-    mkdirSync(frameDir, { recursive: true });
+    if (!options.onFrame) {
+        if (existsSync(frameDir)) rmSync(frameDir, { recursive: true });
+        mkdirSync(frameDir, { recursive: true });
+    }
 
     if (verbose) console.log(`[CDP] Capturing ${totalFrames} frames (${clip.duration}s @ ${fps}fps)`);
 
@@ -292,14 +317,20 @@ export async function captureClipFrames(clip, options = {}) {
                 });
             });
 
-            // Capture screenshot
-            const framePath = path.join(frameDir, `frame_${String(frame).padStart(6, '0')}.png`);
-            await page.screenshot({
-                path: framePath,
+            // Capture screenshot — streamed to the in-page encoder when the
+            // caller supplies onFrame (T1.2: no PNG sequence, no concat, no
+            // ffmpeg), otherwise written as a PNG file (legacy output)
+            const png = await page.screenshot({
                 type: 'png',
                 clip: { x: 0, y: 0, width, height }
             });
-            framePaths.push(framePath);
+            if (options.onFrame) {
+                await options.onFrame(png, frame, totalFrames);
+            } else {
+                const framePath = path.join(frameDir, `frame_${String(frame).padStart(6, '0')}.png`);
+                writeFileSync(framePath, png);
+                framePaths.push(framePath);
+            }
 
             // Progress
             if (verbose && (frame % fps === 0 || frame === totalFrames - 1)) {
@@ -330,47 +361,6 @@ export async function captureClipFrames(clip, options = {}) {
             await _browser.close();
         }
     }
-}
-
-// ── FFmpeg Encoding ──────────────────────────────────────────────────────
-
-/**
- * Encode captured frames to video using FFmpeg.
- */
-export async function encodeFrames(frameDir, outputPath, options = {}) {
-    const { fps = 30, format = 'mp4', crf = 18 } = options;
-    
-    const codec = format === 'webm' ? ['libvpx-vp9', '-b:v', '0'] : ['libx264', '-preset', 'medium'];
-    
-    const inputPattern = path.join(frameDir, 'frame_%06d.png');
-    const args = [
-        '-y',
-        '-framerate', String(fps),
-        '-i', inputPattern,
-        '-c:v', ...codec,
-        '-crf', String(crf),
-        '-pix_fmt', 'yuv420p',
-        '-movflags', '+faststart',
-        outputPath
-    ];
-
-    const { spawn } = await import('child_process');
-    
-    return new Promise((resolve, reject) => {
-        const ffmpeg = spawn('ffmpeg', args, { stdio: ['pipe', 'pipe', 'pipe'] });
-        let stderr = '';
-        
-        ffmpeg.stderr.on('data', data => { stderr += data.toString(); });
-        ffmpeg.on('close', code => {
-            if (code === 0) {
-                console.log(`[CDP] Encoded: ${outputPath}`);
-                resolve(outputPath);
-            } else {
-                reject(new Error(`FFmpeg failed (code ${code}): ${stderr.slice(-500)}`));
-            }
-        });
-        ffmpeg.on('error', reject);
-    });
 }
 
 // ── Cleanup ──────────────────────────────────────────────────────────────

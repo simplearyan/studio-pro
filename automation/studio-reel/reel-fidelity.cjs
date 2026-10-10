@@ -21,6 +21,9 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+/* T1.9: fidelity must know what reel-compile did to an md element — the
+   expected inner is the RENDERED markup, not the authored markdown. */
+const { renderMarkdown } = require('../shared/markdown.cjs');
 
 const ROOT = path.resolve(__dirname, '../..');
 const EMITTER = path.join(ROOT, 'docs/html-in-canvas/hic-storyboard.js');
@@ -54,7 +57,7 @@ function reconcile(sb) {
         /* Passthrough: the payload IS the element, so it is carried exactly
            as authored — nothing maps, sizes or colours it. Proved below by
            a verbatim substring match against the emitted clip. */
-        o.elements.push({ id: e.id, type: 'html', html: e.html, at_ms: e.at_ms || 0 });
+        o.elements.push({ id: e.id, type: 'html', html: e.md ? (renderMarkdown(e.html) || '') : e.html, at_ms: e.at_ms || 0 });
         continue;
       }
       if (e.type !== 'text') continue;
@@ -62,7 +65,12 @@ function reconcile(sb) {
         id: e.id, type: 'text',
         size: SIZE[e.role] || 'body',
         color: HEX[sc.tone] || '#f8fafc',
-        text: e.text, at_ms: e.at_ms || 0,
+        /* T1.9: md text arrives as RENDERED markup and the emitter splices
+           it verbatim — md_html is the same marker reel-compile sets, and
+           this gate compiles through the same emitter, so it must set it too. */
+        text: e.md ? (renderMarkdown(e.text) || '') : e.text,
+        md_html: !!e.md,
+        at_ms: e.at_ms || 0,
       });
     }
     top.scenes.push(o);
@@ -97,7 +105,10 @@ let checked = 0;
         continue;
       }
       const start = clip.html.lastIndexOf('<div', i);
-      const win = clip.html.slice(start, i + 600);
+      /* md markup is block content — paragraphs and lists easily exceed the
+         600-char window a one-line text probe fits in, which would read as a
+         mismatch for content that is present. Grow the window by the payload. */
+      const win = clip.html.slice(start, i + 600 + (el.md_html ? String(el.text).length + 64 : 0));
       /* `html` is the one type with no mapping to prove: passthrough means
          the authored bytes arrive VERBATIM inside the same id'd wrapper, so
          that is the whole assertion. Checked before the text probes below,
@@ -112,10 +123,12 @@ let checked = 0;
       const problems = [];
       if (win.indexOf(`hss-text hss-${el.size}`) === -1) problems.push(`size class hss-${el.size}`);
       if (win.indexOf(`color:${el.color};`) === -1) problems.push(`colour ${el.color}`);
-      /* the emitter ESCAPES authored copy, so compare against the escaped
-         form - an apostrophe is stored as &#39; and renders identically. */
-      const escT = el.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-      if (win.indexOf(`>${escT}</div>`) === -1) problems.push(`text ${JSON.stringify(el.text.slice(0, 40))}`);
+      /* The emitter ESCAPES authored copy — except md text, which reached it
+         already markup (escape-first in the renderer), so escaping the
+         expectation again would look for bytes the clip can never contain. */
+      const innerT = el.md_html ? el.text
+        : el.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+      if (win.indexOf(`>${innerT}</div>`) === -1) problems.push(`text ${JSON.stringify(el.text.slice(0, 40))}`);
       if (problems.length) {
         failures++;
         console.log(`  TEXT MISMATCH ${el.id}: ${problems.join(', ')} missing`);

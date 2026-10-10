@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>StudioPro in-page encoder</title>
+</head>
+<body>
+<!--
+  encoder.html — the ffmpeg-free encode target for html-in-canvas cdp renders
+  (Track T1.2). Served over the dev-server origin so the vendored MediaBunny
+  module imports (file:// and data: origins are origin-blocked — the exact
+  failure export-doctor names).
+
+  API (driven by automation/shared/export/inpage-encoder.js):
+    await window.__enc.begin({ width, height, fps, format, bitrate })
+    await window.__enc.push(pngBase64)     // one screenshot per call
+    await window.__enc.finish()            // → { chunks, ...meta }
+    await window.__enc.abort()
+  Same Output/VideoSampleSource/VideoSample calls the editor's export worker
+  and test-renderer's startVideoExport make — one encoder, three drivers.
+-->
+<script type="module">
+let mb = null;
+let output = null, src = null, state = null;
+
+function b64Chunks(buf, size) {
+    const u8 = new Uint8Array(buf);
+    let bin = '';
+    const STEP = 0x8000;
+    for (let i = 0; i < u8.length; i += STEP) {
+        bin += String.fromCharCode.apply(null, u8.subarray(i, Math.min(i + STEP, u8.length)));
+    }
+    const b64 = btoa(bin);
+    const chunks = [];
+    for (let i = 0; i < b64.length; i += size) chunks.push(b64.slice(i, i + size));
+    return chunks;
+}
+
+window.__enc = {
+    async begin(opts) {
+        if (!mb) {
+            try {
+                /* Computed URL on purpose: a literal import() of a /public
+                   path makes Vite's import-analysis fail the transform
+                   ("Cannot import non-asset file … inside /public"). Same
+                   trick test-renderer's loadMediaBunny uses. */
+                const mbUrl = location.origin + '/vendor/mediabunny/mediabunny.min.js';
+                mb = await import(mbUrl);
+            } catch (e) {
+                throw new Error('could not import vendored MediaBunny from /vendor/mediabunny/mediabunny.min.js — serve over HTTP [' +
+                    ((e && e.message) || e) + ']');
+            }
+        }
+        const width = opts.width, height = opts.height, fps = opts.fps;
+        const fmtName = opts.format === 'webm' ? 'webm' : 'mp4';
+        const bitrate = opts.bitrate || (width * height <= 1920 * 1080 ? 8e6 : 16e6);
+
+        const format = fmtName === 'webm' ? new mb.WebMOutputFormat() : new mb.Mp4OutputFormat();
+        const supported = format.getSupportedVideoCodecs();
+        const want = (fmtName === 'webm' ? ['vp9', 'vp8', 'av1'] : ['avc', 'vp9', 'av1'])
+            .filter((c) => supported.indexOf(c) !== -1);
+        let codec = null;
+        for (let i = 0; i < want.length; i++) {
+            try {
+                if (await mb.canEncodeVideo(want[i], { width: width, height: height, bitrate: bitrate })) { codec = want[i]; break; }
+            } catch (e) { /* try next */ }
+        }
+        if (!codec) throw new Error('no encodable ' + fmtName.toUpperCase() + ' video codec here (tried ' + (want.join(', ') || 'none') + ')');
+
+        output = new mb.Output({ format: format, target: new mb.BufferTarget() });
+        src = new mb.VideoSampleSource({ codec: codec, width: width, height: height, bitrate: bitrate });
+        output.addVideoTrack(src, { frameRate: fps });
+        await output.start();
+        state = { width, height, fps, format: fmtName, bitrate, codec, frames: 0 };
+        window.__encProgress = { phase: 'encode', done: 0, error: null };
+        return { codec: codec, format: fmtName };
+    },
+
+    async push(pngBase64) {
+        if (!state) throw new Error('push before begin');
+        const bin = atob(pngBase64);
+        const u8 = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+        const blob = new Blob([u8], { type: 'image/png' });
+        let bitmap;
+        try {
+            bitmap = await createImageBitmap(blob);
+        } catch (e) {
+            throw new Error('frame decode failed: ' + ((e && e.message) || e));
+        }
+        /* VideoSample timestamps are SECONDS — the units trap that once
+           produced an 826-year film lives here; i/fps, never i * 1e6 / fps. */
+        const sample = new mb.VideoSample(bitmap, {
+            timestamp: state.frames / state.fps,
+            duration: 1 / state.fps,
+        });
+        await src.add(sample); /* backpressure: resolves when the encoder wants more */
+        sample.close();
+        bitmap.close();
+        state.frames++;
+        window.__encProgress.done = state.frames;
+    },
+
+    async finish() {
+        if (!state) throw new Error('finish before begin');
+        try {
+            await output.finalize();
+        } catch (e) {
+            window.__encProgress = { phase: 'error', done: state.frames, error: String((e && e.message) || e) };
+            throw e;
+        }
+        const buffer = output.target.buffer;
+        if (!buffer || buffer.byteLength < 1024) {
+            const err = 'encoder produced ' + (buffer ? buffer.byteLength : 0) + ' bytes';
+            window.__encProgress = { phase: 'error', done: state.frames, error: err };
+            throw new Error(err);
+        }
+        const meta = {
+            frames: state.frames,
+            width: state.width,
+            height: state.height,
+            fps: state.fps,
+            format: state.format,
+            codec: state.codec,
+            duration: state.frames / state.fps,
+            mime: state.format === 'webm' ? 'video/webm' : 'video/mp4',
+            bytes: buffer.byteLength,
+            chunks: b64Chunks(buffer, 3 * 1024 * 1024),
+        };
+        window.__encProgress = { phase: 'done', done: state.frames, error: null };
+        output = null; src = null; state = null;
+        return meta;
+    },
+
+    async abort() {
+        try { if (output) await output.cancel(); } catch (e) { /* already gone */ }
+        output = null; src = null; state = null;
+        window.__encProgress = { phase: 'error', done: 0, error: 'aborted' };
+    },
+};
+
+window.__encReady = true;
+</script>
+</body>
+</html>

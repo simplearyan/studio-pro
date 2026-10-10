@@ -6,8 +6,9 @@
  * Renders a JavaScript composition file to MP4/WebM, two ways:
  *
  *   --mode cdp     (default) Standalone page per clip + Chrome DevTools Protocol
- *                  screenshots, encoded with ffmpeg. Deterministic: the same
- *                  frame index produces the same pixels across runs.
+ *                  screenshots, encoded by an in-page MediaBunny encoder —
+ *                  no ffmpeg anywhere in the chain (Track T1.2). Deterministic:
+ *                  the same frame index produces the same pixels across runs.
  *   --mode editor  Drive the running editor and let its OWN export pump render
  *                  (MediaBunny worker or FTRT). Slower, and it is the only
  *                  automated consumer of that export path — which is why it is
@@ -37,7 +38,11 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
-import { launchBrowser, preloadFonts, captureClipFrames, encodeFrames, cleanupFrames } from './cdp-capture.js';
+import { launchBrowser, preloadFonts, captureClipFrames } from './cdp-capture.js';
+import { InPageEncoder } from '../shared/export/inpage-encoder.js';
+import verifyModule from '../shared/export/verify.cjs';
+
+const { verify } = verifyModule;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -62,8 +67,9 @@ function box(rows) {
 // ── Default settings ───────────────────────────────────────────────────────
 
 const DEFAULTS = {
-    quality: 'ultra',       // cdp: ffmpeg CRF. editor: passed to the client (the
-                            // editor picks its own bitrate — see --help)
+    quality: 'ultra',       // cdp: in-page MediaBunny bitrate. editor: passed to
+                            // the client (the editor picks its own bitrate — see
+                            // --help)
     format: 'mp4',          // mp4 | webm
     mode: 'cdp',            // cdp | editor
     encoder: 'mediabunny',  // editor mode only: mediabunny | ftrt | standard
@@ -73,10 +79,14 @@ const DEFAULTS = {
     retries: 3
 };
 
+// Bitrate ladders replaced the old ffmpeg CRF presets when the encode moved
+// in-page (T1.2). Named by destination the way md-render's ladder is —
+// 3/8/15/30 Mbps — instead of codec numbers only a video engineer picks.
 const QUALITY_PRESETS = {
-    draft:    { crf: 28 },
-    standard: { crf: 23 },
-    ultra:    { crf: 18 }
+    draft:    { bitrate: 3e6 },
+    standard: { bitrate: 8e6 },
+    high:     { bitrate: 15e6 },
+    ultra:    { bitrate: 30e6 }
 };
 
 const MODES = ['cdp', 'editor'];
@@ -150,9 +160,9 @@ function printHelp() {
         '  StudioPro HTML-in-Canvas Renderer',
         '',
         '  Two export strategies, one CLI:',
-        '    cdp     standalone page + CDP screenshots + ffmpeg  (default,',
-        '            deterministic — a migrated clip is frame-for-frame',
-        '            reproducible across runs)',
+        '    cdp     standalone page + CDP screenshots + in-page',
+        '            MediaBunny encode (default, deterministic — a migrated',
+        '            clip is frame-for-frame reproducible across runs)',
         '    editor  drive the running editor and let its own export',
         '            pump render (MediaBunny / FTRT)',
         '',
@@ -167,8 +177,9 @@ function printHelp() {
         '    -m, --mode <cdp|editor>        default: cdp',
         '    -e, --encoder <mediabunny|ftrt|standard>',
         '                                   editor mode only, default: mediabunny',
-        '    -q, --quality <draft|standard|ultra>',
-        '                                   cdp: ffmpeg CRF 28/23/18.',
+        '    -q, --quality <draft|standard|high|ultra>',
+        '                                   cdp: in-page bitrate 3/8/15/30 Mbps',
+        '                                   (no ffmpeg anywhere).',
         '                                   editor: passed through — the editor',
         '                                   modal owns the bitrate (see Notes)',
         '    -f, --format <mp4|webm>        default: mp4',
@@ -339,7 +350,7 @@ async function renderCDP(scriptPath, outputPath, options) {
             '',
             `  Script:  ${path.basename(scriptPath)}`,
             `  Mode:    cdp — standalone page + CDP screenshots`,
-            `  Encoder: ffmpeg (CRF ${(QUALITY_PRESETS[options.quality] || QUALITY_PRESETS.ultra).crf})`,
+            `  Encoder: MediaBunny in-page (${((QUALITY_PRESETS[options.quality] || QUALITY_PRESETS.ultra).bitrate / 1e6)} Mbps, ${options.format})`,
             `  FPS:     ${options.fps}`
         ]) + '\n');
 
@@ -360,50 +371,56 @@ async function renderCDP(scriptPath, outputPath, options) {
         }
 
         const quality = QUALITY_PRESETS[options.quality] || QUALITY_PRESETS.ultra;
-        const allFrameDirs = [];
-        let clipIndex = 0;
-
-        for (const clip of clips) {
-            clipIndex++;
-            console.log(`\n[CDP] Capturing clip ${clipIndex}/${clips.length}: ${clip.id} (${clip.duration}s)`);
-            const result = await captureClipFrames(clip, {
-                fps: options.fps,
-                width: clip.width,
-                height: clip.height,
-                browser,
-                headless: options.headless,
-                verbose: true
-            });
-            allFrameDirs.push(result);
-        }
 
         const target = resolveOutputPath(scriptPath, outputPath, options);
         console.log(`[CDP] Output: ${target}`);
 
-        if (allFrameDirs.length === 1) {
-            await encodeFrames(allFrameDirs[0].outputDir, target, {
-                fps: options.fps, format: options.format, crf: quality.crf
+        /* One in-page encoder for the whole timeline (T1.2): every frame
+           streams straight from its capture page into MediaBunny — no PNG
+           sequence, no concat directory, no ffmpeg. The encoder page lives
+           on the dev-server origin because module imports are origin-blocked
+           on file:// and data: (export-doctor names that failure). */
+        const enc = await InPageEncoder.open({ browser, baseUrl: serverUrl, verbose: true });
+        try {
+            const begun = await enc.begin({
+                width: 1920,
+                height: 1080,
+                fps: options.fps,
+                format: options.format,
+                bitrate: quality.bitrate
             });
-        } else {
-            // Concatenate the per-clip sequences in timeline order.
-            console.log(`\n[CDP] Concatenating ${allFrameDirs.length} clip frame sequences...`);
-            const concatDir = path.join(__dirname, '.frames', 'concat');
-            fs.mkdirSync(concatDir, { recursive: true });
+            console.log(`[CDP] Encoder ready: ${begun.codec} ${begun.format} @ ${(quality.bitrate / 1e6)} Mbps`);
 
-            let frameIndex = 0;
-            for (const result of allFrameDirs) {
-                for (const framePath of result.frames) {
-                    fs.copyFileSync(framePath, path.join(concatDir, `frame_${String(frameIndex).padStart(6, '0')}.png`));
-                    frameIndex++;
-                }
+            let clipIndex = 0;
+            for (const clip of clips) {
+                clipIndex++;
+                console.log(`\n[CDP] Rendering clip ${clipIndex}/${clips.length}: ${clip.id} (${clip.duration}s)`);
+                await captureClipFrames(clip, {
+                    fps: options.fps,
+                    width: clip.width,
+                    height: clip.height,
+                    browser,
+                    headless: options.headless,
+                    verbose: true,
+                    onFrame: (png) => enc.push(png)
+                });
             }
-            await encodeFrames(concatDir, target, {
-                fps: options.fps, format: options.format, crf: quality.crf
-            });
-            cleanupFrames(concatDir);
-        }
 
-        for (const result of allFrameDirs) cleanupFrames(result.outputDir);
+            const meta = await enc.finish();
+            fs.writeFileSync(target, meta.buffer);
+
+            /* Re-read with MediaBunny in Node — a file that is not a video
+               fails the run instead of sitting on disk (shared verifier,
+               T1.1: MP4 or WebM by extension, no ffprobe anywhere). */
+            const v = await verify(target, {
+                width: meta.width, height: meta.height,
+                duration: meta.duration, frames: meta.frames
+            });
+            if (!v.ok) throw new Error(`verification failed: ${v.why}`);
+            console.log(`[CDP] Verified: ${meta.frames} frames, ${meta.duration.toFixed(2)}s, ${v.codec}, ${(meta.bytes / 1e6).toFixed(1)}MB`);
+        } finally {
+            await enc.close();
+        }
 
         console.log('\n✅ Render complete (cdp)');
         console.log(`   Output: ${target}`);
@@ -450,6 +467,11 @@ async function renderEditor(scriptPath, outputPath, options) {
         // writes it. It reports a failure by logging rather than throwing, so
         // check the file rather than trusting the return.
         if (!fs.existsSync(target)) throw new Error('Editor export produced no file');
+        /* Re-read in Node too (T1.1): the editor path used to trust the
+           write; an MP4 of a flat grey field is exactly the bug this catches. */
+        const v = await verify(target, {});
+        if (!v.ok) throw new Error(`verification failed: ${v.why}`);
+        console.log(`[Editor] Verified: ${(v.bytes / 1e6).toFixed(1)}MB, ${v.codec}, ${v.dur.toFixed(2)}s`);
         console.log('\n✅ Render complete (editor)');
         console.log(`   Output: ${target}`);
         return target;
@@ -485,7 +507,7 @@ async function main() {
         console.log(`⚠️  --mode ${parsed.usedAlias} is a legacy name; using --mode ${parsed.options.mode} --encoder ${parsed.options.encoder}.`);
     }
     if (parsed.options.mode === 'cdp' && parsed.options.encoder !== DEFAULTS.encoder) {
-        console.log(`⚠️  --encoder ${parsed.options.encoder} is ignored in cdp mode (cdp always encodes with ffmpeg).`);
+        console.log(`⚠️  --encoder ${parsed.options.encoder} is ignored in cdp mode (cdp always encodes with the in-page MediaBunny encoder).`);
     }
 
     const renderFn = parsed.options.mode === 'editor' ? renderEditor : renderCDP;

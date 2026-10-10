@@ -93,6 +93,71 @@ const FONT_CSS_CACHE = {};
 /* ═══════════════════════════════════════════════════════════════════════
  * SVG foreignObject Renderer (design-space aware)
  * ═══════════════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════
+ * T1.7 — animation seek/materialize: ONE seek model for every animated thing
+ * ═══════════════════════════════════════════════════════════════════
+ * renderFrame(t) rasterizes a CLONE of the sandbox serialized to an SVG
+ * foreignObject image — and an image never runs CSS/WAAPI animations (the
+ * clone would restart them at 0 anyway). So an animated element would export
+ * frozen at its initial keyframe no matter what the wall clock did.
+ *
+ * The fix: before serializing, pause every animation in the sandbox, set its
+ * currentTime to this frame's t, and materialize each animated property's
+ * computed value into the element's INLINE style — inline styles survive
+ * cloneNode + XMLSerializer, so the animated state is baked into the frame.
+ * Every frame re-materializes, so nothing goes stale across time; elements
+ * without animations are untouched (zero cost for the 8 existing films).
+ *
+ * This mirrors what cdp-capture.js's seek adapter does for live-DOM
+ * screenshots (pause + currentTime) — same one-seek-model rule, two raster
+ * paths. See Track T1.7 in docs/automation/STUDIO-REEL-VARIETY-AND-EXPORT-PLAN.md.
+ */
+function materializeAnimations(root, timeMs) {
+    var anims;
+    try { anims = root.getAnimations ? root.getAnimations({ subtree: true }) : []; } catch (e) { anims = []; }
+    if (!anims || !anims.length) return [];
+    var touched = [];
+    for (var i = 0; i < anims.length; i++) {
+        var a = anims[i];
+        try { if (a.playState !== 'paused') a.pause(); a.currentTime = timeMs; } catch (e) { /* detached */ }
+        var eff = a.effect;
+        /* Chrome 155 ships getKeyframes (lowercase f); the spec spelling is
+           getKeyFrames — accept either rather than silently skipping. */
+        if (!eff || !eff.target || !(eff.getKeyFrames || eff.getKeyframes)) continue;
+        var kfs;
+        try { kfs = (eff.getKeyFrames || eff.getKeyframes).call(eff); } catch (e) { continue; }
+        /* Collect every property any keyframe touches (partial keyframes are
+           legal: only these may be written inline — anything else would freeze
+           declarations that a class swap or onFrame still owns). */
+        var props = {};
+        var any = false;
+        for (var k = 0; k < kfs.length; k++) {
+            for (var p in kfs[k]) {
+                if (p === 'offset' || p === 'easing' || p === 'composite' || p === 'spacing' || p === 'phase') continue;
+                props[p] = true; any = true;
+            }
+        }
+        if (!any) continue;
+        var el = eff.target;
+        if (!el || !el.style) continue;
+        if (touched.indexOf(el) === -1) {
+            touched.push(el);
+            try { el.setAttribute('data-hic-anim', '1'); } catch (e) { /* detached */ }
+        }
+        var cs;
+        try { cs = getComputedStyle(el); } catch (e) { continue; }
+        for (var prop in props) {
+            var dash = prop.indexOf('--') === 0 ? prop
+                : prop.replace(/[A-Z]/g, function (m) { return '-' + m.toLowerCase(); });
+            var val = '';
+            try { val = cs.getPropertyValue(dash); } catch (e) { /* detached */ }
+            if (!val) continue;
+            try { el.style.setProperty(dash, val); } catch (e) { /* readonly */ }
+        }
+    }
+    return touched;
+}
+
 class HicRenderer {
     /* w/h = raster canvas size (frame at export res, or design size for
        preview). sw/sh = DESIGN SPACE the clip choreographs in — DOM sandbox
@@ -147,6 +212,19 @@ class HicRenderer {
         html = processed.html;
         this.css = processed.css;
         this.sandbox.innerHTML = html;
+        /* T1.7: when (and only when) the clip's CSS declares animations, the
+           LIVE sandbox needs those rules too — the raster SVG gets its own
+           copy via this.css, but an animation can only run (and be
+           paused/seeked/materialized) where the rules actually apply.
+           GATED on animation presence so films without a single animation
+           keep today's exact computed-style behavior (regression-safe);
+           without this, getAnimations() is empty here and exported frames
+           freeze at the initial keyframe. */
+        if (/@keyframes|[;{\s]animation(-name)?\s*:/.test(this.css)) {
+            var liveStyle = document.createElement('style');
+            liveStyle.textContent = this.css;
+            this.sandbox.appendChild(liveStyle);
+        }
         /* 5. Wait for fonts to be ready so first raster isn't fallback-font */
         try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch(e) {}
         this._onFrame = null;
@@ -222,6 +300,28 @@ class HicRenderer {
         html = html.replace(cdnLinkRe2, (_, url) => { urls.push(url.replace(/&amp;/g, '&')); return ''; });
         const importRe = /@import\s+(?:url\()?["']?(https:\/\/fonts\.googleapis\.com[^"')\s]*)["']?\)?\s*;/gi;
         css = css.replace(importRe, (_, url) => { urls.push(url.replace(/&amp;/g, '&')); return ''; });
+        /* Vendored fonts (T1.8): a data: stylesheet needs no fetch, but it
+           must NOT stay as a <link> in the html — the SVG raster may not
+           process link tags inside foreignObject at all. Move its content
+           into the same embedded <style> the https path feeds, and drop the
+           link, so the raster gets webfonts through the one mechanism already
+           proven for fetched fonts. url(...) inside is always data: already. */
+        let dataCss = '';
+        const dataLinkRe = /<link[^>]*href=["'](data:text\/css[^"']*)["'][^>]*>/gi;
+        html = html.replace(dataLinkRe, (_, href) => {
+            try {
+                const comma = href.indexOf(',');
+                const head = href.slice(0, comma);
+                const body = href.slice(comma + 1);
+                const text = /;base64/i.test(head) ? decodeURIComponent(escape(atob(body))) : decodeURIComponent(body);
+                dataCss += text + '\n';
+                return '';
+            } catch (e) {
+                /* Undecodable — leave the link in place: the live document
+                   still applies it, which beats silently losing the fonts. */
+                return _;
+            }
+        });
         let fontCss = '';
         for (const url of urls) {
             if (FONT_CSS_CACHE[url]) { fontCss += FONT_CSS_CACHE[url] + '\n'; continue; }
@@ -263,7 +363,7 @@ class HicRenderer {
                 fontCss += sheet + '\n';
             } catch(e) { console.warn('[Renderer] Font fetch failed:', url); }
         }
-        return { html, css: fontCss + '\n' + css };
+        return { html, css: dataCss + fontCss + '\n' + css };
     }
 
     async _preloadImages(htmlString) {
@@ -312,7 +412,24 @@ class HicRenderer {
             Document.prototype.querySelector = origQS;
             Document.prototype.getElementById = origGEBI;
         }
+        /* T1.7: bake this frame's animated state into inline styles before
+           the clone — runs AFTER onFrame so both systems compose per frame. */
+        var animatedEls = materializeAnimations(this.sandbox, timeMs);
         const clone = this.sandbox.cloneNode(true);
+        /* The raster is a static document: a stylesheet animation there is
+           either dead (content frozen at its fill state) or frozen at t=0 —
+           and in BOTH cases animation-origin declarations override the inline
+           values we just materialized (animations beat inline in the
+           cascade). Kill animation on exactly the elements that had them,
+           inside the clone only; the materialized inline styles remain and
+           carry this frame's state. */
+        if (animatedEls.length) {
+            var cAnim = clone.querySelectorAll('[data-hic-anim]');
+            for (var ci = 0; ci < cAnim.length; ci++) {
+                cAnim[ci].style.setProperty('animation', 'none', 'important');
+                cAnim[ci].removeAttribute('data-hic-anim');
+            }
+        }
         clone.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
         clone.setAttribute('style', 'width:100%;height:100%;margin:0;padding:0;overflow:hidden;');
         const domString = new XMLSerializer().serializeToString(clone);

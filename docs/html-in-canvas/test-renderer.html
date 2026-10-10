@@ -2531,7 +2531,16 @@ function b64Chunks(buf, size) {
 window.__hicExportProgress = null;
 window.__hicExportResult = null;
 
-async function startMp4Export(opts) {
+/* Legacy + batch entry points (T1.3): startMp4Export keeps its name —
+   export-films, export-doctor and every documented command call it — while
+   startVideoExport adds frame-exact WebM (VP9 via WebCodecs, never
+   MediaRecorder) beside MP4. One pump, two containers. */
+function startMp4Export(o) { return startVideoExport(Object.assign({}, o || {}, { format: 'mp4' })); }
+window.startMp4Export = startMp4Export;
+window.startVideoExport = startVideoExport;
+
+async function startVideoExport(opts) {
+    const fmt = opts && opts.format === 'webm' ? 'webm' : 'mp4';
     opts = opts || {};
     const download = opts.download !== false;
     const store = opts.store !== false;
@@ -2581,19 +2590,19 @@ async function startMp4Export(opts) {
         /* Codec: MP4 prefers H.264 (plays everywhere), then whatever the
            container and this machine's encoders actually support — a missing
            system encoder degrades to the next codec instead of failing. */
-        const mp4Fmt = new mb.Mp4OutputFormat();
-        const supported = mp4Fmt.getSupportedVideoCodecs();
-        const want = ['avc', 'vp9', 'av1'].filter(function(c) { return supported.indexOf(c) !== -1; });
+        const outFmt = fmt === 'webm' ? new mb.WebMOutputFormat() : new mb.Mp4OutputFormat();
+        const supported = outFmt.getSupportedVideoCodecs();
+        const want = (fmt === 'webm' ? ['vp9', 'vp8', 'av1'] : ['avc', 'vp9', 'av1']).filter(function(c) { return supported.indexOf(c) !== -1; });
         let codec = null;
         for (let i = 0; i < want.length; i++) {
             try {
                 if (await mb.canEncodeVideo(want[i], { width: expW, height: expH, bitrate: 8e6 })) { codec = want[i]; break; }
             } catch (e) { /* try the next codec */ }
         }
-        if (!codec) throw new Error('no encodable MP4 video codec here (tried ' + (want.join(', ') || 'none') + ')');
+        if (!codec) throw new Error('no encodable ' + fmt.toUpperCase() + ' video codec here (tried ' + (want.join(', ') || 'none') + ')');
         const bitrate = opts.bitrate || (expW * expH <= 1920 * 1080 ? 8e6 : 16e6);
 
-        output = new mb.Output({ format: mp4Fmt, target: new mb.BufferTarget() });
+        output = new mb.Output({ format: outFmt, target: new mb.BufferTarget() });
         const src = new mb.VideoSampleSource({ codec: codec, width: expW, height: expH, bitrate: bitrate });
         /* frameRate metadata snaps every timestamp onto the fps grid — the
            same grid renderFrame already steps by, so snapping cannot move a
@@ -2628,11 +2637,11 @@ async function startMp4Export(opts) {
         window.__hicExportProgress.phase = 'finalize';
         await output.finalize();
         const buffer = output.target.buffer;
-        const blob = new Blob([buffer], { type: 'video/mp4' });
+        const blob = new Blob([buffer], { type: fmt === 'webm' ? 'video/webm' : 'video/mp4' });
         if (blob.size < 1024) throw new Error('encoder produced ' + blob.size + ' bytes');
-        const name = exportFileStem() + '_' + expW + 'x' + expH + '_' + String(curFrame.aspect).replace(':', '') + '.mp4';
+        const name = exportFileStem() + '_' + expW + 'x' + expH + '_' + String(curFrame.aspect).replace(':', '') + '.' + fmt;
         const result = {
-            name: name, mime: 'video/mp4', size: blob.size, frames: nFrames,
+            name: name, mime: fmt === 'webm' ? 'video/webm' : 'video/mp4', format: fmt, size: blob.size, frames: nFrames,
             duration: dur, width: expW, height: expH, codec: codec,
             elapsedMs: Math.round(performance.now() - t0),
         };
@@ -2656,7 +2665,7 @@ async function startMp4Export(opts) {
         }
         window.__hicExportResult = { error: msg };
         console.error('[Mp4Export]', e);
-        if (download) alert('MP4 export failed \u2014 ' + msg);
+        if (download) alert(fmt.toUpperCase() + ' export failed \u2014 ' + msg);
         return { error: msg };
     } finally {
         try { if (output) await output.cancel(); } catch (e) { /* already finalized */ }

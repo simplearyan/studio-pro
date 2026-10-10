@@ -55,6 +55,14 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+/* T1.8: fonts are vendored HERE, not in the emitter — the emitter runs in a
+   browser frame with no fetch authority, and every consumer (clip json,
+   previews, export import) reads the same top.fonts this compiles. */
+const { vendorFonts, vendorFontHref } = require('../shared/fonts.cjs');
+/* T1.9: markdown is preprocessed HERE, in reconcile, so every downstream
+   consumer (clip, previews, fidelity, exports) sees static markup and no
+   film anywhere carries a runtime parser. */
+const { renderMarkdown, MD_CSS } = require('../shared/markdown.cjs');
 
 const ROOT = path.resolve(__dirname, '../..');
 const EMITTER = path.join(ROOT, 'docs/html-in-canvas/hic-storyboard.js');
@@ -181,6 +189,10 @@ const FILL_RADIUS = { pill: 'radius-pill', card: 'radius-card', tile: 'radius-ti
  * and `columns` on a row is silently nothing. */
 const LAYOUTS = ['row', 'grid'];
 const ALIGNS = ['start', 'center', 'end'];
+/* Scene-level composition grammars (V2). `stack` is the centred column every
+   film has used so far; `split` is the first sibling — plan §5.2 V2 adds
+   grid/fullbleed/frame to this same list. */
+const SCENE_LAYOUTS = ['stack', 'split'];
 
 /* DEFER_REASON used to live here: a hand-written apology per type the emitter
  * could not build, keyed by type name. Five of its six entries went stale the
@@ -309,6 +321,79 @@ function toLength(px, minPx) {
  * of the radii. Returns the design object to use - the ORIGINAL is not
  * mutated, so a film compiled twice in one process cannot leak light into
  * dark. */
+/* ── design packs (plan §5.2b) ──────────────────────────────────────────
+ * A pack is a NAMED directory under packs/ — design defaults a film can be
+ * dressed from and re-applied later, so a look is repeatable because the
+ * recipe is a file in git, not a memory. Merge rule: the PACK supplies what
+ * the film omits, the FILM wins key by key — a pack is a starting point,
+ * never a cage (plan §5.2b rule 2). Films with no `pack` field never touch
+ * this code: the 8 existing films compile byte-identically.
+ */
+const PACKS_DIR = path.join(__dirname, 'packs');
+
+function isPlainObject(v) { return v && typeof v === 'object' && !Array.isArray(v); }
+
+/* over (the film) wins key by key; arrays replace wholesale — a film's own
+   list IS the list. */
+function mergeDefaults(def, over) {
+  if (over === undefined) return def;
+  if (isPlainObject(def) && isPlainObject(over)) {
+    const out = Object.assign({}, def);
+    for (const k of Object.keys(over)) out[k] = mergeDefaults(def[k], over[k]);
+    return out;
+  }
+  return over;
+}
+
+/* Mutates sb (by design: everything downstream — resolveMode, reconcile,
+   the design board — then sees the dressed film) and returns a report, or
+   null when the film declares no pack. */
+function applyPack(sb) {
+  if (!sb.pack) return null;
+  const file = path.join(PACKS_DIR, String(sb.pack), 'pack.json');
+  if (!fs.existsSync(file)) {
+    throw new Error(`pack "${sb.pack}" not found — expected ${path.relative(ROOT, file)} ` +
+      '(packs are named directories under automation/studio-reel/packs/)');
+  }
+  const pack = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const rep = { name: pack.name || sb.pack, designKeys: [], rampRoles: [], eases: 0, overridden: [] };
+
+  if (pack.design) {
+    const filmDesign = sb.design || {};
+    sb.design = mergeDefaults(pack.design, filmDesign);
+    for (const k of Object.keys(pack.design)) {
+      if (filmDesign[k] === undefined || filmDesign[k] === null) rep.designKeys.push(k);
+      else rep.overridden.push(k);
+    }
+  }
+  if (pack.frame) {
+    sb.frame = sb.frame || {};
+    if (pack.frame.ramp) {
+      const filmRamp = sb.frame.ramp || {};
+      sb.frame.ramp = Object.assign({}, pack.frame.ramp, filmRamp);
+      for (const role of Object.keys(pack.frame.ramp)) {
+        if (filmRamp[role] === undefined) rep.rampRoles.push(role);
+      }
+    }
+    for (const k of Object.keys(pack.frame)) {
+      if (k === 'ramp') continue;
+      if (sb.frame[k] === undefined) sb.frame[k] = pack.frame[k];
+      else rep.overridden.push('frame.' + k);
+    }
+  }
+  /* Motion signature: an entrance that authors no ease gets the pack's
+     curve — the fix for "22 of 23 eases never authored" starts here, because
+     a pack prescribes curves the way its style guide prescribes ramp steps. */
+  if (pack.motion && pack.motion.default_ease) {
+    for (const sc of sb.scenes || []) {
+      for (const e of sc.elements || []) {
+        if (e.in && !e.in.ease) { e.in.ease = pack.motion.default_ease; rep.eases++; }
+      }
+    }
+  }
+  return rep;
+}
+
 function resolveMode(sb, mode) {
   const d = sb.design;
   if (!d || typeof d !== 'object') return { design: d, modes: [] };
@@ -524,6 +609,13 @@ function reconcile(sb, designIn, mode) {
       warnings.push(`${sc.id}: background type "${sc.background.type}" has no emitter recipe — using the reel background`);
     }
     if (sc.gap !== undefined && sc.gap !== null) out.gap = sc.gap;
+    /* Scene-level composition grammar (V2): `layout: "split"` is the second
+       layout after the centred stack. Validated here so an unknown name is a
+       reported non-layout instead of markup the emitter guesses at. */
+    if (sc.layout !== undefined && sc.layout !== null) {
+      if (SCENE_LAYOUTS.includes(sc.layout)) out.layout = sc.layout;
+      else unapplied.push(`${sc.id} — layout "${sc.layout}" is not one of ${SCENE_LAYOUTS.join(' / ')}`);
+    }
     if (sc.background && sc.background.type && !SURFACES[sc.background.type] && !compileSurface(sc.background)) {
       warnings.push(`${sc.id}: background type "${sc.background.type}" is not implemented (known: ${Object.keys(SURFACES).join(', ')})`);
     }
@@ -543,6 +635,13 @@ function reconcile(sb, designIn, mode) {
         deferred.push({ scene: sc.id, id: e.id, type: e.type, reason: emitterApi().unknownTypeError(e.type).message });
         continue;
       }
+      /* T1.9: markdown rides `text` and `html` only. On any other type the
+         flag would be silently ignored — the silent-loss class every bucket
+         here exists to prevent — so it fails loudly instead. */
+      if (e.md && e.type !== 'text' && e.type !== 'html') {
+        unapplied.push(`${sc.id}/${e.id} — md:true is only understood on text and html elements (this one is ${e.type})`);
+        continue;
+      }
       const el = { id: e.id, type: e.type, at_ms: e.at_ms || 0 };
       const hex = resolveColor(e.color) || toneHex(sc.tone);
       if (e.type === 'text') {
@@ -550,6 +649,21 @@ function reconcile(sb, designIn, mode) {
         el.size = size;
         el.color = hex;
         el.text = e.text;
+        /* T1.9: md:true means `text` is markdown. Rendered to static markup
+           BEFORE anything else reads it, and flagged md_html so the emitter
+           skips its own escape (the renderer already escaped the source —
+           escaping again would show the author &lt;strong&gt; as text).
+           Empty source is `unapplied`, never an empty wrapper. */
+        if (e.md) {
+          const renderedMd = renderMarkdown(e.text);
+          if (!renderedMd) {
+            unapplied.push(`${sc.id}/${e.id} — md:true but the text is empty (renders nothing)`);
+            continue;
+          }
+          el.text = renderedMd;
+          el.md_html = true;
+          top._mdCount = (top._mdCount || 0) + 1;
+        }
         /* Resolve the role to a FAMILY NAME from the film's own font map.
            A brand's Hindi display face (Khand) is a different role from its
            Hindi body face (Hind); leaving both on the body font is how a
@@ -736,15 +850,31 @@ function reconcile(sb, designIn, mode) {
            the clip's stylesheet later, by attachUtilities(), never loaded
            at runtime. */
         const rawHtml = e.html == null ? '' : String(e.html);
-        if (/<script/i.test(rawHtml)) {
+        if (e.md) {
+          /* T1.9: the payload is MARKDOWN — escape-first rendered here, so
+             authored markup cannot survive as markup. The <script> check
+             then runs on the OUTPUT as defence in depth (unreachable by
+             construction, cheap to keep true). */
+          const renderedMd = renderMarkdown(rawHtml);
+          if (!renderedMd) {
+            unapplied.push(`${sc.id}/${e.id} — md:true but the markdown is empty (renders nothing)`);
+            continue;
+          }
+          if (/<script/i.test(renderedMd)) {
+            unsafe.push(`${sc.id}/${e.id} — rendered markdown contains <script`);
+            continue;
+          }
+          el.html = renderedMd;
+          top._mdCount = (top._mdCount || 0) + 1;
+        } else if (/<script/i.test(rawHtml)) {
           unsafe.push(`${sc.id}/${e.id} — html markup contains <script and is emitted verbatim`);
           continue;
-        }
-        if (!rawHtml.trim()) {
+        } else if (!rawHtml.trim()) {
           unapplied.push(`${sc.id}/${e.id} — html markup is empty (renders an empty wrapper; a block must carry markup)`);
           continue;
+        } else {
+          el.html = rawHtml;
         }
-        el.html = rawHtml;
       } else if (e.type === 'shape') {
         /* The annotation marks. The KIND vocabulary lives in the emitter —
            the CSS it can actually draw — and is asked the same way the type
@@ -830,6 +960,15 @@ function reconcile(sb, designIn, mode) {
       if (e.align !== undefined && e.align !== null) {
         if (!ALIGNS.includes(e.align)) unapplied.push(`${sc.id}/${e.id} — align "${e.align}" is not one of ${ALIGNS.join(' / ')}`);
         else el.align = e.align;
+      }
+      /* Split-scene columns (V2): `col` only divides a scene that declared
+         layout: "split". Outside one it is reported and ignored rather than
+         silently kept — a column of one column is just the stack that was
+         already there. col 1 is the default side, so only 2 must be set. */
+      if (e.col !== undefined && e.col !== null) {
+        if (e.col !== 1 && e.col !== 2) unapplied.push(`${sc.id}/${e.id} — col ${e.col} is not 1 or 2`);
+        else if (out.layout !== 'split') unapplied.push(`${sc.id}/${e.id} — col only divides a scene authored with layout: "split"`);
+        else el.col = Number(e.col);
       }
       /* Group layout. `columns` is only meaningful on a grid, so on a row it
          is reported instead of being accepted and ignored — a silently
@@ -1422,8 +1561,101 @@ async function compileUtilities(tokens) {
   return css === none || !css.trim() ? '' : css;
 }
 
-async function main() {
-  const argv = process.argv.slice(2);
+/* --pack-check: run a pack's example through the SAME pipeline a film takes —
+ * schema → timeline chain → pack merge → mode resolve → reconcile →
+ * build-time utilities → emitter — with the structural asserts that gate
+ * every film (duration, scene count, in-path elements). Reuses the real
+ * functions, never a copy of them: a second implementation in a test only
+ * proves the copy.
+ */
+async function checkPacks(which, compileStoryboard) {
+  const { validate } = require('./reel-schema.cjs');
+  const schema = JSON.parse(fs.readFileSync(path.join(__dirname, 'storyboard.schema.json'), 'utf8'));
+  let dirs;
+  try {
+    dirs = fs.readdirSync(PACKS_DIR).filter((d) => fs.existsSync(path.join(PACKS_DIR, d, 'pack.json')));
+  } catch (e) {
+    console.error(`reel-compile: no packs directory at ${path.relative(ROOT, PACKS_DIR)}`);
+    return 2;
+  }
+  if (which !== 'all') dirs = dirs.filter((d) => d === which);
+  if (!dirs.length) { console.error(`reel-compile: no pack matched "${which}"`); return 2; }
+
+  let failed = 0;
+  for (const d of dirs) {
+    const errs = [];
+    let pack = null;
+    try { pack = JSON.parse(fs.readFileSync(path.join(PACKS_DIR, d, 'pack.json'), 'utf8')); }
+    catch (e) { errs.push(`pack.json unreadable: ${e.message}`); }
+    let recipeCount = 0;
+    if (pack) {
+      if (!pack.name || !pack.thesis) errs.push('pack.json needs name + thesis (the one-sentence visual thesis)');
+      if (!pack.design) errs.push('pack.json needs a design block — a pack that carries no design carries nothing');
+      const recDir = path.join(PACKS_DIR, d, 'recipes');
+      if (fs.existsSync(recDir)) {
+        for (const f of fs.readdirSync(recDir).filter((x) => x.endsWith('.json'))) {
+          recipeCount++;
+          try {
+            const r = JSON.parse(fs.readFileSync(path.join(recDir, f), 'utf8'));
+            if (!Array.isArray(r.elements) || !r.elements.length) errs.push(`recipes/${f}: a recipe is a scene template — it needs elements[]`);
+            for (const e of validate(r, { $ref: '#/$defs/scene' }, schema)) errs.push(`recipes/${f}: ${e.message}`);
+          } catch (e) { errs.push(`recipes/${f} unreadable: ${e.message}`); }
+        }
+      }
+
+      const exPath = path.join(PACKS_DIR, d, 'example.json');
+      if (!fs.existsSync(exPath)) {
+        errs.push('missing example.json — every pack ships a gate-passing example (rule 3)');
+      } else {
+        try {
+          const ex = JSON.parse(fs.readFileSync(exPath, 'utf8'));
+          if (ex.pack !== d) errs.push(`example declares pack "${ex.pack}" — must be "${d}"`);
+          const schemaErrs = validate(ex, schema);
+          for (const e of schemaErrs) errs.push(`example schema: ${e.message}`);
+          if (!schemaErrs.length) {
+            const timeline = normalizeTimeline(ex);
+            for (const t of timeline.discards) errs.push(`example timeline: ${t}`);
+            const rep = applyPack(ex);
+            if (!rep) errs.push('example carries no pack field');
+            /* Re-validate AFTER the merge: a pack must not be able to inject
+               a field the storyboard schema would reject in a film. */
+            for (const e of validate(ex, schema)) errs.push(`after pack merge: ${e.message}`);
+            const resolved = resolveMode(ex, 'light');
+            if (resolved.error) errs.push(resolved.error);
+            else {
+              const rec = reconcile(ex, resolved.design, 'light');
+              for (const u of rec.unapplied) errs.push(`unapplied: ${u}`);
+              for (const u of rec.unsafe) errs.push(`unsafe: ${u}`);
+              for (const u of rec.deferred) errs.push(`deferred: ${u.scene}/${u.id} (${u.type} — ${u.reason})`);
+              for (const w of rec.warnings) errs.push(`discarded: ${w}`);
+              await attachUtilities(rec.top);
+              const clip = compileStoryboard(rec.top);
+              if (!Number.isFinite(clip.dur) || clip.dur <= 0) errs.push(`example compiles to dur ${clip.dur} — no length`);
+              if (ex.meta && clip.dur !== ex.meta.duration) errs.push(`dur ${clip.dur}s != authored ${ex.meta.duration}s`);
+              const scenes = (clip.html.match(/hss-scene/g) || []).length;
+              if (scenes !== rec.top.scenes.length) errs.push(`${scenes} scenes emitted, ${rec.top.scenes.length} authored`);
+              const inPath = rec.top.scenes.reduce((a, s) => a + s.elements.length, 0);
+              const wrappers = (clip.html.match(/<div class="hss-el[^\"]*" id="[^\"]+"[^>]*>/g) || []).length;
+              if (wrappers !== inPath) errs.push(`${wrappers}/${inPath} in-path elements rendered a wrapper`);
+            }
+          }
+        } catch (e) { errs.push(`example failed: ${e.message}`); }
+      }
+    }
+    if (errs.length) {
+      failed++;
+      console.log(`\n=== pack ${d} === FAIL`);
+      for (const e of errs) console.log(`  - ${e}`);
+    } else {
+      console.log(`\n=== pack ${d} === OK — pack.json + ${recipeCount} recipe(s) + example compiles through schema, reconcile and the emitter`);
+    }
+  }
+  if (failed) { console.error(`reel-compile: ${failed} pack(s) failed --pack-check`); return 1; }
+  console.log(`\nreel-compile: ${dirs.length} pack(s) pass --pack-check`);
+  return 0;
+}
+
+async function compileRun(argv) {
   const writeClip = argv.includes('--write-clip');
   const writeHtml = argv.includes('--write-html');
   /* the style board: a page that shows the design system on its own, with no
@@ -1434,6 +1666,7 @@ async function main() {
   const writeScenes = argv.includes('--write-scenes');
   const only = argv.includes('--only') ? argv[argv.indexOf('--only') + 1] : null;
   const mode = argv.includes('--mode') ? argv[argv.indexOf('--mode') + 1] : 'light';
+  const packCheck = argv.includes('--pack-check') ? (argv[argv.indexOf('--pack-check') + 1] || 'all') : null;
 
   const filmsDir = path.join(__dirname, 'films');
   const films = fs.readdirSync(filmsDir).filter((d) => fs.existsSync(path.join(filmsDir, d, 'storyboard.json')) && (!only || d === only));
@@ -1443,12 +1676,57 @@ async function main() {
   }
 
   const { compileStoryboard, buildStandalonePage, buildDesignPage, buildScenesPage } = loadEmitter();
+
+  /* --pack-check <name|all>: every pack ships a gate-passing example (§5.2b
+     rule 3 — a look that cannot pass is an idea, not a pack). Runs instead of
+     the film loop and exits with the verdict. */
+  if (packCheck) return await checkPacks(packCheck, compileStoryboard);
+
+  /* ── page-chrome fonts (T1.8 part 2) ──────────────────────────────────
+     The emitter's three page builders hardcode their own Google <link>s
+     for the page shell (Inter/Literata/JBMono — chrome, distinct from the
+     film's brand fonts vendored above). Same offline argument: the URLs
+     are DISCOVERED from the built page rather than restated here, so the
+     emitter can change its chrome without this silently missing the old
+     string. A miss leaves the original link — page chrome falls back to
+     system fonts and the film's own vendored fonts are unaffected. */
+  const chromeCache = new Map();
+  const chromeStats = { stylesheets: 0, faces: 0, bytes: 0, missed: 0 };
+  const spliceChromeFonts = async (page) => {
+    const urls = [...new Set(page.match(/https:\/\/fonts\.googleapis\.com\/css2\?[^\"]+/g) || [])];
+    for (const u of urls) {
+      if (!chromeCache.has(u)) {
+        const v = await vendorFontHref(u);
+        chromeCache.set(u, v.vendored ? v : null);
+        if (v.vendored) {
+          chromeStats.stylesheets++;
+          chromeStats.faces += v.faces;
+          chromeStats.bytes += v.bytes;
+        } else {
+          chromeStats.missed++;
+        }
+      }
+      const v = chromeCache.get(u);
+      if (v) page = page.split(u).join(v.href);
+    }
+    return page;
+  };
+
   let failed = 0;
 
   for (const film of films) {
     const dir = path.join(filmsDir, film);
     const sb = JSON.parse(fs.readFileSync(path.join(dir, 'storyboard.json'), 'utf8'));
     console.log(`\n=== ${film} ===`);
+
+    /* Design pack (§5.2b): defaults merge UNDER the film's own fields before
+       anything reads design/frame — explicit storyboard values always win. */
+    const packRep = applyPack(sb);
+    if (packRep) {
+      console.log(`  pack            ${packRep.name} — ${packRep.designKeys.length} design + ` +
+        `${packRep.rampRoles.length} ramp + ${packRep.eases} ease default(s) applied` +
+        (packRep.overridden.length ? `; film overrides: ${packRep.overridden.join(', ')}` : ''));
+    }
 
     /* Chain the timeline before anything reads it — reconcile, the gates and
        the page writers all see the same normalized start/dur/duration. */
@@ -1473,6 +1751,23 @@ async function main() {
       console.log(`  background     ${top.background || '(emitter default #0e1512)'}`);
     }
 
+    /* ── web-font vendoring (T1.8) ────────────────────────────────────────
+       Before anything compiles the clip: the emitter bakes sb.fonts hrefs
+       into <link> tags inside clip.html, so this is the last moment the swap
+       is free. Cache-backed, so a recompile is byte-identical and the
+       battery runs offline via REEL_FONTS_OFFLINE=1. A missed href is a
+       report line, not a failure — the film still compiles. */
+    const fontRep = await vendorFonts(top.fonts);
+    if (fontRep.vendored || fontRep.missed.length) {
+      console.log(`  fonts           ${fontRep.vendored} href(s) vendored as data: URIs — ` +
+        `${fontRep.faces} faces, ${(fontRep.bytes / 1024).toFixed(0)}KB inlined ` +
+        `(${fontRep.fresh ? fontRep.fresh + ' fetched' : 'cache'}` +
+        `${fontRep.passthrough ? `, ${fontRep.passthrough} non-google left as-is` : ''})`);
+    }
+    for (const m of fontRep.missed) {
+      informational.push(`font stylesheet not vendored: ${m.href} (${m.error}) — the film compiles but its fonts still need the network until one run fetches them`);
+    }
+
     /* ── build-time utilities (plan §2, Route A) ──────────────────────────
        Scanned from the GENERATED document, after reconcile, so only elements
        that actually ship contribute candidates — and BEFORE the clip
@@ -1487,6 +1782,16 @@ async function main() {
     }
 
     // ── gate 1: the clip must have a real duration and name ──────────────
+    /* ── markdown (T1.9) ─────────────────────────────────────────────────
+       The scoped .hss-md stylesheet rides the SAME slot the build-time
+       utilities do (sb._tw, spliced by the emitter next to its own rules),
+       and ONLY when an md element exists — films without markdown keep
+       byte-identical output, same contract as zero-candidate utilities. */
+    if (top._mdCount) {
+      top._tw = (top._tw ? top._tw + '\n' : '') + MD_CSS;
+      console.log(`  markdown       ${top._mdCount} element(s) preprocessed to static markup — no runtime parser`);
+    }
+
     const clip = compileStoryboard(top);
     const structural = [];
     if (!Number.isFinite(clip.dur) || clip.dur <= 0) structural.push(`dur is ${clip.dur} — the clip has no length`);
@@ -1604,7 +1909,7 @@ async function main() {
       // A clip that passes every structural gate but renders nothing is still
       // a failure, so the standalone page is the artefact to actually look at.
       const outFile = path.join(dir, resolved.modes.length > 1 ? `reel-preview-${mode}.html` : 'reel-preview.html');
-      fs.writeFileSync(outFile, buildStandalonePage(top));
+      fs.writeFileSync(outFile, await spliceChromeFonts(buildStandalonePage(top)));
       console.log(`  wrote          ${path.relative(ROOT, outFile)}`);
     }
     if (writeDesign) {
@@ -1628,7 +1933,7 @@ async function main() {
            data — a board that cannot get you to the film is half a tool */
         preview: resolved.modes.length > 1 ? `reel-preview-${mode}.html` : 'reel-preview.html',
       });
-      fs.writeFileSync(outFile, page);
+      fs.writeFileSync(outFile, await spliceChromeFonts(page));
       console.log(`  wrote          ${path.relative(ROOT, outFile)}  (${boards.length} mode${boards.length === 1 ? '' : 's'}: ${boards.map((b) => b.mode).join(', ')})`);
     }
     if (writeScenes) {
@@ -1660,7 +1965,7 @@ async function main() {
         };
       });
       const outFile = path.join(dir, 'scenes-preview.html');
-      fs.writeFileSync(outFile, buildScenesPage({
+      fs.writeFileSync(outFile, await spliceChromeFonts(buildScenesPage({
         title: sb.meta.title,
         id: sb.meta.id,
         /* the film's own stylesheet and runtime, unmodified */
@@ -1676,9 +1981,15 @@ async function main() {
         scenes,
         preview: resolved.modes.length > 1 ? `reel-preview-${mode}.html` : 'reel-preview.html',
         board: 'design-preview.html',
-      }));
+      })));
       console.log(`  wrote          ${path.relative(ROOT, outFile)}  (${scenes.length} scene${scenes.length === 1 ? '' : 's'}, settled)`);
     }
+  }
+
+  if (chromeStats.stylesheets || chromeStats.missed) {
+    console.log(`page-chrome fonts: ${chromeStats.stylesheets} stylesheet(s) vendored — ` +
+      `${chromeStats.faces} faces, ${(chromeStats.bytes / 1024).toFixed(0)}KB inlined` +
+      (chromeStats.missed ? ` — ${chromeStats.missed} MISSED (original network link kept)` : ''));
   }
 
   console.log('');
@@ -1690,6 +2001,64 @@ async function main() {
   return 0;
 }
 
+/* ── W1 watch mode ──────────────────────────────────────────────────────
+   The compile loop is the same one-shot run, re-invoked whenever an INPUT
+   file changes. Only authored inputs trigger a recompile — storyboard.json,
+   pack.json, recipe/example json and (once T1.9 lands) the .md sources —
+   because the --write-* outputs live in the same directories and an output
+   that triggers its own rebuild is an infinite loop, silently spinning at
+   100% CPU the moment you pass --write-clip. */
+const WATCH_INPUT = /(^|\/)(storyboard|pack|example)\.json$|\/recipes\/[^/]+\.json$|\.md$/;
+
+async function main() {
+  const argv = process.argv.slice(2);
+  if (argv.includes('--watch')) return watchCompile(argv.filter((a) => a !== '--watch'));
+  return compileRun(argv);
+}
+
+/* Never resolves on purpose: fs.watch handles keep the event loop alive, and
+   the require.main shim would process.exit() the instant main() handed back a
+   number — killing every watcher the first compile finished. Ctrl+C ends it. */
+async function watchCompile(argv) {
+  const filmsDir = path.join(__dirname, 'films');
+  const packsDir = path.join(__dirname, 'packs');
+  console.log(`reel-compile --watch — films/ and packs/, Ctrl+C to stop`);
+  let timer = null;
+  let running = false;
+  let queued = null;
+  const run = async (why) => {
+    if (running) { queued = why; return; }
+    running = true;
+    console.log(`\n===== ${new Date().toLocaleTimeString()} — ${why} =====`);
+    try {
+      const code = await compileRun(argv);
+      console.log(code === 0 ? '\n-- watch: OK, save to recompile' : `\n-- watch: exit ${code} — fix the film, the next save recompiles`);
+    } catch (err) {
+      /* A thrown compile (bad json, missing pack) must not kill the watcher —
+         the whole point is fixing the film in the editor while this runs. */
+      console.error('-- watch: compile threw — ' + ((err && err.stack) || err));
+    }
+    running = false;
+    if (queued) { const w = queued; queued = null; await run(w); }
+  };
+  const onChange = (file) => {
+    const f = String(file || '').replace(/\\/g, '/');
+    if (!WATCH_INPUT.test(f)) return;
+    clearTimeout(timer);
+    timer = setTimeout(() => run(f), 200);
+  };
+  for (const [root, label] of [[filmsDir, 'films'], [packsDir, 'packs']]) {
+    if (!fs.existsSync(root)) continue;
+    try {
+      fs.watch(root, { recursive: true }, (ev, f) => onChange(f));
+    } catch (e) {
+      console.error(`-- watch: cannot watch ${label}/: ${e.message}`);
+    }
+  }
+  await run('(startup)');
+  return new Promise(() => {});
+}
+
 /* reel-contrast.cjs borrows resolveMode + reconcile rather than keeping its
  * own copy. A second resolver would drift, and a contrast gate that measures a
  * different palette than the one that actually ships is worse than no gate at
@@ -1698,7 +2067,7 @@ module.exports = {
   /* normalizeTimeline joins the test surface for the same reason reconcile
      did: the timeline chain is logic the gates must agree with, and a second
      copy of it in a test would only prove the copy. */
-  __test: { resolveMode, reconcile, designBoard, normalizeTimeline, DEFAULT_SCENE_DUR, attachUtilities },
+  __test: { resolveMode, reconcile, designBoard, normalizeTimeline, DEFAULT_SCENE_DUR, attachUtilities, applyPack, mergeDefaults },
   main,
 };
 
