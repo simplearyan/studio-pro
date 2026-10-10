@@ -146,16 +146,16 @@ has nothing to seek. Compiling the keyframes into `onFrame` is what made them se
 
 ### The shared HIC layer
 
-[`docs/html-in-canvas/`](docs/html-in-canvas/) holds the standalone HIC pages and the libraries
+[`html-in-canvas/`](html-in-canvas/) holds the standalone HIC pages and the libraries
 they and the editor share:
 
 | File | What it does |
 |---|---|
-| [`hic-frame.js`](docs/html-in-canvas/hic-frame.js) | Aspect / design-space tables, frame geometry, the `HicRenderer` SVG engine |
-| [`hic-modal.js`](docs/html-in-canvas/hic-modal.js) | The preview modal — player shell, transport, export toolbar, Code tab, AI tab |
-| [`hic-storyboard.js`](docs/html-in-canvas/hic-storyboard.js) | Storyboard → clip compiler: JSON becomes a self-contained HIC clip |
-| [`hic-theme.js`](docs/html-in-canvas/hic-theme.js) · [`hic-theme.css`](docs/html-in-canvas/hic-theme.css) | Shared theme boot + toggle |
-| [`designs.html`](docs/html-in-canvas/designs.html) · [`test-renderer.html`](docs/html-in-canvas/test-renderer.html) · [`prompts-engineer.html`](docs/html-in-canvas/prompts-engineer.html) | Standalone tools: design gallery, renderer test bench, AI prompt engineer |
+| [`hic-frame.js`](html-in-canvas/hic-frame.js) | Aspect / design-space tables, frame geometry, the `HicRenderer` SVG engine |
+| [`hic-modal.js`](html-in-canvas/hic-modal.js) | The preview modal — player shell, transport, export toolbar, Code tab, AI tab |
+| [`hic-storyboard.js`](html-in-canvas/hic-storyboard.js) | Storyboard → clip compiler: JSON becomes a self-contained HIC clip |
+| [`hic-theme.js`](html-in-canvas/hic-theme.js) · [`hic-theme.css`](html-in-canvas/hic-theme.css) | Shared theme boot + toggle |
+| [`designs.html`](html-in-canvas/designs.html) · [`test-renderer.html`](html-in-canvas/test-renderer.html) · [`prompts-engineer.html`](html-in-canvas/prompts-engineer.html) | Standalone tools: design gallery, renderer test bench, AI prompt engineer |
 
 [`docs/studio-lite/`](docs/studio-lite/index.html) holds the **phone-first prototypes** — every page
 a single self-contained file, no framework and no build step:
@@ -346,7 +346,7 @@ studio-pro-editor/
 
 - [Contributing guide](CONTRIBUTING.md) — setup, conventions, testing checklist
 - [Automation guide](automation/README.md) — the pipelines in full
-- [HIC renderer, in isolation](docs/html-in-canvas/test-renderer.html) — the SVG `foreignObject` engine
+- [HIC renderer, in isolation](html-in-canvas/test-renderer.html) — the SVG `foreignObject` engine
 - [Studio Lite prototypes](docs/studio-lite/index.html) — the phone-first editor mocks, and the studies behind them
 - [HTML-in-Canvas pipeline plan](docs/automation/HTML-IN-CANVAS-PIPELINE-PLAN.md) — how the two automation folders became one
 - [HTML engine consolidation](docs/HTML-ENGINE-CONSOLIDATION-PLAN.md) — the WAAPI → HIC port

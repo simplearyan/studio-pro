@@ -65,7 +65,7 @@ const { vendorFonts, vendorFontHref } = require('../shared/fonts.cjs');
 const { renderMarkdown, MD_CSS } = require('../shared/markdown.cjs');
 
 const ROOT = path.resolve(__dirname, '../..');
-const EMITTER = path.join(ROOT, 'docs/html-in-canvas/hic-storyboard.js');
+const EMITTER = path.join(ROOT, 'html-in-canvas/hic-storyboard.js');
 
 /* Classes that exist in RUNTIME_CSS. e.size becomes .hss-<size>, so a size
  * outside this set silently loses its font-size. hss-title is the largest the

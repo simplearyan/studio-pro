@@ -33,7 +33,7 @@ direction to move ahead in."*
 | **md-render** (`automation/md-render/`) | markdown/JSON script → `parseMarkdownToClips()` (or `importSpcomp` for JSON) | puppeteer-core drives the *real editor* export modal: `setRadio(format/resolution/fps)` → `submitExport()` → 500 ms progress poll → blob pulled from `window._exportDoneUrl` | editor pump: **FTRT default (4× realtime)** / MediaBunny / standard | MP4 + WebM · 720p–2160p · bitrate ladder 3/8/15/30 Mbps · `-t` applies a design template before export | `render.js` 493 lines; batch via `automation/batch.js` |
 | **studio-reel** (`automation/studio-reel/`) | storyboard JSON → `reel-compile` → 10 gates | CDP drives `test-renderer.html`, pure `onFrame(t)` per frame | **in-page MediaBunny → WebCodecs** (no ffmpeg anywhere in the chain) | MP4 only | 9 MP4s in `_exports/reel/`; reel-site verified 1920×1080 · 975 frames · 32.500s by re-read + ffprobe |
 | **html-in-canvas** (`automation/html-in-canvas/`) | StudioPro API composition scripts | `-m cdp`: standalone page + `Page.captureScreenshot` per frame (**deterministic, byte-identical runs**) — *or* `-m editor`: drives the real editor export pump | cdp mode: **ffmpeg** (CRF presets). editor mode: MediaBunny / FTRT / standard | MP4 + WebM (`-f`) | README parity numbers; the only ffmpeg left in the repo |
-| **test-renderer editor** (`docs/html-in-canvas/test-renderer.html`, 2684 lines) | tabs: Preview / AI / Code; gallery; **⬇ Import HTML** (imports `films/*/reel-preview.html` as a stage) | live page | export modal: **MP4 — MediaBunny (frame-exact)** or **WebM — MediaRecorder (wall-clock)** via `src/workers/export-worker.js` | MP4 + WebM | export menu at line ~485; vendored `public/vendor/mediabunny/` |
+| **test-renderer editor** (`html-in-canvas/test-renderer.html`, 2684 lines) | tabs: Preview / AI / Code; gallery; **⬇ Import HTML** (imports `films/*/reel-preview.html` as a stage) | live page | export modal: **MP4 — MediaBunny (frame-exact)** or **WebM — MediaRecorder (wall-clock)** via `src/workers/export-worker.js` | MP4 + WebM | export menu at line ~485; vendored `public/vendor/mediabunny/` |
 
 Cross-layer facts worth keeping in mind:
 
@@ -42,7 +42,7 @@ Cross-layer facts worth keeping in mind:
 - `automation/shared/skills/` already contains an API reference (`AGENTS.md`)
   and three style guides: `kinetic-text.md`, `product-launch.md`,
   `social-reel.md`, plus `html2canvas-gotchas.md`.
-- `docs/html-in-canvas/designs.html` seeds 5 full design systems;
+- `html-in-canvas/designs.html` seeds 5 full design systems;
   `automation/html-in-canvas/templates/` holds glassmorphism / gradient-card /
   premium-gradient / design-tokens.
 - The original motion plan (`automation/studio-reel/PLAN-motion-and-tailwind.md`

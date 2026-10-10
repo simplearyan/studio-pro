@@ -166,7 +166,7 @@ async function main() {
   };
 
   try {
-    const { sessionId } = await makePage(browser.cdp, base + '/docs/html-in-canvas/test-renderer.html');
+    const { sessionId } = await makePage(browser.cdp, base + '/html-in-canvas/test-renderer.html');
     await waitUntil(browser.cdp, sessionId, READY_EXPR, 'test-renderer ready', 90000);
     console.log('reel-export-gate: test-renderer ready\n');
 
@@ -228,7 +228,7 @@ async function main() {
 
       if (distinct < 2) {
         console.error('gate: FAIL no motion across frames in this window — the CSS animation is not being');
-        console.error('      materialized into the raster (T1.7 in docs/html-in-canvas/hic-frame.js)');
+        console.error('      materialized into the raster (T1.7 in html-in-canvas/hic-frame.js)');
         failed = true;
       }
       if (!matches) {

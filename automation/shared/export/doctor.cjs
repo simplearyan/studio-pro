@@ -85,7 +85,7 @@ async function quickChecks(opts) {
     bin ? '' : 'set CHROME_PATH to a Chrome/Edge executable, or install Chrome');
 
   /* 2. The renderer page the batch drives. */
-  const renderer = 'docs/html-in-canvas/test-renderer.html';
+  const renderer = 'html-in-canvas/test-renderer.html';
   add('renderer page', true, fileExists(renderer), renderer,
     'missing? the batch cannot render without test-renderer.html');
 
@@ -180,7 +180,7 @@ async function deepChecks(opts, devUrl) {
       const { Cdp } = require('../../studio-reel/cdp.cjs');
       /* launchBrowser returns { cdp, close } — reuse its client. */
       const cdp = browser.cdp;
-      const { targetId } = await cdp.send('Target.createTarget', { url: base + '/docs/html-in-canvas/test-renderer.html' });
+      const { targetId } = await cdp.send('Target.createTarget', { url: base + '/html-in-canvas/test-renderer.html' });
       const { sessionId } = await cdp.send('Target.attachToTarget', { targetId, flatten: true });
       await cdp.send('Page.enable', {}, sessionId);
       await cdp.send('Runtime.enable', {}, sessionId);

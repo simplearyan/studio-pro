@@ -272,10 +272,12 @@ class HicRenderer {
                     const s = document.createElement('script');
                     s.id = 'tw-browser-runtime';
                     /* Site base derived from this page's own URL: '/studio-pro/' on
-                       GitHub Pages, '/' locally (page lives at <base>docs/...). An
-                       absolute '/vendor/...' would 404 under the Pages base. */
-                    var _slashDocs = location.pathname.indexOf('/docs/');
-                    var _siteBase = _slashDocs > 0 ? location.pathname.slice(0, _slashDocs + 1) : '/';
+                       GitHub Pages, '/' locally (page lives at <base>html-in-canvas/...).
+                       An absolute '/vendor/...' would 404 under the Pages base. The
+                       marker is the folder's own name — test-renderer.html uses the
+                       identical rule for MediaBunny; change one, change both. */
+                    var _slashHic = location.pathname.indexOf('/html-in-canvas/');
+                    var _siteBase = _slashHic > 0 ? location.pathname.slice(0, _slashHic + 1) : '/';
                     s.src = _siteBase + 'vendor/tailwind-browser/index.global.js';
                     s.onload = res; s.onerror = res;
                     document.head.appendChild(s);

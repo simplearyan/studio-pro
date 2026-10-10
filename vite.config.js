@@ -11,9 +11,12 @@ const base = isActions ? '/studio-pro/' : '/';
 export default defineConfig({
   base: base,
   plugins: [
-    // Ship the HIC test-renderer page (raw copy, no bundling) so it is reachable
-    // on GitHub Pages at <base>docs/html-in-canvas/test-renderer.html. Static
-    // copy keeps the file byte-identical between dev and production.
+    // Ship the HIC toolkit pages (raw copy, no bundling) so they are reachable
+    // on GitHub Pages at <base>html-in-canvas/test-renderer.html. Static
+    // copy keeps each file byte-identical between dev and production. The
+    // toolkit moved here from docs/html-in-canvas/ (REDESIGN-AND-RELOCATION-
+    // PLAN.md R1); the docs/ targets at the bottom of this list are redirect
+    // stubs so the old public URLs keep working.
     viteStaticCopy({
       targets: [
         /* Classic (non-module) scripts referenced by index.html are NOT bundled
@@ -22,8 +25,8 @@ export default defineConfig({
            that compiles the ported WAAPI presets. */
         { src: 'src/engines/hic/adapters/waapi.js', dest: 'src/engines/hic/adapters', rename: { stripBase: true } },
         /* v4 keeps the full source dir under dest unless stripped — stripBase
-           flattens so the file lands at <outDir>/docs/html-in-canvas/ */
-        { src: 'docs/html-in-canvas/test-renderer.html', dest: 'docs/html-in-canvas', rename: { stripBase: true } },
+           flattens so the file lands at <outDir>/html-in-canvas/ */
+        { src: 'html-in-canvas/test-renderer.html', dest: 'html-in-canvas', rename: { stripBase: true } },
         /* Every page in docs/studio-lite/ ships: the tier/palette mock, the
            YouTube-Create study, both Clip Lite iterations, and index.html — the
            folder's front door, which Pages serves for the bare directory URL
@@ -61,20 +64,32 @@ export default defineConfig({
         { src: 'clip-lite/manifest.webmanifest', dest: 'clip-lite', rename: { stripBase: true } },
         /* /designs gallery page + its synced data file (Phase A/B of
            docs/html-in-canvas/DESIGNS-GALLERY-PLAN.md) */
-        { src: 'docs/html-in-canvas/designs.html', dest: 'docs/html-in-canvas', rename: { stripBase: true } },
-        { src: 'docs/html-in-canvas/designs-gallery.json', dest: 'docs/html-in-canvas', rename: { stripBase: true } },
+        { src: 'html-in-canvas/designs.html', dest: 'html-in-canvas', rename: { stripBase: true } },
+        { src: 'html-in-canvas/designs-gallery.json', dest: 'html-in-canvas', rename: { stripBase: true } },
         /* /prompts-engineer builder page (Phase A of PROMPTS-ENGINEER-PLAN.md) */
-        { src: 'docs/html-in-canvas/prompts-engineer.html', dest: 'docs/html-in-canvas', rename: { stripBase: true } },
+        { src: 'html-in-canvas/prompts-engineer.html', dest: 'html-in-canvas', rename: { stripBase: true } },
         /* The shared HIC libs the pages above load by RELATIVE path. Without
            these the deployed pages 404 their own engine (hic-frame.js is
            referenced by all three), so the gallery renders blank and logs
            "mountFrameControls is not defined". hic-theme.* is the Material 3
            token layer those pages resolve every --md-* colour from. */
-        { src: 'docs/html-in-canvas/hic-*.js', dest: 'docs/html-in-canvas', rename: { stripBase: true } },
-        { src: 'docs/html-in-canvas/hic-theme.css', dest: 'docs/html-in-canvas', rename: { stripBase: true } },
+        { src: 'html-in-canvas/hic-*.js', dest: 'html-in-canvas', rename: { stripBase: true } },
+        { src: 'html-in-canvas/hic-theme.css', dest: 'html-in-canvas', rename: { stripBase: true } },
         /* WebM duration patcher — loaded by designs.html and test-renderer.html
            for the export toolbar, same relative-path story as the libs above. */
-        { src: 'docs/html-in-canvas/fix-webm-duration.js', dest: 'docs/html-in-canvas', rename: { stripBase: true } }
+        { src: 'html-in-canvas/fix-webm-duration.js', dest: 'html-in-canvas', rename: { stripBase: true } },
+        /* Old-URL redirect stubs — the toolkit's public URLs moved from
+           <base>docs/html-in-canvas/… to <base>html-in-canvas/… in R1.
+           Each stub meta-refreshes to the relative ../../html-in-canvas/…
+           path, which resolves correctly under BOTH the local '/' and the
+           Pages '/studio-pro/' base. Listed individually, NOT globbed:
+           docs/html-in-canvas/ also holds the plan .md files and the
+           studio-pro-redesign.html mockup, which never shipped and must
+           not start now. */
+        { src: 'docs/html-in-canvas/index.html', dest: 'docs/html-in-canvas', rename: { stripBase: true } },
+        { src: 'docs/html-in-canvas/test-renderer.html', dest: 'docs/html-in-canvas', rename: { stripBase: true } },
+        { src: 'docs/html-in-canvas/designs.html', dest: 'docs/html-in-canvas', rename: { stripBase: true } },
+        { src: 'docs/html-in-canvas/prompts-engineer.html', dest: 'docs/html-in-canvas', rename: { stripBase: true } }
       ]
     }),
     VitePWA({
@@ -129,7 +144,10 @@ export default defineConfig({
         // excluded for the same reason and measured the same way — see the
         // navigateFallbackDenylist note below, which explains why both halves
         // are needed together.
-        globIgnores: ['docs/**', 'clip-lite/**'],
+        // html-in-canvas/ is excluded for the same reason as docs/ and
+        // clip-lite/: it is a folder of gate-able tool pages, not app shell,
+        // and a cache-first precache would pin whatever the phone first saw.
+        globIgnores: ['docs/**', 'clip-lite/**', 'html-in-canvas/**'],
         // MathJax's combined bundle (tex-svg.js) is ~2.1 MB — above workbox's
         // 2 MB default precache limit, so raise it.
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
@@ -161,7 +179,12 @@ export default defineConfig({
         // that is still being iterated. Both are needed — either one alone still
         // breaks the page for a returning visitor. Measured: precache is
         // 88 entries / 7256.84 KiB with Clip Lite included, 86 / 6889.11 KiB with it excluded.
-        navigateFallbackDenylist: [/docs\/[^?#]*\.html/, /docs\/[^?#]*\/$/, /clip-lite\/[^?#]*\.html/, /clip-lite\/[^?#]*\/$/],
+        // Same four patterns for html-in-canvas/ as for clip-lite/ — a
+        // root-level folder of real pages needs both halves (denylist exempts
+        // the URL from the SPA fallback, globIgnores keeps it out of the
+        // cache-first precache); either one alone still breaks a returning
+        // visitor. The docs/ pairs keep covering the redirect stubs.
+        navigateFallbackDenylist: [/docs\/[^?#]*\.html/, /docs\/[^?#]*\/$/, /clip-lite\/[^?#]*\.html/, /clip-lite\/[^?#]*\/$/, /html-in-canvas\/[^?#]*\.html/, /html-in-canvas\/[^?#]*\/$/],
         cleanupOutdatedCaches: true,
         // Runtime caching for the few remaining cross-origin calls:
         //   - unpkg / jsDelivr (CDN-first Lucide, any stray CDN scripts):

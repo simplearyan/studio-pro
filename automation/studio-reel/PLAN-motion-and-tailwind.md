@@ -1,8 +1,8 @@
 # Studio Reel — Tailwind & expressive motion plan
 
 Status: **plan only — nothing here is shipped.** Every claim about today's
-behavior was read out of `storyboard.schema.json`, `docs/html-in-canvas/hic-storyboard.js`,
-`docs/html-in-canvas/hic-frame.js`, `docs/html-in-canvas/test-renderer.html` or the
+behavior was read out of `storyboard.schema.json`, `html-in-canvas/hic-storyboard.js`,
+`html-in-canvas/hic-frame.js`, `html-in-canvas/test-renderer.html` or the
 gate sources on 2026-10-07. Numbers (282 KB vendor file, 12 element types, 5
 entrance types, 130 regression checks) are measured, not remembered.
 

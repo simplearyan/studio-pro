@@ -64,7 +64,7 @@ const vm = require('vm');
 const { DEFAULT_W, DEFAULT_H, findBrowser, launchBrowser } = require('./cdp.cjs');
 
 const ROOT = path.resolve(__dirname, '../..');
-const EMITTER = path.join(ROOT, 'docs/html-in-canvas/hic-storyboard.js');
+const EMITTER = path.join(ROOT, 'html-in-canvas/hic-storyboard.js');
 
 /* ── colour maths ─────────────────────────────────────────────────────────
  * The ONE copy. reel-compile's design board renders these next to every

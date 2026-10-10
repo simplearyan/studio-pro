@@ -34,7 +34,14 @@ const vm = require('vm');
 const { execFileSync } = require('child_process');
 
 const ROOT = path.resolve(__dirname, '../..');
-const EMITTER_REL = 'docs/html-in-canvas/hic-storyboard.js';
+const EMITTER_REL = 'html-in-canvas/hic-storyboard.js';
+/* The SAME file as it exists at BASELINE, where it still lived under docs/.
+   `git show` reads the historical tree, so the historical path is required;
+   the gate's whole point is comparing today's bytes to the pinned ones, and
+   that comparison is unchanged by the R1 relocation — only the lookup path
+   differs. If BASELINE is ever moved past a commit where the file lives at
+   its new path, this collapses back to EMITTER_REL. */
+const EMITTER_BASELINE_REL = 'docs/html-in-canvas/hic-storyboard.js';
 
 /* Load an emitter source string into a fresh module object. */
 function loadFrom(src, label) {
@@ -96,7 +103,7 @@ function check(label, cond, detail) {
   else { failures++; console.log(`  FAIL  ${label}${detail ? ' — ' + detail : ''}`); }
 }
 
-const before = loadFrom(gitShow(EMITTER_REL), 'hic-storyboard.js@' + BASELINE);
+const before = loadFrom(gitShow(EMITTER_BASELINE_REL), 'hic-storyboard.js@' + BASELINE);
 let plainBeforeHtml = '';
 const after = loadFrom(fs.readFileSync(path.join(ROOT, EMITTER_REL), 'utf8'), EMITTER_REL);
 

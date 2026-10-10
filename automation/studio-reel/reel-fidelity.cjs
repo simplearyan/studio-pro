@@ -26,7 +26,7 @@ const vm = require('vm');
 const { renderMarkdown } = require('../shared/markdown.cjs');
 
 const ROOT = path.resolve(__dirname, '../..');
-const EMITTER = path.join(ROOT, 'docs/html-in-canvas/hic-storyboard.js');
+const EMITTER = path.join(ROOT, 'html-in-canvas/hic-storyboard.js');
 
 const SIZE = { kicker: 'title', title: 'title', lead: 'body' };
 const HEX = { normal: '#f8fafc', alarm: '#fb7185', positive: '#34d399' };

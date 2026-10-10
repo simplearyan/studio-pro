@@ -6,7 +6,7 @@
  * MediaBunny, through the test renderer" — so all three are used literally:
  *
  *   1. CDP (cdp.cjs, zero dependencies) launches headless Chrome and drives a
- *      real `docs/html-in-canvas/test-renderer.html` page. The renderer is not
+ *      real `html-in-canvas/test-renderer.html` page. The renderer is not
  *      reimplemented anywhere: the page's own HicRenderer rasterizes each
  *      frame through the same SVG foreignObject path a human sees.
  *   2. The test renderer imports the film exactly the way ⬇ Import HTML does
@@ -51,7 +51,7 @@ const { runDoctor, printChecks } = require('../shared/export/doctor.cjs');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const FILMS_DIR = path.join(__dirname, 'films');
-const PAGE_PATH = '/docs/html-in-canvas/test-renderer.html';
+const PAGE_PATH = '/html-in-canvas/test-renderer.html';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 

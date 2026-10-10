@@ -40,7 +40,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..', '..');          // studio-pro-editor/
 const VITE_ROOT = resolve(ROOT, '..', '..');          // design_concepts/ (serves /studios/…)
 const OUT_DIR = resolve(__dirname, 'output');
-const TR_URL = 'http://localhost:5173/studios/studio-pro-editor/docs/html-in-canvas/test-renderer.html';
+const TR_URL = 'http://localhost:5173/html-in-canvas/test-renderer.html';
 const IITM_PUBLIC = resolve(ROOT, '..', 'IITM', 'site', 'public');
 
 const argv = process.argv.slice(2);

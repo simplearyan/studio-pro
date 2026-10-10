@@ -2,7 +2,7 @@
 
 Regenerates the **OG images** (Google Material You + iOS glass cards, both
 16:9 and square) and the **favicon set** for the IITM site by driving
-`docs/html-in-canvas/test-renderer.html` — the studio's real clip engine —
+`html-in-canvas/test-renderer.html` — the studio's real clip engine —
 with **Playwright**. The social card is literally a frame of the same engine
 that plays the animations.
 
