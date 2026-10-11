@@ -148,10 +148,10 @@ html[data-theme="dark"] .hic-theme-toggle .msr::before{content:'light_mode'}
 .pc-body .n{color:var(--md-tertiary);font-family:'Roboto Mono',ui-monospace,monospace;font-size:.9em;font-weight:500}      /* numbers/timings */
 .pc-body .k{color:var(--md-primary)}      /* section headers */
 .sec{background:var(--md-surface-container-low);border-radius:14px;padding:12px 14px 13px;margin:13px 0}
-.sec-head{display:flex;align-items:center;gap:7px;font-family:inherit;font-size:11px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:var(--acc, var(--md-primary));margin-bottom:6px}
+.sec-head{display:flex;align-items:center;gap:7px;font-family:inherit;font-size:11px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:var(--md-primary);margin-bottom:6px}
 .sec-ico{font-family:'Material Symbols Rounded';font-variation-settings:'FILL' 1,'wght' 500,'GRAD' 0,'opsz' 24;font-size:14px;line-height:1}
 .sec-head .spark{flex-shrink:0}
-.lab{font-family:inherit;font-weight:600;font-size:.9em;letter-spacing:.3px;color:var(--acc, var(--md-primary))}
+.lab{font-family:inherit;font-weight:600;font-size:.9em;letter-spacing:.3px;color:var(--md-primary)}
 .pc-details{margin:13px 0;border:1px solid var(--md-surface-container-highest);border-radius:12px;background:var(--md-surface-container)}
 .pc-details .det-body{font-family:'Roboto Mono',ui-monospace,'SFMono-Regular',Consolas,monospace;font-size:11.5px;line-height:1.75}
 .pc-details summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;padding:9px 12px;font-family:inherit;font-size:11.5px;font-weight:600;letter-spacing:.5px;color:var(--md-on-surface-variant);user-select:none}
@@ -753,12 +753,14 @@ const BRIEF_BUDGET = 6000;
 function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 function escAttr(s) { return esc(s).replace(/"/g, '&quot;'); }
 function tintPrompt(full) {
-  /* Structured renderer: section chips w/ per-module accents, two text roles,
-     contract as a collapsed <details>, violet numbers, timeline sparkline.
+  /* Structured renderer: section chips, two text roles, contract as a
+     collapsed <details>, violet numbers, timeline sparkline. Every section
+     heading is the single purple accent (var(--md-primary)) — ACC is only
+     the set of labels that start a section, it no longer carries colors.
      Display only — the copied text stays byte-identical. */
   const ACC = {
-    'WHAT I WANT': '#3b82f6', FORMAT: '#3b82f6', CONTENT: '#4ade80', TYPOGRAPHY: '#a78bfa',
-    PALETTE: '#f472b6', LAYOUT: '#22d3ee', CHOREOGRAPHY: '#fbbf24', LIBRARIES: '#2dd4bf', TITLE: '#7dd3fc'
+    'WHAT I WANT': 1, FORMAT: 1, CONTENT: 1, TYPOGRAPHY: 1,
+    PALETTE: 1, LAYOUT: 1, CHOREOGRAPHY: 1, LIBRARIES: 1, TITLE: 1
   };
   /* M3 section icons (Material Symbols) per module */
   const SEC_ICONS = {
@@ -777,7 +779,7 @@ function tintPrompt(full) {
     return '<svg class="spark" width="' + w + '" height="12" viewBox="0 0 ' + w + ' 12">' +
       steps.map(st => {
         const x = (st.start / span) * (w - 6) + 2, bw = Math.max(2, (st.dur / span) * (w - 6));
-        return '<rect x="' + x.toFixed(1) + '" y="3" width="' + bw.toFixed(1) + '" height="6" rx="1.5" fill="#fbbf24"/>';
+        return '<rect x="' + x.toFixed(1) + '" y="3" width="' + bw.toFixed(1) + '" height="6" rx="1.5" fill="currentColor"/>';
       }).join('') + '</svg>';
   };
   let html = '', i = 0;
@@ -809,12 +811,12 @@ function tintPrompt(full) {
     }
     let m = line.match(/^([A-Z][A-Z &]{2,20}):[ \n]?([\s\S]*)$/);
     if (m && ACC[m[1]]) {
-      const label = m[1], acc = ACC[label];
+      const label = m[1];
       const rest = [m[2]];
       let j = i + 1;
       while (j < lines.length && !isHdr(lines[j]) && lines[j] !== CONTRACT_HEADER &&
              !/^([A-Z][A-Z &]{2,20}):[ \n]/.test(lines[j])) { rest.push(lines[j]); j++; }
-      html += '<span class="sec" style="--acc:' + acc + '">' +
+      html += '<span class="sec">' +
         '<span class="sec-head"><span class="sec-ico" aria-hidden="true">' + (SEC_ICONS[label] || 'circle') + '</span><span>' + label + '</span>' + (label === 'CHOREOGRAPHY' ? spark() : '') + '</span>' +
         '<span class="w">' + num(rest.join('\n').replace(/^\n+|\n+$/g, '')) + '</span></span>';
       i = j; continue;
