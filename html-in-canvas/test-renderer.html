@@ -67,10 +67,27 @@ body{background:var(--md-surface, #fafafa);color:var(--md-on-surface, #1f1f1f);f
    the "s · W×H" tail stays plain text. Quiet at rest (no box until touched)
    so the header reads as metadata, with a border on hover/focus to say
    "this one is editable". */
-.mh-dur{width:42px;background:transparent;border:1px solid transparent;border-radius:6px;color:inherit;font:inherit;font-weight:600;text-align:right;padding:0 2px 0 3px;appearance:textfield;-moz-appearance:textfield;cursor:text}
+.mh-durwrap{display:inline-flex;align-items:center;gap:5px;background:var(--md-surface-container-highest, var(--md-surface-container-highest, #262e40));border:1px solid var(--md-outline-variant, var(--md-outline-variant, #3a3f4e));border-radius:8px;padding:2px 7px 2px 6px;transition:border-color .15s;vertical-align:middle}
+.mh-durwrap:hover{border-color:var(--md-outline, var(--md-outline, #8e9099))}
+.mh-durwrap:focus-within{border-color:var(--md-primary, var(--md-primary, #cfbcff))}
+.mh-durico{color:var(--md-on-surface-variant, var(--md-on-surface-variant, #a3a1b3));flex-shrink:0;display:block}
+.mh-dur{width:34px;background:transparent;border:none;border-radius:4px;color:var(--md-on-surface, var(--md-on-surface, #e4e1ec));font:inherit;font-size:11.5px;font-weight:700;text-align:right;padding:1px 0;appearance:textfield;-moz-appearance:field;cursor:text}
 .mh-dur::-webkit-outer-spin-button,.mh-dur::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
-.mh-dur:hover{border-color:var(--md-outline-variant, var(--md-outline-variant, #3a3f4e))}
-.mh-dur:focus{outline:none;border-color:var(--md-primary, var(--md-primary, #cfbcff));color:var(--md-on-surface, var(--md-on-surface, #e4e1ec))}
+.mh-dur:focus{outline:none;color:var(--md-primary, var(--md-primary, #cfbcff))}
+.mh-durunit{color:var(--md-on-surface-variant, var(--md-on-surface-variant, #a3a1b3));font-weight:600;flex-shrink:0}
+.mh-durchips{display:inline-flex;gap:2px;margin-left:1px}
+.mh-durchips button{border:none;background:transparent;color:var(--md-on-surface-variant, var(--md-on-surface-variant, #a3a1b3));font-family:inherit;font-size:10.5px;font-weight:700;padding:2px 6px;border-radius:6px;cursor:pointer;transition:background .12s,color .12s;line-height:1.3}
+.mh-durchips button:hover{background:var(--md-secondary-container, var(--md-secondary-container, #4a4458));color:var(--md-on-secondary-container, var(--md-on-secondary-container, #e8def8))}
+.mh-durchips button.on{background:var(--md-secondary-container, var(--md-secondary-container, #4a4458));color:var(--md-on-secondary-container, var(--md-on-secondary-container, #e8def8))}
+.mh-step{border:none;background:transparent;color:var(--md-on-surface-variant, var(--md-on-surface-variant, #a3a1b3));font-family:inherit;font-size:13px;font-weight:700;width:17px;height:17px;border-radius:5px;cursor:pointer;line-height:1;display:inline-flex;align-items:center;justify-content:center;transition:background .12s,color .12s;flex-shrink:0}
+.mh-step:hover{background:var(--md-surface-container-high, var(--md-surface-container-high, #1c2230));color:var(--md-on-surface, var(--md-on-surface, #e4e1ec))}
+/* Long-clip export note (plan 1d) — non-blocking, warns that a >30s export
+   is a long wait, so it never reads as a hang. */
+.exp-durhint{font-size:10.5px;font-weight:600;color:var(--md-warning, var(--md-warning, #f8c555));max-width:210px;line-height:1.35;flex-shrink:0}
+/* Non-blocking toast (imports + duration changes) */
+.tr-toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%) translateY(10px);background:var(--md-surface-container-high, var(--md-surface-container-high, #1c2230));color:var(--md-on-surface, var(--md-on-surface, #e4e1ec));border:1px solid var(--md-outline-variant, var(--md-outline-variant, #3a3f4e));border-radius:12px;padding:9px 16px;font-size:12px;font-weight:500;font-family:inherit;box-shadow:0 8px 24px rgba(0,0,0,.45);opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;z-index:3000;max-width:min(420px,calc(100vw - 48px));line-height:1.45}
+.tr-toast.show{opacity:1;transform:translateX(-50%) translateY(0);pointer-events:auto}
+.tr-toast b{font-weight:700;color:var(--md-primary, var(--md-primary, #cfbcff))}
 .modal-close{background:none;border:none;color:var(--md-on-surface-variant, var(--md-on-surface-variant, #a3a1b3));font-size:20px;cursor:pointer;padding:5px 8px;border-radius:6px;transition:all .15s;line-height:1;display:flex;align-items:center}
 .modal-close:hover{background:var(--md-hic-line, #232b3b);color:var(--md-on-surface, var(--md-on-surface, #e4e1ec))}
 .modal-close svg{display:block}
@@ -120,7 +137,7 @@ body{background:var(--md-surface, #fafafa);color:var(--md-on-surface, #1f1f1f);f
    bar but no control ever leaves the modal. */
 .modal-toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 16px;border-top:1px solid var(--md-surface-container-highest, var(--md-surface-container-highest, #262e40));background:var(--md-surface-container, var(--md-surface-container, #161b26))}
 .modal-toolbar .modal-info{min-width:0}
-.tbar-right{display:flex;justify-content:flex-end;min-width:0}
+.tbar-right{display:flex;justify-content:flex-end;align-items:center;gap:8px;min-width:0}
 .tbar-cluster{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
 /* Aspect dropdown + background swatches (frame geometry controls) — shared
    markup/CSS/behavior from hic-frame.js mountFrameControls() */
@@ -430,7 +447,7 @@ html[data-theme="dark"]{
         <div class="modal-header">
             <div class="mh-titleblock">
                 <span class="modal-title" id="modalTitle">Preset</span>
-                <span class="mh-meta"><input type="number" class="mh-dur" id="mhDur" min="0.5" max="600" step="0.5" value="5" aria-label="Clip duration in seconds" title="Clip duration (s) — playback, scrubbing and export all follow it"><span id="mhMeta"></span></span>
+                <span class="mh-meta"><span class="mh-durwrap" title="Clip duration — playback, scrubbing and export all follow it. Type any length up to 600 s; Shift+± steps 5 s."><svg class="mh-durico" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M15 1H9v2h6V1zm-4 13h2V8h-2v6zm8.03-6.61l1.42-1.42c-.43-.51-.9-.99-1.41-1.41l-1.42 1.42C16.07 4.74 14.12 4 12 4c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9c0-2.12-.74-4.07-1.97-5.61zM12 20c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/></svg><input type="number" class="mh-dur" id="mhDur" min="0.5" max="600" step="0.5" value="5" aria-label="Clip duration in seconds"><span class="mh-durunit">s</span><span class="mh-durchips" id="mhDurChips"><button type="button" data-dur="5">5</button><button type="button" data-dur="10">10</button><button type="button" data-dur="15">15</button><button type="button" data-dur="30">30</button><button type="button" data-dur="60">60</button></span><button type="button" class="mh-step" id="mhDurMinus" title="1 s shorter (Shift: 5 s)">−</button><button type="button" class="mh-step" id="mhDurPlus" title="1 s longer (Shift: 5 s)">+</button></span><span id="mhMeta"></span></span>
             </div>
             <div class="seg">
                 <button class="tab-btn active" id="tabPreview">Preview</button>
@@ -489,6 +506,7 @@ html[data-theme="dark"]{
                     </div>
                 </div>
                 <div class="tbar-right">
+                    <span class="exp-durhint" id="expDurHint" hidden></span>
                     <div class="tbar-cluster">
                         <div class="export-split" id="frameSplit">
                             <button class="btn btn-frame-main" id="frameBtn" title="Save current frame (PNG)">
@@ -660,6 +678,12 @@ html[data-theme="dark"]{
 /* ═══════════════════════════════════════════════════════════════
  * SVG foreignObject Renderer
  * ═══════════════════════════════════════════════════════════════ */
+
+/* One clip-length ceiling for every duration path — the header field,
+   the AI-paste marker, the custom stage, storyboard and file imports
+   all clamp here, so raising the limit is a one-number change. (Was
+   inconsistently 60s in two paths and 600s in the others.) */
+const MAX_CLIP_SEC = 600;
 
 
 
@@ -995,7 +1019,7 @@ window.addEventListener('hashchange', handleStoryboardHash);
  * preset. Implemented as a runtime-injected __custom preset so every
  * existing export / code / restore path works unchanged. */
 function openCustomModal(brief, durMs) {
-    const dur = Math.max(1, Math.min(60, (parseInt(durMs, 10) || 5000) / 1000));
+    const dur = Math.max(1, Math.min(MAX_CLIP_SEC, (parseInt(durMs, 10) || 5000) / 1000));
     PRESETS.__custom = {
         name: (brief ? 'Custom Design' : 'Custom Blank'),
         dur: dur,
@@ -1310,13 +1334,26 @@ function clipTitleFrom(html) {
  * import's 600s); the narrower paths (AI-paste 60s, custom stage 60s) keep
  * clamping at parse time exactly as before. */
 function setClipDuration(sec) {
-    const dur = Math.max(0.5, Math.min(600, sec));
+    const dur = Math.max(0.5, Math.min(MAX_CLIP_SEC, sec));
     if (currentPresetKey && PRESETS[currentPresetKey]) PRESETS[currentPresetKey].dur = dur;
     modalSlider.max = dur * 1000;
     if ((parseInt(modalSlider.value) || 0) > dur * 1000) modalSlider.value = String(dur * 1000);
     ovTotal.textContent = fmtTime(dur * 1000);
     var input = document.getElementById('mhDur');
     if (input && parseFloat(input.value) !== dur) input.value = String(dur);
+    /* Quick-pick chips reflect the active length (exact matches only) */
+    document.querySelectorAll('#mhDurChips button').forEach(function(b) {
+        b.classList.toggle('on', parseFloat(b.dataset.dur) === dur);
+    });
+    /* Plan 1d — a long export should be expected, not mistaken for a hang */
+    var hint = document.getElementById('expDurHint');
+    if (hint) {
+        if (dur > 30) {
+            hint.textContent = 'Long clip: MP4 renders every frame (≈' + Math.round(dur * 30).toLocaleString() +
+                ' at 30fps) — expect a wait. WebM records in real time.';
+            hint.hidden = false;
+        } else { hint.hidden = true; hint.textContent = ''; }
+    }
     refreshMetaLine();
     return dur;
 }
@@ -1325,10 +1362,11 @@ function refreshMetaLine() {
     var p = PRESETS[currentPresetKey];
     if (!p || typeof p.dur !== 'number') return;
     var _ds = dsDims(curFrame.clipDS);
-    /* The number itself lives in the #mhDur input; this span carries the
-       unit + dimensions tail only. Nothing outside this page reads the
-       combined string (checked: zero automation references to mhMeta). */
-    document.getElementById('mhMeta').textContent = 's · ' + _ds.w + '×' + _ds.h;
+    /* The number itself lives in the #mhDur input (inside .mh-durwrap, which
+       carries the unit); this span carries the dimensions tail only. Nothing
+       outside this page reads the combined string (checked: zero automation
+       references to mhMeta). */
+    document.getElementById('mhMeta').textContent = '· ' + _ds.w + '×' + _ds.h;
 }
 /* The field: commit on change/Enter, revert on garbage, and re-render the
    current frame so a shortened clip doesn't keep showing a frame past its
@@ -1338,16 +1376,37 @@ document.getElementById('mhDur').addEventListener('change', function() {
     var v = parseFloat(this.value);
     if (!isFinite(v)) { v = currentPresetKey ? (PRESETS[currentPresetKey] || {}).dur || 5 : 5; }
     var dur = setClipDuration(v);
-    if (modalRenderer && modalRenderer._ready) {
-        var t = Math.min(parseInt(modalSlider.value) || 0, dur * 1000);
-        modalRenderer.renderFrame(t).then(function(ok) {
-            if (ok) modalRenderer.drawFrame(modalCtx, modalCanvas.width, modalCanvas.height);
-        });
-    }
+    renderModalFrameAt(parseInt(modalSlider.value) || 0, dur);
 });
 document.getElementById('mhDur').addEventListener('keydown', function(e) {
     if (e.key === 'Enter') { this.blur(); }
 });
+/* Quick-pick chips + ±steppers (plan 1b): one click to the common lengths;
+   long values stay typeable in the field. Shift steps 5s instead of 1s. */
+document.getElementById('mhDurChips').addEventListener('click', function(e) {
+    var b = e.target.closest('button[data-dur]');
+    if (!b) return;
+    var dur = setClipDuration(parseFloat(b.dataset.dur));
+    renderModalFrameAt(parseInt(modalSlider.value) || 0, dur);
+});
+function stepClipDuration(dir, e) {
+    var step = (e && e.shiftKey) ? 5 : 1;
+    var cur = parseFloat((document.getElementById('mhDur') || {}).value) || 5;
+    var dur = setClipDuration(cur + dir * step);
+    renderModalFrameAt(parseInt(modalSlider.value) || 0, dur);
+}
+document.getElementById('mhDurMinus').addEventListener('click', function(e) { stepClipDuration(-1, e); });
+document.getElementById('mhDurPlus').addEventListener('click', function(e) { stepClipDuration(1, e); });
+/* Re-render the current frame after a duration change so a shortened clip
+   never keeps showing a frame past its new end (shared by field/chips/±). */
+function renderModalFrameAt(t, dur) {
+    if (modalRenderer && modalRenderer._ready) {
+        var at = Math.min(t, dur * 1000);
+        modalRenderer.renderFrame(at).then(function(ok) {
+            if (ok) modalRenderer.drawFrame(modalCtx, modalCanvas.width, modalCanvas.height);
+        });
+    }
+}
 
 function refreshClipTitle() {
     const fromCode = clipTitleFrom((cmHtml && cmHtml.getValue()) || '');
@@ -1716,13 +1775,110 @@ function parseImportedFile(file, text) {
         /* Films carry their own length — var SB = {"total":ms…} — so a 74s reel
            isn't clipped to the 5s host timeline. */
         const _sb = text.match(/var SB\s*=\s*\{[^{}]*?"total":\s*(\d+)/);
-        if (_sb) dur = Math.max(1, Math.min(600, parseInt(_sb[1], 10) / 1000));
+        if (_sb) dur = Math.max(1, Math.min(MAX_CLIP_SEC, parseInt(_sb[1], 10) / 1000));
     }
     html = parsed.html;
     /* Put <title> back into the HTML pane — refreshClipTitle reads it from
        there for the modal title and the export filename after Apply. */
     if (title && !/<title/i.test(html)) html = '<title>' + title.replace(/[<>]/g, '') + '</title>' + (html ? '\n' + html : '');
     return { html, css: parsed.css || '', js: parsed.js || '', title, dur };
+}
+
+/* Non-blocking toast (imports + duration adoption) — plan 3 */
+let _trToastTimer = null;
+function trToast(html, ms) {
+    var el = document.getElementById('trToast');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'trToast';
+        el.className = 'tr-toast';
+        el.setAttribute('role', 'status');
+        document.body.appendChild(el);
+    }
+    el.innerHTML = html;
+    el.classList.add('show');
+    clearTimeout(_trToastTimer);
+    _trToastTimer = setTimeout(function() { el.classList.remove('show'); }, ms || 5200);
+}
+
+/* ── Authored-length probe (plan 3) ──────────────────────────────
+ * A .json export carries its own duration label, and that label can be
+ * wrong: Clip_Flow_Canvas_Long_code.json declares 5000 ms but its onFrame
+ * choreographs clamp(time,0,15000) — a 15s animation mislabeled as 5s.
+ * Reading the source can't settle it (time literals hide inside keyframe
+ * tables; that file's largest number is an easing constant, not a time),
+ * so we MEASURE: run the authored onFrame over a throwaway DOM, step time
+ * forward, and watch for the last moment the rendered state changes.
+ *
+ * Conservative by design — it only ever EXTENDS a clip (never shortens),
+ * requires SETTLE_MS of stillness so a end-hold doesn't read as motion,
+ * gives up (keeping the declared length) on any compile/probe error, and
+ * is capped well short of MAX_CLIP_SEC. The renderer's own sandbox is
+ * untouched; document lookups are scoped to the probe host exactly the
+ * way HicRenderer.renderFrame scopes them, then restored. */
+function probeAuthoredSec(html, css, js, declaredSec) {
+    return new Promise(function(resolve) {
+        if (!js || typeof js !== 'string' || js.indexOf('onFrame') === -1) return resolve(0);
+        var host = document.createElement('div');
+        host.style.cssText = 'position:absolute;top:-9999px;left:-9999px;width:800px;height:450px;overflow:hidden;pointer-events:none';
+        host.innerHTML = '<style>' + (css || '') + '</style>' + (html || '');
+        document.body.appendChild(host);
+        var fn = null;
+        try { fn = new Function('time', js + '\n;return typeof onFrame==="function"?onFrame:null;')(); }
+        catch (e) { host.remove(); return resolve(0); }
+        if (!fn) { host.remove(); return resolve(0); }
+        var orig = {
+            qsa: Document.prototype.querySelectorAll,
+            qs: Document.prototype.querySelector,
+            gebi: Document.prototype.getElementById
+        };
+        Document.prototype.querySelectorAll = function(s) { return host.querySelectorAll(s); };
+        Document.prototype.querySelector = function(s) { return host.querySelector(s) || orig.qs.call(document, s); };
+        Document.prototype.getElementById = function(id) { return host.querySelector('#' + id) || orig.gebi.call(document, id); };
+        var STEP = 100, SETTLE_MS = 1500;
+        var capMs = Math.min(MAX_CLIP_SEC, (declaredSec || 5) * 4 + 20) * 1000;
+        var prev = null, lastChange = 0, t = 0, settled = false, broke = false;
+        try { fn(0); prev = host.innerHTML; } catch (e) { broke = true; }
+        var timer = setInterval(function() {
+            var chunkEnd = t + 2000; /* ~2s of clip time per tick keeps the UI alive */
+            while (t < chunkEnd && t <= capMs && !settled && !broke) {
+                t += STEP;
+                var sig;
+                try { fn(t); sig = host.innerHTML; } catch (e) { sig = prev; broke = true; }
+                if (sig !== prev) { prev = sig; lastChange = t; }
+                else if (t - lastChange >= SETTLE_MS) settled = true;
+            }
+            if (settled || broke || t > capMs) {
+                clearInterval(timer);
+                Document.prototype.querySelectorAll = orig.qsa;
+                Document.prototype.querySelector = orig.qs;
+                Document.prototype.getElementById = orig.gebi;
+                host.remove();
+                var measuredMs = (settled && !broke) ? lastChange : 0;
+                resolve(measuredMs > (declaredSec || 5) * 1000 + SETTLE_MS ? measuredMs : 0);
+            }
+        }, 0);
+    });
+}
+
+/* Import → declared length, then (async) measured length. When the code
+   choreographs meaningfully past its own label — the 5s-vs-15s case — adopt
+   the measured length and say so; also flag >30s imports so a final-frame
+   hold isn't mistaken for missing motion. Never blocks, never shortens. */
+function adoptImportedDuration(code) {
+    var declared = code.dur || 5;
+    probeAuthoredSec(code.html, code.css, code.js, declared).then(function(ms) {
+        if (!ms) {
+            if (declared > 30) {
+                trToast('Imported at <b>' + declared + 's</b> — the stage will hold the final frame after the choreography ends.');
+            }
+            return;
+        }
+        var measSec = setClipDuration(Math.ceil(ms / 100) / 10);
+        trToast('Imported at <b>' + measSec + 's</b> — the file declares ' + declared +
+            's, but its choreography runs to ' + Math.round(ms / 100) / 10 + 's. ' +
+            'Edit the duration field to override.');
+    });
 }
 
 function fillPanesFromImport(code, openAsStage) {
@@ -1737,6 +1893,7 @@ function fillPanesFromImport(code, openAsStage) {
         _lastAppliedCode = { html: cmHtml.getValue(), css: cmCss.getValue(), js: cmJs.getValue() };
         updateUnsavedBadge();
         resetSync();
+        adoptImportedDuration(code);
         setTimeout(function() { cmHtml.refresh(); cmCss.refresh(); cmJs.refresh(); }, 30);
         return;
     }
@@ -1749,6 +1906,7 @@ function fillPanesFromImport(code, openAsStage) {
     if (code.dur) setClipDuration(code.dur);
     refreshClipTitle();
     applyCode.click();
+    adoptImportedDuration(code);
     setTimeout(function() { cmHtml.refresh(); cmCss.refresh(); cmJs.refresh(); }, 30);
 }
 
@@ -2017,7 +2175,7 @@ function aiParseReply(text) {
        <!-- dur:17500 --> (ms) — sets the clip's timeline length so a paste
        from the astro player keeps its storyboard duration. */
     const _durM = text.match(/<!--\s*dur:(\d{1,6})\s*-->/i);
-    if (_durM) res.dur = Math.max(1, Math.min(60, parseInt(_durM[1], 10) / 1000));
+    if (_durM) res.dur = Math.max(1, Math.min(MAX_CLIP_SEC, parseInt(_durM[1], 10) / 1000));
     const fenceRe = /```([a-zA-Z0-9]*)[ \t]*\n([\s\S]*?)```/g;
     const blocks = [];
     let m;

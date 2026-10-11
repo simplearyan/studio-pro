@@ -119,6 +119,10 @@ html[data-theme="dark"] .hic-theme-toggle .msr::before{content:'light_mode'}
 /* range rows */
 .rng{display:flex;align-items:center;gap:10px;margin-top:10px}
 .rng input[type=range]{flex:1;accent-color:var(--md-primary);height:4px}
+.rng input[type=number]{width:64px;background:var(--md-surface-container-high);border:1px solid transparent;border-radius:8px;padding:4px 7px;font:600 11.5px 'Google Sans Flex','Roboto Flex',system-ui,sans-serif;color:var(--md-on-surface);text-align:center;font-variant-numeric:tabular-nums;appearance:textfield;-moz-appearance:textfield;cursor:text;transition:border-color .15s}
+.rng input[type=number]::-webkit-outer-spin-button,.rng input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.rng input[type=number]:hover{border-color:var(--md-outline-variant)}
+.rng input[type=number]:focus{outline:none;border-color:var(--md-primary)}
 .rng .val{font-size:11.5px;font-weight:600;color:var(--md-on-surface);font-variant-numeric:tabular-nums;background:var(--md-surface-container-high);border:none;border-radius:8px;padding:4px 9px;min-width:64px;text-align:center}
 
 /* ── Live prompt preview (sticky) ────────────────────────────── */
@@ -290,6 +294,13 @@ html[data-theme="dark"] .hic-theme-toggle .msr::before{content:'light_mode'}
 .pe-framebar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 16px 0}
 .prompt-card.light .pe-stage canvas{border-color:var(--md-on-surface);background:repeating-conic-gradient(var(--md-stage-a) 0% 25%, var(--md-stage-b) 0% 50%) 0 0/18px 18px}
 .pe-controls{display:flex;align-items:center;gap:10px;padding:10px 16px 0}
+.pe-dur{display:inline-flex;align-items:center;gap:5px;background:var(--md-surface-container-high);border:1px solid transparent;border-radius:8px;padding:3px 8px;transition:border-color .15s;flex-shrink:0}
+.pe-dur:hover{border-color:var(--md-outline-variant)}
+.pe-dur:focus-within{border-color:var(--md-primary)}
+.pe-dur input{width:44px;background:transparent;border:none;padding:0;font:700 11.5px 'Google Sans Flex','Roboto Flex',system-ui,sans-serif;color:var(--md-on-surface);text-align:right;font-variant-numeric:tabular-nums;appearance:textfield;-moz-appearance:textfield;cursor:text}
+.pe-dur input::-webkit-outer-spin-button,.pe-dur input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.pe-dur input:focus{outline:none;color:var(--md-primary)}
+.pe-dursym{font:600 11px 'Google Sans Flex','Roboto Flex',system-ui,sans-serif;color:var(--md-on-surface-variant)}
 .pe-controls input[type=range]{flex:1;accent-color:var(--md-primary);min-width:0}
 .pe-note{padding:6px 16px 12px;font-weight:500}
 
@@ -438,6 +449,7 @@ function onFrame(time) { … }
           <button class="mini-copy pressable" id="pePlay"><span class="msr" style="font-size:14px" aria-hidden="true">play_arrow</span> Play</button>
           <input type="range" id="peScrub" min="0" max="5000" step="16" value="0">
           <span class="pe-info" id="peTime">0.0s</span>
+          <span class="pe-dur" title="Clip length — written into CLIP DURATION and followed by the preview scrubber. Values past 30 s are typeable here and in Duration & Title."><span class="msr" style="font-size:14px;color:var(--md-on-surface-variant)" aria-hidden="true">timer</span><input type="number" id="peDurNum" min="0.5" max="600" step="0.5" value="5" aria-label="Clip duration in seconds"><span class="pe-dursym">s</span></span>
         </div>
         <div class="pe-info pe-note" id="peState">Paste code in the Code tab, then Apply &amp; Preview.</div>
       </div>
@@ -602,6 +614,10 @@ const DEFAULT_STATE = {
   m8: { on: true,  open: false, duration: 5, title: 'Untitled Design' }
 };
 let S = JSON.parse(JSON.stringify(DEFAULT_STATE));
+/* Has the user set the clip length this session? Recipes must not stomp a
+   typed duration (plan 2c) — kept module-level because loadRecipe deep-
+   replaces S, which would wipe a flag stored on it. */
+let _durTouched = false;
 
 /* ── Phase C data: motion verbs / easings ─────────────────────── */
 const VERBS = [
@@ -831,6 +847,13 @@ function tintPrompt(full) {
   return html;
 }
 function refresh() {
+  /* Hoisted scrub-bar control mirrors the active length (skip while it's
+     being typed in — never fight the caret). Module-8 controls re-render
+     from state via buildModules. */
+  var _pd = document.getElementById('peDurNum');
+  if (_pd && document.activeElement !== _pd && parseFloat(_pd.value) !== S.m8.duration) {
+    _pd.value = String(S.m8.duration);
+  }
   const want = assemble();
   const dur = Math.round((S.m8.on ? S.m8.duration : 5) * 1000);
   const body = document.getElementById('promptBody');
@@ -984,7 +1007,7 @@ function buildModules() {
     '<div class="mod" data-mod="m8">' +
       '<div class="mod-head" role="button" tabindex="0" aria-expanded="false"><div class="mod-ico" aria-hidden="true">⏱️</div><div class="mod-name">Duration &amp; Title<span class="hint">clip length + the &lt;title&gt; that names exports</span></div><div class="mod-badges"><span class="mod-chars" aria-hidden="true">—</span><span class="mod-chev" aria-hidden="true"><span class="msr" style="font-size:16px">expand_more</span></span></div></div>' +
       '<div class="mod-body">' +
-        '<div class="rng"><span style="font-size:11px;font-weight:600;color:var(--md-on-surface-variant);min-width:56px">Duration</span><input type="range" id="fDur" min="1" max="30" step="0.5" value="' + S.m8.duration + '"><span class="val" id="fDurVal">' + S.m8.duration + 's</span></div>' +
+        '<div class="rng"><span style="font-size:11px;font-weight:600;color:var(--md-on-surface-variant);min-width:56px">Duration</span><input type="range" id="fDur" min="1" max="30" step="0.5" value="' + S.m8.duration + '"><input type="number" id="fDurNum" min="0.5" max="600" step="0.5" value="' + S.m8.duration + '" title="Exact clip length in seconds — long values live here (up to 600 s)" aria-label="Clip duration in seconds"><span class="val" id="fDurVal">' + S.m8.duration + 's</span></div>' +
         fldHtml('Clip title <span style="text-transform:none;font-weight:500">(2-4 Title Case words — becomes the &lt;title&gt; and every filename)</span>',
           '<input type="text" id="fTitle" value="' + escAttr(S.m8.title) + '" maxlength="60">') +
       '</div>' +
@@ -1116,11 +1139,7 @@ function wireStatic() {
   document.getElementById('modulesCol').addEventListener('input', function(e) {
     if (e.target.id === 'fIntent') { S.m1.intent = e.target.value; refresh(); }
     if (e.target.id === 'fTitle') { S.m8.title = e.target.value; refresh(); }
-    if (e.target.id === 'fDur') {
-      S.m8.duration = parseFloat(e.target.value);
-      document.getElementById('fDurVal').textContent = S.m8.duration + 's';
-      refresh();
-    }
+    if (e.target.id === 'fDur' || e.target.id === 'fDurNum') setPeDuration(e.target.value, e.target.id);
   });
 }
 
@@ -1392,17 +1411,22 @@ function archForRecipe(d) {
 }
 function loadRecipe(d) {
   const brief = String(d.prompt || '').trim();
+  /* A duration the user typed this session survives the recipe (2c); the
+     recipe's authored length is only a starting value otherwise. */
+  const keepDur = _durTouched ? S.m8.duration : null;
   /* Reset to defaults, then fill what the heuristic parser understands */
   S = JSON.parse(JSON.stringify(DEFAULT_STATE));
   S.m1.arch = archForRecipe(d);
   S.m1.intent = '';
-  S.m8.duration = Math.max(1, Math.min(30, (d.duration || 5000) / 1000));
+  if (keepDur != null) S.m8.duration = keepDur;
+  else S.m8.duration = Math.max(0.5, Math.min(600, (d.duration || 5000) / 1000));
   const t = (d.html || '').match(/<title>([^<]+)<\/title>/);
   S.m8.title = (t && t[1]) || d.title || 'Loaded Recipe';
 
-  /* Duration hints inside the brief win over the gallery default */
+  /* Duration hints inside the brief win over the gallery default — but never
+     over a length the user already set. Long briefs (45s/120s) now survive. */
   const dm = brief.match(/CLIP DURATION:\s*(\d+)\s*ms/i);
-  if (dm) S.m8.duration = Math.max(1, Math.min(30, parseInt(dm[1], 10) / 1000));
+  if (dm && keepDur == null) S.m8.duration = Math.max(0.5, Math.min(600, parseInt(dm[1], 10) / 1000));
 
   /* Typography hints */
   if (/serif|georgia|playfair|lora|fraunces/i.test(brief)) { S.m3.on = true; S.m3.hf = 'Playfair Display'; }
@@ -1636,10 +1660,42 @@ var frameControls = mountFrameControls(document.getElementById('frameControls'),
 /* restore shared prefs so the panel matches the other pages' last-used frame */
 try { readExpPrefs(); } catch (e) {}
 peApplyFrame();
-/* duration edits keep the scrubber in range */
-document.getElementById('modulesCol').addEventListener('input', function(e) {
-  if (e.target.id === 'fDur') document.getElementById('peScrub').max = String(peDur());
+/* The hoisted scrub-bar duration control — same write path as module 8 */
+document.getElementById('peDurNum').addEventListener('input', function() {
+  setPeDuration(this.value, 'peDurNum');
 });
+document.getElementById('peDurNum').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') this.blur();
+});
+
+/* ── One write path for "the clip length changed" (plan 2a/2b) ──────
+ * The module-8 slider, its number field, and the hoisted scrub-bar control
+ * all land here. The slider keeps its 1–30s range (its useful band); the
+ * number fields reach 600s, so 45s / 120s are typeable instead of silently
+ * clamped. Every downstream consumer (peDur, peScrub.max, the generated
+ * CLIP DURATION line) already re-reads S.m8.duration, so this only has to
+ * keep the three controls + the value labels consistent and re-render. */
+function setPeDuration(v, src) {
+  var d = parseFloat(v);
+  if (!isFinite(d)) d = 5;
+  d = Math.max(0.5, Math.min(600, d));
+  S.m8.duration = d;
+  _durTouched = true; /* a recipe loaded later must not stomp this (2c) */
+  if (src !== 'fDur') {
+    var sl = document.getElementById('fDur');
+    if (sl) sl.value = String(Math.max(1, Math.min(30, d)));
+  }
+  ['fDurNum', 'peDurNum'].forEach(function(id) {
+    if (id === src) return;
+    var el = document.getElementById(id);
+    if (el && parseFloat(el.value) !== d) el.value = String(d);
+  });
+  var fv = document.getElementById('fDurVal');
+  if (fv) fv.textContent = d + 's';
+  var scrub = document.getElementById('peScrub');
+  if (scrub) scrub.max = String(peDur());
+  refresh();
+}
 
 /* ── Phase D recipe menu events ───────────────────────────────── */
 document.getElementById('recBtn').addEventListener('click', function(e) {
@@ -1663,6 +1719,7 @@ recipeSource().then(list => { RECIPES = list; });
 const resetDlg = document.getElementById('resetDialog');
 function performReset() {
   S = JSON.parse(JSON.stringify(DEFAULT_STATE));
+  _durTouched = false; /* an explicit reset also clears the typed-length flag */
   document.getElementById('modulesCol').innerHTML = '';
   buildModules(); renderPhaseB(); renderTimeline(); refresh();
   toast('Reset to defaults');
