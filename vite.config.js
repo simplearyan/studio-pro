@@ -68,16 +68,17 @@ export default defineConfig({
         { src: 'html-in-canvas/designs-gallery.json', dest: 'html-in-canvas', rename: { stripBase: true } },
         /* /prompts-engineer builder page (Phase A of PROMPTS-ENGINEER-PLAN.md) */
         { src: 'html-in-canvas/prompts-engineer.html', dest: 'html-in-canvas', rename: { stripBase: true } },
-        /* The shared HIC libs the pages above load by RELATIVE path. Without
-           these the deployed pages 404 their own engine (hic-frame.js is
-           referenced by all three), so the gallery renders blank and logs
+        /* The shared HIC libs the pages above load by RELATIVE path from the
+           engine/ subfolder (S3 of docs/html-in-canvas/STRUCTURE-PLAN.md).
+           Without these the deployed pages 404 their own engine (hic-frame.js
+           is referenced by all three), so the gallery renders blank and logs
            "mountFrameControls is not defined". hic-theme.* is the Material 3
            token layer those pages resolve every --md-* colour from. */
-        { src: 'html-in-canvas/hic-*.js', dest: 'html-in-canvas', rename: { stripBase: true } },
-        { src: 'html-in-canvas/hic-theme.css', dest: 'html-in-canvas', rename: { stripBase: true } },
+        { src: 'html-in-canvas/engine/hic-*.js', dest: 'html-in-canvas/engine', rename: { stripBase: true } },
+        { src: 'html-in-canvas/engine/hic-theme.css', dest: 'html-in-canvas/engine', rename: { stripBase: true } },
         /* WebM duration patcher — loaded by designs.html and test-renderer.html
            for the export toolbar, same relative-path story as the libs above. */
-        { src: 'html-in-canvas/fix-webm-duration.js', dest: 'html-in-canvas', rename: { stripBase: true } },
+        { src: 'html-in-canvas/engine/fix-webm-duration.js', dest: 'html-in-canvas/engine', rename: { stripBase: true } },
         /* Old-URL redirect stubs — the toolkit's public URLs moved from
            <base>docs/html-in-canvas/… to <base>html-in-canvas/… in R1.
            Each stub meta-refreshes to the relative ../../html-in-canvas/…

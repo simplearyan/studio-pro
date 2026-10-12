@@ -5,6 +5,7 @@
  *   <script src="hic-theme.js"></script>
  * Any button with class .hic-theme-toggle gets wired automatically.
  * Key: localStorage('hic_theme') — same as prompts-engineer.html.
+ * (Lives in engine/ — pages load it as <script src="engine/hic-theme.js">.)
  * ═════════════════════════════════════════════════════════════════════ */
 (function () {
     'use strict';

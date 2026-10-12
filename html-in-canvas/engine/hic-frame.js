@@ -599,3 +599,103 @@ function mountFrameControls(host, opts) {
     sync();
     return { sync: sync };
 }
+
+/* ═════════════════════════════════════════════════════════════════
+ * Authored-length probe — measure how long an onFrame clip really runs
+ * ═════════════════════════════════════════════════════════════════
+ * A duration LABEL can be wrong: Clip_Flow_Canvas_Long_code.json declares
+ * 5000 ms while its onFrame choreographs clamp(time,0,15000) — a 15s
+ * animation mislabeled as 5s. Reading the source can't settle it (time
+ * literals hide inside keyframe tables; that file's largest number is an
+ * easing constant, not a time), so this MEASURES: run the authored
+ * onFrame over a throwaway DOM, step time forward, and watch for the last
+ * moment the rendered state changes. resolve()s with that length in ms,
+ * or 0 when it can't be determined.
+ *
+ * Conservative by design:
+ *  - resolve()s the last moment the rendered state changed (or 0 when it
+ *    can't be determined); callers apply the thresholds — the editor
+ *    extends only past declared+settle and never shortens, so a deliberate
+ *    end-hold or a user-set length is never overridden downward
+ *  - requires 1.5s of DOM stillness to call it settled, so a mid-clip
+ *    pause doesn't read as the end
+ *  - gives up (resolving 0, keeping the declared length) on compile
+ *    errors, perpetual-motion clips that never settle within the cap,
+ *    or when superseded by a newer probe (generation counter)
+ *  - caps the search at min(capSec, declared*4+20)s — a 5s clip looks
+ *    40s deep, far past any plausible mislabel, without a long wait
+ *
+ * Document.prototype lookups are shimmed to the probe host only for each
+ * synchronous chunk (exactly the window HicRenderer.renderFrame uses), so
+ * the page's own DOM queries are untouched between chunks and the
+ * renderer's sandbox is never involved. */
+var _hicProbeGen = 0;
+/* How still the DOM must stay before the probe calls the clip settled —
+   exported so callers compare measurements against the same window. */
+var HIC_PROBE_SETTLE_MS = 1500;
+function probeAuthoredSec(html, css, js, declaredSec, capSec) {
+    return new Promise(function(resolve) {
+        if (!js || typeof js !== 'string' || js.indexOf('onFrame') === -1) return resolve(0);
+        var host = document.createElement('div');
+        host.style.cssText = 'position:absolute;top:-9999px;left:-9999px;width:800px;height:450px;overflow:hidden;pointer-events:none';
+        host.innerHTML = '<style>' + (css || '') + '</style>' + (html || '');
+        document.body.appendChild(host);
+        var fn = null;
+        try { fn = new Function('time', js + '\n;return typeof onFrame==="function"?onFrame:null;')(); }
+        catch (e) { host.remove(); return resolve(0); }
+        if (!fn) { host.remove(); return resolve(0); }
+        var gen = ++_hicProbeGen;
+        var orig = {
+            qsa: Document.prototype.querySelectorAll,
+            qs: Document.prototype.querySelector,
+            gebi: Document.prototype.getElementById
+        };
+        var STEP = 100, SETTLE_MS = HIC_PROBE_SETTLE_MS;
+        var capMs = Math.min(capSec || 60, (declaredSec || 5) * 4 + 20) * 1000;
+        var prev = null, lastChange = 0, t = 0, settled = false, broke = false;
+        /* Patch + run + restore inside one synchronous block, mirroring
+           renderFrame — between ticks the real document is fully live. */
+        function stepChunk(chunkEnd) {
+            Document.prototype.querySelectorAll = function(s) { return host.querySelectorAll(s); };
+            Document.prototype.querySelector = function(s) { return host.querySelector(s) || orig.qs.call(document, s); };
+            Document.prototype.getElementById = function(id) { return host.querySelector('#' + id) || orig.gebi.call(document, id); };
+            try {
+                /* Two budgets per tick: clip time (progress pacing) and WALL
+                   time — a heavy onFrame (~50ms/step, og-ios) would otherwise
+                   block the UI thread for the whole chunk. Heavy clips simply
+                   take more ticks; a superseding probe still kills them fast. */
+                var deadline = performance.now() + 12;
+                while (t < chunkEnd && t <= capMs && !settled && !broke && performance.now() < deadline) {
+                    t += STEP;
+                    var sig;
+                    try { fn(t); sig = host.innerHTML; } catch (e) { sig = prev; broke = true; }
+                    if (sig !== prev) { prev = sig; lastChange = t; }
+                    else if (t - lastChange >= SETTLE_MS) settled = true;
+                }
+            } finally {
+                Document.prototype.querySelectorAll = orig.qsa;
+                Document.prototype.querySelector = orig.qs;
+                Document.prototype.getElementById = orig.gebi;
+            }
+        }
+        /* Prime: fn(0) + baseline signature, in its own patch window */
+        Document.prototype.querySelectorAll = function(s) { return host.querySelectorAll(s); };
+        Document.prototype.querySelector = function(s) { return host.querySelector(s) || orig.qs.call(document, s); };
+        Document.prototype.getElementById = function(id) { return host.querySelector('#' + id) || orig.gebi.call(document, id); };
+        try { fn(0); prev = host.innerHTML; } catch (e) { broke = true; }
+        Document.prototype.querySelectorAll = orig.qsa;
+        Document.prototype.querySelector = orig.qs;
+        Document.prototype.getElementById = orig.gebi;
+        var timer = setInterval(function() {
+            if (gen !== _hicProbeGen) { /* superseded by a newer probe */
+                clearInterval(timer); host.remove(); return resolve(0);
+            }
+            stepChunk(t + 2000); /* ~2s of clip time per tick keeps the UI alive */
+            if (settled || broke || t > capMs) {
+                clearInterval(timer);
+                host.remove();
+                resolve((settled && !broke) ? lastChange : 0);
+            }
+        }, 0);
+    });
+}

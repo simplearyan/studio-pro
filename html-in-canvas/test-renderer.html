@@ -10,7 +10,7 @@
 <meta property="og:title" content="HTML-in-Canvas Renderer">
 <meta property="og:description" content="SVG foreignObject engine — render HTML/CSS/JS to canvas with full CSS support and zero dependencies.">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,300..600,0..1,0&display=swap">
-<link rel="stylesheet" href="hic-theme.css">
+<link rel="stylesheet" href="engine/hic-theme.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@100..900&family=Rubik:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -670,10 +670,10 @@ html[data-theme="dark"]{
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/css/css.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
 
-<script src="hic-theme.js"></script>
-<script src="hic-frame.js"></script>
-<script src="hic-storyboard.js"></script>
-<script src="fix-webm-duration.js"></script>
+<script src="engine/hic-theme.js"></script>
+<script src="engine/hic-frame.js"></script>
+<script src="engine/hic-storyboard.js"></script>
+<script src="engine/fix-webm-duration.js"></script>
 <script>
 /* ═══════════════════════════════════════════════════════════════
  * SVG foreignObject Renderer
@@ -940,6 +940,7 @@ function openModal(key) {
     _clipTitle = clipTitleFrom(p.html);
     modalTitle.textContent = _clipTitle || p.name;
     setClipDuration(p.dur); /* meta line + slider max + total time in one write */
+    _durManual = false; /* fresh clip → auto duration detection re-arms */
     /* Drop the previous clip's renderer BEFORE applyAspect — otherwise its
        rebuild branch (aspect changed) would async-rebuild the old renderer
        and race with the fresh one built below. */
@@ -964,6 +965,13 @@ function openModal(key) {
         setPlayState(true);
         tickModal();
     });
+    /* Auto duration: measure the clip's real choreography in the background
+       and extend the timeline when the declared length undersells it —
+       silent when the label is right, never blocks the open, superseded
+       automatically by any later probe. Code-less presets (__custom blank
+       stage) have nothing to measure and resolve instantly. */
+    adoptMeasuredDuration({ html: p.html, css: p.css, js: p.js, dur: p.dur },
+        key === '__import' ? 'Imported' : 'Opened');
 }
 
 function closeModal() {
@@ -1368,11 +1376,20 @@ function refreshMetaLine() {
        references to mhMeta). */
     document.getElementById('mhMeta').textContent = '· ' + _ds.w + '×' + _ds.h;
 }
+/* Manual-duration latch — auto duration detection (adoptMeasuredDuration)
+ * extends a clip whenever its code choreographs past the declared length,
+ * but once the USER asserts a length (field, quick-pick chip, ±stepper),
+ * this latch closes and later Applies/opens respect that choice instead of
+ * re-extending. New code landing on the stage re-arms it: a fresh clip
+ * (openModal), an in-modal import, or an AI paste each reset it, because
+ * the manual length was chosen for the code that was on stage at the time. */
+var _durManual = false;
 /* The field: commit on change/Enter, revert on garbage, and re-render the
    current frame so a shortened clip doesn't keep showing a frame past its
    new end. Playback picks the new length up on its next tick because
    tickModal reads PRESETS[modalKey].dur inside the loop. */
 document.getElementById('mhDur').addEventListener('change', function() {
+    _durManual = true; /* the user asserted this length — auto-detect stands down */
     var v = parseFloat(this.value);
     if (!isFinite(v)) { v = currentPresetKey ? (PRESETS[currentPresetKey] || {}).dur || 5 : 5; }
     var dur = setClipDuration(v);
@@ -1386,10 +1403,12 @@ document.getElementById('mhDur').addEventListener('keydown', function(e) {
 document.getElementById('mhDurChips').addEventListener('click', function(e) {
     var b = e.target.closest('button[data-dur]');
     if (!b) return;
+    _durManual = true; /* the user asserted this length */
     var dur = setClipDuration(parseFloat(b.dataset.dur));
     renderModalFrameAt(parseInt(modalSlider.value) || 0, dur);
 });
 function stepClipDuration(dir, e) {
+    _durManual = true; /* the user asserted this length */
     var step = (e && e.shiftKey) ? 5 : 1;
     var cur = parseFloat((document.getElementById('mhDur') || {}).value) || 5;
     var dur = setClipDuration(cur + dir * step);
@@ -1570,6 +1589,10 @@ applyCode.addEventListener('click', async function() {
     setPlayState(true);
     tabPreview.click();
     tickModal();
+    /* Auto duration: the applied code may choreograph past the timeline's
+       declared length (a lying marker, a longer edit, a pasted AI reply) —
+       measure it and extend unless the user asserted a length (_durManual). */
+    adoptMeasuredDuration({ html: cmHtml.getValue(), css: cmCss.getValue(), js: cmJs.getValue() }, 'Applied');
 });
 
 /* ═══════════════════════════════════════════════════════════════
@@ -1801,83 +1824,44 @@ function trToast(html, ms) {
     _trToastTimer = setTimeout(function() { el.classList.remove('show'); }, ms || 5200);
 }
 
-/* ── Authored-length probe (plan 3) ──────────────────────────────
- * A .json export carries its own duration label, and that label can be
- * wrong: Clip_Flow_Canvas_Long_code.json declares 5000 ms but its onFrame
- * choreographs clamp(time,0,15000) — a 15s animation mislabeled as 5s.
- * Reading the source can't settle it (time literals hide inside keyframe
- * tables; that file's largest number is an easing constant, not a time),
- * so we MEASURE: run the authored onFrame over a throwaway DOM, step time
- * forward, and watch for the last moment the rendered state changes.
+/* ── Auto duration: declared label → measured choreography (plan 3) ──
+ * probeAuthoredSec (hic-frame.js — shared with prompts-engineer) runs the
+ * clip's own onFrame over a throwaway DOM and reports where the motion
+ * actually ends. Called from openModal (every clip open: presets, header
+ * imports, storyboards, custom stages) and from the Apply button (Code-tab
+ * edits, AI pastes, in-modal imports) — so every path that lands code on
+ * the stage gets a duration matching what the code actually does:
+ *  - choreography beats the declared length → extend + toast (the
+ *    5s-declares-15s mislabel case; declared is a floor, never shortened)
+ *  - choreography ends early on a >30s clip → note the final-frame hold
+ *  - undeterminable (perpetual motion, compile error, superseded probe)
+ *    → keep the declared length, silently
  *
- * Conservative by design — it only ever EXTENDS a clip (never shortens),
- * requires SETTLE_MS of stillness so a end-hold doesn't read as motion,
- * gives up (keeping the declared length) on any compile/probe error, and
- * is capped well short of MAX_CLIP_SEC. The renderer's own sandbox is
- * untouched; document lookups are scoped to the probe host exactly the
- * way HicRenderer.renderFrame scopes them, then restored. */
-function probeAuthoredSec(html, css, js, declaredSec) {
-    return new Promise(function(resolve) {
-        if (!js || typeof js !== 'string' || js.indexOf('onFrame') === -1) return resolve(0);
-        var host = document.createElement('div');
-        host.style.cssText = 'position:absolute;top:-9999px;left:-9999px;width:800px;height:450px;overflow:hidden;pointer-events:none';
-        host.innerHTML = '<style>' + (css || '') + '</style>' + (html || '');
-        document.body.appendChild(host);
-        var fn = null;
-        try { fn = new Function('time', js + '\n;return typeof onFrame==="function"?onFrame:null;')(); }
-        catch (e) { host.remove(); return resolve(0); }
-        if (!fn) { host.remove(); return resolve(0); }
-        var orig = {
-            qsa: Document.prototype.querySelectorAll,
-            qs: Document.prototype.querySelector,
-            gebi: Document.prototype.getElementById
-        };
-        Document.prototype.querySelectorAll = function(s) { return host.querySelectorAll(s); };
-        Document.prototype.querySelector = function(s) { return host.querySelector(s) || orig.qs.call(document, s); };
-        Document.prototype.getElementById = function(id) { return host.querySelector('#' + id) || orig.gebi.call(document, id); };
-        var STEP = 100, SETTLE_MS = 1500;
-        var capMs = Math.min(MAX_CLIP_SEC, (declaredSec || 5) * 4 + 20) * 1000;
-        var prev = null, lastChange = 0, t = 0, settled = false, broke = false;
-        try { fn(0); prev = host.innerHTML; } catch (e) { broke = true; }
-        var timer = setInterval(function() {
-            var chunkEnd = t + 2000; /* ~2s of clip time per tick keeps the UI alive */
-            while (t < chunkEnd && t <= capMs && !settled && !broke) {
-                t += STEP;
-                var sig;
-                try { fn(t); sig = host.innerHTML; } catch (e) { sig = prev; broke = true; }
-                if (sig !== prev) { prev = sig; lastChange = t; }
-                else if (t - lastChange >= SETTLE_MS) settled = true;
-            }
-            if (settled || broke || t > capMs) {
-                clearInterval(timer);
-                Document.prototype.querySelectorAll = orig.qsa;
-                Document.prototype.querySelector = orig.qs;
-                Document.prototype.getElementById = orig.gebi;
-                host.remove();
-                var measuredMs = (settled && !broke) ? lastChange : 0;
-                resolve(measuredMs > (declaredSec || 5) * 1000 + SETTLE_MS ? measuredMs : 0);
-            }
-        }, 0);
-    });
-}
-
-/* Import → declared length, then (async) measured length. When the code
-   choreographs meaningfully past its own label — the 5s-vs-15s case — adopt
-   the measured length and say so; also flag >30s imports so a final-frame
-   hold isn't mistaken for missing motion. Never blocks, never shortens. */
-function adoptImportedDuration(code) {
-    var declared = code.dur || 5;
-    probeAuthoredSec(code.html, code.css, code.js, declared).then(function(ms) {
-        if (!ms) {
-            if (declared > 30) {
-                trToast('Imported at <b>' + declared + 's</b> — the stage will hold the final frame after the choreography ends.');
-            }
-            return;
+ * Adoption stops the moment the user asserts a length themselves
+ * (_durManual): typing the field, a quick-pick chip, or a stepper marks
+ * the duration as theirs, and later Applies/opens won't fight that choice.
+ * A fresh clip or newly landed code clears the flag so detection re-arms.
+ * Never blocks. */
+function adoptMeasuredDuration(code, label) {
+    var declared = code.dur || (currentPresetKey && PRESETS[currentPresetKey] ? PRESETS[currentPresetKey].dur : 5) || 5;
+    var hasFrame = !!(code.js && code.js.indexOf('onFrame') !== -1);
+    probeAuthoredSec(code.html, code.css, code.js, declared, MAX_CLIP_SEC).then(function(ms) {
+        if (!ms) return; /* undeterminable — keep the declared length, silent */
+        var declaredMs = declared * 1000;
+        if (ms > declaredMs + HIC_PROBE_SETTLE_MS) {
+            if (_durManual) return; /* the user chose this length; don't fight it */
+            var measSec = setClipDuration(Math.ceil(ms / 100) / 10);
+            trToast(label + ' at <b>' + measSec + 's</b> — the code choreographs ' +
+                Math.round(ms / 100) / 10 + 's, longer than the ' + declared +
+                's it declared. Edit the duration field to override.');
+        } else if (hasFrame && declared > 30 && ms < declaredMs - HIC_PROBE_SETTLE_MS) {
+            /* Long clip whose choreography clearly ENDS early — say so, so the
+               final-frame hold isn't mistaken for missing motion. Only when the
+               measurement proves it; a clip that fills its length (or never
+               settles) gets no note. */
+            trToast(label + ' at <b>' + declared + 's</b> — the choreography ends at ' +
+                Math.round(ms / 100) / 10 + 's; the stage holds the final frame to the end.');
         }
-        var measSec = setClipDuration(Math.ceil(ms / 100) / 10);
-        trToast('Imported at <b>' + measSec + 's</b> — the file declares ' + declared +
-            's, but its choreography runs to ' + Math.round(ms / 100) / 10 + 's. ' +
-            'Edit the duration field to override.');
     });
 }
 
@@ -1893,7 +1877,8 @@ function fillPanesFromImport(code, openAsStage) {
         _lastAppliedCode = { html: cmHtml.getValue(), css: cmCss.getValue(), js: cmJs.getValue() };
         updateUnsavedBadge();
         resetSync();
-        adoptImportedDuration(code);
+        /* openModal('__import') above already ran the auto-duration probe
+           with the 'Imported' label — no separate adoption call needed. */
         setTimeout(function() { cmHtml.refresh(); cmCss.refresh(); cmJs.refresh(); }, 30);
         return;
     }
@@ -1905,8 +1890,10 @@ function fillPanesFromImport(code, openAsStage) {
     cmHtml.setValue(panes.html); cmCss.setValue(panes.css); cmJs.setValue(panes.js);
     if (code.dur) setClipDuration(code.dur);
     refreshClipTitle();
+    _durManual = false; /* newly imported code re-arms auto duration detection */
+    /* applyCode.click() auto-probes the applied code, which covers this
+       in-modal import too — no separate adoption call needed. */
     applyCode.click();
-    adoptImportedDuration(code);
     setTimeout(function() { cmHtml.refresh(); cmCss.refresh(); cmJs.refresh(); }, 30);
 }
 
@@ -2310,6 +2297,7 @@ function aiApplyReply() {
         parts.push(setClipDuration(parsed.dur) + 's');
     }
     aiMsg('Inserted ' + parts.join(' · ') + ' — applying to stage…');
+    _durManual = false; /* newly pasted AI code re-arms auto duration detection */
     applyCode.click(); /* renders + switches to Preview + plays */
 }
 document.getElementById('aiApplyBtn').addEventListener('click', aiApplyReply);

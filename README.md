@@ -33,6 +33,7 @@ the terminal automation pipeline. It is the same code you can read, edit and re-
 - [Why Studio Pro](#-why-studio-pro)
 - [Quick start](#-quick-start)
 - [The interface](#-the-interface)
+- [Play it live — the standalone tools](#-play-it-live--the-standalone-tools)
 - [HTML-in-Canvas — the HTML engine](#-html-in-canvas--the-html-engine)
 - [Code → video automation](#-code--video-automation)
 - [Everything else it does](#-everything-else-it-does)
@@ -88,6 +89,29 @@ npm run preview        # serve the built site locally
 | **Canvas preview** | Live preview with selectable, movable, resizable clips and frame-by-frame playback |
 | **Timeline (bottom)** | Multi-track editor with playhead, zoom, ripple/push-trim, blade, and per-track heights |
 | **Sidebar** | Six panels: Properties (Basic · Adjust · Effects · Media, plus an Ink card on draw clips) · Animations · Audio · Presets · Captions · Markdown |
+
+---
+
+## 🕹️ Play it live — the standalone tools
+
+Four pages ship with the editor on the [live site](https://simplearyan.github.io/studio-pro/) —
+no install and no build step, just open one and poke at it. Each is a thin page over the same
+engine this repo contains:
+
+| | Tool | What it's for |
+|---|---|---|
+| 🖼️ | [**Designs gallery**](https://simplearyan.github.io/studio-pro/html-in-canvas/designs.html) | Every shipped design as a searchable card wall — click one and it opens in its own preview modal, ready to scrub, edit and export |
+| 🎞️ | [**Renderer test bench**](https://simplearyan.github.io/studio-pro/html-in-canvas/test-renderer.html) | The SVG `foreignObject` engine in isolation — the full preset library, frame-exact scrubbing, live HTML / CSS / JS panes, JSON clip import with the duration auto-detected from the choreography, and MP4 / WebM export |
+| 🧠 | [**Prompts engineer**](https://simplearyan.github.io/studio-pro/html-in-canvas/prompts-engineer.html) | Build the clip-contract prompt for your AI module by module — storyboard, timings, design space, duration — with a live character budget, then paste the reply back to preview it |
+| 📱 | [**Clip Lite**](https://simplearyan.github.io/studio-pro/clip-lite/) | A working **phone-first** video editor: import real video, build a filmstrip and waveform, scrub a pinned playhead, trim, split and export via `MediaRecorder` — an installable PWA with no backend |
+
+> **Run them locally:** `npm run dev`, then open
+> `http://localhost:3000/html-in-canvas/designs.html` · `…/test-renderer.html` ·
+> `…/prompts-engineer.html` · `http://localhost:3000/clip-lite/`
+>
+> **Source:** [`html-in-canvas/`](html-in-canvas/) for the three HIC pages ·
+> [`clip-lite/`](clip-lite/) for the app · [`docs/studio-lite/`](docs/studio-lite/index.html)
+> for the phone-first prototypes it grew from
 
 ---
 
@@ -147,14 +171,14 @@ has nothing to seek. Compiling the keyframes into `onFrame` is what made them se
 ### The shared HIC layer
 
 [`html-in-canvas/`](html-in-canvas/) holds the standalone HIC pages and the libraries
-they and the editor share:
+they and the editor share (engine in [`html-in-canvas/engine/`](html-in-canvas/engine/)):
 
 | File | What it does |
 |---|---|
-| [`hic-frame.js`](html-in-canvas/hic-frame.js) | Aspect / design-space tables, frame geometry, the `HicRenderer` SVG engine |
-| [`hic-modal.js`](html-in-canvas/hic-modal.js) | The preview modal — player shell, transport, export toolbar, Code tab, AI tab |
-| [`hic-storyboard.js`](html-in-canvas/hic-storyboard.js) | Storyboard → clip compiler: JSON becomes a self-contained HIC clip |
-| [`hic-theme.js`](html-in-canvas/hic-theme.js) · [`hic-theme.css`](html-in-canvas/hic-theme.css) | Shared theme boot + toggle |
+| [`engine/hic-frame.js`](html-in-canvas/engine/hic-frame.js) | Aspect / design-space tables, frame geometry, the `HicRenderer` SVG engine |
+| [`engine/hic-modal.js`](html-in-canvas/engine/hic-modal.js) | The preview modal — player shell, transport, export toolbar, Code tab, AI tab |
+| [`engine/hic-storyboard.js`](html-in-canvas/engine/hic-storyboard.js) | Storyboard → clip compiler: JSON becomes a self-contained HIC clip |
+| [`engine/hic-theme.js`](html-in-canvas/engine/hic-theme.js) · [`engine/hic-theme.css`](html-in-canvas/engine/hic-theme.css) | Shared theme boot + toggle |
 | [`designs.html`](html-in-canvas/designs.html) · [`test-renderer.html`](html-in-canvas/test-renderer.html) · [`prompts-engineer.html`](html-in-canvas/prompts-engineer.html) | Standalone tools: design gallery, renderer test bench, AI prompt engineer |
 
 [`docs/studio-lite/`](docs/studio-lite/index.html) holds the **phone-first prototypes** — every page
