@@ -1,6 +1,9 @@
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
+import { existsSync, statSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 
 // GitHub Pages deploys under /studio-pro/; local dev/builds use the root. The
 // PWA plugin respects `base` for the SW registration path and every precache
@@ -11,6 +14,46 @@ const base = isActions ? '/studio-pro/' : '/';
 export default defineConfig({
   base: base,
   plugins: [
+    /* Dev-only parity with GitHub Pages. Vite's dev server defaults to SPA
+       html fallback: any URL that matches no file returns the ROOT app
+       shell — so a typo like /html-in-canvas/dff rendered the whole
+       StudioPro editor at a URL that does not exist (verified: HTTP 200 +
+       the StudioPro <title>). There is no router here to justify that; on
+       Pages the same URL correctly returns the custom 404. This PRE
+       middleware (registered before Vite's internals, so the SPA fallback
+       never fires for misses) serves the same 404.html with a real 404
+       status for GET html navigations that resolve to no real file — on
+       disk, in public/, or as a directory with its own index.html. Missing
+       FILES (.js/.png/…) and non-html requests still fall through to
+       Vite/connect as before, so module-load errors stay legible. */
+    {
+      name: 'dev-custom-404',
+      configureServer(server) {
+        const root = fileURLToPath(new URL('.', import.meta.url));
+        server.middlewares.use((req, res, next) => {
+          if (req.method !== 'GET') return next();
+          if (!/text\/html/.test(req.headers.accept || '')) return next();
+          let clean;
+          try { clean = decodeURIComponent((req.url || '/').split('?')[0]); }
+          catch (e) { return next(); }
+          const last = clean.split('/').pop() || '';
+          if (/\.[a-z0-9]+$/i.test(last)) return next();       // a (missing) file request, not a page
+          const isReal = base => {
+            const p = path.join(base, clean);
+            if (!existsSync(p)) return false;
+            if (statSync(p).isFile()) return true;
+            return existsSync(path.join(p, 'index.html'));     // bare folder URL
+          };
+          if (isReal(root) || isReal(path.join(root, 'public'))) return next();
+          try {
+            const body = readFileSync(path.join(root, '404.html'));
+            res.statusCode = 404;
+            res.setHeader('Content-Type', 'text/html; charset=utf-8');
+            res.end(body);
+          } catch (e) { next(); }
+        });
+      }
+    },
     // Ship the HIC toolkit pages (raw copy, no bundling) so they are reachable
     // on GitHub Pages at <base>html-in-canvas/test-renderer.html. Static
     // copy keeps each file byte-identical between dev and production. The
@@ -90,7 +133,16 @@ export default defineConfig({
         { src: 'docs/html-in-canvas/index.html', dest: 'docs/html-in-canvas', rename: { stripBase: true } },
         { src: 'docs/html-in-canvas/test-renderer.html', dest: 'docs/html-in-canvas', rename: { stripBase: true } },
         { src: 'docs/html-in-canvas/designs.html', dest: 'docs/html-in-canvas', rename: { stripBase: true } },
-        { src: 'docs/html-in-canvas/prompts-engineer.html', dest: 'docs/html-in-canvas', rename: { stripBase: true } }
+        { src: 'docs/html-in-canvas/prompts-engineer.html', dest: 'docs/html-in-canvas', rename: { stripBase: true } },
+        /* Custom error page — GitHub Pages serves <site-root>/404.html with a
+           real 404 status for ANY missing URL under the site (no router, no
+           framework; see docs/404-PAGE-PLAN.md). Copied rather than added to
+           build.rollupOptions.input for the same reason Clip Lite is: as a
+           rollup entry Vite treats the page as an app shell and VitePWA
+           injects Studio Pro's manifest link and SW registration into it.
+           byte-identical copy lands at dist/404.html = the site root Pages
+           looks for, under both the local "/" and Pages "/studio-pro/" base. */
+        { src: '404.html', dest: '.', rename: { stripBase: true } }
       ]
     }),
     VitePWA({
@@ -149,7 +201,11 @@ export default defineConfig({
         // html-in-canvas/ is excluded for the same reason as docs/ and
         // clip-lite/: it is a folder of gate-able tool pages, not app shell,
         // and a cache-first precache would pin whatever the phone first saw.
-        globIgnores: ['docs/**', 'clip-lite/**', 'html-in-canvas/**'],
+        globIgnores: ['docs/**', 'clip-lite/**', 'html-in-canvas/**', '404.html'],
+        // 404.html is in that list for its own reason: GitHub Pages serves it
+        // server-side with a real 404 status, never the service worker, so
+        // keeping it out of the cache-first precache avoids a stale error page
+        // and matches how every other non-app-shell page is treated.
         // MathJax's combined bundle (tex-svg.js) is ~2.1 MB — above workbox's
         // 2 MB default precache limit, so raise it.
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
@@ -176,6 +232,20 @@ export default defineConfig({
         // the cache-first precache so a phone is not pinned to a stale copy.
         navigateFallback: null,
         cleanupOutdatedCaches: true,
+        // Migration path for phones already holding the OLD hijacking worker
+        // (the one with the navigateFallback denylist): when the browser picks
+        // up this new sw.js, it must activate IMMEDIATELY — skipWaiting instead
+        // of sitting in waiting, clientsClaim to take over open tabs — so the
+        // very next navigation is served correctly WITHOUT the user closing
+        // every tab or doing a hard refresh (mobile Chrome rarely does either).
+        // These must be set EXPLICITLY: vite-plugin-pwa only auto-enables them
+        // for registerType autoUpdate when injectRegister is 'auto'/null, and
+        // this config uses 'inline' — measured against a build: the generated
+        // sw.js had no clientsClaim at all, which is exactly the stuck-phone
+        // failure. index.html carries the matching self-heal guard (shell seen
+        // at a sub-app URL → unregister once + reload) as defence in depth.
+        skipWaiting: true,
+        clientsClaim: true,
         // Runtime caching for the few remaining cross-origin calls:
         //   - unpkg / jsDelivr (CDN-first Lucide, any stray CDN scripts):
         //     StaleWhileRevalidate keeps the CDN copy usable offline.

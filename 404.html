@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- GitHub Pages serves this file with a real 404 status for any missing URL
+     under the site — no router, no framework. The dev server serves the same
+     file with a 404 status via the dev-custom-404 middleware in vite.config.js,
+     so localhost behaves like Pages. noindex keeps the error page out of search. -->
+<meta name="robots" content="noindex">
+<title>Page not found — StudioPro</title>
+<meta name="theme-color" content="#171717">
+<!-- Roadwork mark, not the StudioPro scissors: this page is its own thing.
+     A data URI costs no request and resolves at any 404 depth. -->
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🚧</text></svg>">
+<style>
+/* Self-contained by design: no external CSS/fonts/JS, so the page renders
+   from the network (or a cold cache) at any URL depth. No gradients, no
+   cards, no ornament — hairlines and type only. */
+:root {
+  color-scheme: dark;
+  --bg: #171717;
+  --text: #ededed;
+  --muted: #8f9499;
+  --line: #2c2c2c;
+  --accent: #a684ff;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+main { width: 100%; max-width: 420px; }
+.code {
+  font-size: 64px;
+  font-weight: 200;
+  letter-spacing: 6px;
+  line-height: 1;
+  margin: 0 0 16px;
+  color: var(--text);
+}
+h1 { font-size: 18px; font-weight: 600; letter-spacing: 0; margin: 0 0 8px; }
+.lede { font-size: 14px; line-height: 1.6; color: var(--muted); margin: 0 0 4px; }
+.missing {
+  display: block;
+  margin: 10px 0 28px;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 13px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+nav .cap {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+nav ul { list-style: none; margin: 0 0 24px; padding: 0; }
+nav li { border-top: 1px solid var(--line); }
+nav li:last-child { border-bottom: 1px solid var(--line); }
+nav a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 2px;
+  color: var(--text);
+  font-size: 14px;
+  text-decoration: none;
+}
+nav a:hover, nav a:focus-visible { color: var(--accent); }
+nav a .go { color: var(--muted); font-size: 13px; }
+nav a:hover .go { color: var(--accent); }
+.back {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+}
+.back:hover, .back:focus-visible { text-decoration: underline; }
+</style>
+</head>
+<body>
+<main>
+  <div class="code" aria-hidden="true">404</div>
+  <h1>Page not found</h1>
+  <p class="lede">This address doesn't exist on this site. Every page we ship is listed below.</p>
+  <code class="missing" id="missing">…</code>
+  <nav aria-label="All pages">
+    <div class="cap">Pages</div>
+    <ul id="nav"></ul>
+  </nav>
+  <a class="back" id="home" href="/">← Back to StudioPro</a>
+</main>
+<noscript><p class="lede">Enable JavaScript to see the page list, or open the site root directly.</p></noscript>
+<script>
+/* Base-relative links. A 404 can fire at ANY depth, so nothing here may be
+   relative (../foo breaks on nested 404s) and there is no "current folder" to
+   climb from. The first path segment is the repo prefix on GitHub Pages
+   (/studio-pro/…) but dev serves from "/", and a dev 404 at /html-in-canvas/dff
+   has a first segment that is a FOLDER, not the base. So the guess is VERIFIED
+   by fetching a file that exists at every site root — and the response must
+   actually be the image: Vite's dev fallback answers any missing path with
+   200 text/html, which fooled an ok-only check into keeping the wrong base.
+   Offline, the guess stands. */
+(function () {
+  var guess = '/';
+  var m = location.pathname.match(/^\/[^/]+\//);
+  if (m) guess = m[0];
+  var links = [
+    ['Studio Pro editor',           ''],
+    ['Clip Lite — phone editor',    'clip-lite/'],
+    ['Clip Lite self-check suite',  'clip-lite/selfcheck.html'],
+    ['HTML-in-Canvas studio',       'html-in-canvas/test-renderer.html'],
+    ['Designs gallery',             'html-in-canvas/designs.html'],
+    ['Prompt engineer',             'html-in-canvas/prompts-engineer.html']
+  ];
+  function render(base) {
+    var ul = document.getElementById('nav');
+    var html = '';
+    for (var i = 0; i < links.length; i++) {
+      html += '<li><a href="' + base + links[i][1] + '">' + links[i][0] +
+              '<span class="go" aria-hidden="true">→</span></a></li>';
+    }
+    ul.innerHTML = html;
+    document.getElementById('home').href = base;
+    document.getElementById('missing').textContent =
+      location.pathname + location.search + location.hash;
+  }
+  var candidates = [guess];
+  if (guess !== '/') candidates.push('/');
+  (function pick(i) {
+    if (i >= candidates.length) return render(guess);
+    fetch(candidates[i] + 'icons/icon-192.png')
+      .then(function (r) {
+        if (r.ok && /^image\//.test(r.headers.get('content-type') || '')) render(candidates[i]);
+        else pick(i + 1);
+      }, function () { pick(i + 1); });
+  })(0);
+})();
+</script>
+</body>
+</html>

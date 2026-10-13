@@ -513,10 +513,18 @@ const CONTRACT_HEADER = 'You are generating an HTML-in-Canvas animation for a vi
    model that mutating text or animating layout teleports glyphs. */
 function contractRules(dsLabel) {
   const dsp = dsDims(dsLabel);
+  /* Composition advice rides the generated rule (PROMPT-FLEX-PLAN.md §2) so
+     the aspect and its layout guidance can never drift apart. 9:16 and 4:5
+     are tall frames — a 16:9 layout squeezed into them is the failure mode;
+     the orientation fallback covers any future aspect added to ASPECTS. */
+  const tall = (dsLabel === '9:16' || dsLabel === '4:5') || dsp.h > dsp.w;
+  const compose = tall
+    ? ' Compose VERTICALLY: stack elements top-to-bottom, keep key content within the middle 70% of the height (top and bottom are UI-safe zones), and avoid long horizontal side-by-side rows.'
+    : ' Compose HORIZONTALLY: side-by-side or centered.';
   return [
   '1. Deterministic time: ALL animation must be driven by a single global function onFrame(time) where time is milliseconds since the clip start (number). Same time in = same frame out, forever. The editor seeks to any time and re-renders.',
   '2. No requestAnimationFrame, no setTimeout/setInterval, no CSS @keyframes or animation: properties, no transitions. You compute every element state inside onFrame from time only.',
-  '3. The design space is exactly ' + dsp.w + ' x ' + dsp.h + ' pixels (' + dsLabel + '). Use absolute sizes in px; the renderer scales the whole stage to any output resolution. Use width:100%;height:100% on your root container.',
+  '3. The design space is exactly ' + dsp.w + ' x ' + dsp.h + ' pixels (' + dsLabel + '). Use absolute sizes in px; the renderer scales the whole stage to any output resolution. Use width:100%;height:100% on your root container.' + compose,
   '4. Vanilla HTML/CSS/JS only — no bundlers, no imports, no fetch/XHR/network calls of your own. Allowed CDN exceptions (only when the design needs them): KaTeX for math and marked for markdown — load them with their <script src="https://cdn.jsdelivr.net/npm/..."> tags at the top of the html block (close each tag properly).',
   '5. Images must be CORS-safe https URLs (images.unsplash.com is fine) and animated via style properties (transform/opacity/filter/clip-path) inside onFrame.',
   '6. Guard element lookups (if(el){...}) so a missing id never throws.',
@@ -525,7 +533,7 @@ function contractRules(dsLabel) {
   '9. Never mutate text after the first paint: no textContent, innerHTML, create/append/remove inside onFrame. Build the whole DOM once at module load. Typewriter effects: pre-split the string into one <span> per character at load time, then animate each span\'s opacity from time.',
   '10. Every text container gets an explicit width AND height in the CSS, with the text centered INSIDE that fixed box. If captions or labels swap content, either pre-render every variant as its own node and crossfade by opacity, or swap inside a fixed-size box so its width cannot change. A blinking caret is its own fixed-width span (width:0.55em) toggled by opacity — never appended to the string.',
   '11. Animate transform and opacity ONLY. Never write width, height, left, top, margin, font-size or background-size from onFrame. Growing bars use transform: scaleX() with a transform-origin; moving handles live in a fixed-size wrapper moved by translate().',
-  '12. Length discipline: every timing lives in one table at the top (arrays of [startMs, endMs, ...]) interpreted by pure helpers; timings must span exactly the declared CLIP DURATION — do not invent a private time scale or rescale time inside onFrame. Scenes that have finished get display:none from time math (keeps the per-frame raster small). Keep the total DOM under ~150 nodes.'
+  '12. Length discipline: every timing lives in one table at the top (arrays of [startMs, endMs, ...]) interpreted by pure helpers; timings must span exactly the declared CLIP DURATION — do not invent a private time scale or rescale time inside onFrame. Anything fully outside the stage for the current time gets display:none — finished scenes and content the camera has left behind; a glided-past element still costs raster time every frame unless you hide it. Keep the total DOM under ~150 nodes.'
   ];
 }
 /* Length axis (plan §4): one pacing sentence per duration band. */
@@ -547,9 +555,27 @@ function buildFullPrompt(want, dur) {
     'HARD CONTRACT (violations break the video render):',
     ...contractRules(dsLabel),
     '',
-    'CLIP DURATION: ' + dur + ' ms. Choreograph the animation to complete within that time.',
+    'CLIP DURATION: ' + dur + ' ms. This is your timeline — occupy all of it. Choreograph so the last beat lands at (or within ~150 ms of) the declared end; a clip that finishes early and freezes is a defect. If your idea genuinely needs more room, use the full span you were given and pace it — do not compress into the first half.',
     'SCENE PACING:',
     scenePacing(dur) + ' Timings must span exactly the declared duration — onFrame receives real milliseconds; do not invent a private time scale.',
+    '',
+    'LENGTH:',
+    'Any duration is fine — 3 s stings to 60 s explainers. Longer is not "too much"; a 20-30 s clip is normal. Fill every second with motion or intentional hold. Never stop animating early and freeze on the last frame.',
+    '',
+    'SCENE MODEL:',
+    'Pick one and commit:',
+    '- DISCRETE SCENES — 1-3 scenes, each fully composed, joined by ONE deliberate transition (see TRANSITIONS). Best for a single idea with clear beats.',
+    '- CONTINUOUS GLIDE — one wide "world" wider than the stage, translated on X or Y by a camera function; parallax layers move at a fraction (e.g. 0.3x) for depth; content is revealed by camera position, not scene swaps. Best for a journey, a scroll, or "one thing leads to the next".',
+    'Both are valid. Do not mix halfway — a glide that also hard-cuts defeats itself.',
+    '',
+    'TRANSITIONS:',
+    'When you use DISCRETE SCENES, the join between them is a designed beat — pick a specific one, don\'t default to a plain crossfade:',
+    '- WIPE — a mask slides across, revealing the next scene (clip-path or a wrapper).',
+    '- SLIDE/PUSH — outgoing scene exits as the incoming one enters (translateX/Y).',
+    '- SCALE-MORPH — outgoing scales/fades down as incoming scales up.',
+    '- CUT — hard cut on a beat, no blend; strong when scored to music.',
+    '- WHIP — fast blurred pan that lands on the new scene.',
+    'Give the join 300-600 ms and land it on a timing-table entry. Across a multi-clip series, vary the transition between clips so it doesn\'t read as one effect on loop.',
     '',
     'OUTPUT FORMAT — respond with EXACTLY three fenced code blocks and nothing else:',
     '```html',
@@ -794,13 +820,13 @@ function tintPrompt(full) {
   const ACC = {
     'WHAT I WANT': 1, FORMAT: 1, CONTENT: 1, TYPOGRAPHY: 1,
     PALETTE: 1, LAYOUT: 1, CHOREOGRAPHY: 1, LIBRARIES: 1, TITLE: 1,
-    'SCENE PACING': 1
+    'SCENE PACING': 1, LENGTH: 1, 'SCENE MODEL': 1, TRANSITIONS: 1
   };
   /* M3 section icons (Material Symbols) per module */
   const SEC_ICONS = {
     'WHAT I WANT': 'edit', FORMAT: 'tune', CONTENT: 'edit_note', TYPOGRAPHY: 'text_fields',
     PALETTE: 'palette', LAYOUT: 'aspect_ratio', CHOREOGRAPHY: 'animation', LIBRARIES: 'extension', TITLE: 'label',
-    'SCENE PACING': 'schedule'
+    'SCENE PACING': 'schedule', LENGTH: 'hourglass_empty', 'SCENE MODEL': 'layers', TRANSITIONS: 'swap_horiz'
   };
   const lines = full.split('\n');
   const num = s => esc(s).replace(/(\d+\s*(?:ms|s|x|px|fps|%|°)\b|\d{2,4})/g, '<span class="n">$1</span>');

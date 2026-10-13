@@ -70,6 +70,40 @@
         })();
     </script>
 
+    <!-- Self-heal: this file is the ROOT app shell. If it is ever DISPLAYED at
+         a sub-app URL (…/clip-lite/…, …/html-in-canvas/…, …/docs/…), a stale
+         service worker hijacked the navigation — the bug that made mobile
+         Chrome show the full editor at the phone editor's URL and that a hard
+         refresh could only mask. Unregister once and reload from the network:
+         the real page for that URL arrives and re-registers the worker itself.
+         The sessionStorage counter caps retries at three so an unreachable
+         network can never turn this into a reload loop. Root = at most one
+         path segment ("/" locally, "/studio-pro/" on Pages; …/index.html is
+         normalized back to it), so any deeper URL showing this shell is a
+         hijack by definition — EXCEPT when the site itself is served from "/"
+         (local/production static hosts), where a hijacked /clip-lite/ is only
+         one segment deep; the known sub-app folders cover that case by name. -->
+    <script>
+        (function () {
+            try {
+                if (!('serviceWorker' in navigator)) return;
+                var p = location.pathname.replace(/index\.html$/, '');
+                var segs = p.split('/').filter(Boolean);
+                var subApp = /(^|\/)(clip-lite|html-in-canvas|docs)(\/|$)/.test(p);
+                if (segs.length <= 1 && !subApp) return;
+                var key = 'sp:shell-heal', n = 0;
+                try { n = +sessionStorage.getItem(key) || 0; } catch (e) {}
+                if (n >= 3) return;
+                navigator.serviceWorker.getRegistrations().then(function (rs) {
+                    if (!rs || !rs.length) return; /* no worker = no hijack */
+                    try { sessionStorage.setItem(key, String(n + 1)); } catch (e) {}
+                    return Promise.all(rs.map(function (r) { return r.unregister(); }))
+                        .then(function () { location.reload(); });
+                }).catch(function () {});
+            } catch (e) {}
+        })();
+    </script>
+
     <!-- Fonts: Plus Jakarta Sans for UI, JetBrains Mono for Timecodes -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
