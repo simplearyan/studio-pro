@@ -142,9 +142,10 @@ export default defineConfig({
         // trade. Nothing in src/ or index.html fetches a docs/ path at runtime —
         // the references there are comments — so the app shell is unaffected.
         // Verified against a built sw.js: 14 docs paths before, 0 after. clip-lite/ is
-        // excluded for the same reason and measured the same way — see the
-        // navigateFallbackDenylist note below, which explains why both halves
-        // are needed together.
+        // excluded for the same reason and measured the same way. This globIgnores is
+        // the only half that still matters now — navigateFallback is off (see below),
+        // so there is no SPA fallback to denylist; keeping sub-app HTML out of the
+        // cache-first precache is what stops a phone pinning a stale copy.
         // html-in-canvas/ is excluded for the same reason as docs/ and
         // clip-lite/: it is a folder of gate-able tool pages, not app shell,
         // and a cache-first precache would pin whatever the phone first saw.
@@ -152,40 +153,28 @@ export default defineConfig({
         // MathJax's combined bundle (tex-svg.js) is ~2.1 MB — above workbox's
         // 2 MB default precache limit, so raise it.
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
-        // Only the app shell navigations fall back to index.html. Requests that
-        // name a real static file under docs/ keep their own response — without
-        // the "not a navigation" exclusion the SPA fallback serves the app UI in
-        // place of the page. Folder-wide rather than one entry per page: the test
-        // renderer, the designs gallery, the prompts builder and the Studio Lite
-        // mock all live there, and each new one used to reintroduce the bug.
-        // The second pattern catches the bare folder URL (/docs/studio-lite/), which
-        // carries no .html suffix and would otherwise be handed the app shell.
-        //
-        // Both .html patterns are anchored on the PATH, not with a trailing `$`,
-        // and that is load-bearing. Workbox tests the denylist against the whole
-        // URL, so a page loaded with a query string — and the self-check loads
-        // every one of its five frames as `<page>.html?db=<name>` so each gets
-        // its own IndexedDB — ends in `?db=sc-pixel`, not `.html`, and a `$`
-        // anchor lets it straight through to the SPA fallback. Measured: with
-        // `/clip-lite\/.*\.html$/` in place, a request for
-        // /clip-lite/selfcheck.html?r=1 returned the Studio Pro app shell —
-        // correct URL, wrong document. The bare-folder patterns already used
-        // `[^?#]*` for this reason; the .html ones did not.
-        //
-        // clip-lite/ needs the same treatment. It is a root-level app folder,
-        // so without a denylist entry a visitor who already has Studio Pro
-        // installed is served the app shell at /clip-lite/. The denylist exempts
-        // a URL from the fallback; globIgnores above keeps the HTML out of the
-        // cache-first precache, which would otherwise pin a stale copy of an app
-        // that is still being iterated. Both are needed — either one alone still
-        // breaks the page for a returning visitor. Measured: precache is
-        // 88 entries / 7256.84 KiB with Clip Lite included, 86 / 6889.11 KiB with it excluded.
-        // Same four patterns for html-in-canvas/ as for clip-lite/ — a
-        // root-level folder of real pages needs both halves (denylist exempts
-        // the URL from the SPA fallback, globIgnores keeps it out of the
-        // cache-first precache); either one alone still breaks a returning
-        // visitor. The docs/ pairs keep covering the redirect stubs.
-        navigateFallbackDenylist: [/docs\/[^?#]*\.html/, /docs\/[^?#]*\/$/, /clip-lite\/[^?#]*\.html/, /clip-lite\/[^?#]*\/$/, /html-in-canvas\/[^?#]*\.html/, /html-in-canvas\/[^?#]*\/$/],
+        // (History: the ~30 lines that used to sit here configured a
+        // navigateFallback denylist — per-folder regexes that had to exempt docs/,
+        // clip-lite/ and html-in-canvas/ from the SPA fallback. That approach was
+        // fragile (the bare-folder regex never matched the real /studio-pro/clip-lite/
+        // URL) and is superseded by navigateFallback:null below.)
+        // navigateFallback is OFF (null). Studio Pro has NO client-side router
+        // (zero pushState/hashchange/popstate in src/ or index.html), so this SPA
+        // navigation fallback had no job — but a large liability: it handed the
+        // Studio Pro app shell to any navigation the denylist did not exempt. That
+        // is why /studio-pro/clip-lite/ rendered the full editor instead of the phone
+        // editor. The old denylist could not prevent it: its bare-folder regex
+        // /clip-lite\/[^?#]*\/$ requires a slash AFTER "clip-lite/", but the real URL
+        // "/studio-pro/clip-lite/" ends right there, so the folder never matched and
+        // fell through to the app shell (a hard refresh on PC bypassed the SW and hid
+        // it; mobile Chrome could not). Removing the fallback fixes clip-lite/,
+        // html-in-canvas/ and docs/ at once — no per-folder denylist to keep in sync —
+        // and lets unknown URLs reach the network (and thus a custom 404 page) instead
+        // of silently showing the app shell. The root app still works offline: its
+        // index.html is precached and the precache's directoryIndex matches the bare
+        // folder URL. globIgnores above still matters — it keeps sub-app HTML out of
+        // the cache-first precache so a phone is not pinned to a stale copy.
+        navigateFallback: null,
         cleanupOutdatedCaches: true,
         // Runtime caching for the few remaining cross-origin calls:
         //   - unpkg / jsDelivr (CDN-first Lucide, any stray CDN scripts):

@@ -505,16 +505,39 @@ function onFrame(time) { … }
 
 /* ── Contract: single source of truth, mirrors aiBuildPrompt ──── */
 const CONTRACT_HEADER = 'You are generating an HTML-in-Canvas animation for a video editor.';
-const CONTRACT_RULES = [
+/* Rules 1–2 and 4–7 are aspect-independent. Rule 3 is GENERATED from the
+   frame bar's design space (PROMPT-STABILITY-PLAN.md §4) so a 9:16 request
+   carries 9:16 instructions instead of a hardcoded 800 x 450. Rules 8–12
+   are the stability clause (plan §3), added after a long Claude clip
+   flickered its captions' positions: nothing in the old contract told the
+   model that mutating text or animating layout teleports glyphs. */
+function contractRules(dsLabel) {
+  const dsp = dsDims(dsLabel);
+  return [
   '1. Deterministic time: ALL animation must be driven by a single global function onFrame(time) where time is milliseconds since the clip start (number). Same time in = same frame out, forever. The editor seeks to any time and re-renders.',
   '2. No requestAnimationFrame, no setTimeout/setInterval, no CSS @keyframes or animation: properties, no transitions. You compute every element state inside onFrame from time only.',
-  '3. The design space is exactly 800 x 450 pixels (16:9). Use absolute sizes in px; the renderer scales the whole stage to any output resolution. Use width:100%;height:100% on your root container.',
+  '3. The design space is exactly ' + dsp.w + ' x ' + dsp.h + ' pixels (' + dsLabel + '). Use absolute sizes in px; the renderer scales the whole stage to any output resolution. Use width:100%;height:100% on your root container.',
   '4. Vanilla HTML/CSS/JS only — no bundlers, no imports, no fetch/XHR/network calls of your own. Allowed CDN exceptions (only when the design needs them): KaTeX for math and marked for markdown — load them with their <script src="https://cdn.jsdelivr.net/npm/..."> tags at the top of the html block (close each tag properly).',
   '5. Images must be CORS-safe https URLs (images.unsplash.com is fine) and animated via style properties (transform/opacity/filter/clip-path) inside onFrame.',
   '6. Guard element lookups (if(el){...}) so a missing id never throws.',
-  '7. The FIRST line of the html block must be <title>Short Name</title> — 2-4 Title Case words naming the animation (e.g. <title>Travel Slideshow</title>). It becomes the clip\'s display name and every export filename. No other head tags.'
-];
+  '7. The FIRST line of the html block must be <title>Short Name</title> — 2-4 Title Case words naming the animation (e.g. <title>Travel Slideshow</title>). It becomes the clip\'s display name and every export filename. No other head tags.',
+  '8. Purity: onFrame(time) must be a pure function of time — no module-level mutable state, no counters, no "did I already do this" flags. Two calls with the same time, in any order, must render identically.',
+  '9. Never mutate text after the first paint: no textContent, innerHTML, create/append/remove inside onFrame. Build the whole DOM once at module load. Typewriter effects: pre-split the string into one <span> per character at load time, then animate each span\'s opacity from time.',
+  '10. Every text container gets an explicit width AND height in the CSS, with the text centered INSIDE that fixed box. If captions or labels swap content, either pre-render every variant as its own node and crossfade by opacity, or swap inside a fixed-size box so its width cannot change. A blinking caret is its own fixed-width span (width:0.55em) toggled by opacity — never appended to the string.',
+  '11. Animate transform and opacity ONLY. Never write width, height, left, top, margin, font-size or background-size from onFrame. Growing bars use transform: scaleX() with a transform-origin; moving handles live in a fixed-size wrapper moved by translate().',
+  '12. Length discipline: every timing lives in one table at the top (arrays of [startMs, endMs, ...]) interpreted by pure helpers; timings must span exactly the declared CLIP DURATION — do not invent a private time scale or rescale time inside onFrame. Scenes that have finished get display:none from time math (keeps the per-frame raster small). Keep the total DOM under ~150 nodes.'
+  ];
+}
+/* Length axis (plan §4): one pacing sentence per duration band. */
+function scenePacing(durMs) {
+  if (durMs <= 5000) return '1-2 scenes — one idea, fully expressed.';
+  if (durMs <= 15000) return '3-6 scenes, each 2-4 s.';
+  if (durMs <= 60000) return 'chapters every 6-10 s, each with its own entrance and hold.';
+  return 'chapters every 6-10 s, structured so the last scene joins the first (loop-safe).';
+}
 function buildFullPrompt(want, dur) {
+  const dsLabel = (typeof curFrame !== 'undefined' && curFrame.aspect) ? curFrame.aspect : '16:9';
+  const dsp = dsDims(dsLabel);
   return [
     CONTRACT_HEADER,
     '',
@@ -522,13 +545,17 @@ function buildFullPrompt(want, dur) {
     want,
     '',
     'HARD CONTRACT (violations break the video render):',
-    ...CONTRACT_RULES,
+    ...contractRules(dsLabel),
     '',
     'CLIP DURATION: ' + dur + ' ms. Choreograph the animation to complete within that time.',
+    'SCENE PACING:',
+    scenePacing(dur) + ' Timings must span exactly the declared duration — onFrame receives real milliseconds; do not invent a private time scale.',
     '',
     'OUTPUT FORMAT — respond with EXACTLY three fenced code blocks and nothing else:',
     '```html',
-    '<title>Short Name</title><!-- then the full markup for the 800x450 stage -->',
+    (dsLabel === '16:9')
+      ? '<title>Short Name</title><!-- then the full markup for the ' + dsp.w + 'x' + dsp.h + ' stage -->'
+      : '<title>Short Name</title><!-- ds:' + dsLabel + ' --> then the full markup for the ' + dsp.w + 'x' + dsp.h + ' stage — keep the ds comment verbatim, it tells the editor which aspect this clip is',
     '```',
     '```css',
     '/* all styles; root container fills 100% x 100% */',
@@ -766,12 +793,14 @@ function tintPrompt(full) {
      Display only — the copied text stays byte-identical. */
   const ACC = {
     'WHAT I WANT': 1, FORMAT: 1, CONTENT: 1, TYPOGRAPHY: 1,
-    PALETTE: 1, LAYOUT: 1, CHOREOGRAPHY: 1, LIBRARIES: 1, TITLE: 1
+    PALETTE: 1, LAYOUT: 1, CHOREOGRAPHY: 1, LIBRARIES: 1, TITLE: 1,
+    'SCENE PACING': 1
   };
   /* M3 section icons (Material Symbols) per module */
   const SEC_ICONS = {
     'WHAT I WANT': 'edit', FORMAT: 'tune', CONTENT: 'edit_note', TYPOGRAPHY: 'text_fields',
-    PALETTE: 'palette', LAYOUT: 'aspect_ratio', CHOREOGRAPHY: 'animation', LIBRARIES: 'extension', TITLE: 'label'
+    PALETTE: 'palette', LAYOUT: 'aspect_ratio', CHOREOGRAPHY: 'animation', LIBRARIES: 'extension', TITLE: 'label',
+    'SCENE PACING': 'schedule'
   };
   const lines = full.split('\n');
   const num = s => esc(s).replace(/(\d+\s*(?:ms|s|x|px|fps|%|°)\b|\d{2,4})/g, '<span class="n">$1</span>');
@@ -831,6 +860,10 @@ function tintPrompt(full) {
     let j = i; const rest = [];
     while (j < lines.length && !isHdr(lines[j]) && lines[j] !== CONTRACT_HEADER &&
            !/^([A-Z][A-Z &]{2,20}):[ \n]/.test(lines[j])) { rest.push(lines[j]); j++; }
+    /* Never stall: an unrecognized `XXX:` header matches the section regex
+       but not ACC, so the loop above consumes nothing — emit it as-is and
+       advance, or refresh() loops forever building a giant string. */
+    if (j === i) { rest.push(lines[i]); j++; }
     html += '<span class="w">' + num(rest.join('\n').replace(/^\n+|\n+$/g, '')) + '</span>';
     i = j;
   }
@@ -1682,6 +1715,7 @@ var frameControls = mountFrameControls(document.getElementById('frameControls'),
     onFrame: function() {
       peApplyFrame();
       peRedraw();
+      refresh(); /* the prompt's design-space line follows the frame bar */
     }
 });
 /* restore shared prefs so the panel matches the other pages' last-used frame */
